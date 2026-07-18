@@ -82,7 +82,7 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("0.0.0.0", ARTNET_PORT))
-    sock.settimeout(FPS_DELAY)
+    sock.setblocking(False)
 
     dmx = bytes(19)
     fog_on = False
@@ -95,19 +95,34 @@ def main():
     signal.signal(signal.SIGTERM, stop)
 
     last_log = 0.0
+    next_frame = time.monotonic()
     while running:
-        try:
-            pkt, _ = sock.recvfrom(1024)
+        # drain ALL pending Art-Net packets each tick, keep only the freshest
+        got = False
+        while True:
+            try:
+                pkt = sock.recv(2048)
+            except BlockingIOError:
+                break
             if pkt[:8] == b"Art-Net\x00" and pkt[8:10] == b"\x00\x50":  # OpDmx
                 length = struct.unpack(">H", pkt[16:18])[0]
                 dmx = pkt[18:18+length]
-                if time.time() - last_log > 2:
-                    print("dmx:", list(dmx[:19]), flush=True)
-                    last_log = time.time()
-        except socket.timeout:
-            pass
+                got = True
+        if got and time.time() - last_log > 2:
+            print("dmx:", list(dmx[:19]), flush=True)
+            last_log = time.time()
+
         if proc.poll() is not None:
             sys.exit("DTLS connection died:\n" + proc.stderr.read().decode(errors="replace"))
+
+        now = time.monotonic()
+        if now < next_frame:
+            time.sleep(0.002)
+            continue
+        next_frame += FPS_DELAY
+        if now - next_frame > 0.25:        # fell behind -> resync instead of spiralling
+            next_frame = now + FPS_DELAY
+
         try:
             proc.stdin.write(build_frame(dmx))
             proc.stdin.flush()
@@ -117,19 +132,17 @@ def main():
         # fog cue (channel 19)
         if fog is not None:
             want = len(dmx) > FOG_IDX and dmx[FOG_IDX] >= FOG_THRESHOLD
-            now = time.time()
+            t = time.time()
             try:
-                if want and (not fog_on or now - fog_hb >= FOG_HEARTBEAT):
+                if want and (not fog_on or t - fog_hb >= FOG_HEARTBEAT):
                     fog.write(b"1"); fog.flush()
-                    fog_on, fog_hb = True, now
+                    fog_on, fog_hb = True, t
                 elif not want and fog_on:
                     fog.write(b"0"); fog.flush()
                     fog_on = False
             except Exception as e:
                 print("fog serial error:", e, flush=True)
                 fog = None
-
-        time.sleep(FPS_DELAY)
 
     print("shutting down...", flush=True)
     if fog is not None and fog_on:
