@@ -1,0 +1,26 @@
+# Simple room reference for the xLights 3D layout
+# floor 500x320, back wall + left wall 250 high, desk at the back wall
+# floor corners
+v -250 0 -160
+v  250 0 -160
+v  250 0  160
+v -250 0  160
+# back wall top corners
+v -250 250 -160
+v  250 250 -160
+# left wall top corner (front)
+v -250 250 160
+# desk top (180 wide, 60 deep, 75 high, against back wall)
+v -90 75 -160
+v  90 75 -160
+v  90 75 -100
+v -90 75 -100
+# desk front panel bottom corners
+v -90 0 -100
+v  90 0 -100
+# faces
+f 1 2 3 4
+f 1 2 6 5
+f 1 4 7 5
+f 8 9 10 11
+f 12 13 10 11
