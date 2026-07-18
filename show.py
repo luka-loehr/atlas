@@ -25,7 +25,7 @@ ARTNET_TARGET = ("192.168.1.100", 6454)   # atlas on the LAN
 FPS = 25
 NCHAN = 20
 AUDIO_LATENCY_MS = 160      # Bluetooth delays the sound; delay light to match. Tune me.
-LASER_LATENCY_MS = 6600     # measured: plug-on -> laser pattern visible
+LASER_LATENCY_MS = 3900     # measured: plug-on -> laser pattern visible (new laser)
 
 # ---- channel map (0-based DMX index) -----------------------------------
 DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER = 0, 3, 6, 9, 12, 15, 18, 19
