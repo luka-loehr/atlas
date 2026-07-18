@@ -16,7 +16,7 @@ Usage:
 
 Turn OFF "Output To Lights" in xLights first, or both fight over the bridge.
 """
-import math, re, socket, struct, subprocess, sys, time, os
+import math, re, shutil, socket, struct, subprocess, sys, time, os
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 XSQ = os.path.join(BASE, "music.xsq")
@@ -33,7 +33,7 @@ REGALE = [REGAL_HINT, REGAL_LINK, REGAL_RECH]
 
 # laser is a slow on/off cue: list of (visible_start_ms, visible_end_ms).
 # The engine powers the plug LASER_LATENCY_MS earlier so it's lit on time.
-LASER_CUES = []
+LASER_CUES = [(59300, 64300)]     # laser during the drop strobe
 
 # ---- real beats from the xLights beat track ----------------------------
 def load_beats():
@@ -74,7 +74,19 @@ def render(t):
         d = int(255 * 0.20 * bump)
         dmx[DECKE], dmx[DECKE+1], dmx[DECKE+2] = d, d, d
 
-    # laser cue (power the plug 6.6s before it should be visible)
+    # --- DROP at 59.3s: ALL lights strobe white @ 30% for 5s ---
+    if 59300 <= t < 64300:
+        strobe_on = (int(t // 50) % 2 == 0)          # ~10 Hz strobe
+        v = int(255 * 0.30) if strobe_on else 0
+        for ch in (DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH):
+            dmx[ch] = dmx[ch+1] = dmx[ch+2] = v
+    # (58.0 - 59.3s is left completely dark on purpose — calm before the drop)
+
+    # --- fog: 10s continuous, 45s - 55s ---
+    if 45000 <= t < 55000:
+        dmx[FOG] = 255
+
+    # --- laser cue (power the plug 6.6s before it should be visible) ---
     if any((vs - LASER_LATENCY_MS) <= t < ve for vs, ve in LASER_CUES):
         dmx[LASER] = 255
     return bytes(dmx)
@@ -86,24 +98,29 @@ def artnet(dmx, seq):
 def main():
     start_s = float(sys.argv[1]) if len(sys.argv) > 1 else 0.0
     end_s   = float(sys.argv[2]) if len(sys.argv) > 2 else PRE_DROP_END / 1000.0
-    play_audio = (start_s == 0.0 and os.path.exists(MP3))
+    play_audio = os.path.exists(MP3)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     audio = None
+    if play_audio:
+        if start_s > 0 and shutil.which("ffplay"):        # seek with ffplay
+            audio = subprocess.Popen(["ffplay", "-nodisp", "-autoexit",
+                                      "-loglevel", "quiet", "-ss", str(start_s), MP3])
+        elif start_s == 0:                                # afplay from the top
+            audio = subprocess.Popen(["afplay", MP3])
+        else:
+            play_audio = False                            # no seek available
     print(f"playing {start_s:.1f}s -> {end_s:.1f}s  |  audio={'yes' if play_audio else 'no'}  |  {len(BEATS)} beats", flush=True)
 
     seq = 0
-    t0 = time.monotonic() - start_s
-    if play_audio:
-        audio = subprocess.Popen(["afplay", MP3])   # song starts at 0
-        t0 = time.monotonic()                        # resync clock to audio start
+    t0 = time.monotonic()
     try:
         while True:
-            t = time.monotonic() - t0
-            if t >= end_s:
+            song_s = start_s + (time.monotonic() - t0)
+            if song_s >= end_s:
                 break
             # light lags by the Bluetooth latency so it matches what you hear
-            song_ms = t * 1000.0 - (AUDIO_LATENCY_MS if play_audio else 0)
+            song_ms = song_s * 1000.0 - (AUDIO_LATENCY_MS if play_audio else 0)
             seq = (seq + 1) & 0xff
             sock.sendto(artnet(render(song_ms), seq), ARTNET_TARGET)
             time.sleep(1.0 / FPS)
