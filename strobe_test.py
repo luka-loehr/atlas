@@ -25,21 +25,32 @@ def artnet(dmx, seq):
 
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    print(f"strobe: period={period_ms}ms  bright={bright_pct}%  duty={duty_pct}%  (~{1000/period_ms:.1f} flashes/s)  Ctrl+C to stop")
+    frame_ms = 1000.0 / FPS                             # 40ms at 25fps
+    period_frames = max(1, round(period_ms / frame_ms))  # lock period to the frame grid
+    on_frames = max(1, round(period_frames * duty_pct / 100.0))
+    real_period_ms = period_frames * frame_ms
+    real_duty_pct = 100.0 * on_frames / period_frames
+    print(f"strobe: requested period={period_ms}ms duty={duty_pct}%  ->  "
+          f"frame-locked period={real_period_ms:.0f}ms ({period_frames} frames), "
+          f"on={on_frames} frame(s) ({real_duty_pct:.0f}%)  bright={bright_pct}%  "
+          f"(~{1000/real_period_ms:.2f} flashes/s)  Ctrl+C to stop")
     seq = 0
+    frame = 0
     t0 = time.monotonic()
     try:
         while True:
-            t_ms = (time.monotonic() - t0) * 1000.0
-            phase = t_ms % period_ms
-            on = phase < (period_ms * duty_pct / 100.0)
+            on = (frame % period_frames) < on_frames    # exact, no aliasing vs the 25fps send rate
             v = int(255 * bright_pct / 100.0) if on else 0
             dmx = bytearray(NCHAN)
             for ch in STROBE_LIGHTS:
                 dmx[ch] = dmx[ch+1] = dmx[ch+2] = v
             seq = (seq + 1) & 0xff
             sock.sendto(artnet(bytes(dmx), seq), ARTNET_TARGET)
-            time.sleep(1.0 / FPS)
+            frame += 1
+            next_t = t0 + frame * (frame_ms / 1000.0)
+            sleep_left = next_t - time.monotonic()
+            if sleep_left > 0:
+                time.sleep(sleep_left)
     except KeyboardInterrupt:
         pass
     finally:
