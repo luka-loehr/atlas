@@ -89,12 +89,13 @@ def render(t):
             r, g, bl = (int(255 * bright * c) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0))
             dmx[ch], dmx[ch+1], dmx[ch+2] = r, g, bl
 
-    # --- DROP at 59.7s: ALL lights (incl. Deckenlampe) real strobe @ 15%, 5s ---
+    # --- DROP at 59.7s: strobe @ 15%, 5s — Regale + Display only (not Deckenlampe) ---
     DROP_T = 59700
+    STROBE_LIGHTS = [DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH]
     if DROP_T <= t < DROP_T + 5000:
-        strobe_on = (int(t // 120) % 2 == 0)         # slower, trance-style strobe (~4.2 Hz)
+        strobe_on = (int(t // 200) % 2 == 0)         # slower still (~2.5 Hz)
         v = int(255 * 0.15) if strobe_on else 0
-        for ch in ALL_LIGHTS:
+        for ch in STROBE_LIGHTS:
             dmx[ch] = dmx[ch+1] = dmx[ch+2] = v
     # (58.0s - DROP_T is left completely dark on purpose — calm before the drop)
 
