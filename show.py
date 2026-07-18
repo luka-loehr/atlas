@@ -31,21 +31,28 @@ XSQ = os.path.join(BASE, "music.xsq")
 MP3 = os.path.join(BASE, "music.mp3")
 ARTNET_TARGET = ("192.168.1.100", 6454)
 FPS = 25
-NCHAN = 20
+NCHAN = 21
 SONG_END_S = 260.4
 AUDIO_LATENCY_MS = 160
 LASER_LATENCY_MS = 3900
+STROBEPLUG_LATENCY_MS = 6500    # hardware strobe (ex-printer plug) warm-up
 
 # ---- channel map (0-based DMX index) -----------------------------------
-DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER = 0, 3, 6, 9, 12, 15, 18, 19
+DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER, STROBE_PLUG = 0, 3, 6, 9, 12, 15, 18, 19, 20
 DISPLAY = [DISPLAY1, DISPLAY2]          # one physical spot (both Play bars together)
 REGALE = [REGAL_HINT, REGAL_LINK, REGAL_RECH]
 ALL_LIGHTS = [DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH]
 STROBE_CH = [DISPLAY1, DISPLAY2, REGAL_HINT, REGAL_LINK, REGAL_RECH]
 CIRCLE = [[REGAL_HINT], [REGAL_LINK], DISPLAY, [REGAL_RECH]]
 
-FOG_CUES = [(42000, 52000), (112000, 118000), (151000, 159000), (197000, 204000)]
+# Fog machine now carries a DISCO GLOBE -> fog only during LIT phases,
+# never in dark/blackout sections (the globe would break the darkness).
+FOG_CUES = [(42000, 52000),        # rainbow build (lit) — haze ready for drop 1 laser
+            (118400, 124400),      # during drop 2 (bright slams — disco fits)
+            (159200, 165000),      # during drop 3 hardware strobe + feeds laser window
+            (197000, 204000)]      # final high (lit)
 LASER_CUES = [(59700, 72000), (159200, 175000), (222000, 245000)]
+STROBEPLUG_CUES = [(159200, 164100), (222000, 226900)]   # hardware strobe visible windows
 
 BEAT_MS = 441.0
 EIGHTH = BEAT_MS / 2
@@ -322,19 +329,12 @@ def render(t):
     elif t < 159200:
         pass
 
-    # ============ 159.2 - 164.1s: DROP 3 — hit + ping-pong strobe =======
+    # ============ 159.2 - 164.1s: DROP 3 — HARDWARE STROBE SOLO =========
+    # ~5s of just the real strobe light (plug ch21, powered 6.5s earlier).
+    # Hue stays black except the 2-frame entrance hit — the room belongs
+    # to the hardware strobe + fog/disco.
     elif t < 164100:
-        if not drop_hit(dmx, t, 159200):
-            frame = int(t // 40)
-            if frame % 4 == 0:
-                flash_i = frame // 4
-                v = int(255 * 0.25)
-                group = ([REGAL_LINK, REGAL_HINT] + DISPLAY if flash_i % 2 == 0
-                         else [REGAL_RECH, REGAL_HINT] + DISPLAY)
-                for ch in group:
-                    put(dmx, ch, (v, v, v))
-                d = int(255 * 0.12)
-                put(dmx, DECKE, (d, d, d))
+        drop_hit(dmx, t, 159200)
 
     # ============ 164.1 - 172s: afterglow — L/R cross-fade (moving) =====
     elif t < 172000:
@@ -441,11 +441,13 @@ def render(t):
             put(dmx, ch, hsv(0.87, 1.0, 0.12 * (1 - sec)))
         put(dmx, DECKE, hsv(0.08, 0.5, 0.10 * (1 - sec) ** 0.5))
 
-    # ---- fog / laser cues ----
+    # ---- fog / laser / hardware-strobe cues ----
     if any(s <= t < e for s, e in FOG_CUES):
         dmx[FOG] = 255
     if any((vs - LASER_LATENCY_MS) <= t < ve for vs, ve in LASER_CUES):
         dmx[LASER] = 255
+    if any((vs - STROBEPLUG_LATENCY_MS) <= t < ve for vs, ve in STROBEPLUG_CUES):
+        dmx[STROBE_PLUG] = 255
     return bytes(dmx)
 
 # ---- engine ------------------------------------------------------------

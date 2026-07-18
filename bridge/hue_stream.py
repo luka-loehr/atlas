@@ -32,21 +32,30 @@ LASER_IDX = 19                           # 0-based index of DMX channel 20
 LASER_THRESHOLD = 128                    # >= 50% -> laser plug on
 LASER_V1 = "22"                          # Hue plug (ex-Kaktus) v1 light id
 
-def set_laser(on):
-    """Toggle the laser's Hue plug via the v1 REST API, in a background
-    thread so the 25fps stream never stalls on the HTTP round-trip."""
+STROBEPLUG_IDX = 20                      # 0-based index of DMX channel 21
+STROBEPLUG_V1 = "25"                     # Hue plug (ex-Drucker) v1 light id
+
+def set_plug(v1_id, on, label):
+    """Toggle a Hue plug via the v1 REST API, in a background thread so
+    the 25fps stream never stalls on the HTTP round-trip."""
     def _do():
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         try:
             req = urllib.request.Request(
-                f"https://{HOST}/api/{USER}/lights/{LASER_V1}/state",
+                f"https://{HOST}/api/{USER}/lights/{v1_id}/state",
                 data=json.dumps({"on": bool(on)}).encode(), method="PUT")
             urllib.request.urlopen(req, context=ctx, timeout=5).read()
         except Exception as e:
-            print("laser toggle error:", e, flush=True)
+            print(f"{label} toggle error:", e, flush=True)
     threading.Thread(target=_do, daemon=True).start()
+
+def set_laser(on):
+    set_plug(LASER_V1, on, "laser")
+
+def set_strobeplug(on):
+    set_plug(STROBEPLUG_V1, on, "strobe-plug")
 
 def set_streaming(active: bool):
     ctx = ssl.create_default_context()
@@ -104,10 +113,11 @@ def main():
     sock.bind(("0.0.0.0", ARTNET_PORT))
     sock.setblocking(False)
 
-    dmx = bytes(20)
+    dmx = bytes(21)
     fog_on = False
     fog_hb = 0.0
     laser_on = False
+    strobeplug_on = False
     running = True
     def stop(*_):
         nonlocal running
@@ -183,6 +193,14 @@ def main():
                 set_laser(want_laser)
                 laser_on = want_laser
                 print("laser ->", "ON" if want_laser else "OFF", flush=True)
+
+        # hardware strobe cue (channel 21) -> Hue plug on/off, transitions only
+        if len(dmx) > STROBEPLUG_IDX:
+            want_sp = dmx[STROBEPLUG_IDX] >= LASER_THRESHOLD
+            if want_sp != strobeplug_on:
+                set_strobeplug(want_sp)
+                strobeplug_on = want_sp
+                print("strobe-plug ->", "ON" if want_sp else "OFF", flush=True)
 
     print("shutting down...", flush=True)
     if fog is not None and fog_on:
