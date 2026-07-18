@@ -118,7 +118,14 @@ def main():
     last_log = 0.0
     next_frame = time.monotonic()
     while running:
-        # drain ALL pending Art-Net packets each tick, keep only the freshest
+        # Drain ALL pending Art-Net packets each tick. Two independent 25fps
+        # clocks (sender + this bridge) mean a single narrow on-pulse packet
+        # can arrive and be immediately overwritten by the next off packet
+        # before we ever send it out -> flashes silently vanish (looked like
+        # random "bursts"/aliasing on short strobes). Fix: peak-hold across
+        # everything received this tick, seeded from the last known state,
+        # so a brief flash always survives into the next output frame.
+        peak = bytearray(dmx)
         got = False
         while True:
             try:
@@ -127,8 +134,12 @@ def main():
                 break
             if pkt[:8] == b"Art-Net\x00" and pkt[8:10] == b"\x00\x50":  # OpDmx
                 length = struct.unpack(">H", pkt[16:18])[0]
-                dmx = pkt[18:18+length]
+                frame = pkt[18:18+length]
+                dmx = frame                              # true latest -> next tick's baseline
                 got = True
+                for i in range(min(len(frame), len(peak))):
+                    if frame[i] > peak[i]:
+                        peak[i] = frame[i]
         if got and time.time() - last_log > 2:
             print("dmx:", list(dmx[:19]), flush=True)
             last_log = time.time()
@@ -145,7 +156,7 @@ def main():
             next_frame = now + FPS_DELAY
 
         try:
-            proc.stdin.write(build_frame(dmx))
+            proc.stdin.write(build_frame(bytes(peak)))
             proc.stdin.flush()
         except BrokenPipeError:
             sys.exit("DTLS pipe broke")
