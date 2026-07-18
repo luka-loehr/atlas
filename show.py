@@ -16,7 +16,7 @@ Usage:
 
 Turn OFF "Output To Lights" in xLights first, or both fight over the bridge.
 """
-import math, re, shutil, socket, struct, subprocess, sys, time, os
+import colorsys, math, re, shutil, socket, struct, subprocess, sys, time, os
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 XSQ = os.path.join(BASE, "music.xsq")
@@ -30,6 +30,7 @@ LASER_LATENCY_MS = 6600     # measured: plug-on -> laser pattern visible
 # ---- channel map (0-based DMX index) -----------------------------------
 DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER = 0, 3, 6, 9, 12, 15, 18, 19
 REGALE = [REGAL_HINT, REGAL_LINK, REGAL_RECH]
+ALL_LIGHTS = [DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH]   # all 6 colour fixtures
 
 # laser is a slow on/off cue: list of (visible_start_ms, visible_end_ms).
 # The engine powers the plug LASER_LATENCY_MS earlier so it's lit on time.
@@ -47,6 +48,9 @@ PRE_DROP_END = 18600   # ms — end of the pre-melody section
 def last_beat(t):
     prev = [b for b in BEATS if b <= t]
     return prev[-1] if prev else None
+
+def beat_count(t):
+    return sum(1 for b in BEATS if b <= t)
 
 def nearest_beat(t):
     return min(BEATS, key=lambda b: abs(b - t)) if BEATS else t
@@ -74,11 +78,22 @@ def render(t):
         d = int(255 * 0.20 * bump)
         dmx[DECKE], dmx[DECKE+1], dmx[DECKE+2] = d, d, d
 
-    # --- DROP at 59.3s: ALL lights strobe white @ 30% for 5s ---
+    # --- build-up (40 - 58s): rainbow that steps on every beat + beat pulse ---
+    if 40000 <= t < 58000:
+        b = last_beat(t)
+        env = math.exp(-(t - b) / 250.0) if b is not None else 0.0
+        bright = 0.25 + 0.75 * env                   # pulses up on each beat
+        bi = beat_count(t)
+        for i, ch in enumerate(ALL_LIGHTS):
+            hue = ((bi * 0.13) + i / len(ALL_LIGHTS)) % 1.0   # rainbow, advances per beat
+            r, g, bl = (int(255 * bright * c) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0))
+            dmx[ch], dmx[ch+1], dmx[ch+2] = r, g, bl
+
+    # --- DROP at 59.3s: ALL lights (incl. Deckenlampe) real strobe @ 30%, 5s ---
     if 59300 <= t < 64300:
-        strobe_on = (int(t // 50) % 2 == 0)          # ~10 Hz strobe
+        strobe_on = (int(t // 40) % 2 == 0)          # frame-aligned ~12.5 Hz, crisp on/off
         v = int(255 * 0.30) if strobe_on else 0
-        for ch in (DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH):
+        for ch in ALL_LIGHTS:
             dmx[ch] = dmx[ch+1] = dmx[ch+2] = v
     # (58.0 - 59.3s is left completely dark on purpose — calm before the drop)
 
