@@ -34,7 +34,7 @@ ALL_LIGHTS = [DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH]   #
 
 # laser is a slow on/off cue: list of (visible_start_ms, visible_end_ms).
 # The engine powers the plug LASER_LATENCY_MS earlier so it's lit on time.
-LASER_CUES = [(59300, 64300)]     # laser during the drop strobe
+LASER_CUES = [(59700, 64700)]     # laser during the drop strobe
 
 # ---- real beats from the xLights beat track ----------------------------
 def load_beats():
@@ -89,13 +89,14 @@ def render(t):
             r, g, bl = (int(255 * bright * c) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0))
             dmx[ch], dmx[ch+1], dmx[ch+2] = r, g, bl
 
-    # --- DROP at 59.3s: ALL lights (incl. Deckenlampe) real strobe @ 30%, 5s ---
-    if 59300 <= t < 64300:
-        strobe_on = (int(t // 40) % 2 == 0)          # frame-aligned ~12.5 Hz, crisp on/off
-        v = int(255 * 0.30) if strobe_on else 0
+    # --- DROP at 59.7s: ALL lights (incl. Deckenlampe) real strobe @ 15%, 5s ---
+    DROP_T = 59700
+    if DROP_T <= t < DROP_T + 5000:
+        strobe_on = (int(t // 120) % 2 == 0)         # slower, trance-style strobe (~4.2 Hz)
+        v = int(255 * 0.15) if strobe_on else 0
         for ch in ALL_LIGHTS:
             dmx[ch] = dmx[ch+1] = dmx[ch+2] = v
-    # (58.0 - 59.3s is left completely dark on purpose — calm before the drop)
+    # (58.0s - DROP_T is left completely dark on purpose — calm before the drop)
 
     # --- fog: 10s continuous, 45s - 55s ---
     if 45000 <= t < 55000:
