@@ -14,7 +14,7 @@ DMX channel map (1-based):
   16-18  R,G,B  light 23  Regal Rechts
   19            fog: value >= 128 -> fog on (heartbeat to Arduino)
 """
-import json, os, signal, socket, ssl, struct, subprocess, sys, time, urllib.request
+import json, os, signal, socket, ssl, struct, subprocess, sys, threading, time, urllib.request
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 CRED = json.load(open(os.path.join(BASE, "credentials.json")))
@@ -27,6 +27,26 @@ FOG_IDX = 18                             # 0-based index of DMX channel 19
 FOG_THRESHOLD = 128                      # >= 50% -> fog
 FOG_HEARTBEAT = 0.2                      # refresh "on" every 200 ms
 FOG_PORT = "/dev/ttyACM0"
+
+LASER_IDX = 19                           # 0-based index of DMX channel 20
+LASER_THRESHOLD = 128                    # >= 50% -> laser plug on
+LASER_V1 = "22"                          # Hue plug (ex-Kaktus) v1 light id
+
+def set_laser(on):
+    """Toggle the laser's Hue plug via the v1 REST API, in a background
+    thread so the 25fps stream never stalls on the HTTP round-trip."""
+    def _do():
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        try:
+            req = urllib.request.Request(
+                f"https://{HOST}/api/{USER}/lights/{LASER_V1}/state",
+                data=json.dumps({"on": bool(on)}).encode(), method="PUT")
+            urllib.request.urlopen(req, context=ctx, timeout=5).read()
+        except Exception as e:
+            print("laser toggle error:", e, flush=True)
+    threading.Thread(target=_do, daemon=True).start()
 
 def set_streaming(active: bool):
     ctx = ssl.create_default_context()
@@ -84,9 +104,10 @@ def main():
     sock.bind(("0.0.0.0", ARTNET_PORT))
     sock.setblocking(False)
 
-    dmx = bytes(19)
+    dmx = bytes(20)
     fog_on = False
     fog_hb = 0.0
+    laser_on = False
     running = True
     def stop(*_):
         nonlocal running
@@ -143,6 +164,14 @@ def main():
             except Exception as e:
                 print("fog serial error:", e, flush=True)
                 fog = None
+
+        # laser cue (channel 20) -> Hue plug on/off, only on transitions
+        if len(dmx) > LASER_IDX:
+            want_laser = dmx[LASER_IDX] >= LASER_THRESHOLD
+            if want_laser != laser_on:
+                set_laser(want_laser)
+                laser_on = want_laser
+                print("laser ->", "ON" if want_laser else "OFF", flush=True)
 
     print("shutting down...", flush=True)
     if fog is not None and fog_on:
