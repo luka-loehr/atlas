@@ -13,9 +13,9 @@
     <modelGroup name="REGALE" models="Regal Hinten,Regal Links,Regal Rechts" layout="minimalGrid" GridSize="400" LayoutGroup="Default" selected="0"/>
   </modelGroups>
   <layoutGroups/>
-  <viewObjects>
-    <viewObject name="Raum" DisplayAs="Mesh" LayoutGroup="Default" ObjFile="/Users/user/Documents/lightshow/room.obj" Brightness="60" Active="1" WorldPosX="0" WorldPosY="0" WorldPosZ="0" RotateX="0" RotateY="0" RotateZ="0" ScaleX="1" ScaleY="1" ScaleZ="1"/>
-  </viewObjects>
+  <view_objects>
+    <view_object name="Raum" DisplayAs="Mesh" LayoutGroup="Default" ObjFile="/Users/user/Documents/lightshow/room.obj" Brightness="60" Active="1" WorldPosX="0" WorldPosY="0" WorldPosZ="0" RotateX="0" RotateY="0" RotateZ="0" ScaleX="1" ScaleY="1" ScaleZ="1"/>
+  </view_objects>
   <effects version="0006"/>
   <palettes/>
   <colors/>
