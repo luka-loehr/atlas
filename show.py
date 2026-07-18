@@ -93,14 +93,14 @@ def render(t):
     DROP_T = 59700
     STROBE_LIGHTS = [DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH]
     if DROP_T <= t < DROP_T + 5000:
-        strobe_on = (int(t // 200) % 2 == 0)         # slower still (~2.5 Hz)
-        v = int(255 * 0.15) if strobe_on else 0
+        strobe_on = (int(t // 150) % 2 == 0)         # a bit faster (~3.3 Hz)
+        v = int(255 * 0.22) if strobe_on else 0      # a bit brighter
         for ch in STROBE_LIGHTS:
             dmx[ch] = dmx[ch+1] = dmx[ch+2] = v
     # (58.0s - DROP_T is left completely dark on purpose — calm before the drop)
 
-    # --- fog: 10s continuous, 45s - 55s ---
-    if 45000 <= t < 55000:
+    # --- fog: 10s continuous, 42s - 52s (a bit earlier) ---
+    if 42000 <= t < 52000:
         dmx[FOG] = 255
 
     # --- laser cue (power the plug 6.6s before it should be visible) ---
