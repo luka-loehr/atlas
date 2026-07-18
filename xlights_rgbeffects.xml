@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xrgb>
+  <models>
+    <model name="Deckenlampe" DisplayAs="Single Line" StringType="RGB Nodes" parm1="1" parm2="1" parm3="1" StartChannel="1" Dir="L" Antialias="1" PixelSize="80" Transparency="0" LayoutGroup="Default" WorldPosX="0" WorldPosY="180" WorldPosZ="0" ScaleX="25" ScaleY="25" ScaleZ="25" Description="Hue Color-Bulb Decke (v1 id 17), Kanal 1-3"/>
+    <model name="Display-A" DisplayAs="Single Line" StringType="RGB Nodes" parm1="1" parm2="1" parm3="1" StartChannel="4" Dir="L" Antialias="1" PixelSize="80" Transparency="0" LayoutGroup="Default" WorldPosX="-150" WorldPosY="60" WorldPosZ="0" ScaleX="25" ScaleY="25" ScaleZ="25" Description="Hue Play Bar (v1 id 13, ex-Gruen), Kanal 4-6"/>
+    <model name="Regal-Strip-A" DisplayAs="Single Line" StringType="RGB Nodes" parm1="1" parm2="1" parm3="1" StartChannel="7" Dir="L" Antialias="1" PixelSize="80" Transparency="0" LayoutGroup="Default" WorldPosX="-75" WorldPosY="120" WorldPosZ="0" ScaleX="25" ScaleY="25" ScaleZ="25" Description="Hue Lightstrip Regal (v1 id 20), Kanal 7-9"/>
+    <model name="Schreibtisch-Strip" DisplayAs="Single Line" StringType="RGB Nodes" parm1="1" parm2="1" parm3="1" StartChannel="10" Dir="L" Antialias="1" PixelSize="80" Transparency="0" LayoutGroup="Default" WorldPosX="0" WorldPosY="20" WorldPosZ="0" ScaleX="25" ScaleY="25" ScaleZ="25" Description="Hue Lightstrip Schreibtisch (v1 id 16), Kanal 10-12"/>
+    <model name="Display-B" DisplayAs="Single Line" StringType="RGB Nodes" parm1="1" parm2="1" parm3="1" StartChannel="13" Dir="L" Antialias="1" PixelSize="80" Transparency="0" LayoutGroup="Default" WorldPosX="150" WorldPosY="60" WorldPosZ="0" ScaleX="25" ScaleY="25" ScaleZ="25" Description="Hue Play Bar (v1 id 12, ex-Rot), Kanal 13-15"/>
+    <model name="Regal-Strip-B" DisplayAs="Single Line" StringType="RGB Nodes" parm1="1" parm2="1" parm3="1" StartChannel="16" Dir="L" Antialias="1" PixelSize="80" Transparency="0" LayoutGroup="Default" WorldPosX="75" WorldPosY="120" WorldPosZ="0" ScaleX="25" ScaleY="25" ScaleZ="25" Description="Hue Lightstrip Regal (v1 id 23), Kanal 16-18"/>
+  </models>
+  <modelGroups>
+    <modelGroup name="ALLE" models="Deckenlampe,Display-A,Regal-Strip-A,Schreibtisch-Strip,Display-B,Regal-Strip-B" layout="minimalGrid" GridSize="400" LayoutGroup="Default" selected="0"/>
+    <modelGroup name="DISPLAYS" models="Display-A,Display-B" layout="minimalGrid" GridSize="400" LayoutGroup="Default" selected="0"/>
+    <modelGroup name="STRIPS" models="Regal-Strip-A,Regal-Strip-B,Schreibtisch-Strip" layout="minimalGrid" GridSize="400" LayoutGroup="Default" selected="0"/>
+  </modelGroups>
+  <layoutGroups/>
+  <viewObjects/>
+  <effects version="0006"/>
+  <palettes/>
+  <colors/>
+  <views/>
+  <perspectives/>
+</xrgb>
