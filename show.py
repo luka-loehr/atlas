@@ -404,7 +404,7 @@ def render(t):
         elif t >= 224700:                             # climax: Hue + hardware strobe
             tuned_strobe(dmx, t, v=0.26, ceiling=0.15)
         else:
-            bar = sec_bar(t, 196280)
+            bar = sec_bar(t, 195820)                  # true downbeat (Beat This): hit is beat 2
             bi = beat_idx(t)
             hue = (0.87 + (t - 196280) / 30000.0) % 1.0
             boost = 1.2 if t >= 217800 else 1.0       # measured escalation point
