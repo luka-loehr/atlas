@@ -53,11 +53,10 @@ def clamp(x, lo=0.0, hi=1.0):
 def render(t):
     dmx = bytearray(NCHAN)
     if 0 <= t <= PRE_DROP_END:
-        # Regale: brighten ON the beat, colour fades white -> blue
-        b = last_beat(t)
-        env = math.exp(-(t - b) / 300.0) if b is not None else 0.0
-        bright = 0.35 + 0.65 * env
+        # Regale: NO beat pulse — slowly ramp dark -> 50% over the section,
+        # colour drifting white -> blue
         frac = clamp(t / PRE_DROP_END)
+        bright = 0.50 * frac
         r = int(255 * (1 - frac) * bright)
         g = int(255 * (1 - frac) * bright)
         bl = int(255 * bright)
