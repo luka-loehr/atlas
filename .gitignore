@@ -1,0 +1,4 @@
+credentials.json
+bridge.log
+__pycache__/
+*.pyc
