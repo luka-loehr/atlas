@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Art-Net -> Hue Entertainment bridge.
+"""Art-Net -> Hue Entertainment bridge + fog machine cue.
 
 Listens for Art-Net DMX (UDP 6454), maps channels to the LightShow
 entertainment group, streams via DTLS-PSK (openssl s_client subprocess).
+Channel 19 drives the fog machine via the Arduino on /dev/ttyACM0.
 
 DMX channel map (1-based):
    1- 3  R,G,B  light 17  Deckenlampe
-   4- 6  R,G,B  light 13  Display (was Gruen)
-   7- 9  R,G,B  light 20  Regal-Strip
-  10-12  R,G,B  light 16  Schreibtisch-Strip
-  13-15  R,G,B  light 12  Display (was Rot)
-  16-18  R,G,B  light 23  Regal-Strip
+   4- 6  R,G,B  light 13  Display pixel 1 (Play bar, ex-Gruen)
+   7- 9  R,G,B  light 20  Regal Hinten
+  10-12  R,G,B  light 16  Regal Links
+  13-15  R,G,B  light 12  Display pixel 2 (Play bar, ex-Rot)
+  16-18  R,G,B  light 23  Regal Rechts
+  19            fog: value >= 128 -> fog on (heartbeat to Arduino)
 """
 import json, os, signal, socket, ssl, struct, subprocess, sys, time, urllib.request
 
@@ -21,6 +23,10 @@ HOST, USER, KEY, GROUP = CRED["host"], CRED["username"], CRED["clientKey"], CRED
 LIGHT_ORDER = [17, 13, 20, 16, 12, 23]   # entertainment group v1 light ids
 FPS_DELAY = 0.04                         # 25 fps
 ARTNET_PORT = 6454
+FOG_IDX = 18                             # 0-based index of DMX channel 19
+FOG_THRESHOLD = 128                      # >= 50% -> fog
+FOG_HEARTBEAT = 0.2                      # refresh "on" every 200 ms
+FOG_PORT = "/dev/ttyACM0"
 
 def set_streaming(active: bool):
     ctx = ssl.create_default_context()
@@ -43,7 +49,19 @@ def build_frame(dmx: bytes) -> bytes:
         msg += struct.pack(">BHHHH", 0, lid, r*257, g*257, b*257)
     return bytes(msg)
 
+def open_fog():
+    try:
+        import serial
+        s = serial.Serial(FOG_PORT, 9600, timeout=0)
+        print(f"fog serial connected ({FOG_PORT})", flush=True)
+        return s
+    except Exception as e:
+        print(f"(fog disabled, no serial: {e})", flush=True)
+        return None
+
 def main():
+    fog = open_fog()   # opening resets the Uno; it reboots during the DTLS wait below
+
     print(f"enabling streaming on group {GROUP}...", flush=True)
     print(set_streaming(True), flush=True)
     time.sleep(1.0)
@@ -66,7 +84,9 @@ def main():
     sock.bind(("0.0.0.0", ARTNET_PORT))
     sock.settimeout(FPS_DELAY)
 
-    dmx = bytes(18)
+    dmx = bytes(19)
+    fog_on = False
+    fog_hb = 0.0
     running = True
     def stop(*_):
         nonlocal running
@@ -82,7 +102,7 @@ def main():
                 length = struct.unpack(">H", pkt[16:18])[0]
                 dmx = pkt[18:18+length]
                 if time.time() - last_log > 2:
-                    print("dmx:", list(dmx[:18]), flush=True)
+                    print("dmx:", list(dmx[:19]), flush=True)
                     last_log = time.time()
         except socket.timeout:
             pass
@@ -93,9 +113,30 @@ def main():
             proc.stdin.flush()
         except BrokenPipeError:
             sys.exit("DTLS pipe broke")
+
+        # fog cue (channel 19)
+        if fog is not None:
+            want = len(dmx) > FOG_IDX and dmx[FOG_IDX] >= FOG_THRESHOLD
+            now = time.time()
+            try:
+                if want and (not fog_on or now - fog_hb >= FOG_HEARTBEAT):
+                    fog.write(b"1"); fog.flush()
+                    fog_on, fog_hb = True, now
+                elif not want and fog_on:
+                    fog.write(b"0"); fog.flush()
+                    fog_on = False
+            except Exception as e:
+                print("fog serial error:", e, flush=True)
+                fog = None
+
         time.sleep(FPS_DELAY)
 
-    print("shutting down: disabling streaming...", flush=True)
+    print("shutting down...", flush=True)
+    if fog is not None and fog_on:
+        try:
+            fog.write(b"0"); fog.flush()
+        except Exception:
+            pass
     proc.terminate()
     try:
         print(set_streaming(False), flush=True)

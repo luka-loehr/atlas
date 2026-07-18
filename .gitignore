@@ -12,3 +12,7 @@ Backup/
 xlights.log
 *.xcache
 cache/
+xlights_keybindings.xml
+colorcurves/
+palettes/
+valuecurves/

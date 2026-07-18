@@ -1,91 +1,123 @@
-# lightshow
+# lightshow – Hand-crafted Hue light shows, frame by frame
 
-Human-designed, second-accurate light shows on Philips Hue — plus a fog machine
-as a show cue. Designed in **xLights**, streamed live through a custom
-**Art-Net → Hue Entertainment API** bridge running on `atlas` (home server).
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org)
+[![Arduino](https://img.shields.io/badge/Arduino-Uno%20R3-00979D?style=flat&logo=arduino&logoColor=white)](https://www.arduino.cc)
+[![xLights](https://img.shields.io/badge/xLights-2024.02-purple?style=flat)](https://xlights.org)
+[![Hue](https://img.shields.io/badge/Philips%20Hue-Entertainment%20API-0065D3?style=flat)](https://developers.meethue.com)
 
-No beat detection. Every cue is authored by hand on a timeline against the
-song's waveform, then played back frame-accurately at 25 fps.
+**lightshow** turns a Philips Hue setup into a stage rig: shows are designed
+second-accurately on an audio timeline in **xLights**, then streamed live at
+25 fps through a custom **Art-Net → Hue Entertainment** bridge running on
+`atlas` (home server) — including a **fog machine** fired as a timeline cue
+via an Arduino. No beat detection, every cue is authored by hand.
+
+---
 
 ## Architecture
 
 ```
-xLights (Mac)                      atlas                         Hue Bridge
-┌─────────────┐   Art-Net/UDP   ┌──────────────┐   DTLS-PSK    ┌──────────┐   Zigbee
-│  timeline,  │ ──────────────▶ │ hue_stream.py│ ─────────────▶│Entertain-│ ────────▶ bulbs
-│  audio,     │    :6454        │ (bridge)     │  UDP :2100    │ment API  │  25 fps
-│  effects    │                 └──────────────┘               └──────────┘
-└─────────────┘                 ┌──────────────┐
-                                │ Arduino Uno  │ ──▶ RF remote (button held,
-                                │ fog/fog.ino  │     5V power switched by D8)
-                                └──────────────┘ ──▶ fog machine 💨
+xLights (Mac)                      atlas                          Hue Bridge
+┌─────────────┐   Art-Net/UDP   ┌─────────────────┐   DTLS-PSK   ┌──────────┐  Zigbee
+│  timeline,  │ ──────────────▶ │ bridge/         │ ────────────▶│Entertain-│ ───────▶ 6 lights
+│  audio,     │    :6454        │ hue_stream.py   │  UDP :2100   │ment API  │  25 fps
+│  effects    │   (19 ch)       │                 │              └──────────┘
+└─────────────┘                 │   ch 19 ──▶ serial ──▶ Arduino ──▶ RF remote ──▶ fog 💨
+                                └─────────────────┘
 ```
 
 Why a custom bridge: the Hue **Entertainment API** streams the whole light
-group at up to 25 updates/sec over DTLS (the normal REST API manages ~10/sec,
-one bulb at a time — useless for shows). The existing open-source
-Art-Net bridges either use the slow API or ship broken DTLS stacks, so
-`hue_stream.py` does it directly: Art-Net in, `openssl s_client -dtls1_2`
-with PSK out. Zero exotic dependencies — Python stdlib + openssl.
+group at 25 updates/sec over DTLS (the REST API manages ~10/sec, one bulb at
+a time). Existing open-source Art-Net bridges either use the slow API or ship
+broken DTLS stacks — `hue_stream.py` talks DTLS directly through
+`openssl s_client` with PSK. Python stdlib only.
 
-## Files
+---
 
-| File | What |
+## Repository layout
+
+| Path | What |
 |---|---|
-| `hue_stream.py` | The bridge: listens for Art-Net DMX on `:6454`, maps channels to the Hue entertainment group `LightShow` (v1 group 201), streams via DTLS |
-| `artnet_test.py` | Sends a 10 s rainbow chase as Art-Net to localhost — pipeline test without xLights |
-| `fog/fog.ino` | Arduino Uno sketch: waits on serial, `<ms>\n` → powers the RF remote via D8 for that many ms (button is held mechanically) → fog burst |
-| `fog/fog_trigger.py` | Fire fog from atlas: `python3 fog_trigger.py 800` |
-| `credentials.example.json` | Shape of the required `credentials.json` (real one is gitignored) |
+| `bridge/hue_stream.py` | The bridge: Art-Net in (`:6454`), Hue Entertainment + fog out |
+| `bridge/artnet_test.py` | 10 s rainbow chase — pipeline test without xLights |
+| `bridge/credentials.example.json` | Shape of the gitignored `bridge/credentials.json` |
+| `fog/fog.ino` | Arduino Uno sketch (heartbeat protocol, fail-safe auto-off) |
+| `fog/fog_trigger.py` | Standalone fog burst: `python3 fog_trigger.py 800` |
+| `xlights_networks.xml` | xLights controller: Art-Net unicast → atlas, universe 0, 19 ch |
+| `xlights_rgbeffects.xml` | xLights models, groups (`ALLE`, `REGALE`) and layout |
 
-## DMX channel map (universe 0, 1-based)
+The repo root **is** the xLights show directory — sequences (`.xsq`) and
+songs live here too. xLights backups and render output are gitignored.
 
-| Channels | Light (v1 id) | Name |
+---
+
+## DMX channel map (universe 0)
+
+| Channels | Fixture | Hue light (v1 id) |
 |---|---|---|
-| 1–3 | 17 | Deckenlampe (color bulb) |
-| 4–6 | 13 | Display (Hue Play, was "Grün") |
-| 7–9 | 20 | Regal-Strip |
-| 10–12 | 16 | Schreibtisch-Strip |
-| 13–15 | 12 | Display (Hue Play, was "Rot") |
-| 16–18 | 23 | Regal-Strip |
+| 1–3 | Deckenlampe | 17 |
+| 4–6 | Display · pixel 1 | 13 (Play bar) |
+| 7–9 | Regal Hinten | 20 |
+| 10–12 | Regal Links | 16 |
+| 13–15 | Display · pixel 2 | 12 (Play bar) |
+| 16–18 | Regal Rechts | 23 |
+| 19 | **Nebelmaschine** — value ≥ 50 % = fog on | – |
 
-Order = light order of entertainment group 201 (`LightShow`) on the bridge.
+Both Hue Play bars are merged into one 2-pixel xLights model **Display**.
+Channel order = light order of entertainment group 201 (`LightShow`).
 
-## Running
+---
+
+## Running a show
 
 ```bash
-# on atlas
-cd ~/projects/lightshow
-python3 -u hue_stream.py          # enables streaming, DTLS handshake, listens on :6454
-python3 artnet_test.py 10         # (other shell) 10s rainbow to verify
+# 1. start the bridge on atlas
+ssh atlas
+cd ~/projects/lightshow && python3 -u bridge/hue_stream.py
 
-# fog burst (Arduino on /dev/ttyACM0)
-python3 fog/fog_trigger.py 800    # 800 ms fog
+# 2. in xLights (Mac): open the sequence, enable "Output To Lights", press play
 ```
 
-Stop the bridge with Ctrl+C / SIGTERM — it disables streaming mode cleanly
-(otherwise the lights stay under stream control for ~10 s until the bridge
-side times out).
+Stop the bridge with `Ctrl+C` — it turns fog off and disables streaming
+cleanly. While the bridge runs, the lights are under stream control.
 
-## xLights setup (Mac)
+Quick test without xLights: `python3 bridge/artnet_test.py 10` (rainbow).
 
-- Controller: **Art-Net**, unicast to atlas (`atlas.your-tailnet.ts.net` /
-  `192.168.1.100`), universe **0**, 18 channels.
-- Models: six 1-node RGB models on the channels above, grouped for the layout.
-- Sequence at 40 ms frame time (25 fps) to match the Hue Entertainment rate.
+---
+
+## Fog machine
+
+Cheap 500 W fog machine with a 315 MHz RF remote (HS2260A encoder). The
+remote runs on 5 V from the Arduino instead of its 12 V battery, its fog
+button is fixed down mechanically, and Arduino pin **D8 switches the
+remote's power** — power on = transmitting = fog.
+
+Serial protocol (9600 baud): `1` = fog on (auto-off after 1.5 s without
+refresh — fail-safe if the bridge dies), `0` = fog off. The bridge
+heartbeats `1` every 200 ms while DMX channel 19 ≥ 128.
+
+Flash the sketch (one-time, from atlas):
+```bash
+arduino-cli compile --fqbn arduino:avr:uno ~/projects/lightshow/fog
+arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno ~/projects/lightshow/fog
+```
+
+---
 
 ## Pairing / credentials
 
-`credentials.json` needs the **username + clientKey pair created together**
-during a single press-the-bridge-button pairing (`generateclientkey: true`).
-The clientKey is only revealed once at pairing and is the DTLS-PSK secret;
-identity = username. Group is the v1 id of the entertainment group.
+`bridge/credentials.json` needs a **username + clientKey created together**
+in one press-the-bridge-button pairing (`generateclientkey: true`). The
+clientKey is shown exactly once and is the DTLS-PSK secret; identity =
+username; `group` = v1 id of the entertainment group.
 
-## Hardware notes
+---
 
-- Fog machine: cheap 500 W with 315 MHz RF remote (HS2260A-R4 encoder, 12 V
-  battery). The remote runs fine at 5 V, so the Arduino powers it directly
-  from a GPIO pin (~15 mA) — button fixed down mechanically, power = fog.
-  Max burst capped at 10 s in the sketch.
-- Hue white bulbs can't join Entertainment groups (color-capable only).
-- 25 fps is smooth for fades/chases; hard strobes beyond ~12 Hz won't resolve.
+## Notes
+
+- Only **color-capable** Hue lights can join Entertainment groups.
+- 25 fps is smooth for fades and chases; strobes beyond ~12 Hz won't resolve.
+- Sequence frame time: **40 ms (25 fps)** to match the Hue streaming rate.
+
+---
+
+Developed by [Luka Löhr](https://github.com/luka-loehr)
