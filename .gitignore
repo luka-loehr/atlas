@@ -2,3 +2,13 @@ credentials.json
 bridge.log
 __pycache__/
 *.pyc
+
+# xLights runtime junk
+Backup/
+*.xbkp
+*.fseq
+*.iseq
+*.eseq
+xlights.log
+*.xcache
+cache/
