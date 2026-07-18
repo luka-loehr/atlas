@@ -28,8 +28,8 @@ FPS = 25
 NCHAN = 21
 SONG_END_S = 260.4
 AUDIO_LATENCY_MS = 160          # Bluetooth; validated by ear against drop 1
-LASER_LATENCY_MS = 3900
-STROBEPLUG_LATENCY_MS = 6500
+LASER_LATENCY_MS = 3900         # TODO: re-measure WORST-case warm-up; any pre-flicker
+STROBEPLUG_LATENCY_MS = 6500    # during charging would leak into the pre-drop blackouts
 
 # ---- channel map (0-based DMX index) -----------------------------------
 DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER, STROBE_PLUG = 0, 3, 6, 9, 12, 15, 18, 19, 20
@@ -44,6 +44,9 @@ BEAT = 60000.0 / 130.0          # 461.538 ms
 EIGHTH = BEAT / 2
 ANCHOR = 59700.0                # ms
 
+# CONVENTION (verified vs Beat This): true downbeats sit at beat_idx % 4 == 3;
+# the big slams (59.70, 196.28, ...) land on beat_idx % 4 == 0 (beat-2 phase).
+# All bi%4==0 / bi%8==0 accents therefore hit the slam phase ON PURPOSE.
 def bphase(t):                  # ms since the last lattice beat
     return (t - ANCHOR) % BEAT
 
@@ -64,17 +67,27 @@ def sec_bar(t, anchor):         # section-local bar index (bar = 4 beats)
 # fog carries a DISCO GLOBE -> only in lit phases, never in darkness
 FOG_CUES = [(42000, 52000),      # build 1 (lit) — haze for the drop-1 laser
             (118300, 124300),    # drop 2 (bright slams)
-            (158920, 165000),    # drop 3 — hardware strobe lights the globe
+            (158920, 164400),    # drop 3 — ends WITH the hw strobe (globe never in darkness)
             (196300, 203300),    # final high (lit)
             (229500, 234000)]    # finale 2 (lit, densest sub groove)
+# laser runs continuously through climax->finale2: a real gap is impossible
+# (3.9s warm-up can't re-strike in the 1.8s breakdown at 227.2-229.06)
 LASER_CUES = [(59700, 72420), (158920, 175000), (220700, 245000)]
 STROBEPLUG_CUES = [(158920, 164400), (224700, 227200)]
 
 # strongest measured impacts -> single-frame white overlays (time_ms, strength)
 ACCENTS = [(2910, .26), (4760, .26), (5460, .22), (6610, .26), (7300, .22),
            (11910, .22), (75840, .30), (78380, .30), (79530, .30),
-           (87880, .30), (136770, .28), (226070, .40),
+           (87880, .30), (226070, .40),
            (232280, .35), (235970, .35), (250300, .35)]
+
+# accelerating terminal-roll flash times (56.2-57.1s), precomputed because
+# int(t // per) with a time-varying period aliases into irregular flicker
+_ROLL = []
+_x = 56200.0
+while _x < 57100.0:
+    _ROLL.append(_x)
+    _x += max(80.0, 230.0 - 140.0 * (_x - 56200.0) / 900.0)
 
 def clamp(x, lo=0.0, hi=1.0):
     return max(lo, min(hi, x))
@@ -181,8 +194,7 @@ def render(t):
     # ===== 56.2 - 57.1: terminal roll — ceiling only, riser dies at 57.1 =
     elif t < 57100:
         p = (t - 56200) / 900.0
-        per = 230.0 - 140.0 * p
-        if int(t // per) % 2 == 0:
+        if any(ft <= t < ft + 40 for ft in _ROLL):
             d = int(255 * 0.35)
             put(dmx, DECKE, (d, d, d))
         fade = 0.10 * (1 - p)
@@ -199,7 +211,7 @@ def render(t):
     elif t < 72420:
         if not drop_hit(dmx, t, 59700):
             if 66150 <= t < 66700:
-                pass                                  # measured bass gap = darkness accent
+                pass    # bass drops -43dB here (librosa detail run) = darkness accent
             else:
                 double_flash(dmx, t, v=0.25, ceiling=0.15)
 
@@ -213,7 +225,7 @@ def render(t):
     elif t < 87190:
         bi = beat_idx(t)
         bar = sec_bar(t, 74000)
-        if bar % 8 == 0:
+        if bar == 0:                                  # section is ~7 bars: strobe opener once
             tuned_strobe(dmx, t, v=0.24)
         else:
             env = beat_env(t, 260)
@@ -239,8 +251,11 @@ def render(t):
         bar = sec_bar(t, 88760)
         env = beat_env(t, 180)
         hue = 0.50 if bar % 2 == 0 else 0.87
-        put_stop(dmx, CIRCLE[bi % 4], hsv(hue, 1.0, 0.36 * (0.4 + 0.6 * env)))
+        put_stop(dmx, CIRCLE[bi % 4], hsv(hue, 1.0, 0.42 * (0.4 + 0.6 * env)))
         put_stop(dmx, CIRCLE[(bi - 1) % 4], hsv(hue, 1.0, 0.12))
+        if bi % 4 == 3:                               # ceiling pop on true downbeats
+            d = int(255 * 0.20 * env)
+            put(dmx, DECKE, (d, d, d))
 
     # ===== 94.58 - 101.49: chorus var C — STAYS at chorus energy =========
     elif t < 101490:
@@ -262,11 +277,15 @@ def render(t):
 
     # ===== 102.13 - 118.3: verse 2 — dark red ticks walk the room ========
     elif t < 118300:
-        bi = beat_idx(t)
-        env = beat_env(t, 120)
-        ramp = clamp((t - 112000) / 6300.0) if t > 112000 else 0.0
-        put_stop(dmx, CIRCLE[bi % 4], hsv(0.0, 1.0, (0.08 + 0.06 * ramp) * env))
-        put(dmx, DECKE, hsv(0.08, 0.7, 0.10 * beat_env(t, 200)))
+        if t < 103510:                                # bass still out: hold still
+            for ch in REGALE:
+                put(dmx, ch, hsv(0.0, 1.0, 0.06))
+        else:
+            bi = beat_idx(t)
+            env = beat_env(t, 120)
+            ramp = clamp((t - 112000) / 6300.0) if t > 112000 else 0.0
+            put_stop(dmx, CIRCLE[bi % 4], hsv(0.0, 1.0, (0.08 + 0.06 * ramp) * env))
+            put(dmx, DECKE, hsv(0.08, 0.7, 0.10 * beat_env(t, 200)))
 
     # ===== 118.3: DROP 2 — cold drop: sustained slams, sparse strobe =====
     elif t < 131960:
@@ -307,7 +326,10 @@ def render(t):
     # ===== 135.86 - 151.09: DROP REPRISE (user: "grosser Drop ~2:18") ====
     # Same cluster as drop 1A per segmentation; bass slams back at 136.77.
     elif t < 151090:
-        if not drop_hit(dmx, t, 136770, v=0.38):
+        if t < 136770:                                # stay dark until the bass actually hits
+            for ch in REGALE:
+                put(dmx, ch, hsv(0.75, 1.0, 0.06))
+        elif not drop_hit(dmx, t, 136770, v=0.38):
             bi = beat_idx(t)
             bar = sec_bar(t, 136770)
             env = beat_env(t, 220)
@@ -328,7 +350,7 @@ def render(t):
     elif t < 157150:
         sec = (t - 151090) / 6060.0
         gain = 1.0 - 0.85 * sec
-        bar = sec_bar(t, 151090)
+        bar = sec_bar(t, 151539)                      # true downbeat (151090 is beat 4)
         put_stop(dmx, CIRCLE[bar % 4], hsv(0.75, 1.0, 0.15 * gain))
 
     # ===== 157.15 - 158.92: BLACKOUT (the only clean silence lives here) =
@@ -381,8 +403,7 @@ def render(t):
                 d = int(255 * 0.16 * beat_env(t, 180))
                 put(dmx, DECKE, (d, d, d))
         else:                                         # p3: noise-riser surge -> white
-            bar = sec_bar(t, 189600)
-            if t >= 193200 and bar % 2 == 1:
+            if t >= 193992:                           # last full bar (true downbeat) pre-cut
                 tuned_strobe(dmx, t, v=0.22)
             else:
                 bi = int((t - ANCHOR) // EIGHTH)
@@ -424,17 +445,16 @@ def render(t):
                 breathe = 0.5 * (1 + math.sin(2 * math.pi * t / 6000.0 + math.pi))
                 put(dmx, DECKE, hsv(hue + 0.5, 0.4, 0.14 * breathe))
 
-    # ===== 227.2 - 229.06: breakdown fill (bass silent) ==================
+    # ===== 227.2 - 229.06: breakdown fill (bass silent: hold still) ======
     elif t < 229060:
-        bi = beat_idx(t)
-        env = beat_env(t, 150)
-        put_stop(dmx, CIRCLE[bi % 4], hsv(0.63, 1.0, 0.07 * env))
+        for ch in REGALE:
+            put(dmx, ch, hsv(0.63, 1.0, 0.06))
 
     # ===== 229.06: FINALE 2 — rank-2 rhythmic intensity, upgraded ========
     elif t < 258650:
         if drop_hit(dmx, t, 229060):
             pass
-        elif 243000 <= t < 245000:                    # strobe farewell under laser
+        elif 243829 <= t < 245000:                    # strobe farewell (bar-aligned) under laser
             tuned_strobe(dmx, t, v=0.24)
         else:
             bi = beat_idx(t)
@@ -454,8 +474,6 @@ def render(t):
                     put(dmx, REGAL_HINT, hsv((hue + 0.5) % 1.0, 1.0, 0.26))
                 if bi % 4 == 0:
                     put_stop(dmx, DISPLAY, hsv(hue, 1.0, 0.32 * env))
-                if bphase(t) < 200 and sec_bar(t, 229060) != sec_bar(t - 4 * BEAT, 229060):
-                    pass
                 b0 = (t - 229060) % (4 * BEAT)
                 if b0 < 200:
                     d = int(255 * 0.15)
@@ -468,12 +486,14 @@ def render(t):
             put(dmx, ch, hsv(0.87, 1.0, 0.12 * (1 - sec)))
         put(dmx, DECKE, hsv(0.08, 0.5, 0.10 * (1 - sec) ** 0.5))
 
-    # ---- measured-impact single-frame accents ---------------------------
+    # ---- measured-impact single-frame accents (max-blend: only brighten) -
     for imp, strength in ACCENTS:
         if imp <= t < imp + 40:
             v = int(255 * strength)
             for ch in STROBE_CH:
-                put(dmx, ch, (v, v, v))
+                dmx[ch] = max(dmx[ch], v)
+                dmx[ch + 1] = max(dmx[ch + 1], v)
+                dmx[ch + 2] = max(dmx[ch + 2], v)
             break
 
     # ---- device cues ----------------------------------------------------
@@ -487,6 +507,8 @@ def render(t):
 
 # ---- engine -------------------------------------------------------------
 def artnet(dmx, seq):
+    if len(dmx) % 2:                                  # Art-Net requires even length
+        dmx = bytes(dmx) + b"\x00"
     pkt = b"Art-Net\x00" + struct.pack("<H", 0x5000) + struct.pack(">H", 14)
     return pkt + bytes([seq & 0xff, 0]) + struct.pack("<H", 0) + struct.pack(">H", len(dmx)) + dmx
 
@@ -518,13 +540,19 @@ def main():
                 break
             song_ms = song_s * 1000.0 - (AUDIO_LATENCY_MS if play_audio else 0)
             seq = (seq + 1) & 0xff
-            sock.sendto(artnet(render(song_ms), seq), ARTNET_TARGET)
+            try:
+                sock.sendto(artnet(render(song_ms), seq), ARTNET_TARGET)
+            except OSError:
+                pass                                  # brief network blip must not kill the show
             next_t += 1.0 / FPS
             time.sleep(max(0.0, next_t - time.monotonic()))
     finally:
         for _ in range(3):
             seq = (seq + 1) & 0xff
-            sock.sendto(artnet(bytes(NCHAN), seq), ARTNET_TARGET)
+            try:
+                sock.sendto(artnet(bytes(NCHAN), seq), ARTNET_TARGET)
+            except OSError:
+                pass
             time.sleep(1.0 / FPS)
         if audio:
             audio.terminate()
