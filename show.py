@@ -23,12 +23,17 @@ XSQ = os.path.join(BASE, "music.xsq")
 MP3 = os.path.join(BASE, "music.mp3")
 ARTNET_TARGET = ("192.168.1.100", 6454)   # atlas on the LAN
 FPS = 25
-NCHAN = 19
-AUDIO_LATENCY_MS = 160     # Bluetooth delays the sound; delay light to match. Tune me.
+NCHAN = 20
+AUDIO_LATENCY_MS = 160      # Bluetooth delays the sound; delay light to match. Tune me.
+LASER_LATENCY_MS = 6600     # measured: plug-on -> laser pattern visible
 
 # ---- channel map (0-based DMX index) -----------------------------------
-DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG = 0, 3, 6, 9, 12, 15, 18
+DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER = 0, 3, 6, 9, 12, 15, 18, 19
 REGALE = [REGAL_HINT, REGAL_LINK, REGAL_RECH]
+
+# laser is a slow on/off cue: list of (visible_start_ms, visible_end_ms).
+# The engine powers the plug LASER_LATENCY_MS earlier so it's lit on time.
+LASER_CUES = []
 
 # ---- real beats from the xLights beat track ----------------------------
 def load_beats():
@@ -68,6 +73,10 @@ def render(t):
         bump = 0.5 * (1 + math.cos(math.pi * dt / half)) if dt < half else 0.0
         d = int(255 * 0.20 * bump)
         dmx[DECKE], dmx[DECKE+1], dmx[DECKE+2] = d, d, d
+
+    # laser cue (power the plug 6.6s before it should be visible)
+    if any((vs - LASER_LATENCY_MS) <= t < ve for vs, ve in LASER_CUES):
+        dmx[LASER] = 255
     return bytes(dmx)
 
 def artnet(dmx, seq):
