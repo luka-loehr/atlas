@@ -116,7 +116,7 @@ def double_flash(dmx, t, v=0.25, chans=STROBE_CH, ceiling=0.15):
             d = int(255 * ceiling)
             put(dmx, DECKE, (d, d, d))
 
-def drop_hit(dmx, t, t_hit, v=0.32):
+def drop_hit(dmx, t, t_hit, v=0.42):
     """Full-rig white for the first 2 frames of a drop entrance."""
     if t_hit <= t < t_hit + 80:
         val = int(255 * v)
