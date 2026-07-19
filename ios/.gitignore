@@ -1,6 +1,7 @@
 # Xcode / build artifacts
 build/
+build-device/
 DerivedData/
-*.xcodeproj/project.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
+xcuserdata/
+*.xcuserstate
 .DS_Store
