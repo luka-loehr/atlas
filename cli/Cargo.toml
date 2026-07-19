@@ -1,0 +1,13 @@
+[package]
+name = "atlas-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Control Luka's atlas homelab server: connect, boot, shutdown, restart"
+
+[[bin]]
+name = "atlas"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true

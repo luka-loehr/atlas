@@ -28,6 +28,20 @@ tooling, maintenance scripts. It lives at `~/atlas` on the server itself
 - **Tailscale** (tailnet `your-tailnet`, device isolated to Luka's devices)
 - Dev essentials: build-essential, gcc 15.2, git 2.53, tmux, btop, uv
 
+## The CLI (`cli/`)
+
+Rust, zero dependencies, installed on the Mac via `cargo install --path cli`
+(needs `~/.cargo/bin` on PATH):
+
+```bash
+atlas              # SSH into atlas (execs ssh — a real session)
+atlas boot         # Wake-on-LAN + waits until SSH is reachable (LAN only)
+atlas shutdown     # sudo poweroff + waits until the box is down
+atlas restart      # reboot + waits for it to come back
+atlas status       # up/down + route (LAN / tailnet)
+atlas <cmd ...>    # run anything remotely: atlas nvidia-smi, atlas htop ...
+```
+
 ## SSH from the Mac
 
 ```bash
@@ -38,6 +52,8 @@ Key auth (`~/.ssh/id_ed25519`), Tailscale SSH interception is OFF — plain
 sshd. LAN IP: `192.168.1.100` · tailnet IP: `100.x.y.z`.
 
 ## Power on / off
+
+`atlas boot` / `atlas shutdown` (see CLI above). Without the CLI:
 
 ```bash
 # ON — Wake-on-LAN magic packet (same LAN; NIC enp4s0, armed via wol.service):
