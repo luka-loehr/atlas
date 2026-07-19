@@ -165,8 +165,18 @@ def compile_show(analysis, song_file, title=None, opts=None):
                 strobe_mod=drop_strobe_mod, strobe={"v": 0.90})
     emit_drop.rot = 0
 
+    def blackout_before(drop_t):
+        """TRUE BLACK gap before the drop — the v6 loaded gun. Match a real
+        music cut (quiet window) when there is one, else 2 lattice beats."""
+        blk = 2 * beat
+        for qa, qb in quiet:
+            if qa < drop_t <= qb + 600:
+                blk = max(blk, min(drop_t - qa, 2600))
+        return min(max(blk, 800), 2600)
+
     def emit_build(t0, t1):
-        """Escalation into a drop: upulse beat -> 8th -> terminal roll."""
+        """Escalation into a drop: upulse beat -> 8th -> terminal roll.
+        t1 = where the BLACKOUT starts (the drop hit comes out of black)."""
         fog.append([max(t0, t1 - 10000), t1])
         half = t0 + (t1 - t0) * 0.55
         roll0 = t1 - 900
@@ -233,8 +243,13 @@ def compile_show(analysis, song_file, title=None, opts=None):
             if b0 - t >= 3000:                         # calm chunk before the build
                 r = next((r for r in regions if r[0] <= t < r[1]), None)
                 emit_region(t, b0, r[2] if r else "mid")
-            emit_build(max(t, b0), nxt_drop)
-            t = nxt_drop
+            else:
+                b0 = t                                 # too small for its own cue
+            blk = blackout_before(nxt_drop)            # build -> roll -> TRUE BLACK
+            if (nxt_drop - blk) - b0 < 2500:
+                blk = min(blk, beat)
+            emit_build(b0, nxt_drop - blk)
+            t = nxt_drop                               # the gap IS the blackout
             continue
         r = next((r for r in regions if r[0] <= t < r[1]), None)
         end = r[1] if r else (nxt_drop or dur)
