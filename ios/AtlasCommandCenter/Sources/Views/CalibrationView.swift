@@ -194,7 +194,7 @@ final class CalibrationModel {
 
     func reset() {
         flashCount = 0
-        camera.samples.removeAll()
+        camera.clearSamples()
         stage = .idle
     }
 
@@ -247,8 +247,10 @@ final class FlashCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
 
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "cal.camera")
-    private(set) var samples: [Sample] = []
-    var onFlash: (() -> Void)?
+    private let lock = NSLock()
+    private var _samples: [Sample] = []
+    var samples: [Sample] { lock.lock(); defer { lock.unlock() }; return _samples }
+    func clearSamples() { lock.lock(); _samples.removeAll(); lock.unlock() }
 
     var configured = false
 
@@ -314,7 +316,9 @@ final class FlashCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
             y += 12
         }
         let lum = Double(sum) / Double(max(count, 1))
-        samples.append(Sample(t: CACurrentMediaTime(), lum: lum))
+        lock.lock()
+        _samples.append(Sample(t: CACurrentMediaTime(), lum: lum))
+        lock.unlock()
     }
 }
 
