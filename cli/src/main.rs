@@ -573,7 +573,8 @@ fn agent(sub: &[String]) {
 fn agent_install() {
     ensure_up();
     println!("{DIM}baue + installiere atlas-agent auf atlas ...{RESET}");
-    let script = "set -e; cd ~/atlas && git pull --quiet --ff-only && cd agent && \
+    let script = "set -e; cd ~/atlas && git fetch --quiet origin && \
+         git reset --hard --quiet origin/main && cd agent && \
          . ~/.cargo/env && cargo build --release --quiet && \
          sudo install -m755 target/release/atlas-agent /usr/local/bin/atlas-agent && \
          sudo cp atlas-agent.service /etc/systemd/system/atlas-agent.service && \
