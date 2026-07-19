@@ -37,6 +37,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: Die Kamera erkennt die Lichtblitze bei der automatischen Latenz-Kalibrierung.
         NSAppTransportSecurity:
           NSExceptionDomains:
             ts.net:

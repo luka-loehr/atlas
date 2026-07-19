@@ -453,6 +453,27 @@ pub fn create_thumb() -> Option<std::path::PathBuf> {
     path.exists().then_some(path)
 }
 
+/// Save the camera-measured audio latency — play.py applies it to every
+/// show from now on ("smart shows").
+pub fn calibrate_save(body: &str) -> String {
+    let Ok(ms) = body.trim().parse::<f64>() else {
+        return r#"{"error":"expected latency ms as body"}"#.into();
+    };
+    if !(0.0..=2000.0).contains(&ms) {
+        return r#"{"error":"latency out of range 0..2000"}"#.into();
+    }
+    let path = format!("{}/calibration.json", lightshow_dir());
+    match fs::write(&path, format!("{{\"audio_latency_ms\":{ms:.0}}}\n")) {
+        Ok(_) => format!("{{\"ok\":true,\"audio_latency_ms\":{ms:.0}}}"),
+        Err(e) => format!("{{\"error\":\"{}\"}}", json_str(&e.to_string())),
+    }
+}
+
+pub fn calibrate_get() -> String {
+    let path = format!("{}/calibration.json", lightshow_dir());
+    fs::read_to_string(path).unwrap_or_else(|_| r#"{"audio_latency_ms":null}"#.into())
+}
+
 /// A show's cover: shows/<name>.jpg, if present.
 pub fn show_thumb(name: &str) -> Option<std::path::PathBuf> {
     if !safe(name) {

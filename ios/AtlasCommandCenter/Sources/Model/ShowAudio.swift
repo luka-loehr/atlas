@@ -85,6 +85,18 @@ final class ShowAudio {
         startProgress()
     }
 
+    /// Host-clock time (CACurrentMediaTime frame) at which song position 0
+    /// actually leaves the speaker — includes the output latency (AirPods!).
+    /// Only valid while playing.
+    func songZeroHostSeconds() -> Double? {
+        guard let nt = player.lastRenderTime, nt.isHostTimeValid,
+              let pt = player.playerTime(forNodeTime: nt) else { return nil }
+        let nowHost = AVAudioTime.seconds(forHostTime: nt.hostTime)
+        let songNow = Double(pt.sampleTime) / pt.sampleRate
+        let outLat = AVAudioSession.sharedInstance().outputLatency
+        return nowHost - songNow + outLat
+    }
+
     private func startProgress() {
         progressTask?.cancel()
         progressTask = Task { [weak self] in
