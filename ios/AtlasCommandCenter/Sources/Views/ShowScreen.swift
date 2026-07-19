@@ -67,6 +67,9 @@ struct ShowScreen: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        // standalone fog — no show required
+                        FogHoldButton(client: model.client)
+                            .padding(.top, 18)
                     }
                     .padding(16)
                 }
@@ -76,6 +79,13 @@ struct ShowScreen: View {
             .navigationDestination(item: $demoShow) { ShowPlayerView(model: model, show: $0) }
             .navigationTitle("Lightshows")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task { try? await model.client.stopBridge(); await model.load() }
+                    } label: {
+                        Image(systemName: "power")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showCreate = true } label: {
                         Image(systemName: "link.badge.plus")

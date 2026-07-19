@@ -89,6 +89,7 @@ struct AtlasClient: Sendable {
     func createStatus() async throws -> CreateStatus { try await get("/api/shows/create/status", CreateStatus.self) }
     func startShow(_ name: String) async throws { try await post("/api/shows/start", body: name) }
     func stopShow() async throws { try await post("/api/shows/stop") }
+    func stopBridge() async throws { try await post("/api/bridge/stop") }
     func audioURL(_ name: String) -> URL? { URL(string: "http://\(host)/api/shows/audio/\(name)") }
 
     // fog --------------------------------------------------------------------

@@ -102,6 +102,9 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
         ("POST", "/api/shows/stop") if can_act => {
             respond(&mut stream, 200, &actions::show_stop());
         }
+        ("POST", "/api/bridge/stop") if can_act => {
+            respond(&mut stream, 200, &actions::bridge_stop());
+        }
         ("GET", p) if p.starts_with("/api/shows/audio/") => {
             let name = &p["/api/shows/audio/".len()..];
             match actions::audio_file(name) {
