@@ -35,11 +35,13 @@ struct CreateStatus: Codable, Sendable {
     let running: Bool
     let done: Bool
     let failed: Bool
-    let phase: String       // idle|start|download|analyze|compile|commit|done
+    let phase: String       // idle|start|download|analyze|gemini|claude|compile|commit|done
     let percent: Double     // download progress 0…100
     let title: String
     let thumb: Bool
     let name: String?
+    let ai: String          // live claude thinking/output ticker (last lines)
+    let summary: String     // AI dramaturgy summary once composed
     let log: String
 }
 
@@ -89,7 +91,9 @@ struct AtlasClient: Sendable {
 
     // lightshow --------------------------------------------------------------
     func shows() async throws -> ShowsResponse { try await get("/api/shows", ShowsResponse.self) }
-    func createShow(url: String) async throws { try await post("/api/shows/create", body: url) }
+    func createShow(url: String, ai: Bool = true) async throws {
+        try await post("/api/shows/create", body: ai ? "ai \(url)" : url)
+    }
     func createStatus() async throws -> CreateStatus { try await get("/api/shows/create/status", CreateStatus.self) }
     func startShow(_ name: String) async throws { try await post("/api/shows/start", body: name) }
     func stopShow() async throws { try await post("/api/shows/stop") }

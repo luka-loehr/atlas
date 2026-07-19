@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// YouTube link -> show, with a live animated pipeline: thumbnail, download
-/// progress bar, pulsing analyze waveform, commit/push log, done state.
+/// progress, GPU analysis, Gemini listening, Claude composing (LIVE thinking
+/// ticker), commit/push log, done state with the AI's dramaturgy summary.
 struct CreateShowSheet: View {
     var model: ShowModel
     @State private var url = ""
+    @State private var aiMode = true
     @Environment(\.dismiss) private var dismiss
 
     private var status: CreateStatus? { model.createStatus }
@@ -42,14 +44,16 @@ struct CreateShowSheet: View {
 
     private var inputForm: some View {
         VStack(spacing: 18) {
-            Image(systemName: "link.badge.plus")
+            Image(systemName: aiMode ? "sparkles" : "link.badge.plus")
                 .font(.system(size: 40))
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(aiMode ? Theme.violet : Theme.accent)
                 .padding(.top, 20)
-            Text("Show aus YouTube")
+            Text(aiMode ? "AI-Show aus YouTube" : "Show aus YouTube")
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
-            Text("Link einfügen — atlas lädt den Song, analysiert Beats & Drops auf der GPU, baut die Show und pusht sie ins Repo.")
+            Text(aiMode
+                 ? "Gemini hört den Song (Instrumente, Lyrics, Struktur), Claude komponiert daraus die Dramaturgie — live mitzulesen."
+                 : "Klassische Pipeline: GPU-Analyse + regelbasierter Compiler.")
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
@@ -63,51 +67,94 @@ struct CreateShowSheet: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 16))
                 .foregroundStyle(.white)
 
+            Toggle(isOn: $aiMode) {
+                Label("AI-Komposition (Gemini + Claude)", systemImage: "sparkles")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .tint(Theme.violet)
+            .padding(14)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+
             Button {
-                Task { await model.create(url: url) }
+                Task { await model.create(url: url, ai: aiMode) }
             } label: {
-                Text("Show erstellen")
+                Text(aiMode ? "AI-Show erstellen" : "Show erstellen")
                     .font(.system(size: 16, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
             }
             .buttonStyle(.glassProminent)
-            .tint(Theme.accent)
+            .tint(aiMode ? Theme.violet : Theme.accent)
             .disabled(!url.hasPrefix("http"))
         }
     }
 
     // MARK: live pipeline
 
+    private var steps: [(key: String, icon: String, label: String)] {
+        aiMode
+            ? [("download", "arrow.down.circle.fill", "Song laden"),
+               ("analyze", "waveform", "GPU-Analyse — Beats & Drops"),
+               ("gemini", "ear.fill", "Gemini hört den Song"),
+               ("claude", "sparkles", "Claude komponiert"),
+               ("commit", "arrow.triangle.branch", "Commit & Push")]
+            : [("download", "arrow.down.circle.fill", "Song laden"),
+               ("analyze", "waveform", "GPU-Analyse — Beats & Drops"),
+               ("compile", "wand.and.stars", "Show kompilieren"),
+               ("commit", "arrow.triangle.branch", "Commit & Push")]
+    }
+
     private var progressFlow: some View {
         VStack(spacing: 16) {
             thumbnailCard
-            stepRow(icon: "arrow.down.circle.fill", label: "Song laden",
-                    state: stepState(for: "download"),
-                    detail: phase == "download" ? String(format: "%.0f %%", status?.percent ?? 0) : nil) {
-                if phase == "download" {
-                    ProgressView(value: (status?.percent ?? 0) / 100)
-                        .tint(Theme.accent)
+            ForEach(steps, id: \.key) { step in
+                stepRow(icon: step.icon, label: step.label, state: stepState(for: step.key),
+                        detail: step.key == "download" && phase == "download"
+                            ? String(format: "%.0f %%", status?.percent ?? 0) : nil) {
+                    stepExtra(for: step.key)
                 }
             }
-            stepRow(icon: "waveform", label: "GPU-Analyse — Beats & Drops",
-                    state: stepState(for: "analyze"), detail: nil) {
-                if phase == "analyze" { AnalyzeWaveform() }
-            }
-            stepRow(icon: "wand.and.stars", label: "Show kompilieren",
-                    state: stepState(for: "compile"), detail: nil) { EmptyView() }
-            stepRow(icon: "arrow.triangle.branch", label: "Commit & Push",
-                    state: stepState(for: "commit"),
-                    detail: nil) {
-                if phase == "commit" || phase == "done" { gitLog }
-            }
-
             if status?.done == true {
                 doneCard
             } else if status?.failed == true {
                 failedCard
             }
         }
+    }
+
+    @ViewBuilder
+    private func stepExtra(for key: String) -> some View {
+        switch key {
+        case "download" where phase == "download":
+            ProgressView(value: (status?.percent ?? 0) / 100).tint(Theme.accent)
+        case "analyze" where phase == "analyze":
+            AnalyzeWaveform()
+        case "gemini" where phase == "gemini":
+            Text("hört Instrumente, Struktur, Lyrics …")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.5))
+        case "claude" where phase == "claude":
+            aiTicker
+        case "commit" where phase == "commit" || phase == "done":
+            gitLog
+        default:
+            EmptyView()
+        }
+    }
+
+    /// Claude's live thinking/output, streaming in as it composes.
+    private var aiTicker: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array((status?.ai ?? "…").split(separator: "\n").enumerated()), id: \.offset) { i, line in
+                Text(String(line))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.violet.opacity(i == 3 ? 1 : 0.45 + Double(i) * 0.15))
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.default, value: status?.ai)
     }
 
     private var thumbnailCard: some View {
@@ -151,7 +198,7 @@ struct CreateShowSheet: View {
     private enum StepState { case pending, active, done }
 
     private func stepState(for step: String) -> StepState {
-        let order = ["start", "download", "analyze", "compile", "commit", "done"]
+        let order = ["start", "download", "analyze", "gemini", "claude", "compile", "commit", "done"]
         let cur = order.firstIndex(of: phase) ?? 0
         let mine = order.firstIndex(of: step) ?? 0
         if status?.done == true { return .done }
@@ -210,22 +257,33 @@ struct CreateShowSheet: View {
 
     private var doneCard: some View {
         GlassCard(padding: 18) {
-            HStack(spacing: 14) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Theme.good)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Show ist fertig!")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text(status?.name ?? "")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.5))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 14) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(Theme.good)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Show ist fertig!")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text(status?.name ?? "")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    Spacer()
+                    Button("Öffnen") { dismiss() }
+                        .buttonStyle(.glassProminent)
+                        .tint(Theme.good)
                 }
-                Spacer()
-                Button("Öffnen") { dismiss() }
-                    .buttonStyle(.glassProminent)
-                    .tint(Theme.good)
+                if let s = status?.summary, !s.isEmpty {
+                    Divider().overlay(.white.opacity(0.1))
+                    Label("Die Dramaturgie", systemImage: "sparkles")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.violet)
+                    Text(s)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
             }
         }
     }

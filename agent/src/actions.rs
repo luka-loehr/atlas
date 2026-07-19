@@ -336,10 +336,15 @@ pub fn fog_stop() -> String {
 
 const MAKESHOW_LOG: &str = "/tmp/atlas-makeshow.log";
 
-/// Kick off `makeshow.py --local <url>` in the background (yt-dlp -> GPU
-/// analysis -> compiled show). Poll /api/shows/create/status for progress.
-pub fn show_create(url: &str) -> String {
-    let url = url.trim();
+/// Kick off `makeshow.py --local [--ai] <url>` in the background. Body is
+/// either the URL alone or "ai <url>" for the Gemini+Claude composer.
+/// Poll /api/shows/create/status for progress.
+pub fn show_create(body: &str) -> String {
+    let body = body.trim();
+    let (ai, url) = match body.strip_prefix("ai ") {
+        Some(rest) => (true, rest.trim()),
+        None => (false, body),
+    };
     if !(url.starts_with("http://") || url.starts_with("https://")) || url.len() > 2048 {
         return r#"{"error":"expected an http(s) URL"}"#.into();
     }
@@ -351,15 +356,20 @@ pub fn show_create(url: &str) -> String {
         return r#"{"error":"cannot open log"}"#.into();
     };
     let err = log.try_clone().ok();
+    let mut args = vec!["python3", "-u", "makeshow.py", "--local"];
+    if ai {
+        args.push("--ai");
+    }
+    args.push(url);
     // no shell: the URL is a plain argv element, so nothing to escape/inject
     let spawned = Command::new("setsid")
         .current_dir(&dir)
-        .args(["python3", "-u", "makeshow.py", "--local", url])
+        .args(&args)
         .stdout(std::process::Stdio::from(log))
         .stderr(err.map(std::process::Stdio::from).unwrap_or(std::process::Stdio::null()))
         .spawn();
     match spawned {
-        Ok(_) => r#"{"ok":true,"started":true}"#.into(),
+        Ok(_) => format!("{{\"ok\":true,\"started\":true,\"ai\":{ai}}}"),
         Err(e) => format!("{{\"error\":\"{}\"}}", json_str(&e.to_string())),
     }
 }
@@ -397,9 +407,27 @@ pub fn create_status() -> String {
         .and_then(|s| s.strip_suffix(".show.json"))
         .map(str::to_string);
     let failed = !running && done_name.is_none() && log.contains("FAILED");
+    // live AI ticker: the last few thinking/output lines from claude
+    let ai_lines: Vec<&str> = log
+        .lines()
+        .filter_map(|l| l.strip_prefix("AI:"))
+        .collect();
+    let ai_tail = ai_lines
+        .iter()
+        .rev()
+        .take(4)
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let summary = log
+        .lines()
+        .rev()
+        .find_map(|l| l.strip_prefix("SUMMARY:"))
+        .unwrap_or("");
 
     format!(
-        "{{\"running\":{},\"done\":{},\"failed\":{},\"phase\":\"{}\",\"percent\":{:.1},\"title\":\"{}\",\"thumb\":{},\"name\":{},\"log\":\"{}\"}}",
+        "{{\"running\":{},\"done\":{},\"failed\":{},\"phase\":\"{}\",\"percent\":{:.1},\"title\":\"{}\",\"thumb\":{},\"name\":{},\"ai\":\"{}\",\"summary\":\"{}\",\"log\":\"{}\"}}",
         running,
         done_name.is_some(),
         failed,
@@ -408,6 +436,8 @@ pub fn create_status() -> String {
         json_str(title),
         thumb,
         done_name.map(|n| format!("\"{}\"", json_str(&n))).unwrap_or("null".into()),
+        json_str(&ai_tail),
+        json_str(summary),
         json_str(&tail),
     )
 }
