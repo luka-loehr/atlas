@@ -73,7 +73,8 @@ def sec_bar(t, anchor):         # section-local bar index (bar = 4 beats)
 # ---- cues ---------------------------------------------------------------
 # fog carries a DISCO GLOBE -> only in lit phases, never in darkness
 # EXTREME: fog on every drop + builds (still lit phases only — disco globe rule)
-FOG_CUES = [(40000, 54000),      # build 1 — thick haze into drop 1
+FOG_CUES = [(0, 5000),           # white-slab opening (fog continues from the pre-roll)
+            (40000, 54000),      # build 1 — thick haze into drop 1
             (59700, 68000),      # drop 1 (lit: kick flashes + pink bed)
             (74000, 80000),      # chorus opener
             (118300, 128000),    # drop 2
@@ -147,23 +148,37 @@ def drop_hit(dmx, t, t_hit, v=1.0):
         return True
     return False
 
-def kick_flash(dmx, t, every=1, width=40):
-    """EXTREME: full-room 255 white flash on the beat lattice."""
-    if beat_idx(t) % every == 0 and bphase(t) < width:
-        for ch in ALL_LIGHTS:
-            put(dmx, ch, (255, 255, 255))
-        return True
-    return False
+def pulse(dmx, rgb):
+    """DARK-GAP: everything ON together — colored fixtures + white ceiling.
+    Between pulses the room is TRUE BLACK; that gap IS the effect."""
+    for ch in ALL_LIGHTS:
+        put(dmx, ch, rgb)
+    put(dmx, DECKE, (255, 255, 255))
+
+def upulse(dmx, t, grid, decay, vmax, hue, sat=1.0):
+    """DARK-GAP build pulse: whole room breathes ON together on the grid,
+    envelope decays to ~black in the gap. No fixture ever fills another's gap."""
+    env = math.exp(-(bphase(t) % grid) / decay)
+    rgb = hsv(hue, sat, vmax * env)
+    for ch in ALL_LIGHTS:
+        put(dmx, ch, rgb)
 
 # ---- the SHOW (all boundaries = measured events) ------------------------
 def render(t):
     dmx = bytearray(NCHAN)
     if t < 0:
+        if t >= -20000 - AUDIO_LATENCY_MS:            # PRE-ROLL: pure fog, dark, silent
+            dmx[FOG] = 255                            # (latency offset shifts t at the head)
         return bytes(dmx)
 
-    # ===== 0 - 18.2: intro ramp (approved) — sharpest transients get accents
-    if t < 18200:
-        frac = clamp(t / 18200)
+    # ===== 0 - 5: WHITE SLAB — blinding open through the fog ==============
+    if t < 5000:
+        for ch in ALL_LIGHTS:
+            put(dmx, ch, (255, 255, 255))
+
+    # ===== 5 - 18.2: gradient intro (slow — the calm before) =============
+    elif t < 18200:
+        frac = clamp((t - 5000) / 13200.0)
         bright = 0.50 * frac
         rgb = (int(255 * (1 - frac) * bright), int(255 * (1 - frac) * bright), int(255 * bright))
         for ch in REGALE:
@@ -195,31 +210,27 @@ def render(t):
         env = beat_env(t, 250)
         bright = (0.15 + 0.30 * sec) + (0.25 + 0.30 * sec) * env
         bi = beat_idx(t)
-        for i, ch in enumerate(ALL_LIGHTS):
-            hue = ((bi * 0.13) + i / len(ALL_LIGHTS)) % 1.0
-            put(dmx, ch, hsv(hue, 1.0, bright))
+        if bphase(t) < 40 and (bi % 4 == 3 if sec < 0.5 else bi % 2 == 1):
+            for ch in ALL_LIGHTS:                     # unified white flash — density rises
+                put(dmx, ch, (255, 255, 255))
+        else:
+            for i, ch in enumerate(ALL_LIGHTS):
+                hue = ((bi * 0.13) + i / len(ALL_LIGHTS)) % 1.0
+                put(dmx, ch, hsv(hue, 1.0, bright))
 
     # ===== 49.35 - 56.2: build p2 — 8th roll from the acceleration point =
     elif t < 56200:
-        sub = bphase(t) % EIGHTH
-        env = math.exp(-sub / 100.0)
         ramp = (t - 49350) / 6850.0
         bi = beat_idx(t)
-        for i, ch in enumerate(ALL_LIGHTS):
-            hue = ((bi * 0.13) + i / len(ALL_LIGHTS)) % 1.0
-            put(dmx, ch, hsv(hue, 1.0 - 0.3 * ramp, (0.40 + 0.45 * ramp) * env))
+        upulse(dmx, t, EIGHTH, 100.0 - 60.0 * ramp, 0.45 + 0.45 * ramp,
+               (bi * 0.13) % 1.0, 1.0 - 0.7 * ramp)   # unified 8th roll — gaps darken to black
 
-    # ===== 56.2 - 57.1: terminal roll — ceiling only, riser dies at 57.1 =
+    # ===== 56.2 - 57.1: terminal roll — full-room white out of black =====
     elif t < 57100:
-        p = (t - 56200) / 900.0
         if any(ft <= t < ft + 40 for ft in _ROLL):
-            v = int(255 * 0.85)                       # riser apex: whole room flashes white
-            for ch in ALL_LIGHTS:
-                put(dmx, ch, (v, v, v))
-        else:
-            fade = 0.10 * (1 - p)
-            for ch in REGALE:
-                put(dmx, ch, hsv(0.63, 0.7, fade))
+            for ch in ALL_LIGHTS:                     # riser apex: white flashes out of BLACK
+                put(dmx, ch, (255, 255, 255))
+        # else: TRUE BLACK — accelerating flash/black into the drop
 
     # ===== 57.1 - 59.7: BLACKOUT (bass gone) + dim pre-boom at 59.22 =====
     elif t < 59700:
@@ -227,23 +238,17 @@ def render(t):
             for ch in ALL_LIGHTS:
                 put(dmx, ch, hsv(0.63, 1.0, 0.08))
 
-    # ===== 59.7: DROP 1 — hit + double-flash; bass gap 66.15-66.70 dark ==
+    # ===== 59.7: DROP 1 — slam + triple stutter; bass gap 66.15-66.70 dark
     elif t < 72420:
         if not drop_hit(dmx, t, 59700):
             if 66150 <= t < 66700:
                 pass    # bass drops -43dB here (librosa detail run) = darkness accent
             else:
                 p = bphase(t)
-                if p < 40 or 80 <= p < 120 or 160 <= p < 200:   # TRIPLE blinding white flash
-                    for ch in ALL_LIGHTS:
-                        put(dmx, ch, (255, 255, 255))
-                else:                                  # hot-pink moving bed keeps the room loud
-                    bi = beat_idx(t)
-                    env = beat_env(t, 220)
-                    put_stop(dmx, CIRCLE[bi % 4], hsv(0.95, 1.0, 0.75 * (0.4 + 0.6 * env)))
-                    put_stop(dmx, CIRCLE[(bi - 1) % 4], hsv(0.87, 1.0, 0.20))
-                    d = int(255 * 0.25)
-                    put(dmx, DECKE, (d, d, d))
+                if p < 40 or 80 <= p < 120 or 160 <= p < 200:   # signature triple stutter
+                    rgb = (255, 255, 255) if sec_bar(t, 59700) % 2 == 0 else hsv(0.95, 1.0, 1.0)
+                    pulse(dmx, rgb)                    # white / hot-pink alternating per bar
+                # else: TRUE BLACK — the dark gap IS the strobe feeling
 
     # ===== 72.42 - 74.0: fill — dim magenta handoff ======================
     elif t < 74000:
@@ -255,20 +260,18 @@ def render(t):
     elif t < 87190:
         bi = beat_idx(t)
         bar = sec_bar(t, 74000)
-        if bar == 0:                                  # section is ~7 bars: strobe opener once
+        if bar == 0:                                  # strobe opener, already dark-gap
             tuned_strobe(dmx, t, v=0.90)
         else:
-            env = beat_env(t, 260)
-            p = bphase(t)
-            hue = 0.13 if bi % 4 < 2 else 0.87        # amber/magenta: warm reads LOUD
-            side = REGAL_LINK if bi % 2 == 0 else REGAL_RECH
-            put(dmx, side, hsv(hue, 1.0, 0.80 * env))
-            put(dmx, REGAL_HINT, hsv(hue, 1.0, 0.75 * env))
-            if 200 <= p < 320:
-                put_stop(dmx, DISPLAY, hsv((hue + 0.5) % 1.0, 1.0, 0.70))
-            if bi % 4 == 0:
-                d = int(255 * 0.55 * env)
-                put(dmx, DECKE, (d, d, d))
+            hue = 0.13 if bar % 2 == 0 else 0.87      # amber / magenta per bar
+            gate = bphase(t) if bar <= 2 else bphase(t) % EIGHTH
+            W = 100 if bar <= 2 else 70               # density escalates through the chorus
+            if gate < W:
+                if bi % 4 == 0 and bphase(t) < 60:    # slam-phase beat: WHITE
+                    pulse(dmx, (255, 255, 255))
+                else:
+                    pulse(dmx, hsv(hue, 1.0, 0.90))
+            # else: TRUE BLACK
 
     # ===== 87.19 - 88.76: dip (bass silent; snare accent handled below) ==
     elif t < 88760:
@@ -279,25 +282,25 @@ def render(t):
     elif t < 94580:
         bi = beat_idx(t)
         bar = sec_bar(t, 88760)
-        env = beat_env(t, 180)
-        hue = 0.50 if bar % 2 == 0 else 0.87
-        put_stop(dmx, CIRCLE[bi % 4], hsv(hue, 1.0, 0.85 * (0.4 + 0.6 * env)))
-        put_stop(dmx, CIRCLE[(bi - 1) % 4], hsv(hue, 1.0, 0.18))
-        if bi % 4 == 3:                               # ceiling pop on true downbeats
-            d = int(255 * 0.45 * env)
-            put(dmx, DECKE, (d, d, d))
+        hue = 0.50 if bar % 2 == 0 else 0.87          # cold/hot comet identity
+        if bphase(t) % EIGHTH < 70:                   # densest cadence: 2nd loudest section
+            if bi % 4 == 0 and bphase(t) < 60:
+                pulse(dmx, (255, 255, 255))
+            else:
+                pulse(dmx, hsv(hue, 1.0, 0.90))
+        # else: TRUE BLACK
 
     # ===== 94.58 - 101.49: chorus var C — STAYS at chorus energy =========
     elif t < 101490:
         bi = beat_idx(t)
-        env = beat_env(t, 260)
-        hue = 0.75 if bi % 4 < 2 else 0.50
-        side = REGAL_LINK if bi % 2 == 0 else REGAL_RECH
-        put(dmx, side, hsv(hue, 1.0, 0.75 * env))
-        put(dmx, REGAL_HINT, hsv(hue, 1.0, 0.55 * env))
-        p = bphase(t)
-        if 200 <= p < 320:
-            put_stop(dmx, DISPLAY, hsv((hue + 0.5) % 1.0, 1.0, 0.60))
+        bar = sec_bar(t, 94580)
+        hue = 0.75 if bar % 2 == 0 else 0.50          # purple / cyan per bar
+        if bphase(t) < 100:                           # beat pulses (differentiates from comet)
+            if bi % 4 == 0 and bphase(t) < 60:
+                pulse(dmx, (255, 255, 255))
+            else:
+                pulse(dmx, hsv(hue, 1.0, 0.90))
+        # else: TRUE BLACK
 
     # ===== 101.49 - 102.13: fill — fast fade =============================
     elif t < 102130:
@@ -310,12 +313,17 @@ def render(t):
         if t < 103510:                                # bass still out: hold still
             for ch in REGALE:
                 put(dmx, ch, hsv(0.0, 1.0, 0.06))
-        else:
+        elif t < 112000:                              # calm dark-red walk (allowed: dim)
             bi = beat_idx(t)
             env = beat_env(t, 120)
-            ramp = clamp((t - 112000) / 6300.0) if t > 112000 else 0.0
-            put_stop(dmx, CIRCLE[bi % 4], hsv(0.0, 1.0, (0.08 + 0.12 * ramp) * env))
+            put_stop(dmx, CIRCLE[bi % 4], hsv(0.0, 1.0, 0.08 * env))
             put(dmx, DECKE, hsv(0.08, 0.7, 0.10 * beat_env(t, 200)))
+        else:                                         # unified red pulses escalate into drop 2
+            ramp = clamp((t - 112000) / 6300.0)
+            if t < 116300:
+                upulse(dmx, t, BEAT, 120.0 - 70.0 * ramp, 0.10 + 0.35 * ramp, 0.0)
+            else:
+                upulse(dmx, t, EIGHTH, 60.0, 0.45, 0.0)   # double rate: the room pants into the drop
 
     # ===== 118.3: DROP 2 — cold drop: sustained slams, sparse strobe =====
     elif t < 131960:
@@ -324,18 +332,10 @@ def render(t):
             if bar % 4 == 3:                          # every 4th bar: tuned strobe
                 tuned_strobe(dmx, t, v=0.90, ceiling=0.20)
             else:
-                bi = beat_idx(t)
-                env = beat_env(t, 150)
-                hue = 0.87 if bi % 2 == 0 else 0.50
-                for k, stop in enumerate(CIRCLE):
-                    if k == bi % 4:
-                        put_stop(dmx, stop, hsv(hue, 1.0, 0.90 * env))
-                    else:
-                        put_stop(dmx, stop, hsv(0.63, 1.0, 0.08))
-                if bi % 8 == 0:
-                    d = int(255 * 0.60 * env)
-                    put(dmx, DECKE, (d, d, d))
-                kick_flash(dmx, t)                    # EXTREME: white slam on EVERY beat
+                k = int((t - ANCHOR) // EIGHTH)       # cold per-8th strobe
+                if bphase(t) % EIGHTH < 60:           # 60ms pulse on every 8th
+                    pulse(dmx, hsv(0.87 if k % 2 == 0 else 0.50, 1.0, 1.0))
+                # else: TRUE BLACK — magenta/cyan flicker out of darkness
 
     # ===== 131.96 - 132.26: collapse =====================================
     elif t < 132260:
@@ -345,8 +345,8 @@ def render(t):
 
     # ===== 132.26 - 134.87: breakdown silence — heartbeat ================
     elif t < 134870:
-        pulse = math.exp(-((t - 132260) % 2000) / 180.0)
-        put_stop(dmx, DISPLAY, hsv(0.0, 1.0, 0.06 * pulse))
+        hb = math.exp(-((t - 132260) % 2000) / 180.0)     # NB: must not shadow pulse()
+        put_stop(dmx, DISPLAY, hsv(0.0, 1.0, 0.06 * hb))
 
     # ===== 134.87 - 135.86: music creeps back ============================
     elif t < 135860:
@@ -357,26 +357,16 @@ def render(t):
     # ===== 135.86 - 151.09: DROP REPRISE (user: "grosser Drop ~2:18") ====
     # Same cluster as drop 1A per segmentation; bass slams back at 136.77.
     elif t < 151090:
-        if t < 136770:                                # stay dark until the bass actually hits
-            for ch in REGALE:
-                put(dmx, ch, hsv(0.75, 1.0, 0.06))
+        if t < 136770:
+            pass                                      # TRUE BLACK until the bass actually hits
         elif not drop_hit(dmx, t, 136770):
-            bi = beat_idx(t)
             bar = sec_bar(t, 136770)
-            env = beat_env(t, 220)
             if bar % 8 == 4:                          # strobe bar for punch
                 tuned_strobe(dmx, t, v=0.90)
             else:
-                A, B = [REGAL_HINT, REGAL_RECH], [REGAL_LINK] + DISPLAY
-                act, idle = (A, B) if bi % 2 == 0 else (B, A)
-                for ch in act:
-                    put(dmx, ch, hsv(0.75 if bi % 2 == 0 else 0.50, 1.0, 0.90 * (0.3 + 0.7 * env)))
-                for ch in idle:
-                    put(dmx, ch, hsv(0.50 if bi % 2 == 0 else 0.75, 1.0, 0.12))
-                if bi % 4 == 0:
-                    d = int(255 * 0.55 * env)
-                    put(dmx, DECKE, (d, d, d))
-                kick_flash(dmx, t)                    # EXTREME: white slam on EVERY beat
+                if bphase(t) < 110:                   # one FAT 110ms slam per beat (heaviest drop)
+                    pulse(dmx, hsv(0.75 if bar % 2 == 0 else 0.50, 1.0, 1.0))
+                # else: TRUE BLACK — purple/cyan slams out of darkness
 
     # ===== 151.09 - 157.15: wind down ====================================
     elif t < 157150:
@@ -401,7 +391,7 @@ def render(t):
         for ch in REGALE:
             put(dmx, ch, hsv(0.50, 1.0, 0.12 * sec))
 
-    # ===== 166.39 - 173.7: kickless bridge — L/R cross-fade under laser ==
+    # ===== 170.4 - 173.7: kickless bridge — L/R cross-fade under laser ===
     elif t < 173700:
         ph = 2 * math.pi * t / 3000.0
         lv = 0.12 * (0.5 + 0.5 * math.sin(ph))
@@ -422,30 +412,24 @@ def render(t):
     elif t < 196000:
         sec = (t - 181090) / (196000 - 181090)
         hue = 0.62 + 0.25 * sec
-        if t < 185250:                                # p1: beat comet
+        if t < 185250:                                # p1: unified beat pulse
             bi = beat_idx(t)
-            env = beat_env(t, 220)
-            put_stop(dmx, CIRCLE[bi % 4], hsv(hue, 1.0, 0.45 * (0.35 + 0.65 * env)))
-            put_stop(dmx, CIRCLE[(bi - 1) % 4], hsv(hue, 1.0, 0.12))
-        elif t < 189600:                              # p2: acceleration point
-            bi = int((t - ANCHOR) // EIGHTH)
-            sub = bphase(t) % EIGHTH
-            env = math.exp(-sub / 100.0)
-            put_stop(dmx, CIRCLE[bi % 4], hsv(hue, 1.0, 0.60 * (0.4 + 0.6 * env)))
-            if beat_idx(t) % 2 == 0:
-                d = int(255 * 0.30 * beat_env(t, 180))
-                put(dmx, DECKE, (d, d, d))
+            if bi % 4 == 3 and bphase(t) < 40:
+                for ch in ALL_LIGHTS:                 # downbeat white flash
+                    put(dmx, ch, (255, 255, 255))
+            else:
+                upulse(dmx, t, BEAT, 220.0, 0.45, hue)
+        elif t < 189600:                              # p2: acceleration point — unified 8ths
+            ramp = (t - 185250) / 4350.0
+            upulse(dmx, t, EIGHTH, 100.0 - 60.0 * ramp, 0.50 + 0.40 * ramp,
+                   hue, 1.0 - 0.4 * ramp)
         else:                                         # p3: noise-riser surge -> white
             if t >= 193992:                           # last full bar (true downbeat) pre-cut
                 tuned_strobe(dmx, t, v=0.90)
             else:
-                bi = int((t - ANCHOR) // EIGHTH)
-                sub = bphase(t) % EIGHTH
-                env = math.exp(-sub / 90.0)
                 desat = clamp((t - 189600) / 6400.0)
-                floor = 0.30 + 0.45 * desat           # riser visibly CLIMBS to near-white
-                put_stop(dmx, CIRCLE[bi % 4], hsv(hue, 1.0 - 0.6 * desat, floor + 0.35 * env))
-                put_stop(dmx, CIRCLE[(bi - 1) % 4], hsv(hue, 1.0 - 0.6 * desat, 0.20))
+                upulse(dmx, t, EIGHTH, 90.0 - 70.0 * desat, 0.35 + 0.55 * desat,
+                       hue, 1.0 - 0.7 * desat)        # accelerating all-on/black to near-white
 
     # ===== 196.0 - 196.28: blackout (measured bass cut) ==================
     elif t < 196280:
@@ -461,21 +445,19 @@ def render(t):
             bar = sec_bar(t, 195820)                  # true downbeat (Beat This): hit is beat 2
             bi = beat_idx(t)
             hue = (0.87 + (t - 196280) / 30000.0) % 1.0
-            boost = 1.2 if t >= 217800 else 1.0       # measured escalation point
             if bar % 8 in (6, 7):
                 tuned_strobe(dmx, t, v=0.90)
             else:
-                env = beat_env(t, 220)
-                step = int((t - ANCHOR) // (EIGHTH if t >= 217800 else BEAT))
-                head, mid, tail = CIRCLE[step % 4], CIRCLE[(step - 1) % 4], CIRCLE[(step - 2) % 4]
-                put_stop(dmx, head, hsv(hue, 1.0, 0.90 * boost * (0.4 + 0.6 * env)))
-                put_stop(dmx, mid, hsv(hue + 0.05, 1.0, 0.30 * boost))
-                put_stop(dmx, tail, hsv(hue + 0.10, 1.0, 0.10))
-                if bi % 2 == 0 and bphase(t) < 40:
-                    for ch in ALL_LIGHTS:                 # full-room WHITE pop (EXTREME: 2x rate)
-                        put(dmx, ch, (255, 255, 255))
-                breathe = 0.5 * (1 + math.sin(2 * math.pi * t / 6000.0 + math.pi))
-                put(dmx, DECKE, hsv(hue + 0.5, 0.4, 0.35 * breathe))
+                if t >= 217800:                       # escalation point: 8ths, brighter
+                    gate, W, v = bphase(t) % EIGHTH, 65, 1.0
+                else:
+                    gate, W, v = bphase(t), 90, 0.95
+                if gate < W:
+                    if bi % 4 == 0 and bphase(t) < 60:
+                        pulse(dmx, (255, 255, 255))   # slam-phase WHITE
+                    else:
+                        pulse(dmx, hsv(hue, 1.0, v))
+                # else: TRUE BLACK — the climax strobes hardest
 
     # ===== 227.2 - 229.06: breakdown fill (bass silent: hold still) ======
     elif t < 229060:
@@ -491,26 +473,18 @@ def render(t):
         else:
             bi = beat_idx(t)
             bar = sec_bar(t, 229060)
-            if bar % 8 == 7:                          # full-circle sweep bar
-                k = int((t - ANCHOR) // EIGHTH)
-                put_stop(dmx, CIRCLE[k % 4], hsv(0.87, 1.0, 0.85))
-                put_stop(dmx, CIRCLE[(k - 1) % 4], hsv(0.50, 1.0, 0.15))
+            palette = [0.87, 0.0, 0.13, 0.95]         # magenta/red/amber/hot-pink per bar
+            hue = palette[bar % 4]
+            if bar % 8 == 7:                          # dense burst bar (was the sweep)
+                gate, W = bphase(t) % EIGHTH, 65
             else:
-                env = beat_env(t, 240)
-                p = bphase(t)
-                palette = [0.87, 0.0, 0.13, 0.95]     # magenta/red/amber/hot-pink: warm & loud
-                hue = palette[(bi // 3) % 4]
-                side = REGAL_LINK if bi % 2 == 0 else REGAL_RECH
-                put(dmx, side, hsv(hue, 1.0, 0.85 * env))
-                if 200 <= p < 320:
-                    put(dmx, REGAL_HINT, hsv((hue + 0.5) % 1.0, 1.0, 0.60))
-                if bi % 4 == 0:
-                    put_stop(dmx, DISPLAY, hsv(hue, 1.0, 0.75 * env))
-                b0 = (t - 229060) % (4 * BEAT)
-                if b0 < 200:
-                    d = int(255 * 0.40)
-                    put(dmx, DECKE, (d, d, d))
-                kick_flash(dmx, t, every=2)           # EXTREME: white pops through the finale
+                gate, W = bphase(t), 95
+            if gate < W:
+                if bi % 4 == 0 and bphase(t) < 60:
+                    pulse(dmx, (255, 255, 255))
+                else:
+                    pulse(dmx, hsv(hue, 1.0, 0.90))
+            # else: TRUE BLACK
 
     # ===== 258.65 - end: outro fade, ceiling dies last ===================
     elif t < SONG_END_S * 1000:
@@ -550,16 +524,18 @@ def main():
     end_s = float(sys.argv[2]) if len(sys.argv) > 2 else SONG_END_S
     play_audio = os.path.exists(MP3)
 
+    preroll_s = 20.0 if start_s == 0 else 0.0         # fog pre-roll only for the full show
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     audio = None
-    if play_audio:
-        if start_s > 0 and shutil.which("ffplay"):
+    if play_audio and start_s > 0:
+        if shutil.which("ffplay"):
             audio = subprocess.Popen(["ffplay", "-nodisp", "-autoexit",
                                       "-loglevel", "quiet", "-ss", str(start_s), MP3])
-        elif start_s == 0:
-            audio = subprocess.Popen(["afplay", MP3])
         else:
             play_audio = False
+    if preroll_s:
+        print(f"pre-roll: {preroll_s:.0f}s pure fog — dark & silent, the room fills ...", flush=True)
     print(f"playing {start_s:.1f}s -> {end_s:.1f}s  |  audio={'yes' if play_audio else 'no'}  |  "
           f"130.00 BPM lattice (anchor {ANCHOR/1000:.2f}s)", flush=True)
 
@@ -568,9 +544,11 @@ def main():
     next_t = t0
     try:
         while True:
-            song_s = start_s + (time.monotonic() - t0)
+            song_s = start_s + (time.monotonic() - t0) - preroll_s
             if song_s >= end_s:
                 break
+            if play_audio and audio is None and song_s >= 0:
+                audio = subprocess.Popen(["afplay", MP3])   # music starts AFTER the fog fills
             song_ms = song_s * 1000.0 - (AUDIO_LATENCY_MS if play_audio else 0)
             seq = (seq + 1) & 0xff
             try:
