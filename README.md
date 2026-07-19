@@ -41,6 +41,7 @@ atlas restart      # reboot + waits for it to come back
 atlas status       # up/down + route (LAN / tailnet)
 atlas build        # build THIS project on atlas (needs .atlas-build.toml)
 atlas dev          # run its dev server on atlas + public tunnel URL
+atlas agent        # build+install the metrics agent (for the iOS app)
 atlas <cmd ...>    # run anything remotely: atlas nvidia-smi, atlas htop ...
 ```
 
@@ -106,6 +107,20 @@ atlas shines for **cold builds + offloading** (Mac stays cool/free) and for the
 local Mac wins — the container tears down each run, so it can't keep a hot
 Gradle daemon / JVM the way a local rebuild does. Rule of thumb: offload the
 big cold jobs and the always-on dev server; keep tight edit-rebuild loops local.
+
+## Atlas Command Center — iOS app (`ios/`)
+
+A native SwiftUI app (iOS 26, Liquid Glass) showing atlas' live status — CPU /
+GPU / RAM / temps / disk / load / docker containers — polled over the Tailnet
+from a tiny zero-dependency Rust server, `atlas-agent` (`agent/`), installed as a
+systemd service with `atlas agent`. The phone must be on the same tailnet; atlas
+is tailnet-isolated (`autogroup:self`) so the metrics endpoint is only reachable
+by Luka's own devices. Details + screenshots: [`ios/README.md`](ios/README.md).
+
+<p>
+  <img src="ios/AtlasCommandCenter/screenshot-idle.png" width="230">
+  <img src="ios/AtlasCommandCenter/screenshot-load.png" width="230">
+</p>
 
 ## SSH from the Mac
 
