@@ -171,10 +171,11 @@ pub fn show_start(name: &str) -> String {
             .status();
         std::thread::sleep(std::time::Duration::from_millis(1500));
     }
+    // --no-audio: the iOS app plays the song; atlas only drives the lights
     let _ = Command::new("sh")
         .arg("-c")
         .arg(format!(
-            "cd {dir} && setsid nohup python3 -u play.py shows/{file} >/tmp/atlas-play.log 2>&1 &"
+            "cd {dir} && setsid nohup python3 -u play.py shows/{file} --no-audio --no-preroll >/tmp/atlas-play.log 2>&1 &"
         ))
         .status();
     format!(
@@ -185,6 +186,10 @@ pub fn show_start(name: &str) -> String {
 }
 
 pub fn show_stop() -> String {
+    // SIGINT, not SIGTERM: play.py's finally sends blackout frames and powers
+    // the laser/strobe plugs off — killing it hard could leave them ON.
+    let _ = Command::new("pkill").args(["-INT", "-f", "play.py"]).status();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
     let _ = Command::new("pkill").args(["-f", "play.py"]).status();
     let _ = Command::new("pkill").args(["-f", "hue_stream.py"]).status();
     r#"{"ok":true,"stopped":true}"#.into()
