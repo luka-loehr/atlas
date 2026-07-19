@@ -378,8 +378,9 @@ fn build(extra: &[String]) {
         "docker run --rm \
          -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
          -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
+         -e GRADLE_USER_HOME=/cache/gradle \
          -v \"$HOME/{dir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
-         -w {wd} {tag} sh -lc {cmd}; rc=$?; \
+         -w {wd} {tag} sh -c {cmd}; rc=$?; \
          sudo chown -R $(id -u):$(id -g) \"$HOME/{dir}\" >/dev/null 2>&1; exit $rc",
         dir = cfg.remote_dir(),
         base = REMOTE_BASE,
@@ -480,7 +481,7 @@ fn dev_start(cfg: &BuildCfg) {
         "docker run -d --name {dev} --network host --restart unless-stopped \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
          -v \"$HOME/{rdir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
-         -w {wd} {tag} sh -lc {cmd} >/dev/null",
+         -w {wd} {tag} sh -c {cmd} >/dev/null",
         port = cfg.port,
         rdir = cfg.remote_dir(),
         base = REMOTE_BASE,
