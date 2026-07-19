@@ -105,6 +105,10 @@ def main():
     ap.add_argument("song", help="mp3 path OR a URL (YouTube etc.)")
     ap.add_argument("--force", action="store_true", help="re-run analysis")
     ap.add_argument("--title")
+    ap.add_argument("--bpm", type=float,
+                    help="official BPM: densify the fitted lattice to match")
+    ap.add_argument("--extreme", action="store_true",
+                    help="denser strobes, full brightness, more fog")
     args = ap.parse_args()
     title = args.title
     if args.song.startswith(("http://", "https://")):
@@ -118,6 +122,17 @@ def main():
 
     analysis = analyze_on_atlas(song, name, args.force)
 
+    if args.bpm:                                      # official-BPM lattice override
+        f = analysis["tempo"]["bpm"]
+        k = max(1, round(args.bpm / f))
+        if k > 1 and abs(f * k - args.bpm) / args.bpm < 0.05:
+            analysis["tempo"]["bpm"] = f * k          # densify: anchor stays valid
+            print(f"tempo override: {f:.2f} -> {f * k:.2f} bpm "
+                  f"(x{k}, offiziell {args.bpm:g})")
+        elif abs(f - args.bpm) / args.bpm >= 0.05:
+            print(f"WARNUNG: offiziell {args.bpm:g} passt nicht zu "
+                  f"gemessen {f:.2f} (kein ganzzahliges Verhaeltnis) — nutze {f:.2f}")
+
     os.makedirs(SHOWS, exist_ok=True)
     # keep a copy of the song next to the shows for stable relative paths
     local_song = os.path.join(SHOWS, f"{name}{os.path.splitext(song)[1]}")
@@ -125,7 +140,8 @@ def main():
         shutil.copy(song, local_song)
 
     seq, warnings = compile_show(analysis, os.path.basename(local_song),
-                                 title=title or name)
+                                 title=title or name,
+                                 opts={"extreme": args.extreme})
     out = os.path.join(SHOWS, f"{name}.show.json")
     sequence.save(seq, out)
     summarize(seq, warnings)

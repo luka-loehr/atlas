@@ -14,6 +14,7 @@ DEFAULTS = {
     "strobe_lead_ms": 6500,
     "preroll_fog_ms": 20000,
     "white_slab_ms": 5000,
+    "extreme": False,            # denser strobes, full brightness, more fog
 }
 
 DROP_DNA = ["stutter", "eighth", "fat"]               # rotating v6 signatures
@@ -129,11 +130,14 @@ def compile_show(analysis, song_file, title=None, opts=None):
         if t1 - t0 >= MIN_CUE_MS:
             cues.append({"t0": t0, "t1": t1, "fx": fx, "p": p})
 
+    xt = o.get("extreme", False)
+    drop_strobe_mod = [4, [3]] if xt else [8, [4]]
+
     def emit_drop(i):
         a, b, _ = drop_windows[i]
         dna = "solo" if i == solo_idx else DROP_DNA[emit_drop.rot % len(DROP_DNA)]
         emit_drop.rot += 1
-        fog.append([a, min(a + 8000, b)])
+        fog.append([a, min(a + (10000 if xt else 8000), b)])
         if dna == "solo":
             solo_end = min(a + 10000, b)
             strobe.append([a, solo_end])
@@ -141,7 +145,7 @@ def compile_show(analysis, song_file, title=None, opts=None):
             if b - solo_end >= 2000:                   # solo tail: fat slams
                 cue(solo_end, b, "gated_pulse", bar_anchor=a, grid="beat",
                     width=110, v=1.0, hues=[0.75, 0.50],
-                    strobe_mod=[8, [4]], strobe={"v": 0.90})
+                    strobe_mod=drop_strobe_mod, strobe={"v": 0.90})
             laser.append([solo_end, b + 4000])
         elif dna == "stutter":
             strobe.append([a, b])
@@ -158,7 +162,7 @@ def compile_show(analysis, song_file, title=None, opts=None):
             strobe.append([a, b])
             cue(a, b, "gated_pulse", hit=a, bar_anchor=a, grid="beat",
                 width=110, v=1.0, hues=[0.75, 0.50],
-                strobe_mod=[8, [4]], strobe={"v": 0.90})
+                strobe_mod=drop_strobe_mod, strobe={"v": 0.90})
     emit_drop.rot = 0
 
     def emit_build(t0, t1):
@@ -170,7 +174,7 @@ def compile_show(analysis, song_file, title=None, opts=None):
             decay=[140, 60], vmax=[0.20, 0.60],
             hue={"mode": "beat_cycle", "step": 0.13})
         cue(half, roll0, "upulse", grid="eighth", domain=[t0, t1],
-            decay=[100, 40], vmax=[0.45, 0.90], sat=[1.0, 0.4],
+            decay=[100, 40], vmax=[0.45, 1.0 if xt else 0.90], sat=[1.0, 0.4],
             hue={"mode": "beat_cycle", "step": 0.13})
         cue(roll0, t1, "roll", p0=230, slope=140, ref_dur=900, pmin=80, width=40)
 
@@ -179,17 +183,19 @@ def compile_show(analysis, song_file, title=None, opts=None):
             hues = HIGH_HUES[emit_region.hi % len(HIGH_HUES)]
             emit_region.hi += 1
             a0 = snap_bar(t0)
-            fog.append([t0, min(t0 + 6000, t1)])
-            if t1 - t0 >= 10000:                       # escalate beat -> 8th
+            v = 1.0 if xt else 0.90
+            wb = 90 if xt else 100
+            burst = {"mod": [4, [3]] if xt else [8, [7]], "grid": "eighth", "width": 65}
+            fog.append([t0, min(t0 + (9000 if xt else 6000), t1)])
+            if t1 - t0 >= (6000 if xt else 10000):     # escalate beat -> 8th
                 split = t0 + (t1 - t0) * 0.45
                 cue(t0, split, "gated_pulse", bar_anchor=a0, grid="beat",
-                    width=100, v=0.90, hues=hues, white_slam=True)
+                    width=wb, v=v, hues=hues, white_slam=True)
                 cue(split, t1, "gated_pulse", bar_anchor=a0, grid="eighth",
-                    width=70, v=0.90, hues=hues, white_slam=True,
-                    burst={"mod": [8, [7]], "grid": "eighth", "width": 65})
+                    width=70, v=v, hues=hues, white_slam=True, burst=burst)
             else:
                 cue(t0, t1, "gated_pulse", bar_anchor=a0, grid="beat",
-                    width=100, v=0.90, hues=hues, white_slam=True)
+                    width=wb, v=v, hues=hues, white_slam=True, burst=burst)
         elif kind == "quiet":
             cue(t0, t1, "heartbeat", period=2000, decay=180, hue=0.0, v=0.06)
         else:                                          # mid
