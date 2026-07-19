@@ -51,6 +51,8 @@ Cover the ENTIRE song with sections (no gaps). Times in seconds, precise."""
 
 
 def gemini_listen(song_path):
+    """Up to 3 attempts — flash occasionally emits broken JSON even in
+    JSON mode; a light repair pass catches truncated/trailing-comma output."""
     with open(GEMINI_KEY_FILE) as f:
         key = f.read().strip()
     with open(song_path, "rb") as f:
@@ -61,16 +63,58 @@ def gemini_listen(song_path):
             {"inline_data": {"mime_type": "audio/mpeg", "data": audio_b64}},
         ]}],
         "generationConfig": {"response_mime_type": "application/json",
-                             "temperature": 0.3},
+                             "temperature": 0.3,
+                             "maxOutputTokens": 8192},
     }
-    req = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}",
-        data=json.dumps(body).encode(), method="POST",
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        resp = json.load(r)
-    text = resp["candidates"][0]["content"]["parts"][0]["text"]
-    return json.loads(text)
+    last = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}",
+                data=json.dumps(body).encode(), method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=300) as r:
+                resp = json.load(r)
+            text = resp["candidates"][0]["content"]["parts"][0]["text"]
+            try:
+                return json.loads(text)
+            except ValueError:
+                return json.loads(_repair_json(text))
+        except Exception as e:
+            last = e
+            print(f"gemini: Versuch {attempt+1} fehlgeschlagen ({type(e).__name__}: {e}) — Retry",
+                  flush=True)
+    raise RuntimeError(f"gemini FAILED nach 3 Versuchen: {last}")
+
+
+def _repair_json(text):
+    """Best-effort fixes: strip fences/prose, drop trailing commas, close
+    unterminated brackets/strings from truncated output."""
+    m = re.search(r"\{.*", text, re.DOTALL)
+    if m:
+        text = m.group(0)
+    text = re.sub(r",\s*([}\]])", r"\1", text)          # trailing commas
+    # balance quotes then brackets (truncation)
+    if text.count('"') % 2 == 1:
+        text += '"'
+    stack = []
+    in_str = False
+    esc = False
+    for c in text:
+        if esc:
+            esc = False
+            continue
+        if c == "\\":
+            esc = True
+        elif c == '"':
+            in_str = not in_str
+        elif not in_str:
+            if c in "[{":
+                stack.append("]" if c == "[" else "}")
+            elif c in "]}" and stack:
+                stack.pop()
+    text += "".join(reversed(stack))
+    return text
 
 # ---------------------------------------------------------------- Claude ----
 
