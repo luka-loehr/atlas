@@ -2,9 +2,11 @@
 """makeshow — turn ANY song into a light show.
 
     python3 makeshow.py path/to/song.mp3 [--force] [--title "..."]
+    python3 makeshow.py https://youtube.com/watch?v=...   # yt-dlp -> mp3 -> show
 
-1. ships the song to atlas
-2. runs the GPU analysis there (Beat This! + librosa) -> analysis.json (cached)
+1. URL? downloads + converts to mp3 (yt-dlp), title from the video
+2. ships the song to atlas, runs the GPU analysis there (Beat This! +
+   librosa) -> analysis.json (cached)
 3. compiles the analysis into shows/<name>.show.json using the v6 design rules
 4. prints the show timeline
 
@@ -37,7 +39,31 @@ def run(cmd, **kw):
 
 def slug(name):
     base = os.path.splitext(os.path.basename(name))[0].lower()
-    return "".join(c if c.isalnum() else "-" for c in base).strip("-")
+    s = "".join(c if c.isalnum() else "-" for c in base)
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-")[:60].rstrip("-")
+
+
+def download_audio(url):
+    """YouTube (or any yt-dlp source) -> mp3 in downloads/, returns (path, title)."""
+    if not shutil.which("yt-dlp") or not shutil.which("ffmpeg"):
+        sys.exit("yt-dlp + ffmpeg noetig:  brew install yt-dlp ffmpeg")
+    dl = os.path.join(ROOT, "downloads")
+    os.makedirs(dl, exist_ok=True)
+    print(f"download: {url}")
+    r = subprocess.run(
+        ["yt-dlp", "--no-playlist", "-x", "--audio-format", "mp3",
+         "--audio-quality", "0", "--no-simulate", "--quiet",
+         "-o", os.path.join(dl, "%(title)s.%(ext)s"),
+         "--print", "after_move:filepath", url],
+        capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"yt-dlp FAILED:\n{r.stderr.strip()[-800:]}")
+    path = r.stdout.strip().splitlines()[-1]
+    title = os.path.splitext(os.path.basename(path))[0]
+    print(f"download: ok -> {os.path.relpath(path, ROOT)}")
+    return path, title
 
 
 def analyze_on_atlas(song, name, force):
@@ -76,14 +102,19 @@ def summarize(seq, warnings):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("song")
+    ap.add_argument("song", help="mp3 path OR a URL (YouTube etc.)")
     ap.add_argument("--force", action="store_true", help="re-run analysis")
     ap.add_argument("--title")
     args = ap.parse_args()
-    song = os.path.abspath(args.song)
-    if not os.path.exists(song):
-        sys.exit(f"not found: {song}")
-    name = slug(song)
+    title = args.title
+    if args.song.startswith(("http://", "https://")):
+        song, video_title = download_audio(args.song)
+        title = title or video_title
+    else:
+        song = os.path.abspath(args.song)
+        if not os.path.exists(song):
+            sys.exit(f"not found: {song}")
+    name = slug(title) if title else slug(song)
 
     analysis = analyze_on_atlas(song, name, args.force)
 
@@ -94,7 +125,7 @@ def main():
         shutil.copy(song, local_song)
 
     seq, warnings = compile_show(analysis, os.path.basename(local_song),
-                                 title=args.title or name)
+                                 title=title or name)
     out = os.path.join(SHOWS, f"{name}.show.json")
     sequence.save(seq, out)
     summarize(seq, warnings)

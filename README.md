@@ -31,6 +31,7 @@ ssh atlas 'cd ~/projects/lightshow && python3 -u bridge/hue_stream.py'
 
 # any song -> show (GPU analysis is cached after the first run)
 python3 makeshow.py path/to/song.mp3
+python3 makeshow.py "https://youtube.com/watch?v=..."   # yt-dlp -> mp3 -> show
 python3 play.py shows/<name>.show.json          # 20s fog pre-roll, then show
 python3 play.py shows/<name>.show.json 54 62    # seek 54s-62s (no pre-roll)
 ```
