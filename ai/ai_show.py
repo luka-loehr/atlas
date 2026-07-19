@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 from lslib import sequence  # noqa: E402
 
 GEMINI_KEY_FILE = os.path.expanduser("~/.config/atlas-ai/gemini.key")
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-flash-latest"   # resolves to gemini-3.5-flash (native audio)
 CLAUDE = os.path.expanduser("~/.local/bin/claude")
 LASER_LEAD = 3900
 STROBE_LEAD = 6500
