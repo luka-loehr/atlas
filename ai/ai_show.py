@@ -270,7 +270,9 @@ def compose(analysis, song_path, title, song_file):
     print("claude: komponiert die Show ...", flush=True)
     tempo = analysis["tempo"]
     user = json.dumps({
-        "task": "Compose the complete show for this song.",
+        "task": "Compose the complete show for this song. Think through the "
+                "dramaturgy carefully IN GERMAN before writing the JSON — "
+                "your thinking is streamed live to the user's phone.",
         "meta_you_must_use": {
             "song_file": song_file, "title": title,
             "bpm": tempo["bpm"], "anchor_ms": tempo["fit_anchor_ms"],
