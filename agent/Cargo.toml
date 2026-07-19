@@ -1,12 +1,16 @@
 [package]
 name = "atlas-agent"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "Tiny zero-dependency metrics server for the Atlas Command Center iOS app"
+description = "Metrics + terminal + docker + lightshow control server for the Atlas Command Center iOS app"
 
 [[bin]]
 name = "atlas-agent"
 path = "src/main.rs"
+
+[dependencies]
+tungstenite = "0.21"       # WebSocket framing for the /term PTY bridge
+portable-pty = "0.8"       # real PTY so bash/htop/vim work in the app terminal
 
 [profile.release]
 lto = true
