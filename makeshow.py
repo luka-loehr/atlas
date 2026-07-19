@@ -164,6 +164,26 @@ def main():
     summarize(seq, warnings)
     print(f"\nwrote {os.path.relpath(out, ROOT)}")
     print(f"play:  python3 play.py {os.path.relpath(out, ROOT)}")
+    git_autopush(name, title or name)
+
+
+def git_autopush(name, title):
+    """Commit + push the new show (json + audio + analysis). Non-fatal."""
+    def g(*args):
+        return subprocess.run(["git", "-C", ROOT, *args],
+                              capture_output=True, text=True)
+    if g("rev-parse", "--git-dir").returncode != 0:
+        return
+    g("add", f"shows/{name}.show.json", f"analysis_cache/{name}.analysis.json")
+    g("add", *(p for p in [os.path.join("shows", f)
+                           for f in os.listdir(SHOWS) if f.startswith(name + ".")]
+               if os.path.exists(os.path.join(ROOT, p))))
+    if not g("status", "--porcelain").stdout.strip():
+        return
+    if g("commit", "-m", f"show: {title}").returncode == 0:
+        r = g("push")
+        print("git: Show committet & gepusht" if r.returncode == 0
+              else f"git: Push fehlgeschlagen (committet): {r.stderr.strip()[-200:]}")
 
 
 if __name__ == "__main__":
