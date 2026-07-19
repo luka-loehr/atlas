@@ -24,14 +24,14 @@ final class ShowModel {
         } catch { self.error = "atlas nicht erreichbar" }
     }
 
-    func create(url: String) async {
+    func create(url: String, ai: Bool) async {
         creating = true
         createStatus = nil
-        do { try await client.createShow(url: url) } catch {
+        do { try await client.createShow(url: url, ai: ai) } catch {
             creating = false
             return
         }
-        for _ in 0..<600 {
+        for _ in 0..<1200 {
             try? await Task.sleep(for: .seconds(1))
             guard let s = try? await client.createStatus() else { continue }
             createStatus = s
