@@ -145,6 +145,7 @@ struct CalibrationView: View {
 
     private func run() async {
         cal.reset()
+        cal.camera.lockExposureForMeasurement()
         // lights: the calibration show on atlas; audio: the click track here
         async let lights: () = { try? await model.client.startShow("calibration") }()
         guard let url = model.client.audioURL("calibration") else { return }
@@ -198,30 +199,27 @@ final class CalibrationModel {
 
     func reset() {
         flashCount = 0
-        camera.clearSamples()
+        camera.reset()
         stage = .idle
+        camera.onFlash = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.flashCount += 1
+                self.flashSeen = true
+                try? await Task.sleep(for: .milliseconds(250))
+                self.flashSeen = false
+            }
+        }
     }
 
-    /// Detect flash spikes in the luminance timeline, match them to the
-    /// known click times, take the median offset.
+    /// Match the live-detected flash spikes to the known click times,
+    /// take the median offset.
     func evaluate() {
-        let samples = camera.samples
-        guard samples.count > 30 else {
+        guard camera.frameCount > 30 else {
             stage = .failed("Kamera lieferte zu wenig Bilder")
             return
         }
-        // rising-edge spikes over a rolling baseline
-        var spikes: [Double] = []
-        var baseline = samples.prefix(15).map(\.lum).reduce(0, +) / 15
-        var last = -1.0
-        for s in samples {
-            if s.lum > baseline + 24, s.t - last > 0.4 {
-                spikes.append(s.t)
-                last = s.t
-            } else {
-                baseline = baseline * 0.95 + s.lum * 0.05
-            }
-        }
+        let spikes = camera.spikeTimes
         var deltas: [Double] = []
         for c in Self.clickTimes {
             let clickHost = songZeroHost + c
@@ -245,18 +243,27 @@ final class CalibrationModel {
 
 // MARK: - camera
 
-/// Continuously samples the camera's average luminance with host timestamps.
+/// Flash detector: per frame it takes the mean of the brightest ~3% of pixels
+/// (top-percentile via histogram — a LOCAL lamp flash explodes this value even
+/// if the room average barely moves), keeps a rolling median/MAD baseline and
+/// fires on rising edges above an adaptive threshold. Exposure is biased dark
+/// and locked during the run so auto-exposure can't cancel the flashes out.
 final class FlashCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
-    struct Sample { let t: Double; let lum: Double }
-
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "cal.camera")
     private let lock = NSLock()
-    private var _samples: [Sample] = []
-    var samples: [Sample] { lock.lock(); defer { lock.unlock() }; return _samples }
-    func clearSamples() { lock.lock(); _samples.removeAll(); lock.unlock() }
+    private var _spikes: [Double] = []
+    private var frames = 0
+    var spikeTimes: [Double] { lock.lock(); defer { lock.unlock() }; return _spikes }
+    var frameCount: Int { lock.lock(); defer { lock.unlock() }; return frames }
+    func reset() { lock.lock(); _spikes.removeAll(); frames = 0; lock.unlock(); history.removeAll() }
 
-    var configured = false
+    var onFlash: (@Sendable () -> Void)?
+
+    private var device: AVCaptureDevice?
+    private var configured = false
+    private var history: [Double] = []      // rolling top-percentile values
+    private var lastSpike = 0.0
 
     func start() async {
         guard await AVCaptureDevice.requestAccess(for: .video) else { return }
@@ -271,7 +278,23 @@ final class FlashCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
 
     func stop() {
         queue.async { [self] in
-            if session.isRunning { session.stopRunning() }
+            if self.session.isRunning { self.session.stopRunning() }
+        }
+    }
+
+    /// Call right before the measurement: bias dark, let AE settle, lock.
+    func lockExposureForMeasurement() {
+        queue.async { [self] in
+            guard let dev = device else { return }
+            try? dev.lockForConfiguration()
+            dev.setExposureTargetBias(max(dev.minExposureTargetBias, -2.0))
+            dev.unlockForConfiguration()
+            queue.asyncAfter(deadline: .now() + 0.8) { [self] in
+                guard let dev = device else { return }
+                try? dev.lockForConfiguration()
+                if dev.isExposureModeSupported(.locked) { dev.exposureMode = .locked }
+                dev.unlockForConfiguration()
+            }
         }
     }
 
@@ -279,21 +302,29 @@ final class FlashCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
         session.beginConfiguration()
         session.sessionPreset = .vga640x480
         guard let dev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: dev) else {
+              let input = try? AVCaptureDeviceInput(device: dev),
+              session.canAddInput(input) else {
             session.commitConfiguration()
             return
         }
         session.addInput(input)
-        // lock exposure so the flash registers as a clean spike
+        device = dev
         try? dev.lockForConfiguration()
-        if dev.isExposureModeSupported(.locked) { dev.exposureMode = .locked }
+        if dev.isExposureModeSupported(.continuousAutoExposure) {
+            dev.exposureMode = .continuousAutoExposure
+        }
+        // 60 fps if the format allows it (finer flash timestamps)
+        if dev.activeFormat.videoSupportedFrameRateRanges.contains(where: { $0.maxFrameRate >= 60 }) {
+            dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
+            dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
+        }
         dev.unlockForConfiguration()
         let out = AVCaptureVideoDataOutput()
         out.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String:
                              kCVPixelFormatType_420YpCbCr8BiPlanarFullRange]
         out.alwaysDiscardsLateVideoFrames = true
         out.setSampleBufferDelegate(self, queue: queue)
-        session.addOutput(out)
+        if session.canAddOutput(out) { session.addOutput(out) }
         session.commitConfiguration()
     }
 
@@ -307,22 +338,57 @@ final class FlashCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
         let h = CVPixelBufferGetHeightOfPlane(px, 0)
         let stride = CVPixelBufferGetBytesPerRowOfPlane(px, 0)
         let ptr = base.assumingMemoryBound(to: UInt8.self)
-        var sum = 0
+
+        // luminance histogram over a sparse grid
+        var hist = [Int](repeating: 0, count: 256)
         var count = 0
         var y = 0
         while y < h {
             var x = 0
             while x < w {
-                sum += Int(ptr[y * stride + x])
+                hist[Int(ptr[y * stride + x])] += 1
                 count += 1
-                x += 12
+                x += 6
             }
-            y += 12
+            y += 6
         }
-        let lum = Double(sum) / Double(max(count, 1))
+        guard count > 0 else { return }
+
+        // mean of the brightest ~3%
+        let want = max(count / 33, 1)
+        var got = 0
+        var sum = 0
+        var v = 255
+        while v >= 0 && got < want {
+            let take = min(hist[v], want - got)
+            sum += take * v
+            got += take
+            v -= 1
+        }
+        let top = Double(sum) / Double(max(got, 1))
+        let now = CACurrentMediaTime()
+
         lock.lock()
-        _samples.append(Sample(t: CACurrentMediaTime(), lum: lum))
+        frames += 1
         lock.unlock()
+
+        // adaptive rising-edge detection over a rolling baseline
+        if history.count >= 12 {
+            let sorted = history.sorted()
+            let median = sorted[sorted.count / 2]
+            let mad = sorted.map { abs($0 - median) }.sorted()[sorted.count / 2]
+            let threshold = median + max(14, 6 * mad)
+            if top > threshold, now - lastSpike > 0.4 {
+                lastSpike = now
+                lock.lock()
+                _spikes.append(now)
+                lock.unlock()
+                onFlash?()
+                return   // don't poison the baseline with the flash itself
+            }
+        }
+        history.append(top)
+        if history.count > 45 { history.removeFirst(history.count - 45) }
     }
 }
 
