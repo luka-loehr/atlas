@@ -143,6 +143,9 @@ def main():
                     help="denser strobes, full brightness, more fog")
     ap.add_argument("--local", action="store_true",
                     help="analyze on THIS machine (when run on atlas itself)")
+    ap.add_argument("--ai", action="store_true",
+                    help="Gemini hears the song + Claude composes the show "
+                         "(needs atlas AI auth; implies --local pipeline)")
     args = ap.parse_args()
     title = args.title
     if args.song.startswith(("http://", "https://")):
@@ -167,7 +170,6 @@ def main():
             print(f"WARNUNG: offiziell {args.bpm:g} passt nicht zu "
                   f"gemessen {f:.2f} (kein ganzzahliges Verhaeltnis) — nutze {f:.2f}")
 
-    print("PHASE:compile", flush=True)
     os.makedirs(SHOWS, exist_ok=True)
     # keep a copy of the song (and its thumbnail) next to the shows
     local_song = os.path.join(SHOWS, f"{name}{os.path.splitext(song)[1]}")
@@ -177,9 +179,19 @@ def main():
     if os.path.exists(src_thumb):
         shutil.copy(src_thumb, os.path.join(SHOWS, f"{name}.jpg"))
 
-    seq, warnings = compile_show(analysis, os.path.basename(local_song),
-                                 title=title or name,
-                                 opts={"extreme": args.extreme})
+    if args.ai:
+        from ai.ai_show import compose
+        seq, ai_summary, music = compose(analysis, local_song, title or name,
+                                         os.path.basename(local_song))
+        warnings = []
+        with open(os.path.join(SHOWS, f"{name}.summary.md"), "w") as f:
+            f.write(f"# {title or name} — AI Show\n\n{ai_summary}\n\n"
+                    f"_Gemini: {music.get('genre','?')} · {music.get('mood','?')}_\n")
+        print(f"SUMMARY:{' '.join(ai_summary.split())}", flush=True)
+    else:
+        seq, warnings = compile_show(analysis, os.path.basename(local_song),
+                                     title=title or name,
+                                     opts={"extreme": args.extreme})
     out = os.path.join(SHOWS, f"{name}.show.json")
     sequence.save(seq, out)
     summarize(seq, warnings)
