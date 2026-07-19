@@ -176,8 +176,9 @@ def main():
     if not os.path.exists(local_song):
         shutil.copy(song, local_song)
     src_thumb = os.path.splitext(song)[0] + ".jpg"
-    if os.path.exists(src_thumb):
-        shutil.copy(src_thumb, os.path.join(SHOWS, f"{name}.jpg"))
+    dst_thumb = os.path.join(SHOWS, f"{name}.jpg")
+    if os.path.exists(src_thumb) and os.path.abspath(src_thumb) != os.path.abspath(dst_thumb):
+        shutil.copy(src_thumb, dst_thumb)
 
     if args.ai:
         from ai.ai_show import compose
