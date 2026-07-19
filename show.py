@@ -27,7 +27,7 @@ ARTNET_TARGET = ("192.168.1.100", 6454)
 FPS = 25
 NCHAN = 21
 SONG_END_S = 260.4
-AUDIO_LATENCY_MS = 160          # Bluetooth; validated by ear against drop 1
+AUDIO_LATENCY_MS = 300          # AirPods (ear-calibrated via beat_cal.py)
 LASER_LATENCY_MS = 3900         # TODO: re-measure WORST-case warm-up; any pre-flicker
 STROBEPLUG_LATENCY_MS = 6500    # during charging would leak into the pre-drop blackouts
 
@@ -213,7 +213,7 @@ def render(t):
             if 66150 <= t < 66700:
                 pass    # bass drops -43dB here (librosa detail run) = darkness accent
             else:
-                double_flash(dmx, t, v=0.25, ceiling=0.15)
+                double_flash(dmx, t, v=0.72, ceiling=0.0)   # bright white kick strobe (like beat_cal)
 
     # ===== 72.42 - 74.0: fill — dim magenta handoff ======================
     elif t < 74000:
