@@ -7,6 +7,7 @@ struct DashboardScreen: View {
 
     @State private var model = DashboardModel()
     @State private var powerAction: PowerAction?
+    @State private var showTerminal = false
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,13 @@ struct DashboardScreen: View {
             .navigationTitle("atlas")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showTerminal = true
+                    } label: {
+                        Image(systemName: "apple.terminal.fill")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { showSettings = true } label: {
@@ -47,6 +55,9 @@ struct DashboardScreen: View {
             Button("Abbrechen", role: .cancel) {}
         } message: { action in
             Text(action.message)
+        }
+        .fullScreenCover(isPresented: $showTerminal) {
+            TerminalSheet(host: host, token: token)
         }
         .task {
             model.host = host

@@ -18,9 +18,6 @@ struct RootView: View {
             Tab("Command", systemImage: "gauge.with.dots.needle.67percent", value: 0) {
                 DashboardScreen(host: host, token: token, showSettings: $showSettings)
             }
-            Tab("Terminal", systemImage: "apple.terminal.fill", value: 1) {
-                TerminalScreen(host: host, token: token)
-            }
             Tab("Docker", systemImage: "shippingbox.fill", value: 2) {
                 DockerScreen(host: host, token: token)
             }
