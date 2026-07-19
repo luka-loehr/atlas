@@ -69,6 +69,7 @@ struct Metrics: Codable, Sendable {
     struct Container: Codable, Sendable, Identifiable {
         let name: String
         let status: String
+        let image: String?
         var id: String { name }
     }
 }
