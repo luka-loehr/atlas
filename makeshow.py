@@ -66,6 +66,21 @@ def download_audio(url):
     return path, title
 
 
+def analyze_local(song, name, force):
+    """Run the analyzer on THIS machine (used when makeshow runs on atlas)."""
+    os.makedirs(CACHE, exist_ok=True)
+    cached = os.path.join(CACHE, f"{name}.analysis.json")
+    if os.path.exists(cached) and not force:
+        print(f"analysis: cached ({os.path.relpath(cached, ROOT)})")
+        with open(cached) as f:
+            return json.load(f)
+    print("analysis: running Beat This! + librosa locally (GPU) ...")
+    py = os.path.join(ROOT, "analyze", ".venv", "bin", "python")
+    run([py, os.path.join(ROOT, "analyze", "analyze_song.py"), song, cached])
+    with open(cached) as f:
+        return json.load(f)
+
+
 def analyze_on_atlas(song, name, force):
     os.makedirs(CACHE, exist_ok=True)
     cached = os.path.join(CACHE, f"{name}.analysis.json")
@@ -109,6 +124,8 @@ def main():
                     help="official BPM: densify the fitted lattice to match")
     ap.add_argument("--extreme", action="store_true",
                     help="denser strobes, full brightness, more fog")
+    ap.add_argument("--local", action="store_true",
+                    help="analyze on THIS machine (when run on atlas itself)")
     args = ap.parse_args()
     title = args.title
     if args.song.startswith(("http://", "https://")):
@@ -120,7 +137,7 @@ def main():
             sys.exit(f"not found: {song}")
     name = slug(title) if title else slug(song)
 
-    analysis = analyze_on_atlas(song, name, args.force)
+    analysis = (analyze_local if args.local else analyze_on_atlas)(song, name, args.force)
 
     if args.bpm:                                      # official-BPM lattice override
         f = analysis["tempo"]["bpm"]
