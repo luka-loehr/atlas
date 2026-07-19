@@ -20,3 +20,4 @@ valuecurves/
 !shows/*.mp3
 .venv/
 downloads/
+calibration.json
