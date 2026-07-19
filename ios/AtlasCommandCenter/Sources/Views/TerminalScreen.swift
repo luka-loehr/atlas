@@ -1,9 +1,12 @@
 import SwiftUI
 import SwiftTerm
 
-struct TerminalScreen: View {
+/// Full-screen terminal overlay (presented like a sheet, closable top-left —
+/// a tab would trap the user once the keyboard hides the tab bar).
+struct TerminalSheet: View {
     var host: String
     var token: String
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -12,10 +15,20 @@ struct TerminalScreen: View {
                 TerminalBridge(host: host, token: token)
                     .ignoresSafeArea(.container, edges: .bottom)
             }
-            .navigationTitle("Terminal")
+            .navigationTitle("luka@atlas")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.black, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+            }
         }
+        .preferredColorScheme(.dark)
     }
 }
 
