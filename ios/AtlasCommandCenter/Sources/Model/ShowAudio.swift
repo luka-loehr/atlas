@@ -27,17 +27,22 @@ final class ShowAudio {
     let buffer = BandBuffer(count: bandCount)
     var isPlaying = false
     var loading = false
+    var finished = false
     var error: String?
+    var duration: TimeInterval = 0
+    var currentTime: TimeInterval = 0
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let fft = FFTAnalyzer(size: 1024)
     private var attached = false
+    private var progressTask: Task<Void, Never>?
 
     /// Download the show's audio, then play it while feeding the visualizer.
     func play(url: URL) async {
         stop()
         loading = true
+        finished = false
         error = nil
         do {
             let (tmp, _) = try await URLSession.shared.download(from: url)
@@ -59,6 +64,8 @@ final class ShowAudio {
         try AVAudioSession.sharedInstance().setActive(true)
 
         let f = try AVAudioFile(forReading: url)
+        duration = Double(f.length) / f.processingFormat.sampleRate
+        currentTime = 0
         if !attached {
             engine.attach(player)
             engine.connect(player, to: engine.mainMixerNode, format: f.processingFormat)
@@ -75,14 +82,33 @@ final class ShowAudio {
             Task { @MainActor in self?.finish() }
         }
         player.play()
+        startProgress()
+    }
+
+    private func startProgress() {
+        progressTask?.cancel()
+        progressTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.isPlaying || self.loading else { break }
+                if let nt = self.player.lastRenderTime,
+                   let pt = self.player.playerTime(forNodeTime: nt) {
+                    self.currentTime = min(Double(pt.sampleTime) / pt.sampleRate, self.duration)
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
     }
 
     private func finish() {
         isPlaying = false
+        finished = true
+        currentTime = duration
+        progressTask?.cancel()
         buffer.set([Float](repeating: 0, count: Self.bandCount), level: 0)
     }
 
     func stop() {
+        progressTask?.cancel()
         if player.isPlaying { player.stop() }
         engine.mainMixerNode.removeTap(onBus: 0)
         if engine.isRunning { engine.stop() }
