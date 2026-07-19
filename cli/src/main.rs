@@ -8,9 +8,11 @@
 //!   atlas <cmd ...>    run any command on atlas (forwarded to ssh)
 
 use std::env;
+use std::fs;
 use std::io::{self, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
 use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -37,6 +39,7 @@ fn main() {
         Some("shutdown") | Some("off") | Some("poweroff") => shutdown(),
         Some("restart") | Some("reboot") => restart(),
         Some("status") => status(),
+        Some("build") => build(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
         // anything else: run it on atlas (`atlas htop`, `atlas nvidia-smi`, ...)
         Some(_) => ssh(&args),
@@ -52,6 +55,7 @@ fn help() {
          atlas shutdown     power off, wait until down\n  \
          atlas restart      reboot, wait until back\n  \
          atlas status       up/down + route (LAN/tailnet)\n  \
+         atlas build        cross-compile this project on atlas (needs .atlas-build.toml)\n  \
          atlas <cmd ...>    run a command on atlas (e.g. atlas nvidia-smi)"
     );
 }
@@ -180,5 +184,183 @@ fn status() {
     match probe() {
         Some(route) => println!("{GREEN}●{RESET} atlas ist an  {DIM}via {route}{RESET}"),
         None => println!("{RED}●{RESET} atlas ist aus"),
+    }
+}
+
+// ---- remote build ---------------------------------------------------------
+
+const REMOTE_BASE: &str = "atlas-builds"; // relative to atlas' $HOME
+const IMAGE: &str = "atlas-lambda-builder";
+
+struct BuildCfg {
+    root: PathBuf,        // dir holding .atlas-build.toml == rsync root
+    name: String,         // remote build dir name
+    dir: String,          // subdir (relative to root) the build runs in
+    build: String,        // build command
+    artifacts: Vec<String>, // paths (relative to root) to copy back
+}
+
+/// Walk up from cwd to find .atlas-build.toml and parse it.
+fn load_config() -> BuildCfg {
+    let mut dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let file = loop {
+        let cand = dir.join(".atlas-build.toml");
+        if cand.is_file() {
+            break cand;
+        }
+        if !dir.pop() {
+            eprintln!(
+                "{RED}kein .atlas-build.toml gefunden{RESET} (hier oder in einem Elternordner)"
+            );
+            exit(1);
+        }
+    };
+    let text = fs::read_to_string(&file).unwrap_or_default();
+    let (mut name, mut build, mut dir_opt, mut artifacts) =
+        (String::new(), String::new(), String::from("."), Vec::new());
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let (k, v) = (k.trim(), v.trim());
+        match k {
+            "name" => name = v.to_string(),
+            "build" => build = v.to_string(),
+            "dir" => dir_opt = v.to_string(),
+            "artifacts" => artifacts = v.split_whitespace().map(String::from).collect(),
+            _ => {}
+        }
+    }
+    if name.is_empty() || build.is_empty() || artifacts.is_empty() {
+        eprintln!("{RED}.atlas-build.toml unvollständig{RESET} (name, build, artifacts nötig)");
+        exit(1);
+    }
+    BuildCfg {
+        root: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        name,
+        dir: dir_opt,
+        build,
+        artifacts,
+    }
+}
+
+fn run_inherit(cmd: &mut Command) -> bool {
+    cmd.status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// atlas must be up for a build — wake it if it is asleep.
+fn ensure_up() {
+    if probe().is_some() {
+        return;
+    }
+    println!("atlas schläft — wecke ihn ...");
+    boot();
+}
+
+/// Build the cross-compile image on atlas if it is not there yet.
+fn ensure_image() {
+    let present = Command::new("ssh")
+        .args([SSH_HOST, &format!("docker image inspect {IMAGE} >/dev/null 2>&1")])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if present {
+        return;
+    }
+    println!("{DIM}Build-Image fehlt — baue {IMAGE} auf atlas (einmalig, ein paar Minuten){RESET}");
+    let ok = run_inherit(Command::new("ssh").args([
+        SSH_HOST,
+        "cd ~/atlas && git pull --quiet --ff-only && docker build -t atlas-lambda-builder builder/",
+    ]));
+    if !ok {
+        eprintln!("{RED}Image-Build fehlgeschlagen{RESET}");
+        exit(1);
+    }
+}
+
+fn build(extra: &[String]) {
+    let cfg = load_config();
+    ensure_up();
+    ensure_image();
+
+    // remote working dirs (source tree + persistent cargo registry)
+    run_inherit(Command::new("ssh").args([
+        SSH_HOST,
+        &format!("mkdir -p {REMOTE_BASE}/{0} {REMOTE_BASE}/.cargo-home", cfg.name),
+    ]));
+
+    // 1. ship the source (target/.git/node_modules stay on their own sides)
+    let src = format!("{}/", cfg.root.display());
+    println!("{DIM}sync -> atlas{RESET}");
+    let ok = run_inherit(Command::new("rsync").args([
+        "-az",
+        "--delete",
+        "--exclude",
+        ".git",
+        "--exclude",
+        "target",
+        "--exclude",
+        "node_modules",
+        &src,
+        &format!("{SSH_HOST}:{REMOTE_BASE}/{}/", cfg.name),
+    ]));
+    if !ok {
+        eprintln!("{RED}rsync -> atlas fehlgeschlagen{RESET}");
+        exit(1);
+    }
+
+    // 2. cross-compile inside the pinned container (as the caller's uid so the
+    //    artifacts come back owned by luka, cargo registry persists)
+    let workdir = if cfg.dir == "." {
+        "/build".to_string()
+    } else {
+        format!("/build/{}", cfg.dir)
+    };
+    let mut buildcmd = cfg.build.clone();
+    for a in extra {
+        buildcmd.push(' ');
+        buildcmd.push_str(a);
+    }
+    let remote = format!(
+        "docker run --rm --user $(id -u):$(id -g) \
+         -e CARGO_HOME=/cargo-home -e HOME=/cargo-home \
+         -v \"$HOME/{base}/{name}\":/build \
+         -v \"$HOME/{base}/.cargo-home\":/cargo-home \
+         -w {workdir} {IMAGE} {buildcmd}",
+        base = REMOTE_BASE,
+        name = cfg.name,
+    );
+    println!("{DIM}build on atlas:{RESET} {buildcmd}");
+    let t0 = Instant::now();
+    let ok = run_inherit(Command::new("ssh").args([SSH_HOST, &remote]));
+    let secs = t0.elapsed().as_secs();
+    if !ok {
+        eprintln!("{RED}Build fehlgeschlagen{RESET} (nach {secs}s)");
+        exit(1);
+    }
+
+    // 3. pull artifacts back into the same relative paths
+    println!("{DIM}sync artifacts <- atlas{RESET}");
+    for art in &cfg.artifacts {
+        let local = cfg.root.join(art);
+        fs::create_dir_all(&local).ok();
+        run_inherit(Command::new("rsync").args([
+            "-az",
+            "--delete",
+            &format!("{SSH_HOST}:{REMOTE_BASE}/{}/{art}/", cfg.name),
+            &format!("{}/", local.display()),
+        ]));
+    }
+    println!(
+        "{GREEN}✓ build fertig{RESET} in {}m {}s  {DIM}(atlas, {IMAGE}){RESET}",
+        secs / 60,
+        secs % 60
+    );
+    for art in &cfg.artifacts {
+        println!("  {} {}", "->", cfg.root.join(art).display());
     }
 }
