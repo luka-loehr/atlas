@@ -39,8 +39,73 @@ atlas boot         # Wake-on-LAN + waits until SSH is reachable (LAN only)
 atlas shutdown     # sudo poweroff + waits until the box is down
 atlas restart      # reboot + waits for it to come back
 atlas status       # up/down + route (LAN / tailnet)
+atlas build        # build THIS project on atlas (needs .atlas-build.toml)
+atlas dev          # run its dev server on atlas + public tunnel URL
 atlas <cmd ...>    # run anything remotely: atlas nvidia-smi, atlas htop ...
 ```
+
+## Remote builds — `atlas build`
+
+Heavy compiles run on atlas' 20 threads; the Mac stays cool and free. A project
+opts in with an `.atlas-build.toml` in its root:
+
+```toml
+name = dairo-api                              # remote build dir
+image = lambda                                # builder: lambda | node | flutter
+build = cargo lambda build --release --arm64  # runs inside the container
+artifacts = target/lambda                     # rsync'd back to the Mac
+```
+
+`atlas build` then: rsyncs the source to atlas → runs `build` inside the pinned
+builder container (`builder/<image>/Dockerfile`) → rsyncs `artifacts` back into
+the same paths, so `sam deploy` / install steps on the Mac find them as usual.
+Outputs (`target`, `.next`, `build`, `node_modules`) live on atlas and persist
+between runs (warm builds); the container runs as root and the tree is chowned
+back to `luka` so nothing ends up root-owned. Three builders exist today:
+
+| `image` | base | for |
+|---|---|---|
+| `lambda` | `rust:1` + aarch64 target + cargo-lambda + Zig | AWS Lambda (Graviton) cross-compiles |
+| `node`   | `node:22` + cloudflared | Next.js `npm run build` / `dev` |
+| `flutter`| `cirruslabs/flutter:stable` | Android APK/AAB builds |
+
+**Cross-compiling, not emulating.** Lambda is ARM64, atlas is x86 — cargo-lambda
++ Zig produce the Graviton binary natively on x86; the container OS never
+touches the artifact's ABI. Measured on dairo-api (40 crates → 18 binaries):
+Docker cold **4m16s** vs bare-metal-on-atlas cold **4m16s** — Docker adds *zero*
+overhead. Warm (nothing changed): **~1s**.
+
+## Live dev on atlas — `atlas dev`
+
+For a Next.js app (`dev = npm run dev`, `port = 3000` in the config):
+
+```bash
+atlas dev          # dev server on atlas + a public https://<...>.trycloudflare.com URL
+atlas dev logs     # follow the dev-server logs
+atlas dev stop     # tear down the dev + tunnel containers
+```
+
+The dev server runs in the `node` container with `--network host`; a
+**cloudflared quick tunnel** (no account, no config) publishes it. Edit the code
+live on atlas (`ssh atlas` → `~/atlas-builds/<name>`) with hot-reload — the Mac
+stays cold and free (e.g. for gaming) while the site is reachable from anywhere.
+
+## When atlas wins (and when it doesn't)
+
+Measured, honestly:
+
+| build | Mac (Apple Silicon) | atlas (20 threads, container) |
+|---|---|---|
+| Lambda / Rust, cold | ~same | **4m16s** (= bare metal) |
+| Lambda / Rust, warm | — | **~1s** |
+| Flutter APK, cold | 4m04s | 4m36s |
+| Flutter APK, warm | **5s** | 2m00s |
+
+atlas shines for **cold builds + offloading** (Mac stays cool/free) and for the
+**dev tunnel** (long-running server, Mac cold). For *warm incremental* builds a
+local Mac wins — the container tears down each run, so it can't keep a hot
+Gradle daemon / JVM the way a local rebuild does. Rule of thumb: offload the
+big cold jobs and the always-on dev server; keep tight edit-rebuild loops local.
 
 ## SSH from the Mac
 
