@@ -406,7 +406,9 @@ pub fn create_status() -> String {
         .find_map(|l| l.trim().strip_prefix("wrote shows/"))
         .and_then(|s| s.strip_suffix(".show.json"))
         .map(str::to_string);
-    let failed = !running && done_name.is_none() && log.contains("FAILED");
+    let failed = !running
+        && done_name.is_none()
+        && (log.contains("FAILED") || log.contains("Traceback (most recent call last)"));
     // live AI ticker: the last few thinking/output lines from claude
     let ai_lines: Vec<&str> = log
         .lines()
