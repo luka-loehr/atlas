@@ -45,9 +45,21 @@ final class ShowAudio {
         finished = false
         error = nil
         do {
-            let (tmp, _) = try await URLSession.shared.download(from: url)
+            let (tmp, resp) = try await URLSession.shared.download(from: url)
+            // pick the right extension — AVAudioFile trusts it (a WAV saved
+            // as .mp3 fails to open, which crashed the calibration)
+            var ext = url.pathExtension
+            if ext.isEmpty {
+                switch (resp as? HTTPURLResponse)?.mimeType {
+                case "audio/wav": ext = "wav"
+                case "audio/mp4": ext = "m4a"
+                case "audio/webm": ext = "webm"
+                case "audio/flac": ext = "flac"
+                default: ext = "mp3"
+                }
+            }
             let local = FileManager.default.temporaryDirectory
-                .appendingPathComponent("atlas-show.\(url.pathExtension.isEmpty ? "mp3" : url.pathExtension)")
+                .appendingPathComponent("atlas-show.\(ext)")
             try? FileManager.default.removeItem(at: local)
             try FileManager.default.moveItem(at: tmp, to: local)
             try start(file: local)
@@ -89,7 +101,10 @@ final class ShowAudio {
     /// actually leaves the speaker — includes the output latency (AirPods!).
     /// Only valid while playing.
     func songZeroHostSeconds() -> Double? {
-        guard let nt = player.lastRenderTime, nt.isHostTimeValid,
+        // player.engine check first — lastRenderTime on a detached node
+        // throws an NSException instead of returning nil
+        guard player.engine != nil, isPlaying,
+              let nt = player.lastRenderTime, nt.isHostTimeValid,
               let pt = player.playerTime(forNodeTime: nt) else { return nil }
         let nowHost = AVAudioTime.seconds(forHostTime: nt.hostTime)
         let songNow = Double(pt.sampleTime) / pt.sampleRate

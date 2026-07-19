@@ -151,6 +151,10 @@ struct CalibrationView: View {
         cal.stage = .running
         await audio.play(url: url)
         await lights
+        if let err = audio.error {
+            cal.stage = .failed("Audio: \(err)")
+            return
+        }
         guard let zero = audio.songZeroHostSeconds() else {
             cal.stage = .failed("Audio-Anker fehlgeschlagen")
             return
