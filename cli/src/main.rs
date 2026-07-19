@@ -578,7 +578,8 @@ fn agent_install() {
          . ~/.cargo/env && cargo build --release --quiet && \
          sudo install -m755 target/release/atlas-agent /usr/local/bin/atlas-agent && \
          sudo cp atlas-agent.service /etc/systemd/system/atlas-agent.service && \
-         sudo systemctl daemon-reload && sudo systemctl enable --now atlas-agent && \
+         sudo systemctl daemon-reload && sudo systemctl enable --quiet atlas-agent && \
+         sudo systemctl restart atlas-agent && \
          sleep 1 && systemctl is-active atlas-agent";
     if !run_inherit(Command::new("ssh").args([SSH_HOST, script])) {
         eprintln!("{RED}Agent-Installation fehlgeschlagen{RESET}");
