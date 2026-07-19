@@ -106,6 +106,11 @@ struct AtlasClient: Sendable {
     func fog(ms: Int) async throws { try await post("/api/fog", body: String(ms)) }
     func fogStop() async throws { try await post("/api/fog/stop") }
 
+    // calibration ------------------------------------------------------------
+    func saveCalibration(ms: Double) async throws {
+        try await post("/api/calibrate/save", body: String(format: "%.0f", ms))
+    }
+
     // power ------------------------------------------------------------------
     func power(_ action: String) async throws { try await post("/api/power/\(action)") }
 

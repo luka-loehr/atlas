@@ -49,6 +49,7 @@ struct ShowScreen: View {
     var token: String
     @State private var model = ShowModel()
     @State private var showCreate = false
+    @State private var showCalibration = false
     @State private var demoShow: Show?
 
     var body: some View {
@@ -86,11 +87,19 @@ struct ShowScreen: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button { showCalibration = true } label: {
+                        Image(systemName: "camera.metering.center.weighted")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showCreate = true } label: {
                         Image(systemName: "link.badge.plus")
                     }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCalibration) {
+            CalibrationView(model: model)
         }
         .task {
             model.host = host
