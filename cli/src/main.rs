@@ -40,6 +40,7 @@ fn main() {
         Some("restart") | Some("reboot") => restart(),
         Some("status") => status(),
         Some("build") => build(&args[1..]),
+        Some("dev") => dev(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
         // anything else: run it on atlas (`atlas htop`, `atlas nvidia-smi`, ...)
         Some(_) => ssh(&args),
@@ -55,7 +56,10 @@ fn help() {
          atlas shutdown     power off, wait until down\n  \
          atlas restart      reboot, wait until back\n  \
          atlas status       up/down + route (LAN/tailnet)\n  \
-         atlas build        cross-compile this project on atlas (needs .atlas-build.toml)\n  \
+         atlas build        build this project on atlas (needs .atlas-build.toml)\n  \
+         atlas dev          run its dev server on atlas + public tunnel URL\n  \
+         atlas dev stop     stop the dev server + tunnel\n  \
+         atlas dev logs     follow the dev-server logs\n  \
          atlas <cmd ...>    run a command on atlas (e.g. atlas nvidia-smi)"
     );
 }
@@ -187,17 +191,35 @@ fn status() {
     }
 }
 
-// ---- remote build ---------------------------------------------------------
+// ---- remote build & dev ---------------------------------------------------
 
 const REMOTE_BASE: &str = "atlas-builds"; // relative to atlas' $HOME
-const IMAGE: &str = "atlas-lambda-builder";
 
 struct BuildCfg {
-    root: PathBuf,        // dir holding .atlas-build.toml == rsync root
-    name: String,         // remote build dir name
-    dir: String,          // subdir (relative to root) the build runs in
-    build: String,        // build command
+    root: PathBuf,          // dir holding .atlas-build.toml == rsync root
+    name: String,           // remote build dir name
+    image: String,          // builder key: lambda | node | flutter
+    dir: String,            // subdir (relative to root) the build runs in
+    build: String,          // build command (for `atlas build`)
+    dev: String,            // dev-server command (for `atlas dev`)
+    port: u16,              // dev-server port to tunnel
     artifacts: Vec<String>, // paths (relative to root) to copy back
+}
+
+impl BuildCfg {
+    fn tag(&self) -> String {
+        format!("atlas-{}-builder", self.image)
+    }
+    fn workdir(&self) -> String {
+        if self.dir == "." {
+            "/build".into()
+        } else {
+            format!("/build/{}", self.dir)
+        }
+    }
+    fn remote_dir(&self) -> String {
+        format!("{REMOTE_BASE}/{}", self.name)
+    }
 }
 
 /// Walk up from cwd to find .atlas-build.toml and parse it.
@@ -209,15 +231,21 @@ fn load_config() -> BuildCfg {
             break cand;
         }
         if !dir.pop() {
-            eprintln!(
-                "{RED}kein .atlas-build.toml gefunden{RESET} (hier oder in einem Elternordner)"
-            );
+            eprintln!("{RED}kein .atlas-build.toml gefunden{RESET} (hier oder in einem Elternordner)");
             exit(1);
         }
     };
     let text = fs::read_to_string(&file).unwrap_or_default();
-    let (mut name, mut build, mut dir_opt, mut artifacts) =
-        (String::new(), String::new(), String::from("."), Vec::new());
+    let mut c = BuildCfg {
+        root: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        name: String::new(),
+        image: String::new(),
+        dir: ".".into(),
+        build: String::new(),
+        dev: String::new(),
+        port: 3000,
+        artifacts: Vec::new(),
+    };
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -228,31 +256,51 @@ fn load_config() -> BuildCfg {
         };
         let (k, v) = (k.trim(), v.trim());
         match k {
-            "name" => name = v.to_string(),
-            "build" => build = v.to_string(),
-            "dir" => dir_opt = v.to_string(),
-            "artifacts" => artifacts = v.split_whitespace().map(String::from).collect(),
+            "name" => c.name = v.into(),
+            "image" => c.image = v.into(),
+            "dir" => c.dir = v.into(),
+            "build" => c.build = v.into(),
+            "dev" => c.dev = v.into(),
+            "port" => c.port = v.parse().unwrap_or(3000),
+            "artifacts" => c.artifacts = v.split_whitespace().map(String::from).collect(),
             _ => {}
         }
     }
-    if name.is_empty() || build.is_empty() || artifacts.is_empty() {
-        eprintln!("{RED}.atlas-build.toml unvollständig{RESET} (name, build, artifacts nötig)");
+    if c.name.is_empty() || c.image.is_empty() {
+        eprintln!("{RED}.atlas-build.toml unvollständig{RESET} (name, image nötig)");
         exit(1);
     }
-    BuildCfg {
-        root: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        name,
-        dir: dir_opt,
-        build,
-        artifacts,
-    }
+    c
 }
 
 fn run_inherit(cmd: &mut Command) -> bool {
     cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
-/// atlas must be up for a build — wake it if it is asleep.
+fn ssh_ok(remote: &str) -> bool {
+    Command::new("ssh")
+        .args([SSH_HOST, remote])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn ssh_capture(remote: &str) -> String {
+    Command::new("ssh")
+        .args([SSH_HOST, remote])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// Single-quote a string for a POSIX shell (protects &&, spaces, ...).
+fn shq(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// atlas must be up — wake it if it is asleep.
 fn ensure_up() {
     if probe().is_some() {
         return;
@@ -261,20 +309,16 @@ fn ensure_up() {
     boot();
 }
 
-/// Build the cross-compile image on atlas if it is not there yet.
-fn ensure_image() {
-    let present = Command::new("ssh")
-        .args([SSH_HOST, &format!("docker image inspect {IMAGE} >/dev/null 2>&1")])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if present {
+/// Build the builder image for `key` on atlas if it is not there yet.
+fn ensure_image(key: &str) {
+    let tag = format!("atlas-{key}-builder");
+    if ssh_ok(&format!("docker image inspect {tag} >/dev/null 2>&1")) {
         return;
     }
-    println!("{DIM}Build-Image fehlt — baue {IMAGE} auf atlas (einmalig, ein paar Minuten){RESET}");
+    println!("{DIM}Image {tag} fehlt — baue es auf atlas (einmalig, ein paar Minuten){RESET}");
     let ok = run_inherit(Command::new("ssh").args([
         SSH_HOST,
-        "cd ~/atlas && git pull --quiet --ff-only && docker build -t atlas-lambda-builder builder/",
+        &format!("cd ~/atlas && git pull --quiet --ff-only && docker build -t {tag} builder/{key}"),
     ]));
     if !ok {
         eprintln!("{RED}Image-Build fehlgeschlagen{RESET}");
@@ -282,19 +326,12 @@ fn ensure_image() {
     }
 }
 
-fn build(extra: &[String]) {
-    let cfg = load_config();
-    ensure_up();
-    ensure_image();
-
-    // remote working dirs (source tree + persistent cargo registry)
+/// rsync the project tree to atlas (outputs/caches stay on their own sides).
+fn sync_to_atlas(cfg: &BuildCfg) {
     run_inherit(Command::new("ssh").args([
         SSH_HOST,
-        &format!("mkdir -p {REMOTE_BASE}/{0} {REMOTE_BASE}/.cargo-home", cfg.name),
+        &format!("mkdir -p {} {REMOTE_BASE}/.cache-{}", cfg.remote_dir(), cfg.image),
     ]));
-
-    // 1. ship the source (target/.git/node_modules stay on their own sides)
-    let src = format!("{}/", cfg.root.display());
     println!("{DIM}sync -> atlas{RESET}");
     let ok = run_inherit(Command::new("rsync").args([
         "-az",
@@ -305,36 +342,53 @@ fn build(extra: &[String]) {
         "target",
         "--exclude",
         "node_modules",
-        &src,
-        &format!("{SSH_HOST}:{REMOTE_BASE}/{}/", cfg.name),
+        "--exclude",
+        ".next",
+        "--exclude",
+        "build",
+        &format!("{}/", cfg.root.display()),
+        &format!("{SSH_HOST}:{}/", cfg.remote_dir()),
     ]));
     if !ok {
         eprintln!("{RED}rsync -> atlas fehlgeschlagen{RESET}");
         exit(1);
     }
+}
 
-    // 2. cross-compile inside the pinned container (as the caller's uid so the
-    //    artifacts come back owned by luka, cargo registry persists)
-    let workdir = if cfg.dir == "." {
-        "/build".to_string()
-    } else {
-        format!("/build/{}", cfg.dir)
-    };
+fn build(extra: &[String]) {
+    let cfg = load_config();
+    if cfg.build.is_empty() || cfg.artifacts.is_empty() {
+        eprintln!("{RED}.atlas-build.toml hat kein build/artifacts{RESET}");
+        exit(1);
+    }
+    ensure_up();
+    ensure_image(&cfg.image);
+    sync_to_atlas(&cfg);
+
     let mut buildcmd = cfg.build.clone();
     for a in extra {
         buildcmd.push(' ');
         buildcmd.push_str(a);
     }
+    // Run as root inside the container (works for every base image, incl.
+    // flutter's SDK dir), then chown the tree back to luka so the next Mac
+    // rsync and the artifact pull don't trip over root-owned files. `; rc=$?`
+    // keeps the build's exit code even though the chown always runs.
     let remote = format!(
-        "docker run --rm --user $(id -u):$(id -g) \
-         -e CARGO_HOME=/cargo-home -e HOME=/cargo-home \
-         -v \"$HOME/{base}/{name}\":/build \
-         -v \"$HOME/{base}/.cargo-home\":/cargo-home \
-         -w {workdir} {IMAGE} {buildcmd}",
+        "docker run --rm \
+         -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
+         -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
+         -v \"$HOME/{dir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
+         -w {wd} {tag} sh -lc {cmd}; rc=$?; \
+         sudo chown -R $(id -u):$(id -g) \"$HOME/{dir}\" >/dev/null 2>&1; exit $rc",
+        dir = cfg.remote_dir(),
         base = REMOTE_BASE,
-        name = cfg.name,
+        img = cfg.image,
+        wd = cfg.workdir(),
+        tag = cfg.tag(),
+        cmd = shq(&buildcmd),
     );
-    println!("{DIM}build on atlas:{RESET} {buildcmd}");
+    println!("{DIM}build on atlas ({}):{RESET} {buildcmd}", cfg.tag());
     let t0 = Instant::now();
     let ok = run_inherit(Command::new("ssh").args([SSH_HOST, &remote]));
     let secs = t0.elapsed().as_secs();
@@ -343,7 +397,6 @@ fn build(extra: &[String]) {
         exit(1);
     }
 
-    // 3. pull artifacts back into the same relative paths
     println!("{DIM}sync artifacts <- atlas{RESET}");
     for art in &cfg.artifacts {
         let local = cfg.root.join(art);
@@ -351,16 +404,134 @@ fn build(extra: &[String]) {
         run_inherit(Command::new("rsync").args([
             "-az",
             "--delete",
-            &format!("{SSH_HOST}:{REMOTE_BASE}/{}/{art}/", cfg.name),
+            &format!("{SSH_HOST}:{}/{art}/", cfg.remote_dir()),
             &format!("{}/", local.display()),
         ]));
     }
     println!(
-        "{GREEN}✓ build fertig{RESET} in {}m {}s  {DIM}(atlas, {IMAGE}){RESET}",
+        "{GREEN}✓ build fertig{RESET} in {}m {:02}s  {DIM}(atlas, {}){RESET}",
         secs / 60,
-        secs % 60
+        secs % 60,
+        cfg.tag()
     );
     for art in &cfg.artifacts {
-        println!("  {} {}", "->", cfg.root.join(art).display());
+        println!("  → {}", cfg.root.join(art).display());
+    }
+}
+
+// ---- atlas dev: run a dev server on atlas behind a public tunnel ----------
+
+fn dev(sub: &[String]) {
+    let cfg = load_config();
+    match sub.first().map(String::as_str) {
+        Some("stop") => dev_stop(&cfg),
+        Some("url") => println!("{}", dev_url(&cfg).unwrap_or_else(|| "(kein Tunnel aktiv)".into())),
+        Some("logs") => dev_logs(&cfg),
+        _ => dev_start(&cfg),
+    }
+}
+
+fn dev_names(cfg: &BuildCfg) -> (String, String) {
+    (format!("atlas-dev-{}", cfg.name), format!("atlas-tunnel-{}", cfg.name))
+}
+
+/// Scrape the public URL out of the tunnel container's logs.
+fn dev_url(cfg: &BuildCfg) -> Option<String> {
+    let (_, tunnel) = dev_names(cfg);
+    let out = ssh_capture(&format!(
+        "docker logs {tunnel} 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | head -1"
+    ));
+    let url = out.trim();
+    if url.is_empty() { None } else { Some(url.to_string()) }
+}
+
+fn dev_stop(cfg: &BuildCfg) {
+    let (dev, tunnel) = dev_names(cfg);
+    ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
+    println!("{GREEN}dev gestoppt{RESET} ({})", cfg.name);
+}
+
+fn dev_logs(cfg: &BuildCfg) -> ! {
+    let (dev, _) = dev_names(cfg);
+    let err = Command::new("ssh")
+        .args(["-t", SSH_HOST, &format!("docker logs -f {dev}")])
+        .exec();
+    eprintln!("ssh: {err}");
+    exit(1);
+}
+
+fn dev_start(cfg: &BuildCfg) {
+    if cfg.dev.is_empty() {
+        eprintln!("{RED}.atlas-build.toml hat kein dev = ...{RESET}");
+        exit(1);
+    }
+    ensure_up();
+    ensure_image(&cfg.image);
+    sync_to_atlas(cfg);
+    let (dev, tunnel) = dev_names(cfg);
+
+    // fresh start
+    ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
+
+    // dev server: --network host so it binds atlas' real port; node_modules
+    // persist in the synced dir, so `npm install` is warm after the first run.
+    let devcmd = format!("npm install --no-fund --no-audit && {}", cfg.dev);
+    let run_dev = format!(
+        "docker run -d --name {dev} --network host --restart unless-stopped \
+         -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
+         -v \"$HOME/{rdir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
+         -w {wd} {tag} sh -lc {cmd} >/dev/null",
+        port = cfg.port,
+        rdir = cfg.remote_dir(),
+        base = REMOTE_BASE,
+        img = cfg.image,
+        wd = cfg.workdir(),
+        tag = cfg.tag(),
+        cmd = shq(&devcmd),
+    );
+    if !ssh_ok(&run_dev) {
+        eprintln!("{RED}dev-Container-Start fehlgeschlagen{RESET}");
+        exit(1);
+    }
+
+    // public tunnel via cloudflared quick tunnel (no account, no config)
+    let run_tunnel = format!(
+        "docker run -d --name {tunnel} --network host --restart unless-stopped \
+         {tag} cloudflared tunnel --no-autoupdate --url http://localhost:{port} >/dev/null",
+        tag = cfg.tag(),
+        port = cfg.port,
+    );
+    if !ssh_ok(&run_tunnel) {
+        eprintln!("{RED}Tunnel-Start fehlgeschlagen{RESET}");
+        exit(1);
+    }
+
+    print!("dev-Server startet auf atlas, warte auf Tunnel-URL ");
+    io::stdout().flush().ok();
+    let mut url = None;
+    for _ in 0..30 {
+        if let Some(u) = dev_url(cfg) {
+            url = Some(u);
+            break;
+        }
+        print!(".");
+        io::stdout().flush().ok();
+        sleep(Duration::from_secs(2));
+    }
+    match url {
+        Some(u) => {
+            println!(" {GREEN}✓{RESET}");
+            println!("\n  {GREEN}{u}{RESET}\n");
+            println!("{DIM}  dev-Server läuft auf atlas ({}), Mac bleibt kühl.{RESET}", cfg.name);
+            println!("{DIM}  Code live bearbeiten:  ssh atlas   → ~/{}{RESET}", cfg.remote_dir());
+            println!("{DIM}  Logs:  atlas dev logs   ·   Stop:  atlas dev stop{RESET}");
+        }
+        None => {
+            println!(" {RED}keine URL{RESET}");
+            eprintln!("Tunnel-Logs:");
+            let (_, t) = dev_names(cfg);
+            print!("{}", ssh_capture(&format!("docker logs {t} 2>&1 | tail -20")));
+            exit(1);
+        }
     }
 }
