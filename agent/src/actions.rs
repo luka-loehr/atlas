@@ -147,6 +147,50 @@ fn current_show() -> Option<String> {
         .map(|p| p.rsplit('/').next().unwrap_or(p).to_string())
 }
 
+/// Stop play.py gently (SIGINT -> its finally sends blackout frames that also
+/// power the plugs off through the bridge) and wait until it is really gone.
+fn stop_player_gently() {
+    if run("pgrep", &["-f", "play.py"]).trim().is_empty() {
+        return;
+    }
+    let _ = Command::new("pkill").args(["-INT", "-f", "play.py"]).status();
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        if run("pgrep", &["-f", "play.py"]).trim().is_empty() {
+            return;
+        }
+    }
+    let _ = Command::new("pkill").args(["-f", "play.py"]).status();
+}
+
+/// Make sure the bridge is up (it owns Hue DTLS, the fog Arduino and the
+/// plugs). Started once, it stays alive between shows — restarts are instant
+/// and hold-to-fog works anytime.
+fn ensure_bridge() -> bool {
+    if bridge_running() {
+        return true;
+    }
+    let dir = lightshow_dir();
+    let _ = Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "cd {dir} && setsid nohup python3 -u bridge/hue_stream.py >/tmp/atlas-bridge.log 2>&1 &"
+        ))
+        .status();
+    // wait for "listening for Art-Net" (DTLS handshake takes ~3s)
+    for _ in 0..40 {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let log = fs::read_to_string("/tmp/atlas-bridge.log").unwrap_or_default();
+        if log.contains("listening for Art-Net") {
+            return true;
+        }
+        if !bridge_running() {
+            return false;
+        }
+    }
+    bridge_running()
+}
+
 pub fn show_start(name: &str) -> String {
     if !safe(name) {
         return r#"{"error":"bad name"}"#.into();
@@ -160,16 +204,9 @@ pub fn show_start(name: &str) -> String {
     if !std::path::Path::new(&format!("{dir}/shows/{file}")).exists() {
         return r#"{"error":"unknown show"}"#.into();
     }
-    // stop anything already playing, make sure the bridge is up, then play.
-    let _ = Command::new("pkill").args(["-f", "play.py"]).status();
-    if !bridge_running() {
-        let _ = Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "cd {dir} && setsid nohup python3 -u bridge/hue_stream.py >/tmp/atlas-bridge.log 2>&1 &"
-            ))
-            .status();
-        std::thread::sleep(std::time::Duration::from_millis(1500));
+    stop_player_gently();
+    if !ensure_bridge() {
+        return r#"{"error":"bridge failed to start (see /tmp/atlas-bridge.log)"}"#.into();
     }
     // --no-audio: the iOS app plays the song; atlas only drives the lights
     let _ = Command::new("sh")
@@ -178,46 +215,120 @@ pub fn show_start(name: &str) -> String {
             "cd {dir} && setsid nohup python3 -u play.py shows/{file} --no-audio --no-preroll >/tmp/atlas-play.log 2>&1 &"
         ))
         .status();
-    format!(
-        "{{\"ok\":true,\"started\":\"{}\",\"bridge\":{}}}",
-        json_str(&file),
-        bridge_running()
-    )
+    format!("{{\"ok\":true,\"started\":\"{}\",\"bridge\":true}}", json_str(&file))
 }
 
+/// Stop the show. The bridge STAYS alive (instant restarts, fog anytime);
+/// plugs are additionally forced off via the Hue REST API as a belt-and-
+/// suspenders fallback. `atlas` / the app can stop the bridge explicitly
+/// with /api/bridge/stop.
 pub fn show_stop() -> String {
-    // SIGINT, not SIGTERM: play.py's finally sends blackout frames and powers
-    // the laser/strobe plugs off — killing it hard could leave them ON.
-    let _ = Command::new("pkill").args(["-INT", "-f", "play.py"]).status();
-    std::thread::sleep(std::time::Duration::from_millis(1500));
-    let _ = Command::new("pkill").args(["-f", "play.py"]).status();
-    let _ = Command::new("pkill").args(["-f", "hue_stream.py"]).status();
-    r#"{"ok":true,"stopped":true}"#.into()
+    fog_stop();
+    stop_player_gently();
+    plugs_off_rest();
+    r#"{"ok":true,"stopped":true,"bridge":true}"#.into()
+}
+
+/// Stop EVERYTHING: fog, player, bridge (graceful, it powers plugs off and
+/// ends the Hue stream), then the REST plug fallback.
+pub fn bridge_stop() -> String {
+    fog_stop();
+    stop_player_gently();
+    if bridge_running() {
+        let _ = Command::new("pkill").args(["-INT", "-f", "hue_stream.py"]).status();
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if !bridge_running() {
+                break;
+            }
+        }
+        let _ = Command::new("pkill").args(["-f", "hue_stream.py"]).status();
+    }
+    plugs_off_rest();
+    r#"{"ok":true,"stopped":true,"bridge":false}"#.into()
+}
+
+/// Force laser (22) + strobe (25) plugs off directly on the Hue bridge.
+fn plugs_off_rest() {
+    let creds = fs::read_to_string(format!("{}/bridge/credentials.json", lightshow_dir()))
+        .unwrap_or_default();
+    let (Some(host), Some(user)) = (extract_str(&creds, "host"), extract_str(&creds, "username"))
+    else {
+        return;
+    };
+    for id in ["22", "25"] {
+        let _ = Command::new("curl")
+            .args([
+                "-s", "-m", "5", "-X", "PUT", "-d", r#"{"on":false}"#,
+                &format!("http://{host}/api/{user}/lights/{id}/state"),
+            ])
+            .output();
+    }
 }
 
 // ---- fog ------------------------------------------------------------------
+//
+// Fog always goes THROUGH the bridge: the agent sends Art-Net packets with
+// channel 19 high to 127.0.0.1:6454 (30 Hz heartbeat). The packets are 19
+// channels long, so the laser/strobe logic (channels 20/21) never sees them,
+// and the lamp channels are all zero, so the bridge's peak-hold ignores them.
+// Works standalone AND while a show is running.
 
-/// Start a fog burst of `ms` (heartbeat protocol to the Arduino). For
-/// hold-to-fog the app sends a long burst on press and calls /api/fog/stop on
-/// release; the Arduino watchdog also auto-stops when the heartbeat ends.
-pub fn fog(ms: u64) -> String {
-    if bridge_running() {
-        return r#"{"error":"bridge is running — it owns the serial port; stop the show first"}"#.into();
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static FOG_GEN: AtomicU64 = AtomicU64::new(0);
+
+fn artnet_fog_packet(on: bool) -> [u8; 18 + 19] {
+    let mut p = [0u8; 37];
+    p[..8].copy_from_slice(b"Art-Net\0");
+    p[8] = 0x00; // OpDmx low
+    p[9] = 0x50; // OpDmx high
+    p[10] = 0;   // proto hi
+    p[11] = 14;  // proto lo
+    // seq, phys, subuni, net = 0
+    p[16] = 0;   // length hi
+    p[17] = 19;  // length lo
+    p[18 + 18] = if on { 255 } else { 0 }; // channel 19 (0-based 18)
+    p
+}
+
+fn send_fog_packet(on: bool) {
+    if let Ok(sock) = std::net::UdpSocket::bind("127.0.0.1:0") {
+        let _ = sock.send_to(&artnet_fog_packet(on), "127.0.0.1:6454");
     }
-    let ms = ms.clamp(100, 30_000);
-    let dir = lightshow_dir();
-    let _ = Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "setsid nohup python3 {dir}/tools/fog_trigger.py {ms} >/tmp/atlas-fog.log 2>&1 &"
-        ))
-        .status();
+}
+
+/// Start fog for up to `ms` (hold-to-fog: the app calls /api/fog on press and
+/// /api/fog/stop on release). Ensures the bridge is up, then heartbeats fog
+/// packets at 30 Hz until stop/timeout, then sends explicit fog-low packets.
+pub fn fog(ms: u64) -> String {
+    if !ensure_bridge() {
+        return r#"{"error":"bridge failed to start (see /tmp/atlas-bridge.log)"}"#.into();
+    }
+    let ms = ms.clamp(200, 30_000);
+    let generation = FOG_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+        while std::time::Instant::now() < deadline
+            && FOG_GEN.load(Ordering::SeqCst) == generation
+        {
+            send_fog_packet(true);
+            std::thread::sleep(std::time::Duration::from_millis(33));
+        }
+        for _ in 0..3 {
+            send_fog_packet(false);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    });
     format!("{{\"ok\":true,\"fog_ms\":{ms}}}")
 }
 
 pub fn fog_stop() -> String {
-    // killing the heartbeat lets the Arduino watchdog cut the fog
-    let _ = Command::new("pkill").args(["-f", "fog_trigger.py"]).status();
+    FOG_GEN.fetch_add(1, Ordering::SeqCst); // invalidates any running heartbeat
+    for _ in 0..3 {
+        send_fog_packet(false);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     r#"{"ok":true,"stopped":true}"#.into()
 }
 
