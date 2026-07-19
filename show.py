@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Headless show engine v4 "CLUB MODE" — RUNS ON THE MAC.
+"""Headless show engine v5 "EXTREME MODE" — RUNS ON THE MAC.
 
-v4 = club-master teardown applied: peaks unclipped (drops -> 1.0 full white),
+v5 = EXTREME: hardware strobe on EVERY drop (6.5s pre-power, windows merged
+where a re-strike is physically impossible), ~2.3x more fog, triple white
+kick flashes on drop 1, full-room 255 white slams on every beat in drops.
+v4 = club-master teardown: peaks unclipped (drops -> 1.0 full white),
 high-energy sections lifted 0.30-0.42 -> 0.80-0.90, builds actually build,
-10s hardware-strobe SOLO at drop 3 (all Hue black), way more white kick
-flashes. Valleys stay dark for contrast.
+10s hardware-strobe SOLO at drop 3 (all Hue black).
 
 Plays the song locally AND streams Art-Net to the bridge on atlas
 (Hue + fog/disco + laser + hardware strobe).
@@ -70,16 +72,28 @@ def sec_bar(t, anchor):         # section-local bar index (bar = 4 beats)
 
 # ---- cues ---------------------------------------------------------------
 # fog carries a DISCO GLOBE -> only in lit phases, never in darkness
-FOG_CUES = [(42000, 52000),      # build 1 (lit) — haze for the drop-1 laser
-            (118300, 124300),    # drop 2 (bright slams)
+# EXTREME: fog on every drop + builds (still lit phases only — disco globe rule)
+FOG_CUES = [(40000, 54000),      # build 1 — thick haze into drop 1
+            (59700, 68000),      # drop 1 (lit: kick flashes + pink bed)
+            (74000, 80000),      # chorus opener
+            (118300, 128000),    # drop 2
+            (136770, 144000),    # drop reprise
             (158920, 168920),    # drop 3 — rides the 10s strobe solo (globe lit BY the strobe)
-            (196300, 203300),    # final high (lit)
-            (229500, 234000)]    # finale 2 (lit, densest sub groove)
+            (196300, 206000),    # final high
+            (217800, 222000),    # escalation point
+            (229500, 238000),    # finale 2
+            (243829, 247000)]    # strobe farewell under laser
 # laser runs continuously through climax->finale2: a real gap is impossible
 # (3.9s warm-up can't re-strike in the 1.8s breakdown at 227.2-229.06)
 # drop-3 laser strikes AT the end of the strobe solo (charges silently during it)
 LASER_CUES = [(59700, 72420), (168920, 175000), (220700, 245000)]
-STROBEPLUG_CUES = [(158920, 168920), (224700, 227200)]
+# EXTREME: hardware strobe on EVERY drop. Windows merged where the 6.5s
+# warm-up makes a re-strike between them physically impossible.
+STROBEPLUG_CUES = [(59700, 72420),     # drop 1 — full length
+                   (118300, 151090),   # drop 2 -> reprise (no re-strike possible between)
+                   (158920, 168920),   # drop 3 = 10s SOLO
+                   (196280, 210000),   # final-high opening burst
+                   (224700, 236000)]   # climax -> bridged through breakdown -> finale drop
 
 # strongest measured impacts -> single-frame white overlays (time_ms, strength)
 ACCENTS = [(2910, .75), (4760, .75), (5460, .65), (6610, .75), (7300, .65),
@@ -126,10 +140,18 @@ def tuned_strobe(dmx, t, v=0.90, chans=STROBE_CH, ceiling=0.0):
             put(dmx, DECKE, (d, d, d))
 
 def drop_hit(dmx, t, t_hit, v=1.0):
-    if t_hit <= t < t_hit + 80:
+    if t_hit <= t < t_hit + 120:                      # EXTREME: 3-frame full slam
         val = int(255 * v)
         for ch in ALL_LIGHTS:
             put(dmx, ch, (val, val, val))
+        return True
+    return False
+
+def kick_flash(dmx, t, every=1, width=40):
+    """EXTREME: full-room 255 white flash on the beat lattice."""
+    if beat_idx(t) % every == 0 and bphase(t) < width:
+        for ch in ALL_LIGHTS:
+            put(dmx, ch, (255, 255, 255))
         return True
     return False
 
@@ -212,13 +234,13 @@ def render(t):
                 pass    # bass drops -43dB here (librosa detail run) = darkness accent
             else:
                 p = bphase(t)
-                if p < 40 or 80 <= p < 120:           # kick double-flash: BLINDING full white
+                if p < 40 or 80 <= p < 120 or 160 <= p < 200:   # TRIPLE blinding white flash
                     for ch in ALL_LIGHTS:
                         put(dmx, ch, (255, 255, 255))
                 else:                                  # hot-pink moving bed keeps the room loud
                     bi = beat_idx(t)
                     env = beat_env(t, 220)
-                    put_stop(dmx, CIRCLE[bi % 4], hsv(0.95, 1.0, 0.60 * (0.4 + 0.6 * env)))
+                    put_stop(dmx, CIRCLE[bi % 4], hsv(0.95, 1.0, 0.75 * (0.4 + 0.6 * env)))
                     put_stop(dmx, CIRCLE[(bi - 1) % 4], hsv(0.87, 1.0, 0.20))
                     d = int(255 * 0.25)
                     put(dmx, DECKE, (d, d, d))
@@ -313,6 +335,7 @@ def render(t):
                 if bi % 8 == 0:
                     d = int(255 * 0.60 * env)
                     put(dmx, DECKE, (d, d, d))
+                kick_flash(dmx, t)                    # EXTREME: white slam on EVERY beat
 
     # ===== 131.96 - 132.26: collapse =====================================
     elif t < 132260:
@@ -353,6 +376,7 @@ def render(t):
                 if bi % 4 == 0:
                     d = int(255 * 0.55 * env)
                     put(dmx, DECKE, (d, d, d))
+                kick_flash(dmx, t)                    # EXTREME: white slam on EVERY beat
 
     # ===== 151.09 - 157.15: wind down ====================================
     elif t < 157150:
@@ -447,8 +471,8 @@ def render(t):
                 put_stop(dmx, head, hsv(hue, 1.0, 0.90 * boost * (0.4 + 0.6 * env)))
                 put_stop(dmx, mid, hsv(hue + 0.05, 1.0, 0.30 * boost))
                 put_stop(dmx, tail, hsv(hue + 0.10, 1.0, 0.10))
-                if bi % 8 == 0 and bphase(t) < 40:
-                    for ch in ALL_LIGHTS:                 # full-room WHITE pop
+                if bi % 2 == 0 and bphase(t) < 40:
+                    for ch in ALL_LIGHTS:                 # full-room WHITE pop (EXTREME: 2x rate)
                         put(dmx, ch, (255, 255, 255))
                 breathe = 0.5 * (1 + math.sin(2 * math.pi * t / 6000.0 + math.pi))
                 put(dmx, DECKE, hsv(hue + 0.5, 0.4, 0.35 * breathe))
@@ -486,6 +510,7 @@ def render(t):
                 if b0 < 200:
                     d = int(255 * 0.40)
                     put(dmx, DECKE, (d, d, d))
+                kick_flash(dmx, t, every=2)           # EXTREME: white pops through the finale
 
     # ===== 258.65 - end: outro fade, ceiling dies last ===================
     elif t < SONG_END_S * 1000:
