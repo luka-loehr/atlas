@@ -11,7 +11,8 @@ from lslib import sequence
 from lslib.player import Player
 
 def main():
-    spec = importlib.util.spec_from_file_location("legacy", os.path.join(ROOT, "show.py"))
+    spec = importlib.util.spec_from_file_location(
+        "legacy", os.path.join(ROOT, "tests", "reference_show_v6.py"))
     legacy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(legacy)
 
