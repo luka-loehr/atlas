@@ -46,10 +46,18 @@ struct TerminalBridge: UIViewRepresentable {
         tv.nativeBackgroundColor = .black
         tv.nativeForegroundColor = UIColor(white: 0.92, alpha: 1)
         context.coordinator.attach(terminal: tv, host: host, token: token)
+        // auto-focus: keyboard up as soon as the terminal appears
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak tv] in
+            tv?.becomeFirstResponder()
+        }
         return tv
     }
 
-    func updateUIView(_ uiView: TerminalView, context: Context) {}
+    func updateUIView(_ uiView: TerminalView, context: Context) {
+        if uiView.window != nil, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        }
+    }
 
     static func dismantleUIView(_ uiView: TerminalView, coordinator: Coordinator) {
         coordinator.close()
