@@ -46,23 +46,39 @@ def slug(name):
 
 
 def download_audio(url):
-    """YouTube (or any yt-dlp source) -> mp3 in downloads/, returns (path, title)."""
+    """YouTube (or any yt-dlp source) -> mp3 + thumbnail in downloads/,
+    returns (path, title). Streams progress lines (PHASE:/[download] xx%)
+    to stdout so the agent/app can render a live progress UI."""
     if not shutil.which("yt-dlp") or not shutil.which("ffmpeg"):
         sys.exit("yt-dlp + ffmpeg noetig:  brew install yt-dlp ffmpeg")
     dl = os.path.join(ROOT, "downloads")
     os.makedirs(dl, exist_ok=True)
-    print(f"download: {url}")
-    r = subprocess.run(
+    print(f"PHASE:download", flush=True)
+    print(f"download: {url}", flush=True)
+    proc = subprocess.Popen(
         ["yt-dlp", "--no-playlist", "-x", "--audio-format", "mp3",
-         "--audio-quality", "0", "--no-simulate", "--quiet",
+         "--audio-quality", "0", "--no-simulate", "--newline",
+         "--write-thumbnail", "--convert-thumbnails", "jpg",
          "-o", os.path.join(dl, "%(title)s.%(ext)s"),
+         "-o", "thumbnail:" + os.path.join(dl, "%(title)s.%(ext)s"),
          "--print", "after_move:filepath", url],
-        capture_output=True, text=True)
-    if r.returncode != 0:
-        sys.exit(f"yt-dlp FAILED:\n{r.stderr.strip()[-800:]}")
-    path = r.stdout.strip().splitlines()[-1]
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    path = None
+    for line in proc.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        print(line, flush=True)          # [download]  42.3% ... -> live UI
+        if line.startswith("/") and line.endswith(".mp3"):
+            path = line
+    if proc.wait() != 0 or not path:
+        sys.exit("yt-dlp FAILED (siehe Log oben)")
     title = os.path.splitext(os.path.basename(path))[0]
-    print(f"download: ok -> {os.path.relpath(path, ROOT)}")
+    print(f"TITLE:{title}", flush=True)
+    thumb = os.path.splitext(path)[0] + ".jpg"
+    if os.path.exists(thumb):
+        print(f"THUMB:{thumb}", flush=True)
+    print(f"download: ok -> {os.path.relpath(path, ROOT)}", flush=True)
     return path, title
 
 
@@ -74,7 +90,8 @@ def analyze_local(song, name, force):
         print(f"analysis: cached ({os.path.relpath(cached, ROOT)})")
         with open(cached) as f:
             return json.load(f)
-    print("analysis: running Beat This! + librosa locally (GPU) ...")
+    print("PHASE:analyze", flush=True)
+    print("analysis: running Beat This! + librosa locally (GPU) ...", flush=True)
     py = os.path.join(ROOT, "analyze", ".venv", "bin", "python")
     run([py, os.path.join(ROOT, "analyze", "analyze_song.py"), song, cached])
     with open(cached) as f:
@@ -150,11 +167,15 @@ def main():
             print(f"WARNUNG: offiziell {args.bpm:g} passt nicht zu "
                   f"gemessen {f:.2f} (kein ganzzahliges Verhaeltnis) — nutze {f:.2f}")
 
+    print("PHASE:compile", flush=True)
     os.makedirs(SHOWS, exist_ok=True)
-    # keep a copy of the song next to the shows for stable relative paths
+    # keep a copy of the song (and its thumbnail) next to the shows
     local_song = os.path.join(SHOWS, f"{name}{os.path.splitext(song)[1]}")
     if not os.path.exists(local_song):
         shutil.copy(song, local_song)
+    src_thumb = os.path.splitext(song)[0] + ".jpg"
+    if os.path.exists(src_thumb):
+        shutil.copy(src_thumb, os.path.join(SHOWS, f"{name}.jpg"))
 
     seq, warnings = compile_show(analysis, os.path.basename(local_song),
                                  title=title or name,
@@ -165,25 +186,30 @@ def main():
     print(f"\nwrote {os.path.relpath(out, ROOT)}")
     print(f"play:  python3 play.py {os.path.relpath(out, ROOT)}")
     git_autopush(name, title or name)
+    print("PHASE:done", flush=True)
 
 
 def git_autopush(name, title):
-    """Commit + push the new show (json + audio + analysis). Non-fatal."""
+    """Commit + push the new show (json + audio + thumb + analysis). Non-fatal."""
     def g(*args):
         return subprocess.run(["git", "-C", ROOT, *args],
                               capture_output=True, text=True)
     if g("rev-parse", "--git-dir").returncode != 0:
         return
+    print("PHASE:commit", flush=True)
     g("add", f"shows/{name}.show.json", f"analysis_cache/{name}.analysis.json")
     g("add", *(p for p in [os.path.join("shows", f)
                            for f in os.listdir(SHOWS) if f.startswith(name + ".")]
                if os.path.exists(os.path.join(ROOT, p))))
     if not g("status", "--porcelain").stdout.strip():
+        print("git: nichts zu committen", flush=True)
         return
     if g("commit", "-m", f"show: {title}").returncode == 0:
+        print(f"git: commit 'show: {title}'", flush=True)
         r = g("push")
-        print("git: Show committet & gepusht" if r.returncode == 0
-              else f"git: Push fehlgeschlagen (committet): {r.stderr.strip()[-200:]}")
+        print("git: gepusht -> github.com/luka-loehr/lightshow" if r.returncode == 0
+              else f"git: Push fehlgeschlagen (committet): {r.stderr.strip()[-200:]}",
+              flush=True)
 
 
 if __name__ == "__main__":
