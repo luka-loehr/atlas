@@ -35,9 +35,11 @@ LASER_V1 = "22"                          # Hue plug (ex-Kaktus) v1 light id
 STROBEPLUG_IDX = 20                      # 0-based index of DMX channel 21
 STROBEPLUG_V1 = "25"                     # Hue plug (ex-Drucker) v1 light id
 
-def set_plug(v1_id, on, label):
-    """Toggle a Hue plug via the v1 REST API, in a background thread so
-    the 25fps stream never stalls on the HTTP round-trip."""
+def set_plug(v1_id, on, label, wait=False):
+    """Toggle a Hue plug via the v1 REST API. Normally in a background
+    thread so the 25fps stream never stalls; wait=True runs it synchronously
+    (shutdown path — daemon threads die with the process, which used to
+    leave the strobe plug ON after a stop)."""
     def _do():
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
@@ -49,7 +51,10 @@ def set_plug(v1_id, on, label):
             urllib.request.urlopen(req, context=ctx, timeout=5).read()
         except Exception as e:
             print(f"{label} toggle error:", e, flush=True)
-    threading.Thread(target=_do, daemon=True).start()
+    if wait:
+        _do()
+    else:
+        threading.Thread(target=_do, daemon=True).start()
 
 def set_laser(on):
     set_plug(LASER_V1, on, "laser")
@@ -116,6 +121,7 @@ def main():
     dmx = bytes(21)
     fog_on = False
     fog_hb = 0.0
+    fog_seen = 0.0     # last time a packet with FOG >= threshold ARRIVED
     laser_on = False
     strobeplug_on = False
     running = True
@@ -147,6 +153,8 @@ def main():
                 frame = pkt[18:18+length]
                 dmx = frame                              # true latest -> next tick's baseline
                 got = True
+                if len(frame) > FOG_IDX and frame[FOG_IDX] >= FOG_THRESHOLD:
+                    fog_seen = time.time()
                 for i in range(min(len(frame), len(peak))):
                     if frame[i] > peak[i]:
                         peak[i] = frame[i]
@@ -171,10 +179,12 @@ def main():
         except BrokenPipeError:
             sys.exit("DTLS pipe broke")
 
-        # fog cue (channel 19)
+        # fog cue (channel 19) — "want" = a fog-high packet arrived within the
+        # last second. Works for the show AND for the agent's hold-to-fog
+        # packets in parallel, and fails safe if either sender dies.
         if fog is not None:
-            want = len(dmx) > FOG_IDX and dmx[FOG_IDX] >= FOG_THRESHOLD
             t = time.time()
+            want = (t - fog_seen) < 1.0
             try:
                 if want and (not fog_on or t - fog_hb >= FOG_HEARTBEAT):
                     fog.write(b"1"); fog.flush()
@@ -208,6 +218,12 @@ def main():
             fog.write(b"0"); fog.flush()
         except Exception:
             pass
+    # plugs off SYNCHRONOUSLY — a daemon-thread toggle dies with the process
+    # and can leave the strobe/laser running after a stop
+    if laser_on:
+        set_plug(LASER_V1, False, "laser", wait=True)
+    if strobeplug_on:
+        set_plug(STROBEPLUG_V1, False, "strobe-plug", wait=True)
     proc.terminate()
     try:
         print(set_streaming(False), flush=True)
