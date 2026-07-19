@@ -368,21 +368,68 @@ pub fn create_status() -> String {
     let running = !run("pgrep", &["-f", "makeshow.py"]).trim().is_empty();
     let log = fs::read_to_string(MAKESHOW_LOG).unwrap_or_default();
     let tail: String = log.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
-    // makeshow prints "wrote shows/<name>.show.json" on success
+
+    // structured markers streamed by makeshow.py
+    let phase = log
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().strip_prefix("PHASE:"))
+        .unwrap_or(if running { "start" } else { "idle" });
+    let title = log
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().strip_prefix("TITLE:"))
+        .unwrap_or("");
+    let thumb = log.lines().any(|l| l.trim().starts_with("THUMB:"));
+    // yt-dlp --newline: "[download]  42.3% of ..."
+    let percent = log
+        .lines()
+        .rev()
+        .filter(|l| l.contains("[download]") && l.contains('%'))
+        .find_map(|l| {
+            let p = l.split('%').next()?;
+            p.split_whitespace().last()?.parse::<f64>().ok()
+        })
+        .unwrap_or(0.0);
     let done_name = log
         .lines()
         .find_map(|l| l.trim().strip_prefix("wrote shows/"))
         .and_then(|s| s.strip_suffix(".show.json"))
         .map(str::to_string);
     let failed = !running && done_name.is_none() && log.contains("FAILED");
+
     format!(
-        "{{\"running\":{},\"done\":{},\"failed\":{},\"name\":{},\"log\":\"{}\"}}",
+        "{{\"running\":{},\"done\":{},\"failed\":{},\"phase\":\"{}\",\"percent\":{:.1},\"title\":\"{}\",\"thumb\":{},\"name\":{},\"log\":\"{}\"}}",
         running,
         done_name.is_some(),
         failed,
+        json_str(phase),
+        percent,
+        json_str(title),
+        thumb,
         done_name.map(|n| format!("\"{}\"", json_str(&n))).unwrap_or("null".into()),
         json_str(&tail),
     )
+}
+
+/// Newest downloaded thumbnail (during create) — downloads/<title>.jpg.
+pub fn create_thumb() -> Option<std::path::PathBuf> {
+    let log = fs::read_to_string(MAKESHOW_LOG).unwrap_or_default();
+    let p = log
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().strip_prefix("THUMB:"))?;
+    let path = std::path::PathBuf::from(p);
+    path.exists().then_some(path)
+}
+
+/// A show's cover: shows/<name>.jpg, if present.
+pub fn show_thumb(name: &str) -> Option<std::path::PathBuf> {
+    if !safe(name) {
+        return None;
+    }
+    let p = std::path::PathBuf::from(format!("{}/shows/{name}.jpg", lightshow_dir()));
+    p.exists().then_some(p)
 }
 
 /// Absolute path to a show's audio file (shows/<name>.<audio-ext>), if present.

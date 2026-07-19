@@ -35,6 +35,10 @@ struct CreateStatus: Codable, Sendable {
     let running: Bool
     let done: Bool
     let failed: Bool
+    let phase: String       // idle|start|download|analyze|compile|commit|done
+    let percent: Double     // download progress 0…100
+    let title: String
+    let thumb: Bool
     let name: String?
     let log: String
 }
@@ -91,6 +95,8 @@ struct AtlasClient: Sendable {
     func stopShow() async throws { try await post("/api/shows/stop") }
     func stopBridge() async throws { try await post("/api/bridge/stop") }
     func audioURL(_ name: String) -> URL? { URL(string: "http://\(host)/api/shows/audio/\(name)") }
+    func createThumbURL() -> URL? { URL(string: "http://\(host)/api/shows/create/thumb") }
+    func showThumbURL(_ name: String) -> URL? { URL(string: "http://\(host)/api/shows/thumb/\(name)") }
 
     // fog --------------------------------------------------------------------
     func fog(ms: Int) async throws { try await post("/api/fog", body: String(ms)) }
