@@ -41,6 +41,7 @@ fn main() {
         Some("status") => status(),
         Some("build") => build(&args[1..]),
         Some("dev") => dev(&args[1..]),
+        Some("agent") => agent(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
         // anything else: run it on atlas (`atlas htop`, `atlas nvidia-smi`, ...)
         Some(_) => ssh(&args),
@@ -60,6 +61,8 @@ fn help() {
          atlas dev          run its dev server on atlas + public tunnel URL\n  \
          atlas dev stop     stop the dev server + tunnel\n  \
          atlas dev logs     follow the dev-server logs\n  \
+         atlas agent        build+install the metrics agent (for the iOS app)\n  \
+         atlas agent logs   follow the agent logs   ·   agent status/stop\n  \
          atlas <cmd ...>    run a command on atlas (e.g. atlas nvidia-smi)"
     );
 }
@@ -535,4 +538,53 @@ fn dev_start(cfg: &BuildCfg) {
             exit(1);
         }
     }
+}
+
+// ---- atlas agent: metrics server for the iOS app --------------------------
+
+fn agent(sub: &[String]) {
+    match sub.first().map(String::as_str) {
+        Some("logs") => {
+            let err = Command::new("ssh")
+                .args(["-t", SSH_HOST, "journalctl -u atlas-agent -f -n 40"])
+                .exec();
+            eprintln!("ssh: {err}");
+            exit(1);
+        }
+        Some("status") => {
+            run_inherit(Command::new("ssh").args([
+                SSH_HOST,
+                "systemctl status atlas-agent --no-pager | head -12",
+            ]));
+        }
+        Some("stop") => {
+            run_inherit(Command::new("ssh").args([SSH_HOST, "sudo systemctl stop atlas-agent"]));
+            println!("{GREEN}agent gestoppt{RESET}");
+        }
+        Some("restart") => {
+            run_inherit(Command::new("ssh").args([SSH_HOST, "sudo systemctl restart atlas-agent"]));
+            println!("{GREEN}agent neu gestartet{RESET}");
+        }
+        _ => agent_install(),
+    }
+}
+
+/// Pull the repo on atlas, build the agent, install + enable the systemd service.
+fn agent_install() {
+    ensure_up();
+    println!("{DIM}baue + installiere atlas-agent auf atlas ...{RESET}");
+    let script = "set -e; cd ~/atlas && git pull --quiet --ff-only && cd agent && \
+         . ~/.cargo/env && cargo build --release --quiet && \
+         sudo install -m755 target/release/atlas-agent /usr/local/bin/atlas-agent && \
+         sudo cp atlas-agent.service /etc/systemd/system/atlas-agent.service && \
+         sudo systemctl daemon-reload && sudo systemctl enable --now atlas-agent && \
+         sleep 1 && systemctl is-active atlas-agent";
+    if !run_inherit(Command::new("ssh").args([SSH_HOST, script])) {
+        eprintln!("{RED}Agent-Installation fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    let host = "atlas.your-tailnet.ts.net:8787";
+    println!("{GREEN}✓ atlas-agent läuft{RESET}  {DIM}(systemd, Autostart an){RESET}");
+    println!("  {DIM}Metrics:{RESET} http://{host}/api/metrics");
+    println!("  {DIM}In der App als Host eintragen:{RESET} {host}");
 }

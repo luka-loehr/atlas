@@ -1,0 +1,13 @@
+[package]
+name = "atlas-agent"
+version = "0.1.0"
+edition = "2024"
+description = "Tiny zero-dependency metrics server for the Atlas Command Center iOS app"
+
+[[bin]]
+name = "atlas-agent"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true
