@@ -40,13 +40,28 @@ def main():
     beats = np.asarray(beats_s) * 1000.0
     downs = np.asarray(downbeats_s) * 1000.0
 
-    # ---- constant-tempo lattice fit ------------------------------------
-    P = float(np.median(np.diff(beats)))
-    A = float(beats[0])
-    for _ in range(3):
+    # ---- constant-tempo lattice fit (robust: longest clean run) --------
+    ibi = np.diff(beats)
+    med = float(np.median(ibi))
+    clean = np.abs(ibi - med) < 25.0                  # ghost beats break the run
+    best, i = (0, 0), 0
+    while i < len(clean):
+        if clean[i]:
+            j = i
+            while j < len(clean) and clean[j]:
+                j += 1
+            if j - i > best[1] - best[0]:
+                best = (i, j)
+            i = j
+        else:
+            i += 1
+    run = beats[best[0]:best[1] + 1]
+    P, A = (float(c) for c in np.polyfit(np.arange(len(run)), run, 1))
+    for _ in range(2):                                # extend to all inlier beats
         k = np.round((beats - A) / P)
-        P, A = (float(c) for c in np.polyfit(k, beats, 1))
-    resid = float(np.std(beats - (A + np.round((beats - A) / P) * P)))
+        inl = np.abs(beats - (A + k * P)) < 60.0
+        P, A = (float(c) for c in np.polyfit(k[inl], beats[inl], 1))
+    resid = float(np.std((beats - (A + np.round((beats - A) / P) * P))[inl]))
     bpm = 60000.0 / P
 
     # ---- energy curves --------------------------------------------------
@@ -72,20 +87,32 @@ def main():
         a, b = max(0, a), min(n, b)
         return float(x[a:b].mean()) if b > a else 0.0
 
+    def band_min(x, a_ms, b_ms):
+        a, b = max(0, int(a_ms / hop_ms)), min(n, int(b_ms / hop_ms))
+        return float(x[a:b].min()) if b > a else 1.0
+
     cands = []
     for b_ms in beats:
-        after = band_mean(sub_s, b_ms, b_ms + 1000)
-        before = band_mean(sub_s, b_ms - 1500, b_ms - 250)
-        dip = band_mean(rms_n, b_ms - 1200, b_ms - 100)
-        score = (after - before) * (1.5 - dip)
-        if after > 0.35 and score > 0.10:
-            cands.append((float(b_ms), float(score)))
-    cands.sort(key=lambda c: -c[1])
+        if b_ms < 8000 or b_ms > dur_ms - 4000:
+            continue
+        after_s = band_mean(sub_n, b_ms, b_ms + 800)
+        before_s = band_mean(sub_n, b_ms - 1600, b_ms - 200)
+        long_a = band_mean(sub_n, b_ms, b_ms + 4000)
+        long_b = band_mean(sub_n, b_ms - 8000, b_ms - 1000)
+        dip_min = band_min(rms_n, b_ms - 450, b_ms - 40)
+        after_r = band_mean(rms_n, b_ms, b_ms + 800)
+        score = (0.45 * (after_s - before_s) + 0.35 * (long_a - long_b)
+                 + 0.20 * max(0.0, after_r - dip_min))
+        if dip_min < 0.12 and after_r > 0.45:
+            score += 0.25                             # slams out of true silence
+        if after_s > 0.30 and (long_a - long_b) > 0.02 and score >= 0.30:
+            cands.append((float(score), float(b_ms)))
+    cands.sort(reverse=True)
     drops = []
-    for t, s in cands:
-        if all(abs(t - d["t_ms"]) > 8000 for d in drops):
+    for s, t in cands:
+        if all(abs(t - d["t_ms"]) >= 15000 for d in drops):
             drops.append({"t_ms": t, "score": round(s, 4)})
-        if len(drops) >= 8:
+        if len(drops) >= 7:
             break
     drops.sort(key=lambda d: d["t_ms"])
 
