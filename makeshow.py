@@ -226,4 +226,12 @@ def git_autopush(name, title):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:                    # marker for the app/agent UI
+        import traceback
+        traceback.print_exc()
+        print(f"FAILED: {type(e).__name__}: {e}", flush=True)
+        sys.exit(1)
