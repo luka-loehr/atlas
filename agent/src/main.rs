@@ -93,6 +93,17 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
         ("GET", "/api/shows/create/status") => {
             respond(&mut stream, 200, &actions::create_status());
         }
+        ("GET", "/api/shows/create/thumb") => match actions::create_thumb() {
+            Some(p) => serve_file(&mut stream, &p),
+            None => respond(&mut stream, 404, r#"{"error":"no thumb"}"#),
+        },
+        ("GET", p) if p.starts_with("/api/shows/thumb/") => {
+            let name = &p["/api/shows/thumb/".len()..];
+            match actions::show_thumb(name) {
+                Some(path) => serve_file(&mut stream, &path),
+                None => respond(&mut stream, 404, r#"{"error":"no thumb"}"#),
+            }
+        }
         ("POST", "/api/shows/create") if can_act => {
             respond(&mut stream, 200, &actions::show_create(req.body.trim()));
         }
@@ -192,6 +203,8 @@ fn serve_file(stream: &mut TcpStream, path: &std::path::Path) {
         Some("opus") | Some("webm") => "audio/webm",
         Some("wav") => "audio/wav",
         Some("flac") => "audio/flac",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("png") => "image/png",
         _ => "application/octet-stream",
     };
     let header = format!(

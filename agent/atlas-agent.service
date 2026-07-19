@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=luka
+Environment="PATH=/home/atlas/.local/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/local/bin/atlas-agent
 # optional: ATLAS_AGENT_TOKEN / ATLAS_AGENT_PORT (file may be absent)
 EnvironmentFile=-/etc/atlas-agent.env
