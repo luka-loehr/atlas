@@ -183,15 +183,6 @@ struct InfoSheet: View {
         let tags = info?.tags ?? []
         if cap != nil || !tags.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tint)
-                    Text("KI-BESCHREIBUNG")
-                        .font(.system(size: 11, weight: .semibold))
-                        .kerning(1.1)
-                        .foregroundStyle(.secondary)
-                }
                 if let cap {
                     Text(cap)
                         .font(.system(size: 20, weight: .regular))
