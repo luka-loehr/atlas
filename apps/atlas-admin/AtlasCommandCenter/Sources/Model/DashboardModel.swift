@@ -173,10 +173,11 @@ final class DashboardModel {
             if f.rx >= last.rx, f.tx >= last.tx, f.tsMs > last.tsMs {
                 let dt = Double(f.tsMs - last.tsMs) / 1000
                 if dt > 0.05 {
-                    netDownMbps = Double(f.rx - last.rx) * 8 / dt / 1_000_000
-                    netUpMbps = Double(f.tx - last.tx) * 8 / dt / 1_000_000
-                    appendSample(&downSamples, now, netDownMbps)
-                    appendSample(&upSamples, now, netUpMbps)
+                    appendSample(&downSamples, now, Double(f.rx - last.rx) * 8 / dt / 1_000_000)
+                    appendSample(&upSamples, now, Double(f.tx - last.tx) * 8 / dt / 1_000_000)
+                    // labels read the SMOOTHED series — calm numbers, no flicker
+                    netDownMbps = downSamples.last?.1 ?? 0
+                    netUpMbps = upSamples.last?.1 ?? 0
                 }
             }
         }
@@ -189,8 +190,18 @@ final class DashboardModel {
         return URL(string: s)
     }
 
+    /// Appends with exponential smoothing (EMA): raw 500ms samples of cpu/gpu
+    /// swing violently (0↔100 between ticks) and render as seismograph noise —
+    /// the smoothed series flows in gentle waves instead. α=0.30 ≈ the feel of
+    /// Apple's activity charts; header rate labels calm down for free.
     private func appendSample(_ arr: inout [(Date, Double)], _ t: Date, _ v: Double) {
-        arr.append((t, v))
+        let smoothed: Double
+        if let last = arr.last {
+            smoothed = last.1 + 0.30 * (v - last.1)
+        } else {
+            smoothed = v
+        }
+        arr.append((t, smoothed))
         let cutoff = t.addingTimeInterval(-sampleWindow)
         while let first = arr.first, first.0 < cutoff { arr.removeFirst() }
     }
