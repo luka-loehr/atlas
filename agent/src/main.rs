@@ -46,6 +46,7 @@ fn main() {
         std::process::exit(1);
     });
     vpn::start_sampler();
+    stream::start_sampler();   // 10-min Metrics-History ab Boot
     println!(
         "atlas-agent {} on :{port} (auth: {})",
         env!("CARGO_PKG_VERSION"),
