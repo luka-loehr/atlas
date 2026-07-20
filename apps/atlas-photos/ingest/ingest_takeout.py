@@ -144,12 +144,16 @@ def make_video_thumbs(tmp_path, hash_id):
         pass
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
         frame = f.name
-    r = subprocess.run(
-        ["ffmpeg", "-v", "quiet", "-ss", "1", "-i", tmp_path,
-         "-frames:v", "1", "-y", frame], capture_output=True)
-    if r.returncode == 0 and os.path.getsize(frame) > 0:
-        with open(frame, "rb") as f:
-            make_photo_thumbs(f.read(), hash_id)
+    # Seek to 1s for a representative frame; short clips (<1s) seek past the end
+    # and yield nothing, so fall back to the very first frame (-ss 0).
+    for seek in ("1", "0"):
+        subprocess.run(
+            ["ffmpeg", "-v", "quiet", "-ss", seek, "-i", tmp_path,
+             "-frames:v", "1", "-y", frame], capture_output=True)
+        if os.path.getsize(frame) > 0:
+            with open(frame, "rb") as f:
+                make_photo_thumbs(f.read(), hash_id)
+            break
     os.unlink(frame)
     return w, h, dur
 
