@@ -7,30 +7,46 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0CCB43BACFFC2458A4176887 /* DeviceSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA05117D4A44B6CDB5B97E7 /* DeviceSync.swift */; };
+		104F16511F000CA1A14F81F5 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB064C3E6924DDBE4B780911 /* ShareSheet.swift */; };
 		22BF4F3E7926E0B5CBA024CC /* AlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */; };
 		40C8A08B67C041C6E2B4F5C9 /* PhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 081AA19363B0F7F61289A83A /* PhotoClient.swift */; };
 		6462884CEFDF99510D0D217C /* ThumbLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043B77CAFA27E5BC57559395 /* ThumbLoader.swift */; };
+		78C81DC70351D469708DEE7F /* SyncProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480126F4F898D37E8C785DFE /* SyncProgressView.swift */; };
 		85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77FE98E8F36CF8A86B16CE5C /* AtlasPhotosApp.swift */; };
+		8E2ADF1E7925DC671B539BD5 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A165AE2F024B83A19D123FF /* Selection.swift */; };
+		9A8354D2C2565F5B50BDB15F /* SelectableCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58F26C8FB835E5B96E0759C /* SelectableCell.swift */; };
 		9C49519587F7B2615F0F68DA /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E361A1829E694D7B7B01E0 /* Library.swift */; };
 		A1F09DCABE82EFBC3626B0F6 /* AccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */; };
+		ADEA9A0F31C4DE74E2DE34EE /* PhotoMutations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AFE9267E419A4AC857969B /* PhotoMutations.swift */; };
 		B90FD73F77ACE9DFAFA60477 /* Biometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */; };
 		BAEA3B2D9D10438C8748EE58 /* ViewerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */; };
 		DD8D1044D43E94C24A0E88C1 /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */; };
 		DE45417FA95FD7EC2ECC98DA /* PhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */; };
+		EAAF1E5328E7EF143017806E /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79E02F028649D1F555B6606 /* SettingsScreen.swift */; };
+		FD80372B37F49C98615424CE /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16CC59624D2291D414C1918 /* SelectionToolbar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		043B77CAFA27E5BC57559395 /* ThumbLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbLoader.swift; sourceTree = "<group>"; };
 		081AA19363B0F7F61289A83A /* PhotoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoClient.swift; sourceTree = "<group>"; };
+		0FA05117D4A44B6CDB5B97E7 /* DeviceSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSync.swift; sourceTree = "<group>"; };
 		2139E5DC68A86791748F2BC1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		480126F4F898D37E8C785DFE /* SyncProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProgressView.swift; sourceTree = "<group>"; };
 		58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerScreen.swift; sourceTree = "<group>"; };
 		59C34C5F0C692E54904E981C /* AtlasPhotos.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AtlasPhotos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsScreen.swift; sourceTree = "<group>"; };
+		77AFE9267E419A4AC857969B /* PhotoMutations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMutations.swift; sourceTree = "<group>"; };
 		77FE98E8F36CF8A86B16CE5C /* AtlasPhotosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasPhotosApp.swift; sourceTree = "<group>"; };
+		7A165AE2F024B83A19D123FF /* Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Selection.swift; sourceTree = "<group>"; };
 		7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
 		AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSheet.swift; sourceTree = "<group>"; };
+		BB064C3E6924DDBE4B780911 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosScreen.swift; sourceTree = "<group>"; };
+		D16CC59624D2291D414C1918 /* SelectionToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionToolbar.swift; sourceTree = "<group>"; };
 		E0E361A1829E694D7B7B01E0 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		E58F26C8FB835E5B96E0759C /* SelectableCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableCell.swift; sourceTree = "<group>"; };
+		E79E02F028649D1F555B6606 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
 		F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Biometric.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -77,6 +93,11 @@
 				5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */,
 				C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */,
 				7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */,
+				E58F26C8FB835E5B96E0759C /* SelectableCell.swift */,
+				D16CC59624D2291D414C1918 /* SelectionToolbar.swift */,
+				E79E02F028649D1F555B6606 /* SettingsScreen.swift */,
+				BB064C3E6924DDBE4B780911 /* ShareSheet.swift */,
+				480126F4F898D37E8C785DFE /* SyncProgressView.swift */,
 				58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */,
 			);
 			path = Views;
@@ -86,8 +107,11 @@
 			isa = PBXGroup;
 			children = (
 				F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */,
+				0FA05117D4A44B6CDB5B97E7 /* DeviceSync.swift */,
 				E0E361A1829E694D7B7B01E0 /* Library.swift */,
 				081AA19363B0F7F61289A83A /* PhotoClient.swift */,
+				77AFE9267E419A4AC857969B /* PhotoMutations.swift */,
+				7A165AE2F024B83A19D123FF /* Selection.swift */,
 				043B77CAFA27E5BC57559395 /* ThumbLoader.swift */,
 			);
 			path = Model;
@@ -152,10 +176,18 @@
 				22BF4F3E7926E0B5CBA024CC /* AlbumsScreen.swift in Sources */,
 				85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */,
 				B90FD73F77ACE9DFAFA60477 /* Biometric.swift in Sources */,
+				0CCB43BACFFC2458A4176887 /* DeviceSync.swift in Sources */,
 				9C49519587F7B2615F0F68DA /* Library.swift in Sources */,
 				40C8A08B67C041C6E2B4F5C9 /* PhotoClient.swift in Sources */,
+				ADEA9A0F31C4DE74E2DE34EE /* PhotoMutations.swift in Sources */,
 				DE45417FA95FD7EC2ECC98DA /* PhotosScreen.swift in Sources */,
 				DD8D1044D43E94C24A0E88C1 /* SearchScreen.swift in Sources */,
+				9A8354D2C2565F5B50BDB15F /* SelectableCell.swift in Sources */,
+				8E2ADF1E7925DC671B539BD5 /* Selection.swift in Sources */,
+				FD80372B37F49C98615424CE /* SelectionToolbar.swift in Sources */,
+				EAAF1E5328E7EF143017806E /* SettingsScreen.swift in Sources */,
+				104F16511F000CA1A14F81F5 /* ShareSheet.swift in Sources */,
+				78C81DC70351D469708DEE7F /* SyncProgressView.swift in Sources */,
 				6462884CEFDF99510D0D217C /* ThumbLoader.swift in Sources */,
 				BAEA3B2D9D10438C8748EE58 /* ViewerScreen.swift in Sources */,
 			);

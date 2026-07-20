@@ -32,6 +32,8 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
         NSFaceIDUsageDescription: Face ID schützt deinen gesperrten Ordner.
+        NSPhotoLibraryUsageDescription: Atlas Fotos sichert deine Aufnahmen auf deinem atlas-Server und räumt gesicherte Fotos vom iPhone.
+        NSPhotoLibraryAddUsageDescription: Atlas Fotos kann Originale zurück in deine iPhone-Mediathek legen.
         NSAppTransportSecurity:
           NSExceptionDomains:
             ts.net:

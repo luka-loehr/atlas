@@ -4,6 +4,10 @@ struct PhotosScreen: View {
     var library: Library
     @State private var showAccount = false
     @State private var pick: Asset?
+    @State private var selection = Selection()
+    @State private var shareBundle: ShareBundle?
+    @State private var confirmDelete = false
+    @State private var busy = false
     @Namespace private var zoom
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
@@ -17,14 +21,39 @@ struct PhotosScreen: View {
                 } else {
                     grid
                 }
+                if busy {
+                    ProgressView().tint(.white)
+                        .padding(20)
+                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 16))
+                }
             }
-            .navigationTitle("Fotos")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle(selection.active ? title : "Fotos")
+            .navigationBarTitleDisplayMode(selection.active ? .inline : .large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if selection.active {
+                        Button(allSelected ? "Keine" : "Alle") {
+                            withAnimation(.snappy) {
+                                if allSelected { selection.clear() }
+                                else { selection.selectAll(library.assets.map(\.id)) }
+                            }
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showAccount = true } label: {
-                        Image(systemName: "person.crop.circle")
-                            .font(.system(size: 22))
+                    if selection.active {
+                        Button("Fertig") { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
+                    } else {
+                        Menu {
+                            Button { withAnimation(.snappy(duration: 0.4)) { selection.enter() } } label: {
+                                Label("Auswählen", systemImage: "checkmark.circle")
+                            }
+                            Button { showAccount = true } label: {
+                                Label("Konto & Einstellungen", systemImage: "person.crop.circle")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle").font(.system(size: 22))
+                        }
                     }
                 }
             }
@@ -32,11 +61,24 @@ struct PhotosScreen: View {
         .sheet(isPresented: $showAccount) {
             AccountSheet(library: library)
         }
+        .sheet(item: $shareBundle) { bundle in
+            ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])
+        }
         .fullScreenCover(item: $pick) { asset in
             ViewerScreen(library: library, assets: library.assets, start: asset)
                 .navigationTransition(.zoom(sourceID: asset.id, in: zoom))
         }
+        .confirmationDialog("\(selection.count) Objekte in den Papierkorb?",
+                            isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("In Papierkorb", role: .destructive) { run { try await library.client.trash($0) } }
+            Button("Abbrechen", role: .cancel) {}
+        }
     }
+
+    private var title: String {
+        selection.isEmpty ? "Objekte auswählen" : "\(selection.count) ausgewählt"
+    }
+    private var allSelected: Bool { selection.allSelected(of: library.assets.map(\.id)) }
 
     private var grid: some View {
         ScrollView {
@@ -51,7 +93,10 @@ struct PhotosScreen: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     LazyVGrid(columns: cols, spacing: 2) {
                         ForEach(section.assets) { asset in
-                            cell(asset)
+                            SelectableThumb(asset: asset,
+                                            thumbURL: library.client.thumbURL(asset.id, 256),
+                                            selection: selection, namespace: zoom) { pick = asset }
+                                .task { await library.loadMoreIfNeeded(current: asset) }
                         }
                     }
                     .padding(.horizontal, 2)
@@ -60,29 +105,57 @@ struct PhotosScreen: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await library.refresh() }
+        .selectionToolbar(selection,
+            onShare:    { shareSelected() },
+            onFavorite: { run(hides: false) { try await library.client.favorite($0, true) } },
+            onArchive:  { run { try await library.client.archive($0, true) } },
+            onLock:     { run { try await library.client.lock($0, true) } },
+            onTrash:    { confirmDelete = true })
     }
 
-    private func cell(_ asset: Asset) -> some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fill)
-            .overlay {
-                Thumb(url: library.client.thumbURL(asset.id, 256))
-                    .clipped()
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if asset.isVideo {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .shadow(radius: 2)
-                        .padding(5)
+    // MARK: - batch actions
+
+    /// Run a server mutation on the current selection. `hides` = the affected
+    /// assets leave the main timeline (archive/lock/trash) → drop them locally.
+    private func run(hides: Bool = true, _ op: @escaping ([String]) async throws -> Void) {
+        let ids = Array(selection.ids)
+        guard !ids.isEmpty else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                try await op(ids)
+                if hides {
+                    withAnimation(.snappy) { library.removeLocally(Set(ids)) }
+                }
+                await library.loadStats()
+            } catch {}
+            withAnimation(.snappy(duration: 0.4)) { selection.exit() }
+        }
+    }
+
+    private func shareSelected() {
+        let ids = Array(selection.ids)
+        guard !ids.isEmpty else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            var urls: [URL] = []
+            for id in ids {
+                guard let src = library.client.originalURL(id) else { continue }
+                if let (tmp, resp) = try? await URLSession.shared.download(from: src) {
+                    let ext = (resp.suggestedFilename as NSString?)?.pathExtension.nilIfEmpty ?? "jpg"
+                    let dest = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("\(id).\(ext)")
+                    try? FileManager.default.removeItem(at: dest)
+                    if (try? FileManager.default.moveItem(at: tmp, to: dest)) != nil {
+                        urls.append(dest)
+                    }
                 }
             }
-            .clipped()
-            .contentShape(Rectangle())
-            .matchedTransitionSource(id: asset.id, in: zoom)
-            .onTapGesture { pick = asset }
-            .task { await library.loadMoreIfNeeded(current: asset) }
+            if !urls.isEmpty { shareBundle = ShareBundle(urls: urls) }
+            withAnimation(.snappy(duration: 0.4)) { selection.exit() }
+        }
     }
 
     private var emptyState: some View {
@@ -105,4 +178,8 @@ struct PhotosScreen: View {
             }
         }
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
