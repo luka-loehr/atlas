@@ -13,6 +13,7 @@
 		85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77FE98E8F36CF8A86B16CE5C /* AtlasPhotosApp.swift */; };
 		9C49519587F7B2615F0F68DA /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E361A1829E694D7B7B01E0 /* Library.swift */; };
 		A1F09DCABE82EFBC3626B0F6 /* AccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */; };
+		B90FD73F77ACE9DFAFA60477 /* Biometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */; };
 		BAEA3B2D9D10438C8748EE58 /* ViewerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */; };
 		DD8D1044D43E94C24A0E88C1 /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */; };
 		DE45417FA95FD7EC2ECC98DA /* PhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */; };
@@ -30,6 +31,7 @@
 		AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSheet.swift; sourceTree = "<group>"; };
 		C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosScreen.swift; sourceTree = "<group>"; };
 		E0E361A1829E694D7B7B01E0 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Biometric.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -83,6 +85,7 @@
 		D7801869ECBD20423A8D5C4D /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */,
 				E0E361A1829E694D7B7B01E0 /* Library.swift */,
 				081AA19363B0F7F61289A83A /* PhotoClient.swift */,
 				043B77CAFA27E5BC57559395 /* ThumbLoader.swift */,
@@ -148,6 +151,7 @@
 				A1F09DCABE82EFBC3626B0F6 /* AccountSheet.swift in Sources */,
 				22BF4F3E7926E0B5CBA024CC /* AlbumsScreen.swift in Sources */,
 				85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */,
+				B90FD73F77ACE9DFAFA60477 /* Biometric.swift in Sources */,
 				9C49519587F7B2615F0F68DA /* Library.swift in Sources */,
 				40C8A08B67C041C6E2B4F5C9 /* PhotoClient.swift in Sources */,
 				DE45417FA95FD7EC2ECC98DA /* PhotosScreen.swift in Sources */,
