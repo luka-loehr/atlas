@@ -109,7 +109,9 @@ struct PhotoClient: Sendable {
 
     // content-addressed, immutable URLs — safe to cache forever
     func thumbURL(_ id: String, _ size: Int) -> URL? {
-        URL(string: "http://\(host)/api/assets/\(id)/thumb/\(size)")
+        // v2: cache-buster after the ICC-profile fix — thumb URLs are cached
+        // immutable, so recolored thumbnails need a new cache identity
+        URL(string: "http://\(host)/api/assets/\(id)/thumb/\(size)?v=2")
     }
     func originalURL(_ id: String) -> URL? {
         URL(string: "http://\(host)/api/assets/\(id)/original")

@@ -58,6 +58,6 @@ extension PhotoClient {
     }
 
     func faceCropURL(_ faceId: Int64) -> URL? {
-        URL(string: "http://\(host)/api/faces/\(faceId)/crop")
+        URL(string: "http://\(host)/api/faces/\(faceId)/crop?v=2")
     }
 }
