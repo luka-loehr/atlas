@@ -11,7 +11,7 @@ fn home() -> String {
 }
 
 fn lightshow_dir() -> String {
-    format!("{}/projects/lightshow", home())
+    format!("{}/atlas/lightshows", home())   // lives in the monorepo now
 }
 
 /// Names we let reach docker / the filesystem — no shell metachars, no traversal.
