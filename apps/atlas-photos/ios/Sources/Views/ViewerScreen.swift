@@ -27,6 +27,9 @@ struct ViewerScreen: View {
     @State private var confirmTrash = false
     @State private var favorites: [String: Bool] = [:]   // optimistic overrides
     @State private var busy = false
+    // measured height of the bottom chrome stack (filmstrip + action bar) —
+    // video controls anchor EXACTLY above it, overlap is structurally impossible
+    @State private var chromeBottomHeight: CGFloat = 150
 
     var body: some View {
         ZStack {
@@ -35,7 +38,8 @@ struct ViewerScreen: View {
 
             if !pages.isEmpty {
                 PhotoPager(index: $index, count: pages.count) { i in
-                    ViewerPage(library: library, asset: pages[i], chrome: chrome) {
+                    ViewerPage(library: library, asset: pages[i], chrome: chrome,
+                               bottomInset: chromeBottomHeight + 16) {
                         withAnimation(.easeInOut(duration: 0.22)) { chrome.toggle() }
                     }
                 }
@@ -86,6 +90,9 @@ struct ViewerScreen: View {
                 bottomBar(asset)
             }
             .padding(.bottom, 6)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) {
+                chromeBottomHeight = $0
+            }
         }
     }
 
@@ -322,12 +329,13 @@ private struct ViewerPage: View {
     var library: Library
     var asset: Asset
     var chrome: Bool
+    var bottomInset: CGFloat = 150
     var onTap: () -> Void
 
     var body: some View {
         if asset.isVideo {
             VideoPlayerView(url: library.client.streamURL(asset.id),
-                            chrome: chrome, onTap: onTap)
+                            chrome: chrome, bottomInset: bottomInset, onTap: onTap)
         } else {
             ZoomablePhoto(
                 preview: library.client.thumbURL(asset.id, 2048),
@@ -458,6 +466,7 @@ private struct ZoomableScrollView: UIViewRepresentable {
 private struct VideoPlayerView: View {
     let url: URL?
     var chrome: Bool
+    var bottomInset: CGFloat = 150
     var onTap: () -> Void
 
     @State private var player: AVPlayer?
@@ -486,7 +495,7 @@ private struct VideoPlayerView: View {
                 controlBar
                     .frame(maxWidth: 560)
                     .padding(.horizontal, 26)
-                    .padding(.bottom, 166)
+                    .padding(.bottom, bottomInset)
                     .transition(.opacity)
             }
         }
@@ -528,6 +537,13 @@ private struct VideoPlayerView: View {
                 Capsule().fill(.primary.opacity(0.18)).frame(height: 4)
                 Capsule().fill(.primary.opacity(0.85))
                     .frame(width: max(4, geo.size.width * frac), height: 4)
+                // the draggable knob — grows while scrubbing
+                Circle()
+                    .fill(.primary)
+                    .frame(width: scrubbing ? 18 : 13, height: scrubbing ? 18 : 13)
+                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                    .offset(x: geo.size.width * frac - (scrubbing ? 9 : 6.5))
+                    .animation(.snappy(duration: 0.15), value: scrubbing)
             }
             .frame(maxHeight: .infinity, alignment: .center)
             .contentShape(Rectangle())
