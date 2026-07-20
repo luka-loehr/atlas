@@ -29,6 +29,12 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
 
     func updateUIViewController(_ pager: UIPageViewController, context: Context) {
         context.coordinator.parent = self
+        // Re-render the visible page on every SwiftUI update — video pages
+        // depend on the parent's `chrome` state for their own controls.
+        if let cur = pager.viewControllers?.first as? Coordinator.Page,
+           cur.pageIndex == index {
+            cur.rootView = AnyView(content(index))
+        }
         // External jump (e.g. filmstrip tap): animate in the right direction.
         let current = context.coordinator.currentIndex(of: pager)
         if let current, current != index {

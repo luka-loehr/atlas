@@ -15,7 +15,6 @@ struct AssetInfo: Codable {
     var lon: Double?
     var place: String?
     var caption: String?
-    var description: String?
     var favorite: Bool?
     var durationS: Double?
     var tags: [String]?
@@ -43,7 +42,7 @@ struct AssetInfo: Codable {
         case origName = "orig_name"
         case camera, width, height
         case sizeBytes = "size_bytes"
-        case lat, lon, place, caption, description, favorite
+        case lat, lon, place, caption, favorite
         case durationS = "duration_s"
         case tags, exif
     }
@@ -66,19 +65,4 @@ extension PhotoClient {
         return try dec.decode(AssetInfo.self, from: data)
     }
 
-    /// Set/replace the user caption ("Untertitel") of one asset.
-    func describe(_ id: String, text: String) async throws {
-        guard let url = URL(string: "http://\(host)/api/mutate/describe") else {
-            throw URLError(.badURL)
-        }
-        var req = URLRequest(url: url, timeoutInterval: 15)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        struct Body: Encodable { let id: String; let text: String }
-        req.httpBody = try JSONEncoder().encode(Body(id: id, text: text))
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
 }

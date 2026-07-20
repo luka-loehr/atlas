@@ -35,7 +35,7 @@ struct ViewerScreen: View {
 
             if !pages.isEmpty {
                 PhotoPager(index: $index, count: pages.count) { i in
-                    ViewerPage(library: library, asset: pages[i]) {
+                    ViewerPage(library: library, asset: pages[i], chrome: chrome) {
                         withAnimation(.easeInOut(duration: 0.22)) { chrome.toggle() }
                     }
                 }
@@ -253,50 +253,66 @@ struct CircleButton: View {
 }
 
 /// Horizontal strip of neighbor thumbnails; tap jumps, current is highlighted.
+/// Centered snap-scrubber: the selected thumb is ALWAYS in the middle.
+/// Scrolling the strip scrubs through the photos (each snap flips the pager),
+/// swiping the pager re-centers the strip — two-way, like Google Photos.
 private struct Filmstrip: View {
     let assets: [Asset]
     @Binding var index: Int
     let client: PhotoClient
+    @State private var pos: Int?
+
+    private let cell: CGFloat = 48
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 3) {
-                    ForEach(Array(assets.enumerated()), id: \.element.id) { i, a in
-                        Thumb(url: client.thumbURL(a.id, 512))
-                            .frame(width: i == index ? 62 : 48,
-                                   height: i == index ? 62 : 48)
-                            .clipShape(RoundedRectangle(cornerRadius: i == index ? 10 : 6))
-                            .overlay {
-                                if i == index {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .strokeBorder(.primary.opacity(0.65), lineWidth: 1.5)
-                                }
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 3) {
+                ForEach(Array(assets.enumerated()), id: \.offset) { i, a in
+                    Thumb(url: client.thumbURL(a.id, 512))
+                        .frame(width: cell, height: cell)
+                        .clipShape(RoundedRectangle(cornerRadius: i == index ? 9 : 6))
+                        .overlay {
+                            if i == index {
+                                RoundedRectangle(cornerRadius: 9)
+                                    .strokeBorder(.primary.opacity(0.7), lineWidth: 1.5)
                             }
-                            .id(i)
-                            .onTapGesture { withAnimation(.snappy) { index = i } }
-                    }
+                        }
+                        .scaleEffect(i == index ? 1.22 : 1)
+                        .animation(.snappy(duration: 0.18), value: i == index)
+                        .id(i)
+                        .onTapGesture { index = i }
                 }
-                .frame(height: 66)
-                .padding(.horizontal, 14)
             }
-            .onAppear { proxy.scrollTo(index, anchor: .center) }
-            .onChange(of: index) { _, i in
-                withAnimation(.snappy) { proxy.scrollTo(i, anchor: .center) }
-            }
+            .scrollTargetLayout()
+            .frame(height: 66)
         }
+        // margins so the first/last thumb can also rest dead-center
+        .contentMargins(.horizontal,
+                        (UIScreen.main.bounds.width - cell) / 2,
+                        for: .scrollContent)
+        .scrollPosition(id: $pos, anchor: .center)
+        .scrollTargetBehavior(.viewAligned)   // snaps thumb-by-thumb
         .frame(height: 66)
+        .onAppear { pos = index }
+        .onChange(of: index) { _, i in
+            if pos != i { withAnimation(.snappy) { pos = i } }
+        }
+        .onChange(of: pos) { _, p in
+            if let p, p != index { index = p }   // user scrubbed the strip
+        }
     }
 }
 
 private struct ViewerPage: View {
     var library: Library
     var asset: Asset
+    var chrome: Bool
     var onTap: () -> Void
 
     var body: some View {
         if asset.isVideo {
-            VideoPlayerView(url: library.client.streamURL(asset.id))
+            VideoPlayerView(url: library.client.streamURL(asset.id),
+                            chrome: chrome, onTap: onTap)
         } else {
             ZoomablePhoto(
                 preview: library.client.thumbURL(asset.id, 2048),
@@ -417,29 +433,143 @@ private struct ZoomableScrollView: UIViewRepresentable {
     }
 }
 
+/// Custom video surface — NO native AVKit controls. A tap anywhere toggles the
+/// viewer chrome exactly like on photos; play/pause + scrubber are our own
+/// Liquid-Glass controls and appear/disappear WITH the chrome (so share/trash,
+/// the filmstrip and the video controls always hide together).
 private struct VideoPlayerView: View {
     let url: URL?
+    var chrome: Bool
+    var onTap: () -> Void
+
     @State private var player: AVPlayer?
+    @State private var playing = false
+    @State private var current: Double = 0
+    @State private var duration: Double = 0
+    @State private var scrubbing = false
 
     var body: some View {
-        Group {
+        ZStack {
             if let player {
-                VideoPlayer(player: player)
-                    .onAppear { player.play() }
-                    .onDisappear { player.pause() }
+                PlayerLayerView(player: player)
+                    .ignoresSafeArea()
             } else {
-                ProgressView()   // adaptive: dark scheme is forced in immersive mode, so no hard-coded white
+                ProgressView()
             }
         }
-        .task {
-            guard let url else { return }
-            // play sound even with the ringer/Focus on silent (like Photos/YouTube)
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try? AVAudioSession.sharedInstance().setActive(true)
-            let p = AVPlayer(url: url)
-            p.isMuted = false
-            player = p
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
+        .overlay {                                   // center play/pause
+            if chrome, player != nil {
+                Button { togglePlay() } label: {
+                    Image(systemName: playing ? "pause.fill" : "play.fill")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 64, height: 64)
+                        .glassEffect(.regular, in: .circle)
+                }
+                .transition(.opacity)
+            }
         }
+        .overlay(alignment: .bottom) {               // scrubber above filmstrip block
+            if chrome, player != nil, duration > 0 {
+                HStack(spacing: 10) {
+                    Text(fmt(current))
+                        .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: Binding(get: { current },
+                                       set: { current = $0 }),
+                        in: 0...max(duration, 0.1)
+                    ) { editing in
+                        scrubbing = editing
+                        if !editing {
+                            player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
+                                         toleranceBefore: .zero, toleranceAfter: .zero)
+                        }
+                    }
+                    Text(fmt(duration))
+                        .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: .capsule)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 160)   // clears filmstrip + action bar
+                .transition(.opacity)
+            }
+        }
+        .task { await setup() }
+        .onDisappear { player?.pause(); playing = false }
+    }
+
+    private func togglePlay() {
+        guard let player else { return }
+        if playing {
+            player.pause()
+        } else {
+            if duration > 0, current >= duration - 0.05 {   // replay from start
+                player.seek(to: .zero)
+                current = 0
+            }
+            player.play()
+        }
+        playing.toggle()
+    }
+
+    @MainActor
+    private func setup() async {
+        guard player == nil, let url else { return }
+        // play sound even with the ringer/Focus on silent (like Photos/YouTube)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let p = AVPlayer(url: url)
+        p.isMuted = false
+        player = p
+        p.play()
+        playing = true
+
+        p.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+                                  queue: .main) { t in
+            MainActor.assumeIsolated {
+                if !scrubbing { current = t.seconds }
+                if duration <= 0, let d = p.currentItem?.duration.seconds,
+                   d.isFinite, d > 0 { duration = d }
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: p.currentItem, queue: .main) { _ in
+            MainActor.assumeIsolated { playing = false }
+        }
+    }
+
+    private func fmt(_ t: Double) -> String {
+        guard t.isFinite else { return "0:00" }
+        let s = Int(t.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Bare AVPlayerLayer host (aspect-fit, no controls).
+private struct PlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    final class V: UIView {
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    }
+
+    func makeUIView(context: Context) -> V {
+        let v = V()
+        v.playerLayer.player = player
+        v.playerLayer.videoGravity = .resizeAspect
+        return v
+    }
+
+    func updateUIView(_ v: V, context: Context) {
+        if v.playerLayer.player !== player { v.playerLayer.player = player }
     }
 }
 
