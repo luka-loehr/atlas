@@ -15,11 +15,10 @@ struct InfoSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                aiSection
                 dateRow
                 cameraCard
                 mapCard
-                tagsSection
-                aiCaption
             }
             .padding(18)
             .padding(.top, 8)
@@ -175,33 +174,36 @@ struct InfoSheet: View {
         item.openInMaps()
     }
 
-    // MARK: - Tags + AI caption
+    // MARK: - KI-Beschreibung + Tags (read-only, prominent — ersetzt das
+    // frühere Untertitel-Feld an derselben Stelle)
 
     @ViewBuilder
-    private var tagsSection: some View {
-        if let tags = info?.tags, !tags.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Tags")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                FlowChips(items: tags)
+    private var aiSection: some View {
+        let cap = info?.caption
+        let tags = info?.tags ?? []
+        if cap != nil || !tags.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tint)
+                    Text("KI-BESCHREIBUNG")
+                        .font(.system(size: 11, weight: .semibold))
+                        .kerning(1.1)
+                        .foregroundStyle(.secondary)
+                }
+                if let cap {
+                    Text(cap)
+                        .font(.system(size: 20, weight: .regular))
+                        .lineSpacing(3)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !tags.isEmpty {
+                    FlowChips(items: tags)
+                }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var aiCaption: some View {
-        if let c = info?.caption, !c.isEmpty {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Text(c)
-                    .font(.system(size: 14))
-                    .italic()
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.bottom, 12)
+            .padding(.top, 4)
         }
     }
 
