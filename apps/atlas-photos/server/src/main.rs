@@ -429,15 +429,24 @@ async fn exists(State(app): State<App>, Json(b): Json<Hashes>) -> Result<Json<se
 
 const VIDEO_EXTS: &[&str] = &["mp4", "mov", "m4v", "3gp", "avi", "mkv", "webm", "mts"];
 
-/// Raw-body upload. Headers: X-Content-Hash (blake3[:32] = asset id, required),
-/// X-Filename (original name), X-Taken-At (unix seconds, optional). Stores the
-/// bytes at originals/YYYY/MM/<hash>_<name>, enqueues a 'thumb' ingest job (no
-/// synchronous thumbnailing), source='iphone'. Known hash -> {"exists":true}.
+/// Raw-body upload. The asset id is the SHA256 of the exact received bytes,
+/// computed HERE by the server — never taken from the client. This is what
+/// makes dedup work across paths: the Takeout ingest and this upload hash the
+/// same bytes with the same function, so identical content always collapses to
+/// one id (ON CONFLICT DO NOTHING). The optional X-Content-Hash header is only
+/// an integrity check (reject on mismatch). Headers: X-Content-Hash (optional
+/// SHA256 for verification), X-Filename (original name), X-Taken-At (unix
+/// seconds, optional). Stores bytes at originals/YYYY/MM/<id>_<name>, enqueues a
+/// 'thumb' ingest job, source='iphone'. Known content -> {"exists":true}.
 async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Result<Response, Api> {
-    let id = match headers.get("x-content-hash").and_then(|v| v.to_str().ok()) {
-        Some(h) if safe_id(h.trim()) => h.trim().to_ascii_lowercase(),
-        _ => return Ok((StatusCode::BAD_REQUEST, "missing/invalid X-Content-Hash").into_response()),
-    };
+    let id = sha256_hex(&body);
+    // Optional integrity check: if the client sent a hash, it must match ours.
+    if let Some(h) = headers.get("x-content-hash").and_then(|v| v.to_str().ok()) {
+        let claimed = h.trim().to_ascii_lowercase();
+        if !claimed.is_empty() && claimed != id {
+            return Ok((StatusCode::BAD_REQUEST, "X-Content-Hash mismatch").into_response());
+        }
+    }
 
     let c = app.pool.get().await?;
     if c.query_opt("SELECT 1 FROM assets WHERE id = $1", &[&id]).await?.is_some() {
@@ -530,6 +539,18 @@ async fn stream(State(app): State<App>, Path(id): Path<String>, headers: HeaderM
 
 fn safe_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Lowercase-hex SHA256 of `bytes` — the canonical content id for the whole
+/// system (matches the Python Takeout ingest and the iOS CryptoKit hash).
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    let mut s = String::with_capacity(64);
+    for b in digest {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
 }
 
 /// ServeFile handles Range requests (AVPlayer) + content types; we add the
