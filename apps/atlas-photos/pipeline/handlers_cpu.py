@@ -128,9 +128,17 @@ def _video_thumbs(path, hash_id):
 
 def thumb(conn, asset_id):
     row = conn.execute(
-        "SELECT orig_path, type FROM assets WHERE id = %s", (asset_id,)).fetchone()
+        "SELECT orig_path, type, width, height FROM assets WHERE id = %s",
+        (asset_id,)).fetchone()
     if row is None:
         raise RuntimeError(f"asset {asset_id} not in db")
+    # early exit: both thumbs on disk and dimensions known -> nothing to do.
+    # (meta enqueues thumb as a blanket safety net; without this check every
+    # such job would re-read the original and re-encode two webps.)
+    if (row[2] is not None and row[3] is not None
+            and all(os.path.exists(os.path.join(THUMBS, f"{asset_id}.{s}.webp"))
+                    for s in (512, 2048))):
+        return
     path = resolve_path(row[0])
     if row[1] == "video":
         w, h, dur = _video_thumbs(path, asset_id)
