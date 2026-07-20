@@ -32,57 +32,57 @@ extension PhotoClient {
 }
 
 // MARK: - Screen
+//
+// ARCHITECTURE: the force layout is computed ONCE off the main thread until it
+// rests — nothing simulates per frame. Nodes are plain SwiftUI views at fixed
+// world positions; zoom/pan is a pure GPU transform on the container; every
+// bit of "life" (entrance springs, idle pulse) is a repeatForever Core
+// Animation the render loop never touches. Butter over spectacle.
 
-/// Living knowledge graph: persons appear as their actual face avatars,
-/// places and tags as glass chips, connected by soft links. Everything is
-/// touchable — drag a node and the whole graph reacts, pinch to zoom, pan
-/// around, tap a person to open their photos. The layout never fully sleeps,
-/// so the graph keeps gently breathing.
 struct GraphScreen: View {
     var library: Library
 
-    @State private var sim = GraphSim()
+    @State private var nodes: [GraphNode] = []
+    @State private var links: [GraphLink] = []
+    @State private var positions: [String: CGPoint] = [:]
+    @State private var adjacency: [String: Set<String>] = [:]
     @State private var loaded = false
+    @State private var appeared = false
     @State private var focus: String?
     @State private var openPerson: Person?
+    @State private var draggingId: String?
 
-    // viewport
-    @State private var scale: CGFloat = 0.9
-    @State private var pinchBase: CGFloat = 0.9
+    // viewport (pure transform — never triggers node layout)
+    @State private var scale: CGFloat = 0.85
+    @State private var pinchBase: CGFloat = 0.85
     @State private var offset: CGSize = .zero
     @State private var dragBase: CGSize = .zero
 
+    private let worldSide: CGFloat = 700
+
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-                if loaded {
-                    // links live on a cheap Canvas below the node views
-                    TimelineView(.animation) { _ in
-                        Canvas { ctx, size in
-                            sim.step()
-                            drawLinks(ctx: ctx, size: size)
-                        }
-                    }
+            if loaded {
+                world
+                    .scaleEffect(scale)
+                    .offset(offset)
                     .contentShape(Rectangle())
-                    .gesture(boardDrag.simultaneously(with: pinch))
+                    .gesture(boardPan.simultaneously(with: pinch))
                     .onTapGesture { withAnimation(.snappy) { focus = nil } }
-
-                    // nodes as real SwiftUI views
-                    TimelineView(.animation) { _ in
-                        nodeLayer(center: CGPoint(x: geo.size.width / 2,
-                                                  y: geo.size.height / 2))
-                    }
-                    .allowsHitTesting(true)
-                } else {
+            } else {
+                VStack(spacing: 12) {
                     ProgressView().tint(.white)
+                    Text("Graph wird geladen …")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.45))
                 }
+            }
 
-                VStack {
-                    Spacer()
-                    legend
-                }
+            VStack {
+                Spacer()
+                legend
             }
         }
         .navigationTitle("Graph")
@@ -93,30 +93,58 @@ struct GraphScreen: View {
         .navigationDestination(item: $openPerson) { p in
             PersonDetailScreen(library: library, person: p)
         }
-        .task {
-            guard !loaded else { return }
-            if let g = try? await library.client.graph() {
-                sim.load(nodes: g.nodes, links: g.links)
-                loaded = true
+        .task { await loadGraph() }
+    }
+
+    // MARK: world
+
+    private var world: some View {
+        ZStack {
+            // links: ONE static canvas, redrawn only when positions/focus change
+            LinksCanvas(links: links, positions: positions,
+                        focus: focus, adjacency: adjacency)
+                .frame(width: worldSide, height: worldSide)
+
+            ForEach(nodes) { node in
+                let dimmed = isDimmed(node.id)
+                GraphNodeView(node: node, library: library,
+                              diameter: diameter(node),
+                              dimmed: dimmed,
+                              focused: focus == node.id)
+                    .position(positions[node.id] ?? CGPoint(x: worldSide / 2,
+                                                            y: worldSide / 2))
+                    .scaleEffect(appeared ? 1 : 0.01,
+                                 anchor: .center)
+                    .animation(.spring(response: 0.55, dampingFraction: 0.72)
+                        .delay(Double(stableIndex(node.id)) * 0.012),
+                        value: appeared)
+                    .gesture(nodeDrag(node.id))
+                    .onTapGesture { tap(node) }
             }
         }
+        .frame(width: worldSide, height: worldSide)
+        .coordinateSpace(name: "world")
     }
 
-    // MARK: transform helpers
-
-    private func toScreen(_ p: CGPoint, center: CGPoint) -> CGPoint {
-        CGPoint(x: center.x + (p.x * scale) + offset.width,
-                y: center.y + (p.y * scale) + offset.height)
+    private func isDimmed(_ id: String) -> Bool {
+        guard let f = focus else { return false }
+        return id != f && !(adjacency[f]?.contains(id) ?? false)
     }
 
-    private func toWorld(_ p: CGPoint, center: CGPoint) -> CGPoint {
-        CGPoint(x: (p.x - center.x - offset.width) / scale,
-                y: (p.y - center.y - offset.height) / scale)
+    private func stableIndex(_ id: String) -> Int {
+        nodes.firstIndex(where: { $0.id == id }) ?? 0
+    }
+
+    private func diameter(_ n: GraphNode) -> CGFloat {
+        if n.kind == "person" {
+            return min(58, 26 + sqrt(CGFloat(n.size)) * 1.5)
+        }
+        return min(30, 15 + sqrt(CGFloat(n.size)) * 0.8)
     }
 
     // MARK: gestures
 
-    private var boardDrag: some Gesture {
+    private var boardPan: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { v in
                 offset = CGSize(width: dragBase.width + v.translation.width,
@@ -133,39 +161,22 @@ struct GraphScreen: View {
             .onEnded { _ in pinchBase = scale }
     }
 
-    // MARK: node layer
-
-    @ViewBuilder
-    private func nodeLayer(center: CGPoint) -> some View {
-        let dimmedSet: Set<String>? = focus.map { f in
-            var keep = sim.neighbors(of: f)
-            keep.insert(f)
-            return keep
-        }
-        ForEach(sim.nodes) { node in
-            let p = toScreen(sim.pos[node.id] ?? .zero, center: center)
-            let dimmed = dimmedSet.map { !$0.contains(node.id) } ?? false
-            NodeView(node: node, library: library,
-                     diameter: sim.diameter(node) * scale,
-                     dimmed: dimmed, focused: focus == node.id)
-                .position(p)
-                .gesture(nodeDrag(node.id, center: center))
-                .onTapGesture { tap(node) }
-                .animation(.easeInOut(duration: 0.25), value: dimmed)
-        }
-    }
-
-    private func nodeDrag(_ id: String, center: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+    /// Drag a node in world coordinates; on release the neighborhood reflows
+    /// with one smooth spring — no per-frame physics.
+    private func nodeDrag(_ id: String) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("world"))
             .onChanged { v in
-                sim.grab(id, at: toWorld(v.location, center: center))
+                draggingId = id
+                positions[id] = v.location
             }
-            .onEnded { _ in sim.release(id) }
+            .onEnded { _ in
+                draggingId = nil
+                reflow(around: id)
+            }
     }
 
     private func tap(_ node: GraphNode) {
         if node.kind == "person", focus == node.id {
-            // second tap opens the person
             let pid = Int64(node.id.dropFirst()) ?? 0
             openPerson = Person(id: pid,
                                 name: node.label.isEmpty ? nil : node.label,
@@ -173,30 +184,64 @@ struct GraphScreen: View {
             return
         }
         withAnimation(.snappy) { focus = (focus == node.id) ? nil : node.id }
-        sim.poke()
     }
 
-    // MARK: links
+    // MARK: layout
 
-    private func drawLinks(ctx: GraphicsContext, size: CGSize) {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let keep: Set<String>? = focus.map { f in
-            var k = sim.neighbors(of: f); k.insert(f); return k
+    private func loadGraph() async {
+        guard !loaded else { return }
+        guard let g = try? await library.client.graph() else { return }
+
+        // trim to the strongest nodes — clarity over completeness
+        var chosen: [GraphNode] = []
+        for kind in ["person", "place", "tag"] {
+            let cut = kind == "person" ? 26 : 20
+            chosen += g.nodes.filter { $0.kind == kind }
+                .sorted { $0.size > $1.size }.prefix(cut)
         }
-        for l in sim.links {
-            guard let pa = sim.pos[l.a], let pb = sim.pos[l.b] else { continue }
-            let active = keep == nil || (l.a == focus || l.b == focus)
-            let a = toScreen(pa, center: center)
-            let b = toScreen(pb, center: center)
-            var path = Path()
-            path.move(to: a)
-            // soft curve instead of harsh straight spaghetti
-            let mid = CGPoint(x: (a.x + b.x) / 2 + (b.y - a.y) * 0.06,
-                              y: (a.y + b.y) / 2 - (b.x - a.x) * 0.06)
-            path.addQuadCurve(to: b, control: mid)
-            let alpha = active ? min(0.30, 0.05 + Double(l.w) * 0.010) : 0.015
-            ctx.stroke(path, with: .color(.white.opacity(alpha)),
-                       lineWidth: (active ? min(1.8, 0.5 + CGFloat(l.w) * 0.04) : 0.4) * scale)
+        let ids = Set(chosen.map(\.id))
+        var keptLinks = g.links.filter { ids.contains($0.a) && ids.contains($0.b) }
+            .sorted { $0.w > $1.w }
+        if keptLinks.count > 130 { keptLinks = Array(keptLinks.prefix(130)) }
+
+        var adj: [String: Set<String>] = [:]
+        for l in keptLinks {
+            adj[l.a, default: []].insert(l.b)
+            adj[l.b, default: []].insert(l.a)
+        }
+
+        // heavy lifting off-main: settle the layout completely
+        let side = worldSide
+        let radii = Dictionary(uniqueKeysWithValues: chosen.map {
+            ($0.id, diameter($0) / 2)
+        })
+        let finalPos = await Task.detached(priority: .userInitiated) {
+            GraphLayout.compute(nodes: chosen, links: keptLinks,
+                                radii: radii, side: side)
+        }.value
+
+        nodes = chosen
+        links = keptLinks
+        adjacency = adj
+        positions = finalPos
+        loaded = true
+        // entrance: everything springs from tiny to full, staggered
+        withAnimation { appeared = true }
+    }
+
+    /// Local relaxation after a manual drag: a few solver rounds, then ONE
+    /// animated settle of all affected nodes.
+    private func reflow(around id: String) {
+        let anchor = positions
+        Task.detached(priority: .userInitiated) {
+            let relaxed = GraphLayout.relax(from: anchor, nodes: nodes,
+                                            links: links, pinned: id,
+                                            side: worldSide, rounds: 60)
+            await MainActor.run {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) {
+                    positions = relaxed
+                }
+            }
         }
     }
 
@@ -204,9 +249,9 @@ struct GraphScreen: View {
 
     private var legend: some View {
         HStack(spacing: 14) {
-            chip("Personen", Color(red: 0.55, green: 0.58, blue: 0.98))
-            chip("Orte", Color(red: 0.36, green: 0.76, blue: 0.44))
-            chip("Tags", Color(red: 0.85, green: 0.80, blue: 0.40))
+            chip("Personen", GraphPalette.person)
+            chip("Orte", GraphPalette.place)
+            chip("Tags", GraphPalette.tag)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
@@ -224,38 +269,76 @@ struct GraphScreen: View {
     }
 }
 
+enum GraphPalette {
+    static let person = Color(red: 0.55, green: 0.58, blue: 0.98)
+    static let place = Color(red: 0.36, green: 0.76, blue: 0.44)
+    static let tag = Color(red: 0.85, green: 0.80, blue: 0.40)
+}
+
+// MARK: - Links (single static canvas)
+
+private struct LinksCanvas: View {
+    let links: [GraphLink]
+    let positions: [String: CGPoint]
+    let focus: String?
+    let adjacency: [String: Set<String>]
+
+    var body: some View {
+        Canvas { ctx, _ in
+            for l in links {
+                guard let a = positions[l.a], let b = positions[l.b] else { continue }
+                let active = focus == nil || l.a == focus || l.b == focus
+                var path = Path()
+                path.move(to: a)
+                let mid = CGPoint(x: (a.x + b.x) / 2 + (b.y - a.y) * 0.07,
+                                  y: (a.y + b.y) / 2 - (b.x - a.x) * 0.07)
+                path.addQuadCurve(to: b, control: mid)
+                let alpha = active ? min(0.28, 0.05 + Double(l.w) * 0.009) : 0.015
+                ctx.stroke(path, with: .color(.white.opacity(alpha)),
+                           lineWidth: active ? min(1.7, 0.5 + CGFloat(l.w) * 0.04) : 0.4)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: focus)
+    }
+}
+
 // MARK: - Node view
 
-/// A single graph node: persons render their real face avatar with a colored
-/// ring, places and tags render as small glass chips.
-private struct NodeView: View {
+private struct GraphNodeView: View {
     let node: GraphNode
     var library: Library
     let diameter: CGFloat
     let dimmed: Bool
     let focused: Bool
 
+    @State private var pulse = false
+
     var body: some View {
         Group {
             switch node.kind {
             case "person": personView
-            case "place": chipView(icon: "mappin",
-                                   tint: Color(red: 0.36, green: 0.76, blue: 0.44))
-            default: chipView(icon: "number",
-                              tint: Color(red: 0.85, green: 0.80, blue: 0.40))
+            case "place": chipView(icon: "mappin", tint: GraphPalette.place)
+            default: chipView(icon: "number", tint: GraphPalette.tag)
             }
         }
-        .opacity(dimmed ? 0.13 : 1)
-        .scaleEffect(focused ? 1.18 : 1)
-        .shadow(color: focused ? .white.opacity(0.25) : .clear, radius: 10)
+        .opacity(dimmed ? 0.12 : 1)
+        .scaleEffect(focused ? 1.16 : (pulse ? 1.03 : 0.97))
+        .shadow(color: focused ? .white.opacity(0.3) : .clear, radius: 12)
+        .animation(.easeInOut(duration: 0.25), value: dimmed)
         .animation(.snappy(duration: 0.25), value: focused)
+        .onAppear {
+            // idle life: slow CA-driven pulse, cost-free for SwiftUI
+            withAnimation(.easeInOut(duration: 2.6 + Double(abs(node.id.hashValue % 140)) / 100)
+                .repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
     }
 
     private var personView: some View {
         VStack(spacing: 3) {
             ZStack {
-                Circle()
-                    .fill(Color(red: 0.55, green: 0.58, blue: 0.98).opacity(0.25))
+                Circle().fill(GraphPalette.person.opacity(0.25))
                 if let f = node.cover {
                     Thumb(url: library.client.faceCropURL(f))
                 } else {
@@ -266,11 +349,10 @@ private struct NodeView: View {
             .frame(width: diameter, height: diameter)
             .clipShape(Circle())
             .overlay(Circle().strokeBorder(
-                Color(red: 0.55, green: 0.58, blue: 0.98)
-                    .opacity(focused ? 1 : 0.7),
+                GraphPalette.person.opacity(focused ? 1 : 0.7),
                 lineWidth: focused ? 2.5 : 1.5))
-            if !node.label.isEmpty || focused {
-                Text(node.label.isEmpty ? "\(node.size)" : node.label)
+            if !node.label.isEmpty {
+                Text(node.label)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
@@ -282,154 +364,139 @@ private struct NodeView: View {
     private func chipView(icon: String, tint: Color) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: max(7, diameter * 0.28), weight: .semibold))
+                .font(.system(size: max(8, diameter * 0.30), weight: .semibold))
             Text(node.label)
-                .font(.system(size: max(8, diameter * 0.32), weight: .medium))
+                .font(.system(size: max(9, diameter * 0.34), weight: .medium))
                 .lineLimit(1)
                 .fixedSize()
         }
         .foregroundStyle(.white.opacity(0.92))
-        .padding(.horizontal, max(6, diameter * 0.28))
-        .padding(.vertical, max(3, diameter * 0.16))
-        .background(tint.opacity(0.30), in: Capsule())
-        .overlay(Capsule().strokeBorder(tint.opacity(0.65), lineWidth: 1))
+        .padding(.horizontal, max(7, diameter * 0.30))
+        .padding(.vertical, max(4, diameter * 0.17))
+        .background(tint.opacity(0.28), in: Capsule())
+        .overlay(Capsule().strokeBorder(tint.opacity(0.6), lineWidth: 1))
     }
 }
 
-// MARK: - Physics
+// MARK: - Offline layout solver
 
-/// Tamed d3-style force layout that never fully sleeps: repulsion is range-
-/// limited, centering is firm, positions are clamped — no more exploding
-/// hairball — and a small alpha floor keeps the graph breathing.
-@Observable
-final class GraphSim {
-    var nodes: [GraphNode] = []
-    var links: [GraphLink] = []
-    var pos: [String: CGPoint] = [:]
-    private var vel: [String: CGVector] = [:]
-    private var adj: [String: Set<String>] = [:]
-    private var alpha: Double = 0
-    private var grabbed: String?
-
-    private let maxNodes = 70
-    private let worldRadius: CGFloat = 300
-
-    func load(nodes allNodes: [GraphNode], links allLinks: [GraphLink]) {
-        // trim to the strongest nodes per kind — beauty over completeness
-        var chosen: [GraphNode] = []
-        for kind in ["person", "place", "tag"] {
-            let cut = kind == "person" ? 26 : 22
-            chosen += allNodes.filter { $0.kind == kind }
-                .sorted { $0.size > $1.size }
-                .prefix(cut)
-        }
-        chosen = Array(chosen.prefix(maxNodes))
-        let ids = Set(chosen.map(\.id))
-        nodes = chosen
-        links = allLinks
-            .filter { ids.contains($0.a) && ids.contains($0.b) }
-            .sorted { $0.w > $1.w }
-        if links.count > 140 { links = Array(links.prefix(140)) }
-
-        adj = [:]
-        for l in links {
-            adj[l.a, default: []].insert(l.b)
-            adj[l.b, default: []].insert(l.a)
-        }
-
-        // compact deterministic spiral start — grows outward from the center
+/// Pure functions, run off-main. Classic force layout + collision resolution,
+/// iterated to rest — the UI only ever sees finished positions.
+enum GraphLayout {
+    static func compute(nodes: [GraphNode], links: [GraphLink],
+                        radii: [String: CGFloat], side: CGFloat) -> [String: CGPoint] {
+        var pos: [String: CGPoint] = [:]
+        let c = side / 2
         for (i, n) in nodes.enumerated() {
             let t = Double(i) / Double(max(nodes.count, 1))
             let angle = t * 2 * .pi * 3.7
-            let r = 20 + t * 150
-            pos[n.id] = CGPoint(x: cos(angle) * r, y: sin(angle) * r)
-            vel[n.id] = .zero
+            let r = 25 + t * 190
+            pos[n.id] = CGPoint(x: c + cos(angle) * r, y: c + sin(angle) * r)
         }
-        alpha = 1
-    }
-
-    /// Visual size in world points: persons are avatars, chips scale gently.
-    func diameter(_ n: GraphNode) -> CGFloat {
-        if n.kind == "person" {
-            return min(56, 24 + sqrt(CGFloat(n.size)) * 1.6)
+        var vel: [String: CGVector] = [:]
+        var alpha = 1.0
+        for _ in 0..<520 {
+            alpha *= 0.988
+            step(&pos, &vel, nodes: nodes, links: links, radii: radii,
+                 side: side, k: alpha, pinned: nil)
         }
-        return min(30, 15 + sqrt(CGFloat(n.size)) * 0.9)
+        // final overlap cleanup
+        for _ in 0..<40 { collide(&pos, nodes: nodes, radii: radii) }
+        return pos
     }
 
-    func neighbors(of id: String) -> Set<String> { adj[id] ?? [] }
-
-    /// re-energize (after focus changes etc.)
-    func poke() { alpha = max(alpha, 0.25) }
-
-    func grab(_ id: String, at p: CGPoint) {
-        grabbed = id
-        pos[id] = clamp(p)
-        vel[id] = .zero
-        alpha = max(alpha, 0.45)
+    static func relax(from: [String: CGPoint], nodes: [GraphNode],
+                      links: [GraphLink], pinned: String,
+                      side: CGFloat, rounds: Int) -> [String: CGPoint] {
+        var pos = from
+        var vel: [String: CGVector] = [:]
+        let radii = Dictionary(uniqueKeysWithValues: nodes.map { (n: GraphNode) in
+            (n.id, n.kind == "person"
+                ? min(58, 26 + sqrt(CGFloat(n.size)) * 1.5) / 2
+                : min(30, 15 + sqrt(CGFloat(n.size)) * 0.8) / 2)
+        })
+        for i in 0..<rounds {
+            let k = 0.35 * (1 - Double(i) / Double(rounds))
+            step(&pos, &vel, nodes: nodes, links: links, radii: radii,
+                 side: side, k: k, pinned: pinned)
+        }
+        for _ in 0..<25 { collide(&pos, nodes: nodes, radii: radii) }
+        return pos
     }
 
-    func release(_ id: String) {
-        if grabbed == id { grabbed = nil }
-        alpha = max(alpha, 0.35)
-    }
-
-    private func clamp(_ p: CGPoint) -> CGPoint {
-        let d = hypot(p.x, p.y)
-        guard d > worldRadius else { return p }
-        return CGPoint(x: p.x / d * worldRadius, y: p.y / d * worldRadius)
-    }
-
-    func step() {
-        // alpha floor: the graph keeps gently moving forever
-        alpha = max(alpha * 0.992, 0.018)
-        let k = alpha
-
+    private static func step(_ pos: inout [String: CGPoint],
+                             _ vel: inout [String: CGVector],
+                             nodes: [GraphNode], links: [GraphLink],
+                             radii: [String: CGFloat], side: CGFloat,
+                             k: Double, pinned: String?) {
+        let c = side / 2
         var force: [String: CGVector] = [:]
 
-        // range-limited repulsion (no long-distance explosion)
-        let arr = nodes
-        for i in 0..<arr.count {
-            guard let pi = pos[arr[i].id] else { continue }
-            for j in (i + 1)..<arr.count {
-                guard let pj = pos[arr[j].id] else { continue }
-                var dx = pi.x - pj.x
-                var dy = pi.y - pj.y
+        for i in 0..<nodes.count {
+            guard let pi = pos[nodes[i].id] else { continue }
+            for j in (i + 1)..<nodes.count {
+                guard let pj = pos[nodes[j].id] else { continue }
+                var dx = pi.x - pj.x, dy = pi.y - pj.y
                 var d2 = dx * dx + dy * dy
-                if d2 > 22500 { continue }          // > 150pt apart: ignore
+                if d2 > 26000 { continue }
                 if d2 < 1 { d2 = 1; dx = 1; dy = 0 }
-                let f = 520.0 / d2 * k
-                force[arr[i].id, default: .zero].dx += dx * f
-                force[arr[i].id, default: .zero].dy += dy * f
-                force[arr[j].id, default: .zero].dx -= dx * f
-                force[arr[j].id, default: .zero].dy -= dy * f
+                let f = 600.0 / d2 * k
+                force[nodes[i].id, default: .zero].dx += dx * f
+                force[nodes[i].id, default: .zero].dy += dy * f
+                force[nodes[j].id, default: .zero].dx -= dx * f
+                force[nodes[j].id, default: .zero].dy -= dy * f
             }
         }
-
-        // springs
         for l in links {
             guard let pa = pos[l.a], let pb = pos[l.b] else { continue }
             let dx = pb.x - pa.x, dy = pb.y - pa.y
             let d = max(hypot(dx, dy), 0.01)
-            let rest: CGFloat = 55 + 50 / CGFloat(min(l.w, 10))
-            let f = (d - rest) / d * 0.06 * k * CGFloat(min(l.w, 6))
+            let rest: CGFloat = 60 + 50 / CGFloat(min(l.w, 10))
+            let f = (d - rest) / d * 0.05 * k * CGFloat(min(l.w, 6))
             force[l.a, default: .zero].dx += dx * f
             force[l.a, default: .zero].dy += dy * f
             force[l.b, default: .zero].dx -= dx * f
             force[l.b, default: .zero].dy -= dy * f
         }
-
-        // firm centering + integrate + clamp
         for n in nodes {
-            if n.id == grabbed { continue }         // finger owns it
+            if n.id == pinned { continue }
             guard let p = pos[n.id] else { continue }
             var v = vel[n.id] ?? .zero
             var f = force[n.id] ?? .zero
-            f.dx -= p.x * 0.045 * k
-            f.dy -= p.y * 0.045 * k
-            v.dx = (v.dx + f.dx) * 0.80
-            v.dy = (v.dy + f.dy) * 0.80
+            f.dx -= (p.x - c) * 0.04 * k
+            f.dy -= (p.y - c) * 0.04 * k
+            v.dx = (v.dx + f.dx) * 0.78
+            v.dy = (v.dy + f.dy) * 0.78
             vel[n.id] = v
-            pos[n.id] = clamp(CGPoint(x: p.x + v.dx, y: p.y + v.dy))
+            var np = CGPoint(x: p.x + v.dx, y: p.y + v.dy)
+            let dc = hypot(np.x - c, np.y - c)
+            let maxR = side * 0.46
+            if dc > maxR {
+                np = CGPoint(x: c + (np.x - c) / dc * maxR,
+                             y: c + (np.y - c) / dc * maxR)
+            }
+            pos[n.id] = np
+        }
+    }
+
+    /// Hard overlap resolution so avatars/chips never sit on each other.
+    private static func collide(_ pos: inout [String: CGPoint],
+                                nodes: [GraphNode], radii: [String: CGFloat]) {
+        for i in 0..<nodes.count {
+            for j in (i + 1)..<nodes.count {
+                let a = nodes[i].id, b = nodes[j].id
+                guard var pa = pos[a], var pb = pos[b] else { continue }
+                let minDist = (radii[a] ?? 15) + (radii[b] ?? 15) + 10
+                var dx = pb.x - pa.x, dy = pb.y - pa.y
+                var d = hypot(dx, dy)
+                if d < 0.01 { dx = 1; dy = 0; d = 1 }
+                if d < minDist {
+                    let push = (minDist - d) / 2
+                    pa.x -= dx / d * push; pa.y -= dy / d * push
+                    pb.x += dx / d * push; pb.y += dy / d * push
+                    pos[a] = pa; pos[b] = pb
+                }
+            }
         }
     }
 }
