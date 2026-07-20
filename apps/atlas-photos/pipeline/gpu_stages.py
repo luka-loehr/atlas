@@ -95,6 +95,9 @@ class EmbedStage:
                   for k, v in inputs.items()}
         with torch.no_grad():
             feats = self.model.get_image_features(**inputs)
+        # newer transformers returns BaseModelOutputWithPooling, older a tensor
+        if not torch.is_tensor(feats):
+            feats = feats.pooler_output
         feats = torch.nn.functional.normalize(feats.float(), dim=-1).cpu().numpy()
 
         cur = conn.cursor()
