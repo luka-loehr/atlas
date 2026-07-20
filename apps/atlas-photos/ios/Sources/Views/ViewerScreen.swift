@@ -48,7 +48,7 @@ private struct ViewerPage: View {
             VideoPlayerView(url: library.client.streamURL(asset.id))
         } else {
             ZoomablePhoto(
-                preview: library.client.thumbURL(asset.id, 1024),
+                preview: library.client.thumbURL(asset.id, 2048),
                 full: library.client.originalURL(asset.id)
             )
         }

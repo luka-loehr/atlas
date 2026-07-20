@@ -22,7 +22,7 @@ FORCE = "--all" in sys.argv
 
 
 def has_thumb(aid):
-    return os.path.exists(os.path.join(THUMBS, f"{aid}.256.webp"))
+    return os.path.exists(os.path.join(THUMBS, f"{aid}.512.webp"))
 
 
 def work(row):

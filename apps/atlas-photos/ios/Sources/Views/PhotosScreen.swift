@@ -94,7 +94,7 @@ struct PhotosScreen: View {
                     LazyVGrid(columns: cols, spacing: 2) {
                         ForEach(section.assets) { asset in
                             SelectableThumb(asset: asset,
-                                            thumbURL: library.client.thumbURL(asset.id, 256),
+                                            thumbURL: library.client.thumbURL(asset.id, 512),
                                             selection: selection, namespace: zoom) { pick = asset }
                                 .task { await library.loadMoreIfNeeded(current: asset) }
                         }

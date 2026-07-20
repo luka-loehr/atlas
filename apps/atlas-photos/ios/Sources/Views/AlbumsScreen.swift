@@ -233,7 +233,7 @@ struct SpecialCollectionScreen: View {
             LazyVGrid(columns: cols, spacing: 2) {
                 ForEach(assets) { asset in
                     SelectableThumb(asset: asset,
-                                    thumbURL: library.client.thumbURL(asset.id, 256),
+                                    thumbURL: library.client.thumbURL(asset.id, 512),
                                     selection: selection, namespace: zoom) { pick = asset }
                 }
             }
@@ -327,7 +327,7 @@ struct AlbumCard: View {
                                 .foregroundStyle(.white.opacity(0.7))
                         }
                     } else {
-                        Thumb(url: album.cover.flatMap { library.client.thumbURL($0, 256) })
+                        Thumb(url: album.cover.flatMap { library.client.thumbURL($0, 512) })
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -362,7 +362,7 @@ struct AlbumScreen: View {
                 LazyVGrid(columns: cols, spacing: 2) {
                     ForEach(assets) { asset in
                         Color.clear.aspectRatio(1, contentMode: .fill)
-                            .overlay { Thumb(url: library.client.thumbURL(asset.id, 256)).clipped() }
+                            .overlay { Thumb(url: library.client.thumbURL(asset.id, 512)).clipped() }
                             .clipped()
                             .onTapGesture { pick = asset }
                     }

@@ -116,10 +116,11 @@ def make_photo_thumbs(data, hash_id):
     w, h = img.size
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
-    for size in (256, 1024):
+    for size in (512, 2048):
         t = img.copy()
-        t.thumbnail((size, size))
-        t.save(os.path.join(THUMBS, f"{hash_id}.{size}.webp"), "WEBP", quality=82)
+        t.thumbnail((size, size), Image.LANCZOS)
+        t.save(os.path.join(THUMBS, f"{hash_id}.{size}.webp"), "WEBP",
+               quality=88, method=6)
     return w, h
 
 
