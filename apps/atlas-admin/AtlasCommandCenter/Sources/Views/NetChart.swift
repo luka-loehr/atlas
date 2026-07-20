@@ -1,25 +1,27 @@
 import SwiftUI
 import Charts
 
-/// Live network throughput (Mbit/s): rolling download/upload area chart with
-/// the current rates in the header. Same visual language as LoadChart.
+/// Live network throughput (Mbit/s): download/upload area chart over a
+/// continuously sliding 60 s window, with the current rates in the header.
+/// Same visual language as LoadChart.
 struct NetChart: View {
-    var down: [Double]
-    var up: [Double]
+    var down: [(Date, Double)]
+    var up: [(Date, Double)]
     var downNow: Double
     var upNow: Double
 
     private struct Point: Identifiable {
-        let id = UUID()
-        let i: Int
+        let id: Int
+        let t: Date
         let value: Double
         let series: String
     }
 
     private var points: [Point] {
         var p: [Point] = []
-        for (i, v) in down.enumerated() { p.append(Point(i: i, value: v, series: "Download")) }
-        for (i, v) in up.enumerated() { p.append(Point(i: i, value: v, series: "Upload")) }
+        p.reserveCapacity(down.count + up.count)
+        for (i, s) in down.enumerated() { p.append(Point(id: i, t: s.0, value: s.1, series: "Download")) }
+        for (i, s) in up.enumerated() { p.append(Point(id: down.count + i, t: s.0, value: s.1, series: "Upload")) }
         return p
     }
 
@@ -40,46 +42,53 @@ struct NetChart: View {
                         .foregroundStyle(.white.opacity(0.35))
                         .frame(maxWidth: .infinity, minHeight: 90)
                 } else {
-                    Chart(points) { p in
-                        AreaMark(
-                            x: .value("t", p.i),
-                            y: .value("mbps", p.value),
-                            stacking: .unstacked
-                        )
-                        .foregroundStyle(
-                            .linearGradient(
-                                colors: [(p.series == "Download" ? Theme.accent : Theme.violet).opacity(0.35), .clear],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                        .foregroundStyle(by: .value("s", p.series))
-
-                        LineMark(
-                            x: .value("t", p.i),
-                            y: .value("mbps", p.value)
-                        )
-                        .lineStyle(StrokeStyle(lineWidth: 1.6))
-                        .foregroundStyle(p.series == "Download" ? Theme.accent : Theme.violet)
-                        .foregroundStyle(by: .value("s", p.series))
+                    TimelineView(.periodic(from: .now, by: 0.05)) { context in
+                        chart(now: context.date)
                     }
-                    .chartXAxis(.hidden)
-                    .chartYAxis {
-                        AxisMarks(position: .trailing) { v in
-                            AxisGridLine().foregroundStyle(.white.opacity(0.08))
-                            AxisValueLabel {
-                                if let d = v.as(Double.self) {
-                                    Text(short(d))
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(.white.opacity(0.35))
-                                }
-                            }
-                        }
-                    }
-                    .chartLegend(.hidden)
                     .frame(height: 90)
                 }
             }
         }
+    }
+
+    private func chart(now: Date) -> some View {
+        Chart(points) { p in
+            AreaMark(
+                x: .value("t", p.t),
+                y: .value("mbps", p.value),
+                stacking: .unstacked
+            )
+            .foregroundStyle(
+                .linearGradient(
+                    colors: [(p.series == "Download" ? Theme.accent : Theme.violet).opacity(0.35), .clear],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            .foregroundStyle(by: .value("s", p.series))
+
+            LineMark(
+                x: .value("t", p.t),
+                y: .value("mbps", p.value)
+            )
+            .lineStyle(StrokeStyle(lineWidth: 1.6))
+            .foregroundStyle(p.series == "Download" ? Theme.accent : Theme.violet)
+            .foregroundStyle(by: .value("s", p.series))
+        }
+        .chartXScale(domain: now.addingTimeInterval(-60)...now)
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(position: .trailing) { v in
+                AxisGridLine().foregroundStyle(.white.opacity(0.08))
+                AxisValueLabel {
+                    if let d = v.as(Double.self) {
+                        Text(short(d))
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                }
+            }
+        }
+        .chartLegend(.hidden)
     }
 
     private func rate(_ icon: String, _ mbps: Double, _ color: Color) -> some View {

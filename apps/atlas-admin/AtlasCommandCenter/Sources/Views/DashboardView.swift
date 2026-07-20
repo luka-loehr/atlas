@@ -17,8 +17,8 @@ struct DashboardView: View {
                         gauges(m)
                         chips(m)
                         SectionLabel(text: "Verlauf")
-                        LoadChart(cpu: model.cpuHistory, gpu: model.gpuHistory)
-                        NetChart(down: model.netDownHistory, up: model.netUpHistory,
+                        LoadChart(cpu: model.cpuSamples, gpu: model.gpuSamples)
+                        NetChart(down: model.downSamples, up: model.upSamples,
                                  downNow: model.netDownMbps, upNow: model.netUpMbps)
                         SectionLabel(text: "Speicher")
                         bars(m)
