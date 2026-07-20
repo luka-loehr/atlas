@@ -103,8 +103,6 @@ struct AlbumsScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader("Dienstprogramme")
             VStack(spacing: 0) {
-                graphRow
-                divider
                 utilityRow(.locked)
                 divider
                 utilityRow(.archive)
@@ -133,32 +131,6 @@ struct AlbumsScreen: View {
                     Image(systemName: "lock.fill").font(.system(size: 12)).foregroundStyle(.tertiary)
                 }
                 Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Knowledge-Graph-Visualisierung (Personen · Orte · Tags)
-    private var graphRow: some View {
-        NavigationLink {
-            GraphScreen(library: library)
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.indigo.gradient, in: RoundedRectangle(cornerRadius: 9))
-                Text("Graph")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)

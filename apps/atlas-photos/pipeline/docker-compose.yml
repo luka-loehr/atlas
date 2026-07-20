@@ -28,6 +28,17 @@ services:
       dockerfile: Dockerfile.cpu
     image: atlas-pipeline-cpu
 
+  # SigLIP2-Text-Embeddings fuer die semantische Suche — gleiche CPU-Image-
+  # Basis, eigener Prozess, nur auf 127.0.0.1:8093 (der Rust-Server ruft's).
+  embed-api:
+    user: "1000:1000"
+    <<: *pipeline-common
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: atlas-pipeline-cpu
+    command: ["python", "/app/embed_api.py"]
+
   pipeline-gpu:
     <<: *pipeline-common
     build:

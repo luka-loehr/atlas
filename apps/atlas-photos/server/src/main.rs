@@ -10,6 +10,8 @@
 //!   GET /api/assets/:id/original
 //!   GET /api/assets/:id/stream           Range streaming (AVPlayer)
 
+mod countries;
+
 use std::path::PathBuf;
 
 use axum::{
@@ -259,32 +261,158 @@ struct SearchQ {
     q: String,
 }
 
+/// Escape LIKE metacharacters so user input can't act as a pattern.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
+/// POST to the local SigLIP2 text-embedding sidecar (embed-api, 127.0.0.1:8093).
+/// Any failure — sidecar down, timeout, bad JSON — degrades to None and the
+/// search silently falls back to structured-only results.
+async fn text_embedding(q: &str) -> Option<Vec<f32>> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let body = serde_json::json!({ "text": q }).to_string();
+    let req = format!(
+        "POST /embed HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    let fut = async {
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", 8093)).await.ok()?;
+        s.write_all(req.as_bytes()).await.ok()?;
+        let mut buf = Vec::new();
+        s.read_to_end(&mut buf).await.ok()?;
+        let text = String::from_utf8_lossy(&buf);
+        let json = &text[text.find("\r\n\r\n")? + 4..];
+        let v: serde_json::Value = serde_json::from_str(json.trim()).ok()?;
+        v.get("vec")?
+            .as_array()?
+            .iter()
+            .map(|x| x.as_f64().map(|f| f as f32))
+            .collect()
+    };
+    match tokio::time::timeout(std::time::Duration::from_millis(800), fut).await {
+        Ok(Some(v)) if v.len() == 768 => Some(v),
+        _ => None,
+    }
+}
+
+/// Unified search: person names, places (incl. "Kroatien" -> cc), tags,
+/// captions, albums, filenames, years — plus SigLIP2 semantic ranking when
+/// the structured hits are thin. Response keeps the v1 `items` key and adds
+/// `persons` chips.
 async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json<serde_json::Value>, Api> {
     let c = app.pool.get().await?;
     let term = s.q.trim().to_string();
     if term.is_empty() {
-        return Ok(Json(serde_json::json!({ "items": [] })));
+        return Ok(Json(serde_json::json!({ "items": [], "persons": [] })));
     }
-    let like = format!("%{term}%");
-    // v1: names, descriptions, album titles, plain years — CLIP comes later
+    let like = format!("%{}%", like_escape(&term));
+    let tag_prefix = format!("{}%", like_escape(&term));
+    let cc = countries::country_code(&term);
+
+    // 1) matching persons (chips + their photos rank first)
+    let prows = c
+        .query(
+            "SELECT p.id, p.display_name, p.cover_face_id,
+                    count(DISTINCT f.asset_id) AS photos
+             FROM persons p
+             JOIN faces f ON f.person_id = p.id
+             WHERE p.merged_into IS NULL AND p.display_name ILIKE $1
+             GROUP BY p.id, p.display_name, p.cover_face_id
+             ORDER BY photos DESC LIMIT 6",
+            &[&like],
+        )
+        .await?;
+    let person_ids: Vec<i64> = prows.iter().map(|r| r.get(0)).collect();
+    let persons: Vec<_> = prows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.get::<_, i64>(0),
+                "name": r.get::<_, Option<String>>(1),
+                "cover_face": r.get::<_, Option<i64>>(2),
+                "photos": r.get::<_, i64>(3),
+            })
+        })
+        .collect();
+
+    // 2) structured hits, ranked: person > place > tag > caption/album/name/year
     let rows = c
         .query(
             &format!(
-                "SELECT DISTINCT {ASSET_COLS} FROM assets
-                 LEFT JOIN album_assets aa ON aa.asset_id = assets.id
-                 LEFT JOIN albums al ON al.id = aa.album_id
-                 WHERE (assets.orig_name ILIKE $1
-                    OR assets.description ILIKE $1
-                    OR al.title ILIKE $1
-                    OR to_char(assets.taken_at, 'YYYY') = $2)
-                 {VISIBLE}
-                 ORDER BY assets.taken_at DESC NULLS LAST LIMIT 600"
+                "WITH hits AS (
+                     SELECT f.asset_id AS id, 0 AS prio
+                     FROM faces f WHERE f.person_id = ANY($3)
+                   UNION
+                     SELECT e.src_id, 1
+                     FROM edges e JOIN places p ON p.id::text = e.dst_id
+                     WHERE e.rel = 'taken_at' AND e.dst_type = 'place'
+                       AND (p.name ILIKE $1 OR p.admin1 ILIKE $1
+                            OR ($4::text IS NOT NULL AND p.cc = $4))
+                   UNION
+                     SELECT t.asset_id, 2 FROM tags t WHERE t.tag ILIKE $2
+                   UNION
+                     SELECT a2.id, 3
+                     FROM assets a2
+                     LEFT JOIN album_assets aa ON aa.asset_id = a2.id
+                     LEFT JOIN albums al ON al.id = aa.album_id
+                     WHERE a2.caption ILIKE $1 OR a2.orig_name ILIKE $1
+                        OR al.title ILIKE $1 OR to_char(a2.taken_at, 'YYYY') = $5
+                 )
+                 SELECT {ASSET_COLS}, min(h.prio) AS prio
+                 FROM assets JOIN hits h ON h.id = assets.id
+                 WHERE true {VISIBLE}
+                 GROUP BY assets.id
+                 ORDER BY min(h.prio), assets.taken_at DESC NULLS LAST
+                 LIMIT 600"
             ),
-            &[&like, &term],
+            &[&like, &tag_prefix, &person_ids, &cc, &term],
         )
         .await?;
-    let items: Vec<Asset> = rows.iter().map(asset_from).collect();
-    Ok(Json(serde_json::json!({ "items": items })))
+    let mut items: Vec<Asset> = rows.iter().map(asset_from).collect();
+
+    // 3) semantic fill via SigLIP2 — only when structured search came up thin,
+    //    so name/place queries stay precise and "Hund"-style content queries
+    //    still find everything
+    if items.len() < 60 {
+        if let Some(vec) = text_embedding(&term).await {
+            let vstr = format!(
+                "[{}]",
+                vec.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+            );
+            let srows = c
+                .query(
+                    &format!(
+                        "SELECT {ASSET_COLS}, (e.vec <=> $1::vector) AS dist
+                         FROM embeddings e JOIN assets ON assets.id = e.owner_id
+                         WHERE e.model = 'siglip2' {VISIBLE}
+                         ORDER BY e.vec <=> $1::vector
+                         LIMIT 150",
+                    ),
+                    &[&vstr],
+                )
+                .await?;
+            if let Some(best) = srows.first().map(|r| r.get::<_, f64>(r.len() - 1)) {
+                let cutoff = best + 0.05;
+                let seen: std::collections::HashSet<String> =
+                    items.iter().map(|a| a.id.clone()).collect();
+                for r in &srows {
+                    let dist: f64 = r.get(r.len() - 1);
+                    if dist > cutoff {
+                        break;
+                    }
+                    let a = asset_from(r);
+                    if !seen.contains(&a.id) {
+                        items.push(a);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "items": items, "persons": persons })))
 }
 
 // ----------------------------------------------------- archive/trash/lock ---
