@@ -20,7 +20,7 @@ import psycopg
 
 import db
 import handlers_cpu
-import queue as jobq  # local queue.py (re-exports stdlib queue names)
+import jobqueue as jobq
 
 from concurrent.futures import ThreadPoolExecutor, wait  # after jobq import
 

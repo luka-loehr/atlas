@@ -19,7 +19,7 @@ from PIL import Image, ImageOps
 import pillow_heif
 
 import db  # noqa: F401  (thread-local conns are passed in by the worker)
-import queue as jobq
+import jobqueue as jobq
 
 pillow_heif.register_heif_opener()
 Image.MAX_IMAGE_PIXELS = None
