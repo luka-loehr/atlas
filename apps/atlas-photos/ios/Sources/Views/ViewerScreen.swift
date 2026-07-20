@@ -73,11 +73,14 @@ private struct ZoomablePhoto: View {
                     .aspectRatio(contentMode: .fit)
             }
         }
-        .task {
-            if let p = preview, image == nil, let img = await ThumbLoader.shared.load(p) {
+        .task(id: full) {
+            // instant: the small 1024 preview (decoded off-main, quick)
+            if image == nil, let p = preview, let img = await ThumbLoader.shared.load(p) {
                 if image == nil { image = img }
             }
-            if let f = full, let img = await ThumbLoader.shared.load(f) {
+            // then the original, downsampled + decoded off-main so the swipe
+            // between photos never stalls on a full-resolution main-thread decode
+            if let f = full, let img = await ThumbLoader.shared.loadFull(f, maxPixel: 2800) {
                 image = img
             }
         }
