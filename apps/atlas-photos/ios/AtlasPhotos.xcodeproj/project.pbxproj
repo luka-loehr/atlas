@@ -1,0 +1,348 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		22BF4F3E7926E0B5CBA024CC /* AlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */; };
+		40C8A08B67C041C6E2B4F5C9 /* PhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 081AA19363B0F7F61289A83A /* PhotoClient.swift */; };
+		6462884CEFDF99510D0D217C /* ThumbLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043B77CAFA27E5BC57559395 /* ThumbLoader.swift */; };
+		85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77FE98E8F36CF8A86B16CE5C /* AtlasPhotosApp.swift */; };
+		9C49519587F7B2615F0F68DA /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E361A1829E694D7B7B01E0 /* Library.swift */; };
+		A1F09DCABE82EFBC3626B0F6 /* AccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */; };
+		BAEA3B2D9D10438C8748EE58 /* ViewerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */; };
+		DD8D1044D43E94C24A0E88C1 /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */; };
+		DE45417FA95FD7EC2ECC98DA /* PhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		043B77CAFA27E5BC57559395 /* ThumbLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbLoader.swift; sourceTree = "<group>"; };
+		081AA19363B0F7F61289A83A /* PhotoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoClient.swift; sourceTree = "<group>"; };
+		2139E5DC68A86791748F2BC1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerScreen.swift; sourceTree = "<group>"; };
+		59C34C5F0C692E54904E981C /* AtlasPhotos.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AtlasPhotos.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsScreen.swift; sourceTree = "<group>"; };
+		77FE98E8F36CF8A86B16CE5C /* AtlasPhotosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasPhotosApp.swift; sourceTree = "<group>"; };
+		7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
+		AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSheet.swift; sourceTree = "<group>"; };
+		C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosScreen.swift; sourceTree = "<group>"; };
+		E0E361A1829E694D7B7B01E0 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		244CA6DD67DB79622273D7F6 = {
+			isa = PBXGroup;
+			children = (
+				52F68A52E905CD332B536C68 /* Sources */,
+				78403C856EE423CED92F95EF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		52F68A52E905CD332B536C68 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				2139E5DC68A86791748F2BC1 /* Info.plist */,
+				B57135C33B425DAF5C453F67 /* App */,
+				D7801869ECBD20423A8D5C4D /* Model */,
+				CC85756B49CA7666D872C58C /* Views */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		78403C856EE423CED92F95EF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				59C34C5F0C692E54904E981C /* AtlasPhotos.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B57135C33B425DAF5C453F67 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				77FE98E8F36CF8A86B16CE5C /* AtlasPhotosApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		CC85756B49CA7666D872C58C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */,
+				5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */,
+				C95B77E69B202E1F523E82E8 /* PhotosScreen.swift */,
+				7BB3CBC06E2BA5F8B294F955 /* SearchScreen.swift */,
+				58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		D7801869ECBD20423A8D5C4D /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				E0E361A1829E694D7B7B01E0 /* Library.swift */,
+				081AA19363B0F7F61289A83A /* PhotoClient.swift */,
+				043B77CAFA27E5BC57559395 /* ThumbLoader.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B96D8872D44FBF736DA09667 /* AtlasPhotos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E1DF13E7A1A513DB68ECA51 /* Build configuration list for PBXNativeTarget "AtlasPhotos" */;
+			buildPhases = (
+				21E1312E3E502A0BF1122F78 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AtlasPhotos;
+			packageProductDependencies = (
+			);
+			productName = AtlasPhotos;
+			productReference = 59C34C5F0C692E54904E981C /* AtlasPhotos.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		364C97D5569811AABFAC599B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 6C71024C73E138F6C8DAA118 /* Build configuration list for PBXProject "AtlasPhotos" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 244CA6DD67DB79622273D7F6;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 78403C856EE423CED92F95EF /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B96D8872D44FBF736DA09667 /* AtlasPhotos */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		21E1312E3E502A0BF1122F78 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1F09DCABE82EFBC3626B0F6 /* AccountSheet.swift in Sources */,
+				22BF4F3E7926E0B5CBA024CC /* AlbumsScreen.swift in Sources */,
+				85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */,
+				9C49519587F7B2615F0F68DA /* Library.swift in Sources */,
+				40C8A08B67C041C6E2B4F5C9 /* PhotoClient.swift in Sources */,
+				DE45417FA95FD7EC2ECC98DA /* PhotosScreen.swift in Sources */,
+				DD8D1044D43E94C24A0E88C1 /* SearchScreen.swift in Sources */,
+				6462884CEFDF99510D0D217C /* ThumbLoader.swift in Sources */,
+				BAEA3B2D9D10438C8748EE58 /* ViewerScreen.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3230FCE9DFF23CFD1FC45749 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		663F06371509F0688BA9C69E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.AtlasPhotos;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7DC97D59D03BE1B3A1A7B216 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		968219E7E9EC20D0D25D9D9C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.AtlasPhotos;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6C71024C73E138F6C8DAA118 /* Build configuration list for PBXProject "AtlasPhotos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3230FCE9DFF23CFD1FC45749 /* Debug */,
+				7DC97D59D03BE1B3A1A7B216 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7E1DF13E7A1A513DB68ECA51 /* Build configuration list for PBXNativeTarget "AtlasPhotos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				968219E7E9EC20D0D25D9D9C /* Debug */,
+				663F06371509F0688BA9C69E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 364C97D5569811AABFAC599B /* Project object */;
+}
