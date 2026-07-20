@@ -43,7 +43,8 @@ struct NetChart: View {
                     Chart(points) { p in
                         AreaMark(
                             x: .value("t", p.i),
-                            y: .value("mbps", p.value)
+                            y: .value("mbps", p.value),
+                            stacking: .unstacked
                         )
                         .foregroundStyle(
                             .linearGradient(
