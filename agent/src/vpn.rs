@@ -92,13 +92,19 @@ fn extract_bool(text: &str, key: &str) -> Option<bool> {
     }
 }
 
-/// The `"Peer"` map, split into one text chunk per peer.
+/// The `"Peer"` map, split into one text chunk per peer. Splitting on the
+/// map keys also cuts at each object's inner `"PublicKey":"nodekey:…"` —
+/// keep only the chunks that carry the actual fields.
 fn peer_chunks(status: &str) -> Vec<&str> {
     let Some(i) = status.find("\"Peer\"") else {
         return Vec::new();
     };
     let peers = &status[i..];
-    peers.split("\"nodekey:").skip(1).collect()
+    peers
+        .split("\"nodekey:")
+        .skip(1)
+        .filter(|c| c.contains("\"HostName\""))
+        .collect()
 }
 
 fn peer_traffic_total(status: &str) -> u64 {
@@ -114,11 +120,14 @@ fn peer_traffic_total(status: &str) -> u64 {
 /// Background accumulator: every 30 s, credit traffic deltas to the counters.
 pub fn start_sampler() {
     std::thread::spawn(|| {
+        let mut prime = false;
         {
             let mut st = STATE.lock().unwrap();
             *st = load_state();
             if st.since == 0 {
                 st.since = now();
+                prime = true; // fresh state: baseline the counters, don't
+                              // credit tailscaled's whole history at once
             }
         }
         loop {
@@ -126,6 +135,14 @@ pub fn start_sampler() {
             if !status.is_empty() {
                 let total = peer_traffic_total(&status);
                 let mut st = STATE.lock().unwrap();
+                if prime {
+                    prime = false;
+                    st.last_total = total;
+                    save_state(&st);
+                    drop(st);
+                    std::thread::sleep(Duration::from_secs(SAMPLE_S));
+                    continue;
+                }
                 // counters reset when tailscaled restarts
                 let delta = if total >= st.last_total {
                     total - st.last_total
@@ -146,10 +163,20 @@ pub fn start_sampler() {
     });
 }
 
-/// AdGuard Home stats (`{"ok":false}` if none is running).
+/// AdGuard Home stats (`{"ok":false}` if none is running). AdGuard insists
+/// on an admin user — the agent reads `ATLAS_ADGUARD_AUTH=user:pass` from
+/// its env file for basic auth.
 fn adguard() -> String {
+    let mut args: Vec<String> = vec!["-s".into(), "-m".into(), "3".into()];
+    if let Ok(auth) = std::env::var("ATLAS_ADGUARD_AUTH") {
+        if !auth.is_empty() {
+            args.push("-u".into());
+            args.push(auth);
+        }
+    }
+    args.push(format!("{ADGUARD_URL}/control/stats"));
     let out = Command::new("curl")
-        .args(["-s", "-m", "3", &format!("{ADGUARD_URL}/control/stats")])
+        .args(&args)
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
