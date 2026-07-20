@@ -13,6 +13,13 @@ final class DashboardModel {
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
 
+    // network rates in Mbit/s, derived from the agent's cumulative counters
+    var netDownHistory: [Double] = []
+    var netUpHistory: [Double] = []
+    var netDownMbps: Double = 0
+    var netUpMbps: Double = 0
+    private var lastNet: (rx: UInt64, tx: UInt64, at: Date)?
+
     var host: String = "atlas.your-tailnet.ts.net:8787"
     var token: String = ""
 
@@ -44,6 +51,19 @@ final class DashboardModel {
             updatedAt = Date()
             push(&cpuHistory, m.cpu.usage)
             push(&gpuHistory, m.gpu?.usage ?? 0)
+            if let net = m.net {
+                let now = Date()
+                if let last = lastNet, net.rxBytes >= last.rx, net.txBytes >= last.tx {
+                    let dt = now.timeIntervalSince(last.at)
+                    if dt > 0.2 {
+                        netDownMbps = Double(net.rxBytes - last.rx) * 8 / dt / 1_000_000
+                        netUpMbps = Double(net.txBytes - last.tx) * 8 / dt / 1_000_000
+                        push(&netDownHistory, netDownMbps)
+                        push(&netUpHistory, netUpMbps)
+                    }
+                }
+                lastNet = (net.rxBytes, net.txBytes, now)
+            }
         } catch {
             online = false
             lastError = friendly(error)
