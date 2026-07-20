@@ -56,6 +56,8 @@ private struct ThumbInner: View {
                     .scaledToFill()
             }
         }
+        .clipped()   // scaledToFill must never bleed past the cell
+        .contentShape(Rectangle())
         .task(id: url) {
             guard let url else { return }
             if let c = ThumbLoader.shared.cached(url) { image = c; return }

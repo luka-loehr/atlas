@@ -98,6 +98,13 @@ fn asset_from(r: &tokio_postgres::Row) -> Asset {
 
 const ASSET_COLS: &str = "id, type, taken_at, width, height, duration_s";
 
+// deleted (Trash) and private (Locked Folder) assets stay out of the main
+// timeline and search — the Locked Folder is reachable only via its album
+// (Face-ID gated in the app).
+const EXCLUDE_HIDDEN: &str = "AND NOT EXISTS (SELECT 1 FROM album_assets aa \
+     JOIN albums al ON al.id = aa.album_id WHERE aa.asset_id = assets.id \
+     AND al.title IN ('Trash','Papierkorb','Bin','Locked Folder','Gesperrter Ordner'))";
+
 async fn stats(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
     let c = app.pool.get().await?;
     let r = c
@@ -125,9 +132,11 @@ async fn summary(State(app): State<App>) -> Result<Json<serde_json::Value>, Api>
     let c = app.pool.get().await?;
     let rows = c
         .query(
-            "SELECT to_char(taken_at AT TIME ZONE 'UTC', 'YYYY-MM') AS m, count(*)
-             FROM assets WHERE taken_at IS NOT NULL
-             GROUP BY 1 ORDER BY 1 DESC",
+            &format!(
+                "SELECT to_char(taken_at AT TIME ZONE 'UTC', 'YYYY-MM') AS m, count(*)
+                 FROM assets WHERE taken_at IS NOT NULL {EXCLUDE_HIDDEN}
+                 GROUP BY 1 ORDER BY 1 DESC"
+            ),
             &[],
         )
         .await?;
@@ -152,7 +161,7 @@ async fn timeline(State(app): State<App>, Query(q): Query<TimelineQ>) -> Result<
             c.query(
                 &format!(
                     "SELECT {ASSET_COLS} FROM assets WHERE taken_at IS NOT NULL AND taken_at < $1
-                     ORDER BY taken_at DESC LIMIT $2"
+                     {EXCLUDE_HIDDEN} ORDER BY taken_at DESC LIMIT $2"
                 ),
                 &[&b, &limit],
             )
@@ -162,7 +171,7 @@ async fn timeline(State(app): State<App>, Query(q): Query<TimelineQ>) -> Result<
             c.query(
                 &format!(
                     "SELECT {ASSET_COLS} FROM assets WHERE taken_at IS NOT NULL
-                     ORDER BY taken_at DESC LIMIT $1"
+                     {EXCLUDE_HIDDEN} ORDER BY taken_at DESC LIMIT $1"
                 ),
                 &[&limit],
             )
@@ -234,10 +243,11 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                 "SELECT DISTINCT {ASSET_COLS} FROM assets
                  LEFT JOIN album_assets aa ON aa.asset_id = assets.id
                  LEFT JOIN albums al ON al.id = aa.album_id
-                 WHERE assets.orig_name ILIKE $1
+                 WHERE (assets.orig_name ILIKE $1
                     OR assets.description ILIKE $1
                     OR al.title ILIKE $1
-                    OR to_char(assets.taken_at, 'YYYY') = $2
+                    OR to_char(assets.taken_at, 'YYYY') = $2)
+                 {EXCLUDE_HIDDEN}
                  ORDER BY taken_at DESC NULLS LAST LIMIT 600"
             ),
             &[&like, &term],
