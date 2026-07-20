@@ -14,9 +14,15 @@ LOG="$HOME/ingest_watcher.log"
 
 echo "$(date -Is) watcher up" >> "$LOG"
 while true; do
+  # never run two ingests at once — also covers manually started ones
+  if pgrep -f "ingest_takeout.py" >/dev/null 2>&1; then
+    sleep 60
+    continue
+  fi
   shopt -s nullglob
   for zip in "$DIR"/takeout-*.zip; do
     [ -e "$zip.ingested" ] && continue
+    pgrep -f "ingest_takeout.py" >/dev/null 2>&1 && break
     # wait until the zip is stable (rsync may still be writing/replacing it)
     s1=$(stat -c%s "$zip" 2>/dev/null || echo 0)
     sleep 10
