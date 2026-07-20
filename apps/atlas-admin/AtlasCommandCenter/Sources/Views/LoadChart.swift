@@ -34,7 +34,8 @@ struct LoadChart: View {
                 Chart(points) { p in
                     AreaMark(
                         x: .value("t", p.i),
-                        y: .value("%", p.value)
+                        y: .value("%", p.value),
+                        stacking: .unstacked
                     )
                     .foregroundStyle(
                         .linearGradient(
