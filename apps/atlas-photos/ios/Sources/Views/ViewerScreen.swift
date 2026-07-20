@@ -486,7 +486,7 @@ private struct VideoPlayerView: View {
                 controlBar
                     .frame(maxWidth: 560)
                     .padding(.horizontal, 26)
-                    .padding(.bottom, 138)
+                    .padding(.bottom, 166)
                     .transition(.opacity)
             }
         }
