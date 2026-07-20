@@ -45,16 +45,22 @@ enum GraphPalette {
     }
 }
 
-// MARK: - Native RadialLayout (Layout protocol)
+// MARK: - OrbitLayout (Layout protocol)
 //
-// A real SwiftUI layout container: places its subviews evenly on a circle.
-// Because it speaks SwiftUI's layout language, EVERY arrangement change
-// (ring swaps, recentering) is animated by the system itself — combined with
-// matchedGeometryEffect a satellite literally flies into the center.
+// ONE native layout container for the whole board: subview 0 is the center,
+// the next `innerCount` sit on an inner ellipse, the rest on an outer one.
+// Because center and satellites live in the SAME container, a recenter is a
+// pure reorder — views keep their identity and SwiftUI animates the flight
+// into the middle by itself. No matchedGeometryEffect, no duplicate-source
+// conflicts. Ring phases are offset so no node sits at exactly 3/9 o'clock
+// (where the ellipses run closest together).
 
-struct RadialLayout: Layout {
-    var radius: CGFloat
-    var phase: Double = 0
+struct OrbitLayout: Layout {
+    var innerRx: CGFloat
+    var innerRy: CGFloat
+    var outerRx: CGFloat
+    var outerRy: CGFloat
+    var innerCount: Int
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
                       cache: inout ()) -> CGSize {
@@ -63,22 +69,31 @@ struct RadialLayout: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
                        subviews: Subviews, cache: inout ()) {
-        let n = max(subviews.count, 1)
-        for (i, sub) in subviews.enumerated() {
-            let angle = Double(i) / Double(n) * 2 * .pi - .pi / 2 + phase
-            let p = CGPoint(x: bounds.midX + cos(angle) * radius,
-                            y: bounds.midY + sin(angle) * radius)
-            sub.place(at: p, anchor: .center, proposal: .unspecified)
+        guard !subviews.isEmpty else { return }
+        let mid = CGPoint(x: bounds.midX, y: bounds.midY)
+        subviews[0].place(at: mid, anchor: .center, proposal: .unspecified)
+
+        let innerN = min(innerCount, subviews.count - 1)
+        let outerN = subviews.count - 1 - innerN
+
+        for i in 0..<innerN {
+            let a = Double(i) / Double(max(innerN, 1)) * 2 * .pi - .pi / 2 + .pi / 8
+            let p = CGPoint(x: mid.x + cos(a) * innerRx,
+                            y: mid.y + sin(a) * innerRy)
+            subviews[1 + i].place(at: p, anchor: .center, proposal: .unspecified)
+        }
+        for i in 0..<outerN {
+            let slot = 2 * .pi / Double(max(outerN, 1))
+            let a = Double(i) * slot - .pi / 2 + slot / 2
+            let p = CGPoint(x: mid.x + cos(a) * outerRx,
+                            y: mid.y + sin(a) * outerRy)
+            subviews[1 + innerN + i].place(at: p, anchor: .center,
+                                           proposal: .unspecified)
         }
     }
 }
 
 // MARK: - Anchor preferences: spokes drawn between REAL view positions
-//
-// Every node reports its center via anchorPreference; the container draws the
-// spokes from those anchors — so the lines track every animation (layout
-// changes, matched-geometry flights, breathing) automatically. This is the
-// canonical SwiftUI way to connect views with lines.
 
 private struct NodeAnchorKey: PreferenceKey {
     static var defaultValue: [String: Anchor<CGPoint>] { [:] }
@@ -90,37 +105,68 @@ private struct NodeAnchorKey: PreferenceKey {
 
 // MARK: - Screen
 
+private enum OrbitRole { case center, inner, outer }
+
+private struct OrbitItem: Identifiable {
+    let node: GraphNode
+    let role: OrbitRole
+    let weight: Int
+    var id: String { node.id }
+}
+
 struct GraphScreen: View {
     var library: Library
 
     @State private var allNodes: [String: GraphNode] = [:]
     @State private var weights: [String: [(id: String, w: Int)]] = [:]
-    @State private var loaded = false
+    @State private var loadState: LoadState = .loading
 
     @State private var centerId: String?
     @State private var history: [String] = []
     @State private var openPerson: Person?
-    @State private var ringPhase: Double = 0
-    @Namespace private var orbit
+
+    enum LoadState { case loading, failed, empty, ready }
 
     var body: some View {
         ZStack {
             background
 
-            if loaded, let cid = centerId, let center = allNodes[cid] {
-                orbitBoard(center: center)
-            } else if !loaded {
+            switch loadState {
+            case .ready:
+                if let cid = centerId, let center = allNodes[cid] {
+                    orbitBoard(center: center)
+                }
+                VStack {
+                    Spacer()
+                    quickJump
+                }
+            case .loading:
                 VStack(spacing: 12) {
                     ProgressView().tint(.white)
                     Text("Graph wird geladen …")
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.45))
                 }
-            }
-
-            VStack {
-                Spacer()
-                quickJump
+            case .failed, .empty:
+                VStack(spacing: 14) {
+                    Image(systemName: loadState == .empty
+                          ? "circle.hexagongrid" : "wifi.exclamationmark")
+                        .font(.system(size: 34))
+                        .foregroundStyle(.white.opacity(0.35))
+                    Text(loadState == .empty
+                         ? "Noch keine Verbindungen im Graph."
+                         : "Graph konnte nicht geladen werden.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.6))
+                    if loadState == .failed {
+                        Button("Erneut versuchen") {
+                            loadState = .loading
+                            Task { await loadGraph() }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.white)
+                    }
+                }
             }
         }
         .navigationTitle("Graph")
@@ -146,14 +192,8 @@ struct GraphScreen: View {
             PersonDetailScreen(library: library, person: p)
         }
         .task { await loadGraph() }
-        .onAppear {
-            withAnimation(.linear(duration: 160).repeatForever(autoreverses: false)) {
-                ringPhase = 2 * .pi
-            }
-        }
     }
 
-    // native MeshGradient background — deep space with faint color islands
     private var background: some View {
         MeshGradient(width: 3, height: 3,
                      points: [
@@ -170,92 +210,100 @@ struct GraphScreen: View {
             .ignoresSafeArea()
     }
 
-    // MARK: orbit board (pure native containers)
+    // MARK: orbit board
+
+    private func orbitItems(center: GraphNode) -> [OrbitItem] {
+        let sats = weights[center.id] ?? []
+        var items = [OrbitItem(node: center, role: .center, weight: 0)]
+        for (i, s) in sats.filter({ $0.id != center.id }).prefix(20).enumerated() {
+            guard let n = allNodes[s.id] else { continue }
+            items.append(OrbitItem(node: n, role: i < 8 ? .inner : .outer,
+                                   weight: s.w))
+        }
+        return items
+    }
 
     @ViewBuilder
     private func orbitBoard(center: GraphNode) -> some View {
-        let sats = weights[center.id] ?? []
-        let inner = Array(sats.prefix(8))
-        let outer = Array(sats.dropFirst(8).prefix(14))
+        let items = orbitItems(center: center)
+        let innerN = items.filter { $0.role == .inner }.count
+        let innerIds = Set(items.filter { $0.role == .inner }.map(\.id))
 
         GeometryReader { geo in
-            let side = min(geo.size.width, geo.size.height - 170)
-            let r1 = side * 0.30
-            let r2 = side * 0.47
+            let w = geo.size.width
+            let h = geo.size.height - 110   // room for quick-jump row
 
-            ZStack {
-                // outer ring — a real Layout container
-                RadialLayout(radius: r2, phase: ringPhase * 0.6 + .pi / 14) {
-                    ForEach(outer, id: \.id) { sat in
-                        satellite(sat, big: false)
-                    }
+            // ring-to-ring clearance on the diagonals needs ≥ 69pt:
+            // (outerRy-innerRy)·sin45° must beat both nodes' half-heights,
+            // so the ellipses are pushed apart (0.26h vs 0.45h)
+            OrbitLayout(innerRx: min(w * 0.30, 122),
+                        innerRy: min(h * 0.26, 170),
+                        outerRx: min(w * 0.41, 162),
+                        outerRy: min(h * 0.45, 310),
+                        innerCount: innerN) {
+                ForEach(items) { item in
+                    nodeView(item)
+                        .transition(.scale(scale: 0.3).combined(with: .opacity))
                 }
-
-                // inner ring
-                RadialLayout(radius: r1, phase: -ringPhase) {
-                    ForEach(inner, id: \.id) { sat in
-                        satellite(sat, big: true)
-                    }
-                }
-
-                // the sun
-                CenterNodeView(node: center, library: library) {
-                    guard center.kind == "person" else { return }
-                    let pid = Int64(center.id.dropFirst()) ?? 0
-                    openPerson = Person(id: pid,
-                                        name: center.label.isEmpty ? nil : center.label,
-                                        coverFace: center.cover, photos: center.size)
-                }
-                .anchorPreference(key: NodeAnchorKey.self, value: .center) {
-                    [center.id: $0]
-                }
-                .matchedGeometryEffect(id: center.id, in: orbit)
             }
-            .frame(width: geo.size.width, height: geo.size.height - 110)
-            // spokes: drawn from the REAL anchors → follow every animation
+            .frame(width: w, height: h)
             .backgroundPreferenceValue(NodeAnchorKey.self) { anchors in
                 GeometryReader { g in
-                    spokes(anchors: anchors, in: g, center: center,
-                           weights: sats)
+                    spokes(anchors: anchors, in: g, centerId: center.id,
+                           innerIds: innerIds,
+                           weights: weights[center.id] ?? [])
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func satellite(_ sat: (id: String, w: Int), big: Bool) -> some View {
-        if let node = allNodes[sat.id] {
-            SatelliteView(node: node, library: library,
-                          diameter: big ? min(54, 34 + CGFloat(sat.w) * 0.7)
-                                        : min(36, 22 + CGFloat(sat.w) * 0.5),
-                          showLabel: big,
-                          counterPhase: big ? ringPhase : -ringPhase * 0.6)
-                .anchorPreference(key: NodeAnchorKey.self, value: .center) {
-                    [node.id: $0]
-                }
-                .matchedGeometryEffect(id: node.id, in: orbit)
-                .onTapGesture { recenter(on: node) }
+    private func nodeView(_ item: OrbitItem) -> some View {
+        switch item.role {
+        case .center:
+            CenterNodeView(node: item.node, library: library) {
+                guard item.node.kind == "person" else { return }
+                let pid = Int64(item.node.id.dropFirst()) ?? 0
+                openPerson = Person(id: pid,
+                                    name: item.node.label.isEmpty ? nil : item.node.label,
+                                    coverFace: item.node.cover,
+                                    photos: item.node.size)
+            }
+        case .inner:
+            OrbNode(node: item.node, library: library,
+                    diameter: min(58, 46 + CGFloat(item.weight) * 0.5),
+                    labelSize: 11)
+                .onTapGesture { recenter(on: item.node) }
+        case .outer:
+            OrbNode(node: item.node, library: library,
+                    diameter: min(44, 32 + CGFloat(item.weight) * 0.4),
+                    labelSize: 10)
+                .onTapGesture { recenter(on: item.node) }
         }
     }
 
+    // Spokes only for the inner ring, starting at the avatar rim — the outer
+    // ring's connectivity is implied. Fewer, cleaner lines instead of a fan.
     private func spokes(anchors: [String: Anchor<CGPoint>], in geo: GeometryProxy,
-                        center: GraphNode,
+                        centerId: String, innerIds: Set<String>,
                         weights sats: [(id: String, w: Int)]) -> some View {
         Canvas { ctx, _ in
-            guard let ca = anchors[center.id] else { return }
+            guard let ca = anchors[centerId] else { return }
             let cp = geo[ca]
             let maxW = sats.first?.w ?? 1
-            for sat in sats.prefix(22) {
+            for sat in sats where innerIds.contains(sat.id) {
                 guard let a = anchors[sat.id] else { continue }
                 let p = geo[a]
+                let dx = p.x - cp.x, dy = p.y - cp.y
+                let len = max(sqrt(dx * dx + dy * dy), 1)
+                let start = CGPoint(x: cp.x + dx / len * 52,
+                                    y: cp.y + dy / len * 52)
                 var path = Path()
-                path.move(to: cp)
-                let mid = CGPoint(x: (cp.x + p.x) / 2 + (p.y - cp.y) * 0.05,
-                                  y: (cp.y + p.y) / 2 - (p.x - cp.x) * 0.05)
-                path.addQuadCurve(to: p, control: mid)
+                path.move(to: start)
+                path.addLine(to: p)
                 let t = Double(sat.w) / Double(max(maxW, 1))
-                ctx.stroke(path, with: .color(.white.opacity(0.06 + 0.20 * t)),
-                           lineWidth: 0.6 + 1.7 * t)
+                ctx.stroke(path, with: .color(.white.opacity(0.10 + 0.22 * t)),
+                           lineWidth: 0.8 + 1.6 * t)
             }
         }
         .allowsHitTesting(false)
@@ -273,24 +321,30 @@ struct GraphScreen: View {
     }
 
     private func loadGraph() async {
-        guard !loaded else { return }
-        guard let g = try? await library.client.graph() else { return }
+        guard let g = try? await library.client.graph() else {
+            loadState = .failed
+            return
+        }
         var dict: [String: GraphNode] = [:]
         for n in g.nodes { dict[n.id] = n }
         var w: [String: [(id: String, w: Int)]] = [:]
-        for l in g.links {
+        for l in g.links where l.a != l.b {
             w[l.a, default: []].append((l.b, l.w))
             w[l.b, default: []].append((l.a, l.w))
         }
-        for k in w.keys { w[k]?.sort { $0.w > $1.w } }
+        for k in w.keys {
+            var seen = Set<String>()
+            w[k] = w[k]!.sorted { $0.w > $1.w }
+                .filter { seen.insert($0.id).inserted }
+        }
         allNodes = dict
         weights = w
         centerId = g.nodes.filter { $0.kind == "person" }
             .max(by: { $0.size < $1.size })?.id ?? g.nodes.first?.id
-        loaded = true
+        loadState = dict.isEmpty ? .empty : .ready
     }
 
-    // MARK: quick jump
+    // MARK: quick jump — named persons with real face chips, no debug rows
 
     private var quickJump: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -299,16 +353,22 @@ struct GraphScreen: View {
                     Button {
                         recenter(on: n)
                     } label: {
-                        HStack(spacing: 5) {
-                            Circle().fill(GraphPalette.color(n.kind))
-                                .frame(width: 7, height: 7)
-                            Text(n.label.isEmpty ? "Person \(n.size)" : n.label)
+                        HStack(spacing: 6) {
+                            if n.kind == "person", let f = n.cover {
+                                Thumb(url: library.client.faceCropURL(f))
+                                    .frame(width: 20, height: 20)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle().fill(GraphPalette.color(n.kind))
+                                    .frame(width: 7, height: 7)
+                            }
+                            Text(n.label)
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.85))
+                                .foregroundStyle(.white.opacity(0.9))
                                 .lineLimit(1)
                         }
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                         .background(.white.opacity(centerId == n.id ? 0.16 : 0.07),
                                     in: Capsule())
                     }
@@ -323,148 +383,139 @@ struct GraphScreen: View {
 
     private func topEntities() -> [GraphNode] {
         let persons = allNodes.values.filter { $0.kind == "person" && !$0.label.isEmpty }
-            .sorted { $0.size > $1.size }.prefix(6)
-        let unnamed = allNodes.values.filter { $0.kind == "person" && $0.label.isEmpty }
-            .sorted { $0.size > $1.size }.prefix(3)
+            .sorted { $0.size > $1.size }.prefix(5)
         let places = allNodes.values.filter { $0.kind == "place" }
-            .sorted { $0.size > $1.size }.prefix(5)
+            .sorted { $0.size > $1.size }.prefix(3)
         let tags = allNodes.values.filter { $0.kind == "tag" }
-            .sorted { $0.size > $1.size }.prefix(5)
-        return Array(persons) + Array(unnamed) + Array(places) + Array(tags)
+            .sorted { $0.size > $1.size }.prefix(3)
+        return Array(persons) + Array(places) + Array(tags)
     }
 }
 
-// MARK: - Center node
+// MARK: - Center node (compact — tap avatar to open photos)
 
 private struct CenterNodeView: View {
     let node: GraphNode
     var library: Library
     var openPhotos: () -> Void
 
+    private var tint: Color { GraphPalette.color(node.kind) }
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             ZStack {
+                // the ONE ambient motion on the board: a slow glow breathe
                 Circle()
-                    .fill(GraphPalette.color(node.kind).opacity(0.22))
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 18)
-                if node.kind == "person" {
-                    ZStack {
-                        Circle().fill(GraphPalette.person.opacity(0.3))
-                        if let f = node.cover {
-                            Thumb(url: library.client.faceCropURL(f))
-                        } else {
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 34))
-                                .foregroundStyle(.white.opacity(0.6))
+                    .fill(tint.opacity(0.30))
+                    .frame(width: 116, height: 116)
+                    .blur(radius: 24)
+                    .phaseAnimator([false, true]) { c, p in
+                        c.opacity(p ? 1.0 : 0.55)
+                    } animation: { _ in
+                        .easeInOut(duration: 4.5)
+                    }
+
+                avatar
+                    .frame(width: 88, height: 88)
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(tint, lineWidth: 2))
+                    .overlay(alignment: .bottomTrailing) {
+                        if node.kind == "person" {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(5)
+                                .background(tint, in: Circle())
+                                .offset(x: 2, y: 2)
                         }
                     }
-                    .frame(width: 94, height: 94)
-                    .clipShape(Circle())
-                    .overlay(Circle().strokeBorder(GraphPalette.person, lineWidth: 2.5))
+            }
+            .anchorPreference(key: NodeAnchorKey.self, value: .center) {
+                [node.id: $0]
+            }
+            .onTapGesture { openPhotos() }
+
+            Text(node.label.isEmpty ? "Unbenannt" : node.label)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .frame(maxWidth: 150)
+
+            Text(node.kind == "person" ? "\(node.size) Fotos"
+                 : node.kind == "place" ? "Ort · \(node.size) Fotos"
+                 : "Tag · \(node.size)×")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        if node.kind == "person" {
+            ZStack {
+                Circle().fill(tint.opacity(0.25))
+                if let f = node.cover {
+                    Thumb(url: library.client.faceCropURL(f))
                 } else {
-                    HStack(spacing: 6) {
-                        Image(systemName: node.kind == "place" ? "mappin" : "number")
-                            .font(.system(size: 19, weight: .semibold))
-                        Text(node.label)
-                            .font(.system(size: 19, weight: .semibold))
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(GraphPalette.color(node.kind).opacity(0.30),
-                                in: Capsule())
-                    .overlay(Capsule().strokeBorder(GraphPalette.color(node.kind),
-                                                    lineWidth: 2))
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
             }
-            VStack(spacing: 2) {
-                Text(node.label.isEmpty
-                     ? (node.kind == "person" ? "Unbenannt" : node.label)
-                     : node.label)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(node.kind == "person" ? "\(node.size) Fotos"
-                     : node.kind == "place" ? "Ort · \(node.size) Fotos"
-                     : "Tag · \(node.size)×")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            if node.kind == "person" {
-                Button(action: openPhotos) {
-                    Label("Fotos", systemImage: "photo.on.rectangle")
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.glassProminent)
+        } else {
+            ZStack {
+                Circle().fill(tint.opacity(0.25))
+                Image(systemName: node.kind == "place" ? "mappin.and.ellipse" : "number")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(tint)
             }
         }
     }
 }
 
-// MARK: - Satellite
+// MARK: - Satellite: uniform circle + legible label — overlap-proof by design
 
-private struct SatelliteView: View {
+private struct OrbNode: View {
     let node: GraphNode
     var library: Library
     let diameter: CGFloat
-    let showLabel: Bool
-    var counterPhase: Double
+    let labelSize: CGFloat
+
+    private var tint: Color { GraphPalette.color(node.kind) }
 
     var body: some View {
-        VStack(spacing: 3) {
-            Group {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle().fill(tint.opacity(0.20))
                 if node.kind == "person" {
-                    ZStack {
-                        Circle().fill(GraphPalette.person.opacity(0.25))
-                        if let f = node.cover {
-                            Thumb(url: library.client.faceCropURL(f))
-                        } else {
-                            Image(systemName: "person.fill")
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
+                    if let f = node.cover {
+                        Thumb(url: library.client.faceCropURL(f))
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: diameter * 0.4))
+                            .foregroundStyle(.white.opacity(0.55))
                     }
-                    .frame(width: diameter, height: diameter)
-                    .clipShape(Circle())
-                    .overlay(Circle().strokeBorder(
-                        GraphPalette.person.opacity(0.75), lineWidth: 1.5))
                 } else {
-                    HStack(spacing: 3) {
-                        Image(systemName: node.kind == "place" ? "mappin" : "number")
-                            .font(.system(size: max(8, diameter * 0.24),
-                                          weight: .semibold))
-                        Text(node.label)
-                            .font(.system(size: max(9, diameter * 0.26),
-                                          weight: .medium))
-                            .lineLimit(1)
-                            .fixedSize()
-                    }
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(.horizontal, max(7, diameter * 0.22))
-                    .padding(.vertical, max(4, diameter * 0.13))
-                    .background(GraphPalette.color(node.kind).opacity(0.26),
-                                in: Capsule())
-                    .overlay(Capsule().strokeBorder(
-                        GraphPalette.color(node.kind).opacity(0.6), lineWidth: 1))
+                    Image(systemName: node.kind == "place" ? "mappin" : "number")
+                        .font(.system(size: diameter * 0.36, weight: .semibold))
+                        .foregroundStyle(tint)
                 }
             }
-            if showLabel, node.kind == "person", !node.label.isEmpty {
-                Text(node.label)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .lineLimit(1)
-                    .fixedSize()
+            .frame(width: diameter, height: diameter)
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(tint.opacity(0.75), lineWidth: 1.5))
+            .anchorPreference(key: NodeAnchorKey.self, value: .center) {
+                [node.id: $0]
             }
-        }
-        // stay upright while the ring container rotates
-        .rotationEffect(.radians(counterPhase))
-        // native idle life: gentle two-phase breathing, driven by the system
-        .phaseAnimator([false, true]) { content, phase in
-            content.scaleEffect(phase ? 1.04 : 0.97)
-        } animation: { _ in
-            .easeInOut(duration: 2.2 + Double(abs(node.id.hashValue % 160)) / 100)
+
+            if !node.label.isEmpty {
+                Text(node.label)
+                    .font(.system(size: labelSize, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .shadow(color: .black.opacity(0.85), radius: 2)
+                    .lineLimit(1)
+                    .frame(maxWidth: 70)
+            }
         }
         .contentShape(Circle())
     }
