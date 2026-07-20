@@ -15,6 +15,7 @@ struct AlbumsScreen: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 ScrollView {
+                    peopleRow
                     utilities
                     if !userAlbums.isEmpty {
                         sectionHeader("Meine Alben")
@@ -46,6 +47,54 @@ struct AlbumsScreen: View {
             }
         }
         .task { await load() }
+    }
+
+    // MARK: - Personen (horizontal preview row -> PersonsScreen)
+
+    @State private var personsPreview: [Person] = []
+
+    private var peopleRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink {
+                PersonsScreen(library: library)
+            } label: {
+                HStack {
+                    sectionHeader("Personen")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .padding(.trailing, 16)
+                        .padding(.top, 8)
+                }
+            }
+            .buttonStyle(.plain)
+            if !personsPreview.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 14) {
+                        ForEach(personsPreview.prefix(12)) { person in
+                            NavigationLink {
+                                PersonDetailScreen(library: library, person: person)
+                            } label: {
+                                VStack(spacing: 6) {
+                                    FaceCircle(library: library, person: person)
+                                        .frame(width: 72, height: 72)
+                                    Text(person.displayName)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(person.name == nil
+                                                         ? .white.opacity(0.45) : .white)
+                                        .lineLimit(1)
+                                        .frame(width: 76)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .task { personsPreview = (try? await library.client.persons()) ?? [] }
     }
 
     // MARK: - Utilities (Dienstprogramme)

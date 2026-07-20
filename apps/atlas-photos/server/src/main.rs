@@ -66,6 +66,10 @@ async fn main() {
         .route("/api/assets/{id}/original", get(original))
         .route("/api/assets/{id}/stream", get(stream))
         .route("/api/assets/{id}/info", get(asset_info))
+        .route("/api/persons", get(persons))
+        .route("/api/persons/{id}/assets", get(person_assets))
+        .route("/api/persons/{id}/rename", post(person_rename))
+        .route("/api/faces/{id}/crop", get(face_crop))
         // archived / trashed / locked buckets (same asset JSON shape as timeline)
         .route("/api/archive", get(archive))
         .route("/api/trash", get(trash_list))
@@ -597,6 +601,82 @@ async fn thumb(
         return StatusCode::NOT_FOUND.into_response();
     }
     let path = app.photos_dir.join("thumbs").join(format!("{id}.{size}.webp"));
+    serve_immutable(path, headers).await
+}
+
+// ---------------------------------------------------------------- persons ---
+
+/// People with at least one face, biggest first. cover_face -> /api/faces/{id}/crop.
+async fn persons(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            "SELECT p.id, p.display_name, p.cover_face_id,
+                    count(DISTINCT f.asset_id) AS photos
+             FROM persons p
+             JOIN faces f ON f.person_id = p.id
+             JOIN assets a ON a.id = f.asset_id
+             WHERE p.merged_into IS NULL
+               AND NOT a.archived AND a.trashed_at IS NULL AND NOT a.locked
+             GROUP BY p.id, p.display_name, p.cover_face_id
+             ORDER BY photos DESC",
+            &[],
+        )
+        .await?;
+    let items: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.get::<_, i64>(0),
+                "name": r.get::<_, Option<String>>(1),
+                "cover_face": r.get::<_, Option<i64>>(2),
+                "photos": r.get::<_, i64>(3),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+/// One person's photos, newest first (timeline JSON shape).
+async fn person_assets(State(app): State<App>, Path(id): Path<i64>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            &format!(
+                "SELECT DISTINCT {ASSET_COLS} FROM assets
+                 JOIN faces ON faces.asset_id = assets.id
+                 WHERE faces.person_id = $1 {VISIBLE}
+                 ORDER BY assets.taken_at DESC NULLS LAST"
+            ),
+            &[&id],
+        )
+        .await?;
+    let items: Vec<Asset> = rows.iter().map(asset_from).collect();
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+#[derive(Deserialize)]
+struct Rename {
+    name: String,
+}
+
+async fn person_rename(
+    State(app): State<App>,
+    Path(id): Path<i64>,
+    Json(b): Json<Rename>,
+) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let name = b.name.trim();
+    let val: Option<&str> = if name.is_empty() { None } else { Some(name) };
+    let n = c
+        .execute("UPDATE persons SET display_name = $2 WHERE id = $1", &[&id, &val])
+        .await?;
+    Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+/// Square avatar crop written by the face worker (photos/faces/<face_id>.webp).
+async fn face_crop(State(app): State<App>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
+    let path = app.photos_dir.join("faces").join(format!("{id}.webp"));
     serve_immutable(path, headers).await
 }
 
