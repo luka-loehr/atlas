@@ -4,6 +4,8 @@ struct AccountSheet: View {
     var library: Library
     @AppStorage("photos.host") private var host = "atlas.your-tailnet.ts.net:8788"
     @Environment(\.dismiss) private var dismiss
+    @State private var sync: DeviceSync?
+    @State private var showSync = false
 
     var body: some View {
         NavigationStack {
@@ -16,6 +18,7 @@ struct AccountSheet: View {
                             statsGrid(s)
                             span(s)
                         }
+                        settingsLink
                         hostRow
                     }
                     .padding(20)
@@ -31,6 +34,41 @@ struct AccountSheet: View {
         }
         .presentationDetents([.medium, .large])
         .preferredColorScheme(.dark)
+        .task { if sync == nil { sync = DeviceSync(client: library.client) } }
+        .sheet(isPresented: $showSync) { if let sync { SyncProgressView(sync: sync) } }
+    }
+
+    private var settingsLink: some View {
+        NavigationLink {
+            SettingsScreen(
+                library: library,
+                onSyncNow: { startSync(delete: false) },
+                onCleanupDevice: { startSync(delete: true) },
+                onEmptyTrash: { Task { try? await library.client.emptyTrash(); await library.loadStats() } })
+        } label: {
+            HStack {
+                Image(systemName: "gearshape.fill").foregroundStyle(.blue)
+                Text("Einstellungen & iPhone-Sync")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.white.opacity(0.3))
+            }
+            .padding(14)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func startSync(delete: Bool) {
+        guard let sync else { return }
+        showSync = true
+        Task {
+            guard await sync.requestAccess() else { return }
+            await sync.scan()
+            if delete { await sync.deleteBackedUpFromDevice() }
+            else { await sync.backupNew() }
+            await library.loadStats()
+        }
     }
 
     private var header: some View {

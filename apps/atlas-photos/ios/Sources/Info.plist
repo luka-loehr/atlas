@@ -37,6 +37,10 @@
 	</dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID schützt deinen gesperrten Ordner.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Atlas Fotos kann Originale zurück in deine iPhone-Mediathek legen.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Atlas Fotos sichert deine Aufnahmen auf deinem atlas-Server und räumt gesicherte Fotos vom iPhone.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIStatusBarStyle</key>

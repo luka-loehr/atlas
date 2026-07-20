@@ -69,6 +69,14 @@ final class Library {
         await loadFirst()
     }
 
+    /// Drop assets from the in-memory timeline immediately (after archive /
+    /// lock / trash / delete) so the grid closes the gap without a round-trip.
+    func removeLocally(_ ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        assets.removeAll { ids.contains($0.id) }
+        rebuildSections()
+    }
+
     private func rebuildSections() {
         let cal = Calendar.current
         var out: [DaySection] = []
