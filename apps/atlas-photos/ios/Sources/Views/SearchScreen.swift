@@ -24,7 +24,7 @@ struct SearchScreen: View {
                         LazyVGrid(columns: cols, spacing: 2) {
                             ForEach(results) { asset in
                                 Color.clear.aspectRatio(1, contentMode: .fill)
-                                    .overlay { Thumb(url: library.client.thumbURL(asset.id, 256)).clipped() }
+                                    .overlay { Thumb(url: library.client.thumbURL(asset.id, 512)).clipped() }
                                     .clipped()
                                     .onTapGesture { pick = asset }
                             }

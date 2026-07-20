@@ -507,7 +507,7 @@ async fn thumb(
     Path((id, size)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Response {
-    if !safe_id(&id) || !matches!(size.as_str(), "256" | "1024") {
+    if !safe_id(&id) || !matches!(size.as_str(), "512" | "2048") {
         return StatusCode::NOT_FOUND.into_response();
     }
     let path = app.photos_dir.join("thumbs").join(format!("{id}.{size}.webp"));
