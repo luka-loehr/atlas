@@ -49,7 +49,9 @@ fn now() -> u64 {
 fn load_state() -> State {
     let text = fs::read_to_string(state_path()).unwrap_or_default();
     State {
-        since: extract_num(&text, "since").unwrap_or(now() as f64) as u64,
+        // since stays 0 when the file is missing — that's how the sampler
+        // detects a fresh state and primes the traffic baseline
+        since: extract_num(&text, "since").unwrap_or(0.0) as u64,
         tunnel_s: extract_num(&text, "tunnel_s").unwrap_or(0.0) as u64,
         bytes: extract_num(&text, "bytes").unwrap_or(0.0) as u64,
         last_total: extract_num(&text, "last_total").unwrap_or(0.0) as u64,
