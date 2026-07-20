@@ -3,3 +3,5 @@ backend/docker/.env
 build-sim/
 build-device/
 xcuserdata/
+apps/atlas-photos/ios/build/
+__pycache__/

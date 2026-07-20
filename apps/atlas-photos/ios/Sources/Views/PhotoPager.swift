@@ -1,0 +1,84 @@
+import SwiftUI
+import UIKit
+
+/// UIPageViewController-backed pager for the photo viewer.
+///
+/// Replaces SwiftUI's `TabView(.page)`, which could settle BETWEEN two pages
+/// (half of each visible) when its gesture fought the zoom scroll views.
+/// UIPageViewController physically cannot rest between pages and advances
+/// EXACTLY one page per swipe — rapid successive swipes each move one page,
+/// which is the Apple-/Google-Photos feel.
+struct PhotoPager<Content: View>: UIViewControllerRepresentable {
+    @Binding var index: Int
+    let count: Int
+    @ViewBuilder let content: (Int) -> Content
+
+    func makeUIViewController(context: Context) -> UIPageViewController {
+        let pager = UIPageViewController(
+            transitionStyle: .scroll,
+            navigationOrientation: .horizontal,
+            options: [.interPageSpacing: 10]
+        )
+        pager.dataSource = context.coordinator
+        pager.delegate = context.coordinator
+        pager.view.backgroundColor = .clear
+        pager.setViewControllers([context.coordinator.page(at: index)],
+                                 direction: .forward, animated: false)
+        return pager
+    }
+
+    func updateUIViewController(_ pager: UIPageViewController, context: Context) {
+        context.coordinator.parent = self
+        // External jump (e.g. filmstrip tap): animate in the right direction.
+        let current = context.coordinator.currentIndex(of: pager)
+        if let current, current != index {
+            let dir: UIPageViewController.NavigationDirection =
+                index > current ? .forward : .reverse
+            pager.setViewControllers([context.coordinator.page(at: index)],
+                                     direction: dir, animated: abs(index - current) == 1)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
+        var parent: PhotoPager
+
+        init(_ parent: PhotoPager) { self.parent = parent }
+
+        /// Hosting controller tagged with its page index.
+        final class Page: UIHostingController<AnyView> {
+            var pageIndex = 0
+        }
+
+        func page(at i: Int) -> Page {
+            let p = Page(rootView: AnyView(parent.content(i)))
+            p.pageIndex = i
+            p.view.backgroundColor = .clear
+            return p
+        }
+
+        func currentIndex(of pager: UIPageViewController) -> Int? {
+            (pager.viewControllers?.first as? Page)?.pageIndex
+        }
+
+        func pageViewController(_ p: UIPageViewController,
+                                viewControllerBefore vc: UIViewController) -> UIViewController? {
+            guard let i = (vc as? Page)?.pageIndex, i > 0 else { return nil }
+            return page(at: i - 1)
+        }
+
+        func pageViewController(_ p: UIPageViewController,
+                                viewControllerAfter vc: UIViewController) -> UIViewController? {
+            guard let i = (vc as? Page)?.pageIndex, i < parent.count - 1 else { return nil }
+            return page(at: i + 1)
+        }
+
+        func pageViewController(_ p: UIPageViewController, didFinishAnimating _: Bool,
+                                previousViewControllers _: [UIViewController],
+                                transitionCompleted completed: Bool) {
+            guard completed, let i = currentIndex(of: p) else { return }
+            if parent.index != i { parent.index = i }
+        }
+    }
+}

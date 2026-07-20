@@ -282,11 +282,13 @@ def _insert(cur, row, albums, known):
                        %(description)s, %(favorite)s, %(orig_path)s, %(orig_name)s,
                        %(size_bytes)s, %(width)s, %(height)s, %(duration_s)s, 'takeout')
                ON CONFLICT (id) DO NOTHING""", row)
-        for kind in ("embed", "faces"):
-            cur.execute(
-                """INSERT INTO ingest_jobs (kind, owner_type, owner_id)
-                   VALUES (%s, 'asset', %s) ON CONFLICT DO NOTHING""",
-                (kind, row["id"]))
+        kinds = ["meta", "embed", "faces", "caption"]
+        if row.get("lat") is not None:
+            kinds.append("geocode")
+        cur.executemany(
+            """INSERT INTO ingest_jobs (kind, owner_type, owner_id)
+               VALUES (%s, 'asset', %s) ON CONFLICT DO NOTHING""",
+            [(kind, row["id"]) for kind in kinds])
         known.add(row["id"])
     if row.get("album"):
         title = row["album"]

@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import Photos
 import CryptoKit
+import UIKit
 
 /// Syncs the on-device photo library with the atlas server.
 ///
@@ -77,6 +78,51 @@ final class DeviceSync {
     @ObservationIgnored private var hashByLocalId: [String: String] = [:]   // localId -> sha256 hex
     @ObservationIgnored private var serverHaveHashes: Set<String> = []       // hashes confirmed on atlas
     @ObservationIgnored private var cancelled = false
+    @ObservationIgnored private var watcher: LibraryWatcher?
+    @ObservationIgnored private var watchDebounce: Task<Void, Never>?
+
+    // MARK: Auto-backup (foreground library watching)
+
+    /// Observes the device photo library; a change (new capture, iCloud sync)
+    /// triggers a debounced scan + backupNew while the app is foreground and
+    /// auto-backup is enabled. Idempotent — a second call is a no-op.
+    func startWatching() {
+        guard watcher == nil else { return }
+        let w = LibraryWatcher { [weak self] in self?.libraryChanged() }
+        PHPhotoLibrary.shared().register(w)
+        watcher = w
+    }
+
+    func stopWatching() {
+        if let w = watcher { PHPhotoLibrary.shared().unregisterChangeObserver(w) }
+        watcher = nil
+        watchDebounce?.cancel()
+        watchDebounce = nil
+    }
+
+    private func libraryChanged() {
+        watchDebounce?.cancel()
+        watchDebounce = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))     // debounce burst of changes
+            guard !Task.isCancelled, let self else { return }
+            guard UserDefaults.standard.bool(forKey: "photos.autoBackup"),
+                  UIApplication.shared.applicationState != .background,
+                  !self.running, self.isUsable else { return }
+            await self.scan()
+            if case .failed = self.phase { return }
+            await self.backupNew()
+        }
+    }
+
+    /// NSObject shim: `PHPhotoLibraryChangeObserver` needs an NSObject, and the
+    /// callback arrives on an arbitrary queue — hop to the MainActor sync.
+    private final class LibraryWatcher: NSObject, PHPhotoLibraryChangeObserver {
+        let onChange: @MainActor () -> Void
+        init(onChange: @escaping @MainActor () -> Void) { self.onChange = onChange }
+        nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
+            Task { @MainActor [onChange] in onChange() }
+        }
+    }
 
     // MARK: Authorization
 

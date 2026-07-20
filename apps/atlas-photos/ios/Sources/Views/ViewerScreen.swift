@@ -35,7 +35,25 @@ struct ViewerScreen: View {
             }
         }
         .statusBarHidden()
-        .onAppear { index = assets.firstIndex(of: start) ?? 0 }
+        .onAppear {
+            index = assets.firstIndex(of: start) ?? 0
+            prefetchNeighbors(of: index)
+        }
+        .onChange(of: index) { _, new in prefetchNeighbors(of: new) }
+    }
+
+    /// Warms the 2048 previews of the neighboring pages (±1..3, nearest first)
+    /// so the next swipe shows a sharp image instantly.
+    private func prefetchNeighbors(of i: Int) {
+        var urls: [URL] = []
+        for offset in 1...3 {
+            for j in [i + offset, i - offset] {
+                guard let a = assets[safe: j], !a.isVideo,
+                      let u = library.client.thumbURL(a.id, 2048) else { continue }
+                urls.append(u)
+            }
+        }
+        ThumbLoader.shared.prefetch(urls)
     }
 }
 

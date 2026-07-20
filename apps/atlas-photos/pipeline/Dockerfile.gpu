@@ -1,0 +1,33 @@
+# atlas-photos pipeline — GPU worker image
+# Handles: embed (SigLIP2), faces (InsightFace buffalo_l), caption (vLLM Qwen2.5-VL-3B-AWQ)
+#
+# Base image ships torch + vllm + CUDA runtime — do NOT pip-install torch/vllm on top.
+# NOTE: pipeline source is NOT baked into this image. docker-compose mounts
+# the pipeline directory at /app; entrypoint_gpu.sh lives there too.
+# Rebuild only when dependencies change.
+
+FROM vllm/vllm-openai@sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c882bcbc63822904766089
+
+# - build-essential: insightface ships as sdist with Cython extensions
+# - libgl1/libglib2.0-0: runtime deps of opencv-python (pulled in by insightface)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --no-cache-dir \
+        insightface \
+        onnxruntime-gpu \
+        "psycopg[binary]" \
+        pillow \
+        pillow-heif
+
+WORKDIR /app
+
+# The vllm/vllm-openai image's own entrypoint launches the OpenAI API server —
+# it MUST be overridden. Our entrypoint downloads models (idempotent), then
+# exec's the GPU worker loop. Invoked via bash so a lost exec bit on the
+# host-mounted script can never break startup.
+ENTRYPOINT ["/bin/bash", "/app/entrypoint_gpu.sh"]

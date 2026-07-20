@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.lukaloehr.AtlasPhotos.backup</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -41,6 +45,10 @@
 	<string>Atlas Fotos kann Originale zurück in deine iPhone-Mediathek legen.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Atlas Fotos sichert deine Aufnahmen auf deinem atlas-Server und räumt gesicherte Fotos vom iPhone.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIStatusBarStyle</key>

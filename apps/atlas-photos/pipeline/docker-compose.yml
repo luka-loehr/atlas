@@ -1,0 +1,44 @@
+# atlas-photos pipeline — CPU + GPU workers, autostart on boot.
+# Host paths are for atlas (Ubuntu). Run from this directory:
+#   docker compose up -d --build
+# Autostart: restart: unless-stopped + enabled docker daemon => power button is all.
+name: atlas-pipeline
+
+x-pipeline-common: &pipeline-common
+  restart: unless-stopped
+  network_mode: host
+  environment:
+    PHOTOS_DIR: /photos
+    MODELS_DIR: /models
+    HF_HOME: /models/hf
+    PG_ENV_FILE: /secrets/.env
+  volumes:
+    - /home/atlas/photos:/photos
+    - /home/atlas/models:/models
+    - /home/atlas/atlas/backend/docker/.env:/secrets/.env:ro
+    # Source is mounted, not baked in: git pull + docker compose restart = new code.
+    - /home/atlas/atlas/apps/atlas-photos/pipeline:/app:ro
+
+services:
+  pipeline-cpu:
+    <<: *pipeline-common
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: atlas-pipeline-cpu
+
+  pipeline-gpu:
+    <<: *pipeline-common
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: atlas-pipeline-gpu
+    # torch/vLLM want a big shared-memory segment
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
