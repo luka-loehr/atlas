@@ -253,10 +253,10 @@ struct CircleButton: View {
 }
 
 /// Horizontal strip of neighbor thumbnails; tap jumps, current is highlighted.
-/// Centered snap-scrubber, camera-lens style: a FIXED ring sits in the middle
-/// and never moves — the thumbs scroll underneath it, snap thumb-by-thumb and
-/// grow as they pass under the ring (geometry-driven, not index-driven, so
-/// nothing ever jumps sideways). Every detent click gives haptic feedback.
+/// Centered snap-scrubber, camera-lens style: no ring — the SELECTED thumb is
+/// simply the bigger one, always dead-center. Thumbs scale/fade geometrically
+/// as they pass the center (zero index-lag), fast flicks keep their momentum
+/// across many thumbs before snapping, and every detent ticks haptically.
 private struct Filmstrip: View {
     let assets: [Asset]
     @Binding var index: Int
@@ -273,14 +273,17 @@ private struct Filmstrip: View {
                     Thumb(url: client.thumbURL(a.id, 512))
                         .frame(width: cell, height: cell)
                         .clipShape(RoundedRectangle(cornerRadius: 7))
-                        // grow smoothly while passing under the fixed ring —
-                        // pure geometry, follows the finger with zero lag
+                        // the CENTER item is simply bigger — pure geometry,
+                        // follows finger and momentum with zero lag; neighbors
+                        // fade slightly so the middle one carries the weight
                         .visualEffect { content, proxy in
                             let mid = proxy.frame(in: .scrollView(axis: .horizontal)).midX
                             let center = UIScreen.main.bounds.width / 2
                             let d = abs(mid - center)
-                            let scale = 1 + 0.22 * max(0, 1 - d / 70)
-                            return content.scaleEffect(scale)
+                            let t = max(0, 1 - d / 85)
+                            return content
+                                .scaleEffect(1 + 0.28 * t)
+                                .opacity(0.72 + 0.28 * max(0, 1 - d / 130))
                         }
                         .id(i)
                         .onTapGesture { index = i }
@@ -294,14 +297,10 @@ private struct Filmstrip: View {
                         (UIScreen.main.bounds.width - cell) / 2,
                         for: .scrollContent)
         .scrollPosition(id: $pos, anchor: .center)
-        .scrollTargetBehavior(.viewAligned)   // snaps thumb-by-thumb
-        // THE ring: fixed dead-center, thumbs move — it never does
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(.primary.opacity(0.9), lineWidth: 2)
-                .frame(width: cell + 10, height: cell + 10)
-                .allowsHitTesting(false)
-        }
+        // .never = a fast flick keeps its momentum across MANY thumbs (the
+        // "flywheel" feel of a mechanical lens ring) and still snaps at rest;
+        // a slow controlled drag clicks thumb by thumb
+        .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
         .frame(height: 70)
         // mechanical lens-click on every detent (scrub AND page swipe)
         .sensoryFeedback(.selection, trigger: index)
@@ -361,8 +360,11 @@ private struct ZoomablePhoto: View {
             if image == nil, let p = preview, let img = await ThumbLoader.shared.load(p) {
                 if image == nil { image = img }
             }
-            // then the original, downsampled + decoded off-main so the swipe
-            // between photos never stalls on a full-resolution main-thread decode
+            // full quality ONLY when the user actually settles on this photo:
+            // while scrubbing through the strip each page lives < 600ms, its
+            // task gets cancelled here and no original is ever downloaded
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
             if let f = full, let img = await ThumbLoader.shared.loadFull(f, maxPixel: 2800) {
                 image = img
             }
