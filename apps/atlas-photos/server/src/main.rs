@@ -81,7 +81,6 @@ async fn main() {
         .route("/api/mutate/restore", post(mutate_restore))
         .route("/api/mutate/lock", post(mutate_lock))
         .route("/api/mutate/delete", post(mutate_delete))
-        .route("/api/mutate/describe", post(mutate_describe))
         .route("/api/trash/empty", post(trash_empty))
         // sync / upload
         .route("/api/exists", post(exists))
@@ -350,23 +349,6 @@ async fn set_bool(app: &App, col: &str, ids: &Vec<String>, value: bool) -> Resul
     Ok(Json(serde_json::json!({ "updated": n })))
 }
 
-#[derive(Deserialize)]
-struct Describe {
-    id: String,
-    text: String,
-}
-
-/// Set/replace the user caption ("Untertitel") of one asset.
-async fn mutate_describe(State(app): State<App>, Json(b): Json<Describe>) -> Result<Json<serde_json::Value>, Api> {
-    let c = app.pool.get().await?;
-    let text = b.text.trim();
-    let val: Option<&str> = if text.is_empty() { None } else { Some(text) };
-    let n = c
-        .execute("UPDATE assets SET description = $2 WHERE id = $1", &[&b.id, &val])
-        .await?;
-    Ok(Json(serde_json::json!({ "updated": n })))
-}
-
 /// Full per-asset detail for the viewer info sheet: metadata + place (via the
 /// geocode edge) + pipeline tags + the EXIF subset stored by the meta worker.
 async fn asset_info(State(app): State<App>, Path(id): Path<String>) -> Result<Response, Api> {
@@ -377,7 +359,7 @@ async fn asset_info(State(app): State<App>, Path(id): Path<String>) -> Result<Re
     let Some(r) = c
         .query_opt(
             "SELECT id, taken_at, orig_name, camera, width, height, size_bytes,
-                    lat, lon, caption, description, favorite, duration_s, exif
+                    lat, lon, caption, favorite, duration_s, exif
              FROM assets WHERE id = $1",
             &[&id],
         )
@@ -402,7 +384,7 @@ async fn asset_info(State(app): State<App>, Path(id): Path<String>) -> Result<Re
         .iter()
         .map(|row| row.get(0))
         .collect();
-    let exif: Option<serde_json::Value> = r.get(13);
+    let exif: Option<serde_json::Value> = r.get(12);
     Ok(Json(serde_json::json!({
         "id": r.get::<_, String>(0),
         "taken_at": r.get::<_, Option<DateTime<Utc>>>(1),
@@ -414,9 +396,8 @@ async fn asset_info(State(app): State<App>, Path(id): Path<String>) -> Result<Re
         "lat": r.get::<_, Option<f64>>(7),
         "lon": r.get::<_, Option<f64>>(8),
         "caption": r.get::<_, Option<String>>(9),
-        "description": r.get::<_, Option<String>>(10),
-        "favorite": r.get::<_, bool>(11),
-        "duration_s": r.get::<_, Option<f64>>(12),
+        "favorite": r.get::<_, bool>(10),
+        "duration_s": r.get::<_, Option<f64>>(11),
         "place": place,
         "tags": tags,
         "exif": exif,

@@ -245,8 +245,10 @@ class FaceStage:
                    min(w, int(cx + side / 2)), min(h, int(cy + side / 2)))
             crop = img.crop(box)
             crop.thumbnail((256, 256), Image.LANCZOS)
+            icc = img.info.get("icc_profile")
             crop.save(os.path.join(FACE_CROPS, f"{face_id}.webp"),
-                      "WEBP", quality=86, method=6)
+                      "WEBP", quality=86, method=6,
+                      **({"icc_profile": icc} if icc else {}))
         except Exception as e:   # avatar is cosmetic — never fail the job on it
             print(f"[faces] crop {face_id} failed: {e}", flush=True)
 

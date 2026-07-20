@@ -2,22 +2,19 @@ import SwiftUI
 import MapKit
 
 /// Detail sheet for one asset — Apple-/Google-Photos style:
-/// editable caption ("Untertitel"), date + filename, gray camera card
-/// (model + format badge, MP · resolution · size, ISO | focal | ev | ƒ | shutter),
-/// a map with the photo as pin, the place name and the pipeline's tags.
+/// date + filename, gray camera card (model + format badge, MP · resolution ·
+/// size, ISO | focal | ev | ƒ | shutter), a map with the photo as pin, the
+/// place name and the pipeline's tags.
 struct InfoSheet: View {
     var library: Library
     var asset: Asset
 
     @Environment(\.dismiss) private var dismiss
     @State private var info: AssetInfo?
-    @State private var caption = ""
-    @FocusState private var captionFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                captionField
                 dateRow
                 cameraCard
                 mapCard
@@ -25,30 +22,12 @@ struct InfoSheet: View {
                 aiCaption
             }
             .padding(18)
+            .padding(.top, 8)
         }
         .presentationDragIndicator(.visible)
         .task {
             info = try? await library.client.assetInfo(asset.id)
-            caption = info?.description ?? ""
         }
-    }
-
-    // MARK: - Untertitel (editable, saved to the server)
-
-    private var captionField: some View {
-        TextField("Untertitel hinzufügen", text: $caption, axis: .vertical)
-            .font(.system(size: 22, weight: .regular))
-            .foregroundStyle(.primary)
-            .focused($captionFocused)
-            .submitLabel(.done)
-            .onChange(of: caption) { _, new in
-                if new.contains("\n") {          // return = save
-                    caption = new.replacingOccurrences(of: "\n", with: "")
-                    captionFocused = false
-                    Task { try? await library.client.describe(asset.id, text: caption) }
-                }
-            }
-            .padding(.top, 6)
     }
 
     // MARK: - Date + filename

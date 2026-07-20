@@ -116,11 +116,15 @@ def make_photo_thumbs(data, hash_id):
     w, h = img.size
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
+    # keep the source ICC profile (iPhone photos are Display P3): without it
+    # iOS reads the P3 pixel values as sRGB and thumbnails look washed out
+    icc = img.info.get("icc_profile")
+    kw = {"icc_profile": icc} if icc else {}
     for size in (512, 2048):
         t = img.copy()
         t.thumbnail((size, size), Image.LANCZOS)
         t.save(os.path.join(THUMBS, f"{hash_id}.{size}.webp"), "WEBP",
-               quality=88, method=6)
+               quality=88, method=6, **kw)
     return w, h
 
 

@@ -56,13 +56,17 @@ def _save_thumbs(img, hash_id):
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
     os.makedirs(THUMBS, exist_ok=True)
+    # keep the source ICC profile (iPhone = Display P3) — dropping it makes
+    # iOS read P3 values as sRGB and thumbnails turn pale/desaturated
+    icc = img.info.get("icc_profile")
+    kw = {"icc_profile": icc} if icc else {}
     for size in (512, 2048):
         t = img.copy()
         t.thumbnail((size, size), Image.LANCZOS)
         fd, tmp = tempfile.mkstemp(dir=THUMBS, suffix=".webp")
         os.close(fd)
         try:
-            t.save(tmp, "WEBP", quality=88, method=6)
+            t.save(tmp, "WEBP", quality=88, method=6, **kw)
             os.replace(tmp, os.path.join(THUMBS, f"{hash_id}.{size}.webp"))
         finally:
             if os.path.exists(tmp):
