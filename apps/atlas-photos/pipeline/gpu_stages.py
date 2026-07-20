@@ -284,9 +284,15 @@ class FaceStage:
 # ---------------------------------------------------------------- caption ---
 
 CAPTION_PROMPT = (
-    "Beschreibe dieses Foto. Antworte NUR mit einem JSON-Objekt, exakt so:\n"
-    '{"caption": "<genau ein deutscher Satz>", '
-    '"tags": ["5-12 lowercase english keywords"]}')
+    "Beschreibe dieses Foto. Antworte NUR mit einem JSON-Objekt in exakt "
+    "dieser Form (Werte ersetzen!):\n"
+    '{"caption": "Ein Hund rennt am Strand durch die Wellen.", '
+    '"tags": ["dog", "beach", "waves", "running", "summer"]}\n'
+    "caption: genau EIN deutscher Satz über DIESES Foto. "
+    "tags: 5-12 englische lowercase Stichwörter zu DIESEM Foto.")
+
+# instruction echoes the small model sometimes parrots back as a "tag"
+TAG_JUNK = ("keyword", "lowercase", "english", "5-12", "stichwort", "tags")
 
 
 class CaptionStage:
@@ -393,6 +399,9 @@ def parse_caption_json(text):
     if isinstance(raw, list):
         for x in raw:
             x = str(x).strip().lower()
-            if x and x not in tags:
-                tags.append(x)
+            if not x or x in tags or len(x) > 40:
+                continue
+            if any(j in x for j in TAG_JUNK):
+                continue
+            tags.append(x)
     return caption[:500], tags[:12]
