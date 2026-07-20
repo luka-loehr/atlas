@@ -1,0 +1,23 @@
+credentials.json
+bridge.log
+__pycache__/
+*.pyc
+
+# xLights runtime junk
+Backup/
+*.xbkp
+*.fseq
+*.iseq
+*.eseq
+xlights.log
+*.xcache
+cache/
+xlights_keybindings.xml
+colorcurves/
+palettes/
+valuecurves/
+*.mp3
+!shows/*.mp3
+.venv/
+downloads/
+calibration.json
