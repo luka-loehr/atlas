@@ -1,25 +1,15 @@
 import SwiftUI
 import Charts
 
-/// Rolling CPU + GPU usage sparkline over a continuously sliding 60 s window.
+/// CPU + GPU usage over a continuously sliding 60 s window.
+/// The visible head of each curve is interpolated per frame (ChartLive) so
+/// values glide smoothly toward each new sample instead of popping in; the
+/// series themselves are EMA-smoothed by the model — soft waves, no scribble.
 struct LoadChart: View {
     var cpu: [(Date, Double)]
     var gpu: [(Date, Double)]
 
-    private struct Point: Identifiable {
-        let id: Int
-        let t: Date
-        let value: Double
-        let series: String
-    }
-
-    private var points: [Point] {
-        var p: [Point] = []
-        p.reserveCapacity(cpu.count + gpu.count)
-        for (i, s) in cpu.enumerated() { p.append(Point(id: i, t: s.0, value: s.1, series: "CPU")) }
-        for (i, s) in gpu.enumerated() { p.append(Point(id: cpu.count + i, t: s.0, value: s.1, series: "GPU")) }
-        return p
-    }
+    private static let window: TimeInterval = 60
 
     var body: some View {
         GlassCard {
@@ -32,7 +22,7 @@ struct LoadChart: View {
                     legend("CPU", Theme.accent)
                     legend("GPU", Theme.violet)
                 }
-                TimelineView(.periodic(from: .now, by: 0.05)) { context in
+                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
                     chart(now: context.date)
                 }
                 .frame(height: 120)
@@ -41,39 +31,45 @@ struct LoadChart: View {
     }
 
     private func chart(now: Date) -> some View {
-        Chart(points) { p in
-            AreaMark(
-                x: .value("t", p.t),
-                y: .value("%", p.value),
-                stacking: .unstacked
-            )
-            .foregroundStyle(
-                .linearGradient(
-                    colors: [(p.series == "CPU" ? Theme.accent : Theme.violet).opacity(0.35), .clear],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
-            .foregroundStyle(by: .value("s", p.series))
+        let head = now.addingTimeInterval(-ChartLive.renderDelay)
+        let cpuPts = ChartLive.points(cpu, frame: now, window: Self.window)
+        let gpuPts = ChartLive.points(gpu, frame: now, window: Self.window)
 
-            LineMark(
-                x: .value("t", p.t),
-                y: .value("%", p.value)
-            )
-            .foregroundStyle(by: .value("s", p.series))
-            .interpolationMethod(.catmullRom)
-            .lineStyle(StrokeStyle(lineWidth: 2))
+        return Chart {
+            series("GPU", gpuPts, Theme.violet)   // hinten
+            series("CPU", cpuPts, Theme.accent)   // vorn
         }
         .chartForegroundStyleScale(["CPU": Theme.accent, "GPU": Theme.violet])
         .chartLegend(.hidden)
-        .chartXScale(domain: now.addingTimeInterval(-60)...now)
+        .chartXScale(domain: head.addingTimeInterval(-Self.window)...head)
         .chartYScale(domain: 0...100)
         .chartYAxis {
-            AxisMarks(values: [0, 50, 100]) {
-                AxisGridLine().foregroundStyle(.white.opacity(0.06))
-                AxisValueLabel().foregroundStyle(.white.opacity(0.3))
+            AxisMarks(values: [50, 100]) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(.white.opacity(0.06))
+                AxisValueLabel()
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.25))
             }
         }
         .chartXAxis(.hidden)
+    }
+
+    @ChartContentBuilder
+    private func series(_ name: String, _ pts: [(Date, Double)], _ color: Color) -> some ChartContent {
+        ForEach(Array(pts.enumerated()), id: \.offset) { _, s in
+            AreaMark(x: .value("t", s.0), y: .value("%", s.1), stacking: .unstacked)
+                .foregroundStyle(
+                    .linearGradient(colors: [color.opacity(0.22), color.opacity(0.02)],
+                                    startPoint: .top, endPoint: .bottom))
+                .foregroundStyle(by: .value("s", name))
+                .interpolationMethod(.monotone)
+
+            LineMark(x: .value("t", s.0), y: .value("%", s.1))
+                .foregroundStyle(by: .value("s", name))
+                .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+        }
     }
 
     private func legend(_ text: String, _ color: Color) -> some View {
