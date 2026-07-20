@@ -125,7 +125,12 @@ private struct VideoPlayerView: View {
         }
         .task {
             guard let url else { return }
-            player = AVPlayer(url: url)
+            // play sound even with the ringer/Focus on silent (like Photos/YouTube)
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            let p = AVPlayer(url: url)
+            p.isMuted = false
+            player = p
         }
     }
 }
