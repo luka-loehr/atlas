@@ -10,11 +10,21 @@ struct Metrics: Codable, Sendable {
     let mem: Mem
     let gpu: GPU?
     let disk: Disk
+    let net: Net?
     let containers: [Container]
 
     enum CodingKeys: String, CodingKey {
-        case hostname, ts, load, cpu, mem, gpu, disk, containers
+        case hostname, ts, load, cpu, mem, gpu, disk, net, containers
         case uptimeS = "uptime_s"
+    }
+
+    struct Net: Codable, Sendable {
+        let rxBytes: UInt64
+        let txBytes: UInt64
+        enum CodingKeys: String, CodingKey {
+            case rxBytes = "rx_bytes"
+            case txBytes = "tx_bytes"
+        }
     }
 
     struct CPU: Codable, Sendable {

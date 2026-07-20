@@ -23,6 +23,7 @@ pub fn collect() -> String {
     let mem_usage = if mem_total > 0.0 { mem_used / mem_total * 100.0 } else { 0.0 };
     let gpu = gpu_json();
     let (disk_used, disk_total, disk_pct) = disk();
+    let (net_rx, net_tx) = net_bytes();
     let containers = super::actions::containers();
 
     format!(
@@ -33,6 +34,7 @@ pub fn collect() -> String {
             "\"mem\":{{\"used_gb\":{mu:.1},\"total_gb\":{mt:.1},\"usage\":{mus:.1}}},",
             "\"gpu\":{gpu},",
             "\"disk\":{{\"used_gb\":{du},\"total_gb\":{dt},\"usage\":{dp}}},",
+            "\"net\":{{\"rx_bytes\":{nrx},\"tx_bytes\":{ntx}}},",
             "\"containers\":{containers}}}"
         ),
         host = json_str(&hostname),
@@ -51,12 +53,43 @@ pub fn collect() -> String {
         du = disk_used,
         dt = disk_total,
         dp = disk_pct,
+        nrx = net_rx,
+        ntx = net_tx,
         containers = containers,
     )
 }
 
 fn read_trim(path: &str) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+}
+
+/// Cumulative rx/tx bytes summed over physical interfaces (/proc/net/dev).
+/// Virtual devices are skipped: lo, docker/veth/br (container traffic would be
+/// double-counted) and tailscale (tunnel bytes already flow via the NIC).
+fn net_bytes() -> (u64, u64) {
+    let Some(raw) = fs::read_to_string("/proc/net/dev").ok() else {
+        return (0, 0);
+    };
+    let mut rx = 0u64;
+    let mut tx = 0u64;
+    for line in raw.lines().skip(2) {
+        let Some((name, rest)) = line.split_once(':') else { continue };
+        let name = name.trim();
+        if name == "lo"
+            || name.starts_with("docker")
+            || name.starts_with("veth")
+            || name.starts_with("br-")
+            || name.starts_with("tailscale")
+        {
+            continue;
+        }
+        let f: Vec<&str> = rest.split_whitespace().collect();
+        if f.len() >= 9 {
+            rx += f[0].parse::<u64>().unwrap_or(0);
+            tx += f[8].parse::<u64>().unwrap_or(0);
+        }
+    }
+    (rx, tx)
 }
 
 fn read_load() -> (f64, f64, f64) {
