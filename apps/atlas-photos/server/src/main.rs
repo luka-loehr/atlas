@@ -266,6 +266,19 @@ fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
+/// Escape regex metacharacters for a literal word-boundary caption match
+/// ("Hund" must hit "Hund spielt", not "hundert").
+fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for ch in s.chars() {
+        if r".^$*+?()[]{}|\".contains(ch) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 /// POST to the local SigLIP2 text-embedding sidecar (embed-api, 127.0.0.1:8093).
 /// Any failure — sidecar down, timeout, bad JSON — degrades to None and the
 /// search silently falls back to structured-only results.
@@ -358,7 +371,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                      FROM assets a2
                      LEFT JOIN album_assets aa ON aa.asset_id = a2.id
                      LEFT JOIN albums al ON al.id = aa.album_id
-                     WHERE a2.caption ILIKE $1 OR a2.orig_name ILIKE $1
+                     WHERE a2.caption ~* $6 OR a2.orig_name ILIKE $1
                         OR al.title ILIKE $1 OR to_char(a2.taken_at, 'YYYY') = $5
                  )
                  SELECT {ASSET_COLS}, min(h.prio) AS prio
@@ -368,7 +381,8 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                  ORDER BY min(h.prio), assets.taken_at DESC NULLS LAST
                  LIMIT 600"
             ),
-            &[&like, &tag_prefix, &person_ids, &cc, &term],
+            &[&like, &tag_prefix, &person_ids, &cc, &term,
+              &format!(r"\m{}", regex_escape(&term))],
         )
         .await?;
     let mut items: Vec<Asset> = rows.iter().map(asset_from).collect();
@@ -385,10 +399,10 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
             let srows = c
                 .query(
                     &format!(
-                        "SELECT {ASSET_COLS}, (e.vec <=> $1::vector) AS dist
+                        "SELECT {ASSET_COLS}, (e.vec <=> $1::text::vector) AS dist
                          FROM embeddings e JOIN assets ON assets.id = e.owner_id
                          WHERE e.model = 'siglip2' {VISIBLE}
-                         ORDER BY e.vec <=> $1::vector
+                         ORDER BY e.vec <=> $1::text::vector
                          LIMIT 150",
                     ),
                     &[&vstr],
