@@ -37,6 +37,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+        NSFaceIDUsageDescription: Face ID schützt den Terminal-Zugriff auf atlas.
         NSAppTransportSecurity:
           NSExceptionDomains:
             ts.net:
