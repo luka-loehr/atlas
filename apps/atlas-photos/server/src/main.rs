@@ -65,6 +65,7 @@ async fn main() {
         .route("/api/assets/{id}/thumb/{size}", get(thumb))
         .route("/api/assets/{id}/original", get(original))
         .route("/api/assets/{id}/stream", get(stream))
+        .route("/api/assets/{id}/info", get(asset_info))
         // archived / trashed / locked buckets (same asset JSON shape as timeline)
         .route("/api/archive", get(archive))
         .route("/api/trash", get(trash_list))
@@ -76,6 +77,7 @@ async fn main() {
         .route("/api/mutate/restore", post(mutate_restore))
         .route("/api/mutate/lock", post(mutate_lock))
         .route("/api/mutate/delete", post(mutate_delete))
+        .route("/api/mutate/describe", post(mutate_describe))
         .route("/api/trash/empty", post(trash_empty))
         // sync / upload
         .route("/api/exists", post(exists))
@@ -102,6 +104,7 @@ struct Asset {
     width: Option<i32>,
     height: Option<i32>,
     duration_s: Option<f64>,
+    favorite: bool,
 }
 
 fn asset_from(r: &tokio_postgres::Row) -> Asset {
@@ -112,11 +115,12 @@ fn asset_from(r: &tokio_postgres::Row) -> Asset {
         width: r.get(3),
         height: r.get(4),
         duration_s: r.get(5),
+        favorite: r.get(6),
     }
 }
 
 const ASSET_COLS: &str =
-    "assets.id, assets.type, assets.taken_at, assets.width, assets.height, assets.duration_s";
+    "assets.id, assets.type, assets.taken_at, assets.width, assets.height, assets.duration_s, assets.favorite";
 
 // archived / trashed / locked assets each live in their own view
 // (/api/archive, /api/trash, /api/locked) and stay out of the main timeline,
@@ -340,6 +344,80 @@ async fn set_bool(app: &App, col: &str, ids: &Vec<String>, value: bool) -> Resul
         .execute(&format!("UPDATE assets SET {col} = $2 WHERE id = ANY($1)"), &[ids, &value])
         .await?;
     Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+#[derive(Deserialize)]
+struct Describe {
+    id: String,
+    text: String,
+}
+
+/// Set/replace the user caption ("Untertitel") of one asset.
+async fn mutate_describe(State(app): State<App>, Json(b): Json<Describe>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let text = b.text.trim();
+    let val: Option<&str> = if text.is_empty() { None } else { Some(text) };
+    let n = c
+        .execute("UPDATE assets SET description = $2 WHERE id = $1", &[&b.id, &val])
+        .await?;
+    Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+/// Full per-asset detail for the viewer info sheet: metadata + place (via the
+/// geocode edge) + pipeline tags + the EXIF subset stored by the meta worker.
+async fn asset_info(State(app): State<App>, Path(id): Path<String>) -> Result<Response, Api> {
+    if !safe_id(&id) {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    }
+    let c = app.pool.get().await?;
+    let Some(r) = c
+        .query_opt(
+            "SELECT id, taken_at, orig_name, camera, width, height, size_bytes,
+                    lat, lon, caption, description, favorite, duration_s, exif
+             FROM assets WHERE id = $1",
+            &[&id],
+        )
+        .await?
+    else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let place: Option<String> = c
+        .query_opt(
+            "SELECT p.name || COALESCE(', ' || p.admin1, '')
+             FROM edges e JOIN places p ON p.id::text = e.dst_id
+             WHERE e.src_type='asset' AND e.src_id=$1
+               AND e.rel='taken_at' AND e.dst_type='place'
+             LIMIT 1",
+            &[&id],
+        )
+        .await?
+        .map(|row| row.get(0));
+    let tags: Vec<String> = c
+        .query("SELECT tag FROM tags WHERE asset_id = $1 ORDER BY tag", &[&id])
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    let exif: Option<serde_json::Value> = r.get(13);
+    Ok(Json(serde_json::json!({
+        "id": r.get::<_, String>(0),
+        "taken_at": r.get::<_, Option<DateTime<Utc>>>(1),
+        "orig_name": r.get::<_, Option<String>>(2),
+        "camera": r.get::<_, Option<String>>(3),
+        "width": r.get::<_, Option<i32>>(4),
+        "height": r.get::<_, Option<i32>>(5),
+        "size_bytes": r.get::<_, Option<i64>>(6),
+        "lat": r.get::<_, Option<f64>>(7),
+        "lon": r.get::<_, Option<f64>>(8),
+        "caption": r.get::<_, Option<String>>(9),
+        "description": r.get::<_, Option<String>>(10),
+        "favorite": r.get::<_, bool>(11),
+        "duration_s": r.get::<_, Option<f64>>(12),
+        "place": place,
+        "tags": tags,
+        "exif": exif,
+    }))
+    .into_response())
 }
 
 async fn mutate_trash(State(app): State<App>, Json(b): Json<Ids>) -> Result<Json<serde_json::Value>, Api> {

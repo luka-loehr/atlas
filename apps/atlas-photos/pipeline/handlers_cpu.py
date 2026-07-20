@@ -241,6 +241,18 @@ def meta(conn, asset_id):
         lat = lon = None
     taken_at, tz_offset_s = _parse_taken(d)
 
+    # capture-parameter subset for the app's info sheet (004: assets.exif)
+    exp = d.get("ExposureTime")
+    if isinstance(exp, (int, float)) and exp > 0:
+        exp = f"1/{round(1 / exp)}" if exp < 1 else f"{exp:g}"
+    exif_bits = {k: v for k, v in {
+        "iso": int(_num(d.get("ISO")) or 0) or None,
+        "f_number": _num(d.get("FNumber")),
+        "exposure_time": exp if isinstance(exp, str) else None,
+        "focal_len": _num(d.get("FocalLength")),
+        "lens": (str(d.get("LensModel") or d.get("LensID") or "")[:120] or None),
+    }.items() if v is not None}
+
     conn.execute(
         """UPDATE assets
               SET width = COALESCE(width, %s),
@@ -250,9 +262,11 @@ def meta(conn, asset_id):
                   lat = COALESCE(lat, %s),
                   lon = COALESCE(lon, %s),
                   tz_offset_s = COALESCE(tz_offset_s, %s),
-                  taken_at = COALESCE(taken_at, %s)
+                  taken_at = COALESCE(taken_at, %s),
+                  exif = COALESCE(exif, %s::jsonb)
             WHERE id = %s""",
-        (w, h, dur, camera, lat, lon, tz_offset_s, taken_at, asset_id))
+        (w, h, dur, camera, lat, lon, tz_offset_s, taken_at,
+         json.dumps(exif_bits) if exif_bits else None, asset_id))
 
     got = conn.execute(
         "SELECT lat, lon FROM assets WHERE id = %s", (asset_id,)).fetchone()
