@@ -66,6 +66,7 @@ async fn main() {
         .route("/api/assets/{id}/original", get(original))
         .route("/api/assets/{id}/stream", get(stream))
         .route("/api/assets/{id}/info", get(asset_info))
+        .route("/api/graph", get(graph))
         .route("/api/persons", get(persons))
         .route("/api/persons/{id}/assets", get(person_assets))
         .route("/api/persons/{id}/rename", post(person_rename))
@@ -594,6 +595,127 @@ async fn thumb(
 }
 
 // ---------------------------------------------------------------- persons ---
+
+/// Entity-level knowledge graph for the visualization: persons, places,
+/// top events and top tags as nodes; co-occurrence / containment as weighted
+/// links. Aggregated so the client renders a few hundred elements, not 12k.
+async fn graph(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let mut nodes: Vec<serde_json::Value> = Vec::new();
+    let mut links: Vec<serde_json::Value> = Vec::new();
+
+    // persons (>=3 photos, top 60)
+    let prow = c.query(
+        "SELECT p.id, coalesce(p.display_name,''), count(DISTINCT f.asset_id) n
+         FROM persons p JOIN faces f ON f.person_id=p.id
+         WHERE p.merged_into IS NULL
+         GROUP BY p.id HAVING count(DISTINCT f.asset_id) >= 3
+         ORDER BY n DESC LIMIT 60", &[]).await?;
+    for r in &prow {
+        nodes.push(serde_json::json!({
+            "id": format!("p{}", r.get::<_, i64>(0)),
+            "label": r.get::<_, String>(1),
+            "kind": "person",
+            "size": r.get::<_, i64>(2),
+        }));
+    }
+
+    // places (all with assets)
+    let lrow = c.query(
+        "SELECT p.id, p.name, count(*) n FROM places p
+         JOIN edges e ON e.dst_type='place' AND e.dst_id = p.id::text AND e.rel='taken_at'
+         GROUP BY p.id ORDER BY n DESC LIMIT 69", &[]).await?;
+    for r in &lrow {
+        nodes.push(serde_json::json!({
+            "id": format!("l{}", r.get::<_, i64>(0)),
+            "label": r.get::<_, String>(1),
+            "kind": "place",
+            "size": r.get::<_, i64>(2),
+        }));
+    }
+
+    // top tags
+    let trow = c.query(
+        "SELECT tag, count(*) n FROM tags GROUP BY tag
+         ORDER BY n DESC LIMIT 40", &[]).await?;
+    for r in &trow {
+        nodes.push(serde_json::json!({
+            "id": format!("t{}", r.get::<_, String>(0)),
+            "label": r.get::<_, String>(0),
+            "kind": "tag",
+            "size": r.get::<_, i64>(1),
+        }));
+    }
+
+    // person-person co-occurrence (view from 003)
+    let pp = c.query(
+        "SELECT person_a, person_b, shared_assets FROM person_cooccurrence
+         WHERE shared_assets >= 2 ORDER BY shared_assets DESC LIMIT 250", &[]).await?;
+    for r in &pp {
+        links.push(serde_json::json!({
+            "a": format!("p{}", r.get::<_, i64>(0)),
+            "b": format!("p{}", r.get::<_, i64>(1)),
+            "w": r.get::<_, i64>(2),
+        }));
+    }
+
+    // person-place
+    let pl = c.query(
+        "SELECT f.person_id, e.dst_id, count(DISTINCT f.asset_id) n
+         FROM faces f JOIN edges e ON e.src_type='asset' AND e.src_id=f.asset_id
+              AND e.rel='taken_at' AND e.dst_type='place'
+         WHERE f.person_id IS NOT NULL
+         GROUP BY 1,2 HAVING count(DISTINCT f.asset_id) >= 2
+         ORDER BY n DESC LIMIT 250", &[]).await?;
+    for r in &pl {
+        links.push(serde_json::json!({
+            "a": format!("p{}", r.get::<_, i64>(0)),
+            "b": format!("l{}", r.get::<_, String>(1)),
+            "w": r.get::<_, i64>(2),
+        }));
+    }
+
+    // person-tag
+    let pt = c.query(
+        "SELECT f.person_id, t.tag, count(DISTINCT f.asset_id) n
+         FROM faces f JOIN tags t ON t.asset_id = f.asset_id
+         WHERE f.person_id IS NOT NULL
+         GROUP BY 1,2 HAVING count(DISTINCT f.asset_id) >= 4
+         ORDER BY n DESC LIMIT 300", &[]).await?;
+    for r in &pt {
+        links.push(serde_json::json!({
+            "a": format!("p{}", r.get::<_, i64>(0)),
+            "b": format!("t{}", r.get::<_, String>(1)),
+            "w": r.get::<_, i64>(2),
+        }));
+    }
+
+    // tag-place (scene flavor of locations)
+    let tl = c.query(
+        "SELECT t.tag, e.dst_id, count(*) n
+         FROM tags t JOIN edges e ON e.src_type='asset' AND e.src_id=t.asset_id
+              AND e.rel='taken_at' AND e.dst_type='place'
+         GROUP BY 1,2 HAVING count(*) >= 5
+         ORDER BY n DESC LIMIT 200", &[]).await?;
+    for r in &tl {
+        links.push(serde_json::json!({
+            "a": format!("t{}", r.get::<_, String>(0)),
+            "b": format!("l{}", r.get::<_, String>(1)),
+            "w": r.get::<_, i64>(2),
+        }));
+    }
+
+    // drop links whose endpoints aren't in the node set
+    let ids: std::collections::HashSet<String> = nodes
+        .iter()
+        .map(|n| n["id"].as_str().unwrap_or("").to_string())
+        .collect();
+    links.retain(|l| {
+        ids.contains(l["a"].as_str().unwrap_or("")) && ids.contains(l["b"].as_str().unwrap_or(""))
+    });
+
+    Ok(Json(serde_json::json!({ "nodes": nodes, "links": links })))
+}
 
 /// People with at least one face, biggest first. cover_face -> /api/faces/{id}/crop.
 async fn persons(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
