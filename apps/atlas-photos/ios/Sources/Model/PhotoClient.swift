@@ -100,11 +100,19 @@ struct PhotoClient: Sendable {
         return r.items
     }
 
-    func search(_ q: String) async throws -> [Asset] {
-        struct R: Codable { let items: [Asset] }
+    struct SearchResult {
+        var persons: [Person] = []
+        var items: [Asset] = []
+    }
+
+    func search(_ q: String) async throws -> SearchResult {
+        struct R: Codable {
+            let items: [Asset]
+            let persons: [Person]?
+        }
         let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
         let r: R = try await get("/api/search?q=\(enc)")
-        return r.items
+        return SearchResult(persons: r.persons ?? [], items: r.items)
     }
 
     // content-addressed, immutable URLs — safe to cache forever
