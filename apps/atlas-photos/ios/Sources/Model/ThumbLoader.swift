@@ -19,11 +19,46 @@ final class ThumbLoader {
     private init() {
         ram.countLimit = 500
         ram.totalCostLimit = 320 << 20        // ~320 MB of decoded pixels
-        let cache = URLCache(memoryCapacity: 32 << 20, diskCapacity: 2 << 30, directory: nil)
+        let cache = URLCache(memoryCapacity: 64 << 20, diskCapacity: 4 << 30, directory: nil)
         let cfg = URLSessionConfiguration.default
         cfg.urlCache = cache
         cfg.requestCachePolicy = .returnCacheDataElseLoad
         session = URLSession(configuration: cfg)
+    }
+
+    // MARK: Prefetch (aggressive precache)
+
+    private var prefetchInflight: Set<URL> = []   // queued or fetching — no double-fetch
+    private var prefetchQueue: [URL] = []
+    private var prefetchActive = 0
+    private let prefetchLimit = 6
+
+    /// Warms both cache tiers for `urls` at background priority: the bytes land
+    /// in URLCache (disk) and the decoded bitmap in the RAM cache, so a later
+    /// `load` is instant. Already-cached and already-in-flight URLs are skipped;
+    /// at most `prefetchLimit` fetches run concurrently.
+    func prefetch(_ urls: [URL]) {
+        for url in urls {
+            guard ram.object(forKey: url as NSURL) == nil,
+                  !prefetchInflight.contains(url) else { continue }
+            prefetchInflight.insert(url)
+            prefetchQueue.append(url)
+        }
+        pumpPrefetch()
+    }
+
+    private func pumpPrefetch() {
+        while prefetchActive < prefetchLimit, !prefetchQueue.isEmpty {
+            let url = prefetchQueue.removeFirst()
+            prefetchActive += 1
+            Task(priority: .background) { [weak self] in
+                _ = await self?.fetch(url, maxPixel: nil)
+                guard let self else { return }
+                self.prefetchInflight.remove(url)
+                self.prefetchActive -= 1
+                self.pumpPrefetch()
+            }
+        }
     }
 
     func cached(_ url: URL) -> UIImage? { ram.object(forKey: url as NSURL) }

@@ -96,7 +96,10 @@ struct PhotosScreen: View {
                             SelectableThumb(asset: asset,
                                             thumbURL: library.client.thumbURL(asset.id, 512),
                                             selection: selection, namespace: zoom) { pick = asset }
-                                .task { await library.loadMoreIfNeeded(current: asset) }
+                                .task {
+                                    await library.loadMoreIfNeeded(current: asset)
+                                    library.prefetch(around: asset)
+                                }
                         }
                     }
                     .padding(.horizontal, 2)

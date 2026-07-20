@@ -496,6 +496,14 @@ async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resu
         &[&id],
     )
     .await?;
+    for job in ["meta", "embed", "faces", "caption"] {
+        c.execute(
+            "INSERT INTO ingest_jobs (kind, owner_type, owner_id)
+             VALUES ($1, 'asset', $2) ON CONFLICT DO NOTHING",
+            &[&job, &id],
+        )
+        .await?;
+    }
 
     Ok(Json(serde_json::json!({ "exists": false, "id": id })).into_response())
 }

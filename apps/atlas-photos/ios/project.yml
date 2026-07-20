@@ -31,6 +31,10 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.lukaloehr.AtlasPhotos.backup
         NSFaceIDUsageDescription: Face ID schützt deinen gesperrten Ordner.
         NSPhotoLibraryUsageDescription: Atlas Fotos sichert deine Aufnahmen auf deinem atlas-Server und räumt gesicherte Fotos vom iPhone.
         NSPhotoLibraryAddUsageDescription: Atlas Fotos kann Originale zurück in deine iPhone-Mediathek legen.

@@ -63,6 +63,28 @@ final class Library {
         loading = false
     }
 
+    // MARK: Prefetch
+
+    @ObservationIgnored private var lastPrefetchIndex = Int.min
+    @ObservationIgnored private var lastPrefetchAt = Date.distantPast
+
+    /// Warms thumbnails around `asset` in timeline order: the next 60 and the
+    /// previous 12. Throttled — fires at most once per second unless the
+    /// viewport jumped more than 20 items (fast scroll).
+    func prefetch(around asset: Asset) {
+        guard let idx = assets.firstIndex(of: asset) else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastPrefetchAt) >= 1
+            || abs(idx - lastPrefetchIndex) > 20 else { return }
+        lastPrefetchAt = now
+        lastPrefetchIndex = idx
+
+        let ahead  = ((idx + 1) ..< min(idx + 61, assets.count)).map { $0 }
+        let behind = (max(idx - 12, 0) ..< idx).reversed().map { $0 }
+        let urls = (ahead + behind).compactMap { client.thumbURL(assets[$0].id, 512) }
+        ThumbLoader.shared.prefetch(urls)
+    }
+
     func refresh() async {
         reachedEnd = false
         await loadStats()
