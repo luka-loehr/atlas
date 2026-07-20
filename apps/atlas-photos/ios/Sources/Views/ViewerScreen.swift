@@ -3,17 +3,19 @@ import AVKit
 
 /// Full-screen pager: shows the 1024 thumb instantly (from grid cache, scaled),
 /// loads the original over it, pinch-to-zoom, videos play via AVPlayer.
+/// Presented as a zoom transition from the tapped thumbnail; swipe DOWN to
+/// dismiss (no close button — like Apple Photos).
 struct ViewerScreen: View {
     var library: Library
     var assets: [Asset]
     var start: Asset
 
     @State private var index: Int = 0
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Color.black.ignoresSafeArea()
+
             TabView(selection: $index) {
                 ForEach(Array(assets.enumerated()), id: \.element.id) { i, asset in
                     ViewerPage(library: library, asset: asset)
@@ -23,27 +25,12 @@ struct ViewerScreen: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
 
-            VStack {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(10)
-                            .background(.black.opacity(0.4), in: Circle())
-                    }
-                    Spacer()
-                    if let d = assets[safe: index]?.takenAt {
-                        Text(d.formatted(date: .abbreviated, time: .shortened))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    Spacer()
-                    Color.clear.frame(width: 38, height: 38)
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
-                Spacer()
+            // date only — the zoom transition handles swipe-down-to-close
+            if let d = assets[safe: index]?.takenAt {
+                Text(d.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.top, 8)
             }
         }
         .statusBarHidden()

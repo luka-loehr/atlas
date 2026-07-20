@@ -4,6 +4,7 @@ struct PhotosScreen: View {
     var library: Library
     @State private var showAccount = false
     @State private var pick: Asset?
+    @Namespace private var zoom
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
@@ -27,36 +28,33 @@ struct PhotosScreen: View {
                     }
                 }
             }
-            .toolbarBackground(.black, for: .navigationBar)
         }
         .sheet(isPresented: $showAccount) {
             AccountSheet(library: library)
         }
         .fullScreenCover(item: $pick) { asset in
             ViewerScreen(library: library, assets: library.assets, start: asset)
+                .navigationTransition(.zoom(sourceID: asset.id, in: zoom))
         }
     }
 
     private var grid: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: 6) {
                 ForEach(library.sections) { section in
-                    Section {
-                        LazyVGrid(columns: cols, spacing: 2) {
-                            ForEach(section.assets) { asset in
-                                cell(asset)
-                            }
+                    Text(section.date.sectionTitle())
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 14)
+                        .padding(.bottom, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    LazyVGrid(columns: cols, spacing: 2) {
+                        ForEach(section.assets) { asset in
+                            cell(asset)
                         }
-                        .padding(.horizontal, 2)
-                    } header: {
-                        Text(section.date.sectionTitle())
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.black.opacity(0.85))
                     }
+                    .padding(.horizontal, 2)
                 }
             }
         }
@@ -82,6 +80,7 @@ struct PhotosScreen: View {
             }
             .clipped()
             .contentShape(Rectangle())
+            .matchedTransitionSource(id: asset.id, in: zoom)
             .onTapGesture { pick = asset }
             .task { await library.loadMoreIfNeeded(current: asset) }
     }
