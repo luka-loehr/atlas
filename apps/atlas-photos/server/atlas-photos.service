@@ -1,0 +1,14 @@
+[Unit]
+Description=atlas-photos library server
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=luka
+ExecStart=/usr/local/bin/atlas-photos
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
