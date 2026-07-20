@@ -40,8 +40,11 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
         if let current, current != index {
             let dir: UIPageViewController.NavigationDirection =
                 index > current ? .forward : .reverse
+            // external jumps (filmstrip scrub/tap) swap INSTANTLY — any
+            // animation here lags behind the wheel; the pager's own swipe
+            // gesture still animates natively
             pager.setViewControllers([context.coordinator.page(at: index)],
-                                     direction: dir, animated: abs(index - current) == 1)
+                                     direction: dir, animated: false)
         }
     }
 
