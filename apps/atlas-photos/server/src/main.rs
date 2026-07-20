@@ -13,10 +13,11 @@
 use std::path::PathBuf;
 
 use axum::{
-    extract::{Path, Query, State},
+    body::Bytes,
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -64,6 +65,24 @@ async fn main() {
         .route("/api/assets/{id}/thumb/{size}", get(thumb))
         .route("/api/assets/{id}/original", get(original))
         .route("/api/assets/{id}/stream", get(stream))
+        // archived / trashed / locked buckets (same asset JSON shape as timeline)
+        .route("/api/archive", get(archive))
+        .route("/api/trash", get(trash_list))
+        .route("/api/locked", get(locked))
+        // batch state mutations — JSON body {ids:[...] (,value:bool)}
+        .route("/api/mutate/favorite", post(mutate_favorite))
+        .route("/api/mutate/archive", post(mutate_archive))
+        .route("/api/mutate/trash", post(mutate_trash))
+        .route("/api/mutate/restore", post(mutate_restore))
+        .route("/api/mutate/lock", post(mutate_lock))
+        .route("/api/mutate/delete", post(mutate_delete))
+        .route("/api/trash/empty", post(trash_empty))
+        // sync / upload
+        .route("/api/exists", post(exists))
+        .route(
+            "/api/upload",
+            post(upload).layer(DefaultBodyLimit::max(1024 * 1024 * 1024)),
+        )
         .with_state(app);
 
     let addr = "0.0.0.0:8788";
@@ -96,14 +115,16 @@ fn asset_from(r: &tokio_postgres::Row) -> Asset {
     }
 }
 
-const ASSET_COLS: &str = "id, type, taken_at, width, height, duration_s";
+const ASSET_COLS: &str =
+    "assets.id, assets.type, assets.taken_at, assets.width, assets.height, assets.duration_s";
 
-// deleted (Trash) and private (Locked Folder) assets stay out of the main
-// timeline and search — the Locked Folder is reachable only via its album
-// (Face-ID gated in the app).
-const EXCLUDE_HIDDEN: &str = "AND NOT EXISTS (SELECT 1 FROM album_assets aa \
-     JOIN albums al ON al.id = aa.album_id WHERE aa.asset_id = assets.id \
-     AND al.title IN ('Trash','Papierkorb','Bin','Locked Folder','Gesperrter Ordner'))";
+// archived / trashed / locked assets each live in their own view
+// (/api/archive, /api/trash, /api/locked) and stay out of the main timeline,
+// search, summary and stats. Column filter over the partial index (002) instead
+// of the old album anti-join. Columns are qualified so the search join is
+// unambiguous (albums also has an `id`).
+const VISIBLE: &str =
+    "AND NOT assets.archived AND assets.trashed_at IS NULL AND NOT assets.locked";
 
 async fn stats(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
     let c = app.pool.get().await?;
@@ -113,7 +134,8 @@ async fn stats(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
                     count(*) FILTER (WHERE type='video'),
                     coalesce(sum(size_bytes),0)::bigint,
                     min(taken_at), max(taken_at)
-             FROM assets",
+             FROM assets
+             WHERE NOT archived AND trashed_at IS NULL AND NOT locked",
             &[],
         )
         .await?;
@@ -134,7 +156,7 @@ async fn summary(State(app): State<App>) -> Result<Json<serde_json::Value>, Api>
         .query(
             &format!(
                 "SELECT to_char(taken_at AT TIME ZONE 'UTC', 'YYYY-MM') AS m, count(*)
-                 FROM assets WHERE taken_at IS NOT NULL {EXCLUDE_HIDDEN}
+                 FROM assets WHERE taken_at IS NOT NULL {VISIBLE}
                  GROUP BY 1 ORDER BY 1 DESC"
             ),
             &[],
@@ -161,7 +183,7 @@ async fn timeline(State(app): State<App>, Query(q): Query<TimelineQ>) -> Result<
             c.query(
                 &format!(
                     "SELECT {ASSET_COLS} FROM assets WHERE taken_at IS NOT NULL AND taken_at < $1
-                     {EXCLUDE_HIDDEN} ORDER BY taken_at DESC LIMIT $2"
+                     {VISIBLE} ORDER BY taken_at DESC LIMIT $2"
                 ),
                 &[&b, &limit],
             )
@@ -171,7 +193,7 @@ async fn timeline(State(app): State<App>, Query(q): Query<TimelineQ>) -> Result<
             c.query(
                 &format!(
                     "SELECT {ASSET_COLS} FROM assets WHERE taken_at IS NOT NULL
-                     {EXCLUDE_HIDDEN} ORDER BY taken_at DESC LIMIT $1"
+                     {VISIBLE} ORDER BY taken_at DESC LIMIT $1"
                 ),
                 &[&limit],
             )
@@ -247,14 +269,226 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                     OR assets.description ILIKE $1
                     OR al.title ILIKE $1
                     OR to_char(assets.taken_at, 'YYYY') = $2)
-                 {EXCLUDE_HIDDEN}
-                 ORDER BY taken_at DESC NULLS LAST LIMIT 600"
+                 {VISIBLE}
+                 ORDER BY assets.taken_at DESC NULLS LAST LIMIT 600"
             ),
             &[&like, &term],
         )
         .await?;
     let items: Vec<Asset> = rows.iter().map(asset_from).collect();
     Ok(Json(serde_json::json!({ "items": items })))
+}
+
+// ----------------------------------------------------- archive/trash/lock ---
+
+// Buckets are mutually exclusive: trash wins over everything, archive excludes
+// locked, locked excludes trashed. Same asset JSON shape as the timeline.
+async fn archive(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    list_where(&app, "archived AND trashed_at IS NULL AND NOT locked", "taken_at DESC NULLS LAST").await
+}
+
+async fn trash_list(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    list_where(&app, "trashed_at IS NOT NULL", "trashed_at DESC").await
+}
+
+async fn locked(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    list_where(&app, "locked AND trashed_at IS NULL", "taken_at DESC NULLS LAST").await
+}
+
+/// `pred` / `order` are server-controlled constants (never user input).
+async fn list_where(app: &App, pred: &str, order: &str) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            &format!("SELECT {ASSET_COLS} FROM assets WHERE {pred} ORDER BY {order} LIMIT 5000"),
+            &[],
+        )
+        .await?;
+    let items: Vec<Asset> = rows.iter().map(asset_from).collect();
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+// --------------------------------------------------------------- mutations ---
+
+#[derive(Deserialize)]
+struct Ids {
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct IdsVal {
+    ids: Vec<String>,
+    value: bool,
+}
+
+async fn mutate_favorite(State(app): State<App>, Json(b): Json<IdsVal>) -> Result<Json<serde_json::Value>, Api> {
+    set_bool(&app, "favorite", &b.ids, b.value).await
+}
+
+async fn mutate_archive(State(app): State<App>, Json(b): Json<IdsVal>) -> Result<Json<serde_json::Value>, Api> {
+    set_bool(&app, "archived", &b.ids, b.value).await
+}
+
+async fn mutate_lock(State(app): State<App>, Json(b): Json<IdsVal>) -> Result<Json<serde_json::Value>, Api> {
+    set_bool(&app, "locked", &b.ids, b.value).await
+}
+
+/// `col` is a server-controlled column name (never user input).
+async fn set_bool(app: &App, col: &str, ids: &Vec<String>, value: bool) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let n = c
+        .execute(&format!("UPDATE assets SET {col} = $2 WHERE id = ANY($1)"), &[ids, &value])
+        .await?;
+    Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+async fn mutate_trash(State(app): State<App>, Json(b): Json<Ids>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let n = c
+        .execute("UPDATE assets SET trashed_at = now() WHERE id = ANY($1)", &[&b.ids])
+        .await?;
+    Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+async fn mutate_restore(State(app): State<App>, Json(b): Json<Ids>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let n = c
+        .execute(
+            "UPDATE assets SET archived = false, trashed_at = NULL, locked = false WHERE id = ANY($1)",
+            &[&b.ids],
+        )
+        .await?;
+    Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+async fn mutate_delete(State(app): State<App>, Json(b): Json<Ids>) -> Result<Json<serde_json::Value>, Api> {
+    let n = purge(&app, &b.ids).await?;
+    Ok(Json(serde_json::json!({ "deleted": n })))
+}
+
+async fn trash_empty(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    let ids: Vec<String> = {
+        let c = app.pool.get().await?;
+        c.query("SELECT id FROM assets WHERE trashed_at IS NOT NULL", &[])
+            .await?
+            .iter()
+            .map(|r| r.get(0))
+            .collect()
+    };
+    let n = purge(&app, &ids).await?;
+    Ok(Json(serde_json::json!({ "deleted": n })))
+}
+
+/// PERMANENT: deletes DB rows + original files + both thumbs. File removal is
+/// best-effort (a missing file is not an error). Child rows are cleaned first so
+/// this works whether or not the FKs are ON DELETE CASCADE.
+async fn purge(app: &App, ids: &Vec<String>) -> Result<u64, Api> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let c = app.pool.get().await?;
+    let rows = c
+        .query("SELECT id, orig_path FROM assets WHERE id = ANY($1)", &[ids])
+        .await?;
+    let thumbs = app.photos_dir.join("thumbs");
+    for r in &rows {
+        let id: String = r.get(0);
+        let orig: String = r.get(1);
+        let _ = std::fs::remove_file(&orig);
+        let _ = std::fs::remove_file(thumbs.join(format!("{id}.256.webp")));
+        let _ = std::fs::remove_file(thumbs.join(format!("{id}.1024.webp")));
+    }
+    for stmt in [
+        "DELETE FROM album_assets WHERE asset_id = ANY($1)",
+        "DELETE FROM faces WHERE asset_id = ANY($1)",
+        "DELETE FROM embeddings WHERE asset_id = ANY($1)",
+        "DELETE FROM ingest_jobs WHERE owner_type = 'asset' AND owner_id = ANY($1)",
+    ] {
+        let _ = c.execute(stmt, &[ids]).await;
+    }
+    let n = c.execute("DELETE FROM assets WHERE id = ANY($1)", &[ids]).await?;
+    Ok(n)
+}
+
+// ------------------------------------------------------------ upload / sync ---
+
+#[derive(Deserialize)]
+struct Hashes {
+    hashes: Vec<String>,
+}
+
+/// Which of the given content hashes the library already has (client dedup).
+async fn exists(State(app): State<App>, Json(b): Json<Hashes>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query("SELECT id FROM assets WHERE id = ANY($1)", &[&b.hashes])
+        .await?;
+    let have: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+    Ok(Json(serde_json::json!({ "have": have })))
+}
+
+const VIDEO_EXTS: &[&str] = &["mp4", "mov", "m4v", "3gp", "avi", "mkv", "webm", "mts"];
+
+/// Raw-body upload. Headers: X-Content-Hash (blake3[:32] = asset id, required),
+/// X-Filename (original name), X-Taken-At (unix seconds, optional). Stores the
+/// bytes at originals/YYYY/MM/<hash>_<name>, enqueues a 'thumb' ingest job (no
+/// synchronous thumbnailing), source='iphone'. Known hash -> {"exists":true}.
+async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Result<Response, Api> {
+    let id = match headers.get("x-content-hash").and_then(|v| v.to_str().ok()) {
+        Some(h) if safe_id(h.trim()) => h.trim().to_ascii_lowercase(),
+        _ => return Ok((StatusCode::BAD_REQUEST, "missing/invalid X-Content-Hash").into_response()),
+    };
+
+    let c = app.pool.get().await?;
+    if c.query_opt("SELECT 1 FROM assets WHERE id = $1", &[&id]).await?.is_some() {
+        return Ok(Json(serde_json::json!({ "exists": true, "id": id })).into_response());
+    }
+
+    let name = headers
+        .get("x-filename")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.rsplit(['/', '\\']).next())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("upload")
+        .to_string();
+
+    let taken: Option<DateTime<Utc>> = headers
+        .get("x-taken-at")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .and_then(|secs| DateTime::<Utc>::from_timestamp(secs, 0));
+
+    let sub = taken
+        .map(|t| t.format("%Y/%m").to_string())
+        .unwrap_or_else(|| "0000/00".into());
+    let dir = app.photos_dir.join("originals").join(sub);
+    std::fs::create_dir_all(&dir)?;
+    let dest = dir.join(format!("{id}_{name}"));
+    std::fs::write(&dest, &body)?;
+
+    let ext = std::path::Path::new(&name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let kind = if VIDEO_EXTS.contains(&ext.as_str()) { "video" } else { "photo" };
+    let dest_str = dest.to_string_lossy().to_string();
+    let size = body.len() as i64;
+
+    c.execute(
+        "INSERT INTO assets (id, type, taken_at, orig_path, orig_name, size_bytes, source)
+         VALUES ($1, $2, $3, $4, $5, $6, 'iphone') ON CONFLICT (id) DO NOTHING",
+        &[&id, &kind, &taken, &dest_str, &name, &size],
+    )
+    .await?;
+    c.execute(
+        "INSERT INTO ingest_jobs (kind, owner_type, owner_id)
+         VALUES ('thumb', 'asset', $1) ON CONFLICT DO NOTHING",
+        &[&id],
+    )
+    .await?;
+
+    Ok(Json(serde_json::json!({ "exists": false, "id": id })).into_response())
 }
 
 // ------------------------------------------------------------------ files ---
