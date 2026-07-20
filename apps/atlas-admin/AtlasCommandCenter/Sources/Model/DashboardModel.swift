@@ -20,11 +20,24 @@ final class DashboardModel {
     var netUpMbps: Double = 0
     private var lastNet: (rx: UInt64, tx: UInt64, at: Date)?
 
+    // Time-stamped live samples for the charts: fed every 500 ms by the
+    // /ws/metrics push stream, or every 2 s by the HTTP fallback while the
+    // socket is down. The charts render a sliding 60 s window, so keep ~75 s.
+    var cpuSamples: [(Date, Double)] = []
+    var gpuSamples: [(Date, Double)] = []
+    var downSamples: [(Date, Double)] = []
+    var upSamples: [(Date, Double)] = []
+    var wsConnected = false
+
     var host: String = "atlas.your-tailnet.ts.net:8787"
     var token: String = ""
 
     private var loopTask: Task<Void, Never>?
+    private var wsTask: Task<Void, Never>?
+    private var socket: URLSessionWebSocketTask?
+    private var lastWSNet: (rx: UInt64, tx: UInt64, tsMs: UInt64)?
     private let maxHistory = 60
+    private let sampleWindow: TimeInterval = 75
 
     func start() {
         stop()
@@ -34,11 +47,25 @@ final class DashboardModel {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        wsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.runSocket()
+                if Task.isCancelled { return }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
     }
 
     func stop() {
         loopTask?.cancel()
         loopTask = nil
+        wsTask?.cancel()
+        wsTask = nil
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+        wsConnected = false
+        lastWSNet = nil
     }
 
     func refresh() async {
@@ -49,17 +76,24 @@ final class DashboardModel {
             online = true
             lastError = nil
             updatedAt = Date()
-            push(&cpuHistory, m.cpu.usage)
-            push(&gpuHistory, m.gpu?.usage ?? 0)
+            if !wsConnected {
+                push(&cpuHistory, m.cpu.usage)
+                push(&gpuHistory, m.gpu?.usage ?? 0)
+                let now = Date()
+                appendSample(&cpuSamples, now, m.cpu.usage)
+                appendSample(&gpuSamples, now, m.gpu?.usage ?? 0)
+            }
             if let net = m.net {
                 let now = Date()
-                if let last = lastNet, net.rxBytes >= last.rx, net.txBytes >= last.tx {
+                if !wsConnected, let last = lastNet, net.rxBytes >= last.rx, net.txBytes >= last.tx {
                     let dt = now.timeIntervalSince(last.at)
                     if dt > 0.2 {
                         netDownMbps = Double(net.rxBytes - last.rx) * 8 / dt / 1_000_000
                         netUpMbps = Double(net.txBytes - last.tx) * 8 / dt / 1_000_000
                         push(&netDownHistory, netDownMbps)
                         push(&netUpHistory, netUpMbps)
+                        appendSample(&downSamples, now, netDownMbps)
+                        appendSample(&upSamples, now, netUpMbps)
                     }
                 }
                 lastNet = (net.rxBytes, net.txBytes, now)
@@ -73,6 +107,92 @@ final class DashboardModel {
     func sendPower(_ action: String) async {
         let client = AtlasClient(host: host, token: token.isEmpty ? nil : token)
         try? await client.power(action)
+    }
+
+    // MARK: live metrics stream (/ws/metrics)
+
+    /// One JSON text frame every 500 ms, see the agent's wire format.
+    private struct WSFrame: Decodable {
+        let tsMs: UInt64
+        let cpu: Double
+        let mem: Double
+        let memGb: Double
+        let gpu: Double
+        let gpuMemMb: Double
+        let rx: UInt64
+        let tx: UInt64
+        enum CodingKeys: String, CodingKey {
+            case cpu, mem, gpu, rx, tx
+            case tsMs = "ts_ms"
+            case memGb = "mem_gb"
+            case gpuMemMb = "gpu_mem_mb"
+        }
+    }
+
+    /// Connects, pumps frames into the sample buffers, returns when the
+    /// socket dies. The outer task reconnects with a 2 s backoff.
+    private func runSocket() async {
+        guard let url = metricsSocketURL() else { return }
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let task = URLSession.shared.webSocketTask(with: request)
+        socket = task
+        task.resume()
+        defer {
+            task.cancel(with: .goingAway, reason: nil)
+            if socket === task { socket = nil }
+            wsConnected = false
+            lastWSNet = nil
+        }
+        while !Task.isCancelled {
+            guard let message = try? await task.receive() else { break }
+            handle(message)
+        }
+    }
+
+    private func handle(_ message: URLSessionWebSocketTask.Message) {
+        let data: Data?
+        switch message {
+        case .string(let text): data = text.data(using: .utf8)
+        case .data(let raw): data = raw
+        @unknown default: data = nil
+        }
+        guard let data, let frame = try? JSONDecoder().decode(WSFrame.self, from: data) else { return }
+        apply(frame)
+    }
+
+    private func apply(_ f: WSFrame) {
+        wsConnected = true
+        let now = Date()
+        appendSample(&cpuSamples, now, f.cpu)
+        appendSample(&gpuSamples, now, f.gpu)
+        if let last = lastWSNet {
+            // cumulative counters: a smaller value means the agent restarted — skip that delta
+            if f.rx >= last.rx, f.tx >= last.tx, f.tsMs > last.tsMs {
+                let dt = Double(f.tsMs - last.tsMs) / 1000
+                if dt > 0.05 {
+                    netDownMbps = Double(f.rx - last.rx) * 8 / dt / 1_000_000
+                    netUpMbps = Double(f.tx - last.tx) * 8 / dt / 1_000_000
+                    appendSample(&downSamples, now, netDownMbps)
+                    appendSample(&upSamples, now, netUpMbps)
+                }
+            }
+        }
+        lastWSNet = (f.rx, f.tx, f.tsMs)
+    }
+
+    private func metricsSocketURL() -> URL? {
+        var s = "ws://\(host)/ws/metrics"
+        if !token.isEmpty { s += "?token=\(token)" }
+        return URL(string: s)
+    }
+
+    private func appendSample(_ arr: inout [(Date, Double)], _ t: Date, _ v: Double) {
+        arr.append((t, v))
+        let cutoff = t.addingTimeInterval(-sampleWindow)
+        while let first = arr.first, first.0 < cutoff { arr.removeFirst() }
     }
 
     private func push(_ arr: inout [Double], _ v: Double) {

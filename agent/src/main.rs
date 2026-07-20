@@ -4,6 +4,7 @@
 //!   GET  /health                 -> {"ok":true}
 //!   GET  /api/metrics            -> machine snapshot
 //!   GET  /term                   -> WebSocket, a real PTY bash
+//!   GET  /ws/metrics             -> WebSocket, live metrics frame every 500ms
 //!   GET  /api/docker             -> running containers (same as metrics.containers)
 //!   GET  /api/docker/<name>      -> inspect one container (state/image/ports/logs)
 //!   GET  /api/shows              -> lightshows on disk
@@ -24,6 +25,7 @@
 mod actions;
 mod activity;
 mod metrics;
+mod stream;
 mod terminal;
 mod vpn;
 
@@ -91,6 +93,9 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
         }
         ("GET", "/term") if req.ws_key.is_some() => {
             terminal::serve(stream, &req.ws_key.unwrap());
+        }
+        ("GET", "/ws/metrics") if req.ws_key.is_some() => {
+            crate::stream::handle_ws(stream, &req.ws_key.unwrap());
         }
         ("GET", "/api/docker") => respond(&mut stream, 200, &actions::containers()),
         ("GET", p) if p.starts_with("/api/docker/") => {

@@ -66,7 +66,7 @@ fn read_trim(path: &str) -> Option<String> {
 /// Cumulative rx/tx bytes summed over physical interfaces (/proc/net/dev).
 /// Virtual devices are skipped: lo, docker/veth/br (container traffic would be
 /// double-counted) and tailscale (tunnel bytes already flow via the NIC).
-fn net_bytes() -> (u64, u64) {
+pub fn net_bytes() -> (u64, u64) {
     let Some(raw) = fs::read_to_string("/proc/net/dev").ok() else {
         return (0, 0);
     };
