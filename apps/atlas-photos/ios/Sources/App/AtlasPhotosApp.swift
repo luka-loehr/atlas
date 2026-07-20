@@ -98,6 +98,17 @@ struct RootView: View {
             if phase == .background, autoBackup {
                 AtlasPhotosApp.scheduleBackup()
             }
+            // instant foreground sync: photos taken while the app was closed
+            // appear in the grid within a second (local thumb seeded, upload
+            // runs behind it) — Google-Photos-Gefühl beim Öffnen
+            if phase == .active, autoBackup {
+                Task {
+                    let sync = watchSync ?? DeviceSync(client: library.client)
+                    if watchSync == nil { watchSync = sync }
+                    guard await sync.requestAccess() else { return }
+                    await sync.quickSync(into: library)
+                }
+            }
         }
     }
 }

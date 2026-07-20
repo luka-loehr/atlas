@@ -152,6 +152,89 @@ final class DeviceSync {
     /// Requests that any in-flight scan/backup/delete stop as soon as possible.
     func cancel() { cancelled = true }
 
+    // MARK: Instant foreground sync
+
+    /// Millisecond-cheap check when the app comes to the foreground: fetch only
+    /// assets newer than the last marker (a PhotoKit date-predicate fetch, no
+    /// hashing of the whole library), then for each new one:
+    ///   1. show it in the grid IMMEDIATELY (local PHImageManager thumbnail is
+    ///      seeded into the cache under the future server-thumb URL — no empty
+    ///      tiles, ever),
+    ///   2. upload it; the server's queue generates the real thumb within ~1s.
+    func quickSync(into library: Library) async {
+        guard !running, isUsable else { return }
+        let markerKey = "photos.quickSyncMarker"
+        let marker = UserDefaults.standard.object(forKey: markerKey) as? Date
+            ?? Date()   // first run: only photos taken from now on
+        let opts = PHFetchOptions()
+        opts.predicate = NSPredicate(
+            format: "creationDate > %@ AND (mediaType == %d OR mediaType == %d)",
+            marker as NSDate,
+            PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+        let fresh = PHAsset.fetchAssets(with: opts)
+        guard fresh.count > 0 else {
+            if UserDefaults.standard.object(forKey: markerKey) == nil {
+                UserDefaults.standard.set(marker, forKey: markerKey)
+            }
+            return
+        }
+        var newest = marker
+        var toUpload: [PHAsset] = []
+        fresh.enumerateObjects { asset, _, _ in
+            toUpload.append(asset)
+            if let d = asset.creationDate, d > newest { newest = d }
+        }
+
+        for asset in toUpload.prefix(30) {
+            guard let resource = Self.primaryResource(asset),
+                  let hash = try? await Self.sha256Hex(of: resource) else { continue }
+            hashByLocalId[asset.localIdentifier] = hash
+
+            // 1) instant UI: local thumbnail under the server URL + timeline row
+            let isVideo = asset.mediaType == .video
+            let entry = Asset(id: hash, type: isVideo ? "video" : "photo",
+                              takenAt: asset.creationDate,
+                              width: asset.pixelWidth, height: asset.pixelHeight,
+                              durationS: isVideo ? asset.duration : nil,
+                              favorite: false)
+            if let url = client.thumbURL(hash, 512),
+               let img = await Self.localThumb(asset, side: 512) {
+                ThumbLoader.shared.seed(url, image: img)
+            }
+            if let url = client.thumbURL(hash, 2048),
+               let img = await Self.localThumb(asset, side: 1024) {
+                ThumbLoader.shared.seed(url, image: img)
+            }
+            library.insertLocally(entry)
+
+            // 2) upload (idempotent — server skips known content)
+            if let have = try? await client.exists(hashes: [hash]), have.contains(hash) {
+                continue
+            }
+            await uploadOne(asset)
+        }
+        UserDefaults.standard.set(newest, forKey: markerKey)
+        await library.loadStats()
+    }
+
+    /// Fast on-device thumbnail via PHImageManager (opportunistic, then exact).
+    static func localThumb(_ asset: PHAsset, side: CGFloat) async -> UIImage? {
+        await withCheckedContinuation { cont in
+            let o = PHImageRequestOptions()
+            o.deliveryMode = .highQualityFormat
+            o.resizeMode = .fast
+            o.isNetworkAccessAllowed = true
+            var done = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: side, height: side),
+                contentMode: .aspectFill, options: o) { img, _ in
+                if !done { done = true; cont.resume(returning: img) }
+            }
+        }
+    }
+
     /// Clears cached hashes and counters (e.g. after external library changes).
     func reset() {
         guard !running else { return }
