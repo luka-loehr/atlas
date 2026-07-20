@@ -123,7 +123,7 @@ private struct ThumbInner: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(Color.white.opacity(0.06))
+            Rectangle().fill(Color(uiColor: .secondarySystemFill))
             if let image {
                 Image(uiImage: image)
                     .resizable()

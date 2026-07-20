@@ -12,13 +12,13 @@ struct SearchScreen: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 if query.isEmpty {
                     hint
                 } else if results.isEmpty && !searching {
                     Text("nichts gefunden für \(query)")
                         .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(.tertiary)
                 } else {
                     ScrollView {
                         LazyVGrid(columns: cols, spacing: 2) {
@@ -59,13 +59,13 @@ struct SearchScreen: View {
         VStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 34))
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(.tertiary)
             Text("Suche in deiner Bibliothek")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.secondary)
             Text("nach Dateiname, Album oder Jahr — semantische Suche folgt")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 40)

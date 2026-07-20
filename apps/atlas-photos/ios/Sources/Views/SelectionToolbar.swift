@@ -31,7 +31,7 @@ struct SelectionToolbar: View {
     }
 
     private func button(_ title: String, _ icon: String,
-                        tint: Color = .white,
+                        tint: Color = .primary,
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 3) {
@@ -99,7 +99,7 @@ private struct GenericSelectionToolbar: View {
                         Text(action.title).font(.system(size: 10, weight: .medium))
                     }
                     .frame(maxWidth: .infinity)
-                    .foregroundStyle(action.role == .destructive ? Color.red : .white)
+                    .foregroundStyle(action.role == .destructive ? Color.red : .primary)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

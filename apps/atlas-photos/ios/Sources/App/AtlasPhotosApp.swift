@@ -84,8 +84,7 @@ struct RootView: View {
                 SearchScreen(library: library)
             }
         }
-        .tint(.white)
-        .preferredColorScheme(.dark)
+        .tint(.primary)
         .task {
             library.host = host
             if autoBackup, watchSync == nil {
