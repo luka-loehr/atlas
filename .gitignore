@@ -1,2 +1,5 @@
 target/
 backend/docker/.env
+build-sim/
+build-device/
+xcuserdata/

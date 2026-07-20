@@ -44,9 +44,11 @@ final class ShowModel {
     }
 }
 
-struct ShowScreen: View {
+struct ShowsScreen: View {
     var host: String
     var token: String
+    @Binding var showSettings: Bool
+
     @State private var model = ShowModel()
     @State private var showCreate = false
     @State private var showCalibration = false
@@ -59,6 +61,9 @@ struct ShowScreen: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         bridgeBadge
+                        if model.shows.isEmpty {
+                            emptyState
+                        }
                         ForEach(model.shows) { show in
                             NavigationLink {
                                 ShowPlayerView(model: model, show: show)
@@ -67,9 +72,6 @@ struct ShowScreen: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        // standalone fog — no show required
-                        FogHoldButton(client: model.client)
-                            .padding(.top, 18)
                     }
                     .padding(16)
                 }
@@ -84,6 +86,11 @@ struct ShowScreen: View {
                         Task { try? await model.client.stopBridge(); await model.load() }
                     } label: {
                         Image(systemName: "power")
+                    }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -124,6 +131,25 @@ struct ShowScreen: View {
             Spacer()
         }
         .padding(.horizontal, 4)
+    }
+
+    private var emptyState: some View {
+        GlassCard(padding: 26) {
+            VStack(spacing: 12) {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.system(size: 34))
+                    .foregroundStyle(Theme.accent)
+                Text(model.error ?? "noch keine Shows")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Erstelle eine Show aus einem YouTube-Link — oben rechts.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 30)
     }
 }
 

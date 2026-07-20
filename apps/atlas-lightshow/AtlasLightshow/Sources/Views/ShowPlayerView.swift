@@ -197,11 +197,15 @@ struct EdgeGlow: View {
     }
 }
 
-/// Hold-to-fog: press = fog packets flow (agent heartbeats the bridge),
-/// release = stop. Usable standalone and during a show.
+/// Hold-to-fog, fail-safe edition: while the finger is down the app renews a
+/// SHORT fog window (1.5 s) every 0.5 s instead of opening one long 30 s
+/// window. If the release packet gets lost, the phone dies or the app is
+/// killed mid-press, fog stops on its own within ~1.5 s. Release additionally
+/// sends two explicit stops.
 struct FogHoldButton: View {
     var client: AtlasClient
     @State private var fogging = false
+    @State private var heartbeat: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 6) {
@@ -218,16 +222,35 @@ struct FogHoldButton: View {
         }
         .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !fogging {
-                        fogging = true
-                        Task { try? await client.fog(ms: 30_000) }
-                    }
-                }
-                .onEnded { _ in
-                    fogging = false
-                    Task { try? await client.fogStop() }
-                }
+                .onChanged { _ in press() }
+                .onEnded { _ in release() }
         )
+        .onDisappear { release() }
+    }
+
+    private func press() {
+        guard !fogging else { return }
+        fogging = true
+        heartbeat?.cancel()
+        let client = client
+        heartbeat = Task {
+            while !Task.isCancelled {
+                try? await client.fog(ms: 1500)
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+    }
+
+    private func release() {
+        guard fogging else { return }
+        fogging = false
+        heartbeat?.cancel()
+        heartbeat = nil
+        let client = client
+        Task {
+            try? await client.fogStop()
+            try? await Task.sleep(for: .milliseconds(150))
+            try? await client.fogStop()
+        }
     }
 }

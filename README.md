@@ -8,17 +8,20 @@ Ubuntu Server 26.04, headless, on-demand via Wake-on-LAN).
 cli/          Rust CLI on the Mac:  atlas | boot | shutdown | restart | status
               | build | dev | agent | <any remote cmd>
 agent/        atlas-agent (Rust, systemd :8787): metrics, WS PTY terminal,
-              docker inspect, lightshow/fog control, calibration, ingest hooks
+              docker inspect, lightshow/fog/manual-light control, calibration,
+              exit-node/VPN stats, activity history, ingest hooks
 builder/      pinned Docker build images: lambda (Rust→Graviton via Zig),
               node (Next.js + cloudflared), flutter (Android SDK)
 backend/      THE data foundation: postgres:17 + pgvector in Docker —
               media library, knowledge-graph (nodes=domain tables, edges),
               embeddings (HNSW), resumable ingest queue  → backend/README.md
 apps/
-  atlas-admin/    iOS app "Atlas" (SwiftUI, iOS 26 Liquid Glass): dashboard,
-                  real terminal, docker, lightshows + AI-show creation,
-                  hold-to-fog, camera latency calibration
-  atlas-photos/   self-built Google Photos (server: Rust/axum · ios: SwiftUI)
+  atlas-admin/      iOS app "Atlas" (SwiftUI, iOS 26 Liquid Glass): dashboard,
+                    real terminal, docker, exit-node/VPN stats page,
+                    GitHub-style activity heatmap
+  atlas-lightshow/  iOS app "Lightshow": shows + AI-show creation, manual
+                    per-light control, fail-safe hold-to-fog, calibration
+  atlas-photos/     self-built Google Photos (server: Rust/axum · ios: SwiftUI)
 lightshows/   the full lightshow production system (merged with history):
               GPU song analysis, v6 dark-gap compiler, Gemini+Claude AI
               composer, Art-Net→Hue bridge, fog hardware  → lightshows/README.md
