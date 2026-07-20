@@ -5,7 +5,7 @@ import AVKit
 /// Full-screen viewer, Google-Photos style.
 ///
 /// Two modes, toggled by tapping the photo:
-///   • CHROME    — light background; top bar (round back button, white pill
+///   • CHROME    — system background; top bar (round back button, pill
 ///                 with relative date + time, ⋯ menu), bottom filmstrip of
 ///                 neighbors and the action bar (share ○ | ♥ ⓘ ⧉ pill | 🗑 ○).
 ///   • IMMERSIVE — pure black, nothing but the image.
@@ -48,12 +48,12 @@ struct ViewerScreen: View {
             }
 
             if busy {
-                ProgressView().tint(chrome ? .gray : .white).padding(18)
+                ProgressView().tint(chrome ? nil : Color.white).padding(18)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
             }
         }
         .statusBarHidden(!chrome)
-        .preferredColorScheme(chrome ? .light : .dark)
+        .preferredColorScheme(chrome ? nil : .dark)
         .onAppear {
             pages = assets
             index = assets.firstIndex(of: start) ?? 0
@@ -238,7 +238,7 @@ struct ViewerScreen: View {
     }
 }
 
-/// Round floating button (light circle, dark icon) — Google-Photos chrome.
+/// Round floating button (system-background circle, primary icon) — Google-Photos chrome.
 struct CircleButton: View {
     let icon: String
     let action: () -> Void
@@ -431,7 +431,7 @@ private struct VideoPlayerView: View {
                     .onAppear { player.play() }
                     .onDisappear { player.pause() }
             } else {
-                ProgressView().tint(.white)
+                ProgressView()   // adaptive: dark scheme is forced in immersive mode, so no hard-coded white
             }
         }
         .task {

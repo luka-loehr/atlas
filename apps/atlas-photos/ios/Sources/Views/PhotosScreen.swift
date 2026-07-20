@@ -15,16 +15,16 @@ struct PhotosScreen: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 if library.sections.isEmpty {
                     emptyState
                 } else {
                     grid
                 }
                 if busy {
-                    ProgressView().tint(.white)
+                    ProgressView()
                         .padding(20)
-                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 16))
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
                 }
             }
             .navigationTitle(selection.active ? title : "Fotos")
@@ -86,7 +86,7 @@ struct PhotosScreen: View {
                 ForEach(library.sections) { section in
                     Text(section.date.sectionTitle())
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 12)
                         .padding(.top, 14)
                         .padding(.bottom, 4)
@@ -164,20 +164,20 @@ struct PhotosScreen: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             if library.online {
-                ProgressView().tint(.white)
+                ProgressView()
                 Text("lade Bibliothek …")
                     .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
             } else {
                 Image(systemName: "moon.zzz.fill")
                     .font(.system(size: 34))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(.tertiary)
                 Text("atlas nicht erreichbar")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.secondary)
                 Text("im Tailnet? atlas wach?")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.tertiary)
             }
         }
     }

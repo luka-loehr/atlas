@@ -11,7 +11,7 @@ struct PersonsScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             ScrollView {
                 LazyVGrid(columns: cols, spacing: 24) {
                     ForEach(persons) { person in
@@ -24,7 +24,7 @@ struct PersonsScreen: View {
                                 Text(person.displayName)
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(person.name == nil
-                                                     ? .white.opacity(0.45) : .white)
+                                                     ? .tertiary : .primary)
                                     .lineLimit(1)
                             }
                         }
@@ -37,13 +37,13 @@ struct PersonsScreen: View {
                     VStack(spacing: 10) {
                         Image(systemName: "person.crop.circle.dashed")
                             .font(.system(size: 34))
-                            .foregroundStyle(.white.opacity(0.25))
+                            .foregroundStyle(.tertiary)
                         Text("Noch keine Personen erkannt")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(.secondary)
                         Text("Die Pipeline gruppiert Gesichter, sobald sie durchgelaufen ist.")
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                     }
                     .padding(.top, 80)
@@ -71,13 +71,13 @@ struct FaceCircle: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(Color.white.opacity(0.08))
+            Circle().fill(Color(.secondarySystemFill))
             if let f = person.coverFace {
                 Thumb(url: library.client.faceCropURL(f))
             } else {
                 Image(systemName: "person.fill")
                     .font(.system(size: 30))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(.tertiary)
             }
         }
         .clipShape(Circle())
@@ -100,17 +100,17 @@ struct PersonDetailScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 10) {
                     FaceCircle(library: library, person: person)
                         .frame(width: 108, height: 108)
                     Text(person.displayName)
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(person.name == nil ? .white.opacity(0.5) : .white)
+                        .foregroundStyle(person.name == nil ? .secondary : .primary)
                     Text("\(assets.count) Fotos")
                         .font(.system(size: 15))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 12)

@@ -10,7 +10,7 @@ struct AccountSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 20) {
                         header
@@ -33,7 +33,6 @@ struct AccountSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .preferredColorScheme(.dark)
         .task { if sync == nil { sync = DeviceSync(client: library.client) } }
         .sheet(isPresented: $showSync) { if let sync { SyncProgressView(sync: sync) } }
     }
@@ -50,12 +49,12 @@ struct AccountSheet: View {
                 Image(systemName: "gearshape.fill").foregroundStyle(.blue)
                 Text("Einstellungen & iPhone-Sync")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.white.opacity(0.3))
+                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.tertiary)
             }
             .padding(14)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -83,12 +82,12 @@ struct AccountSheet: View {
             }
             Text("Deine Bibliothek")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             HStack(spacing: 6) {
                 Circle().fill(library.online ? .green : .red).frame(width: 7, height: 7)
                 Text(library.online ? "mit atlas verbunden" : "offline")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -106,12 +105,12 @@ struct AccountSheet: View {
         VStack(spacing: 6) {
             Image(systemName: icon).font(.system(size: 16)).foregroundStyle(.blue)
             Text(value).font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundStyle(.white).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
-            Text(label).font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(.primary).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+            Text(label).font(.system(size: 10)).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
     }
 
     private func span(_ s: LibraryStats) -> some View {
@@ -119,7 +118,7 @@ struct AccountSheet: View {
             if let o = s.oldest, let n = s.newest {
                 Text("\(o.formatted(.dateTime.month().year())) – \(n.formatted(.dateTime.month().year()))")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -128,18 +127,18 @@ struct AccountSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("SERVER")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.tertiary)
             HStack {
-                Image(systemName: "server.rack").foregroundStyle(.white.opacity(0.5))
+                Image(systemName: "server.rack").foregroundStyle(.secondary)
                 TextField("host:port", text: $host)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(.primary)
                     .font(.system(size: 13, design: .monospaced))
                     .onSubmit { library.host = host; Task { await library.refresh() } }
             }
             .padding(12)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 

@@ -10,7 +10,7 @@ struct SyncProgressView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 VStack(spacing: 28) {
                     hero
                     if sync.deviceCount > 0 { counts }
@@ -36,7 +36,6 @@ struct SyncProgressView: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(sync.running)
     }
 
@@ -55,11 +54,11 @@ struct SyncProgressView: View {
             }
             Text(headline)
                 .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             if !sync.currentName.isEmpty, sync.running {
                 Text(sync.currentName)
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
             if let progress {
@@ -76,7 +75,7 @@ struct SyncProgressView: View {
 
     private var counts: some View {
         HStack(spacing: 10) {
-            chip("Gerät", sync.deviceCount, "iphone", .white)
+            chip("Gerät", sync.deviceCount, "iphone", .primary)
             chip("Gesichert", sync.backedUpCount, "checkmark.icloud", .green)
             chip("Offen", sync.missingCount, "icloud.and.arrow.up", .blue)
         }
@@ -85,12 +84,12 @@ struct SyncProgressView: View {
     private func chip(_ title: String, _ value: Int, _ system: String, _ color: Color) -> some View {
         VStack(spacing: 6) {
             Image(systemName: system).font(.system(size: 16, weight: .semibold)).foregroundStyle(color)
-            Text("\(value)").font(.system(size: 20, weight: .bold)).foregroundStyle(.white).monospacedDigit()
-            Text(title).font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
+            Text("\(value)").font(.system(size: 20, weight: .bold)).foregroundStyle(.primary).monospacedDigit()
+            Text(title).font(.system(size: 11)).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Footer result line
@@ -102,7 +101,7 @@ struct SyncProgressView: View {
         case .done where sync.uploaded > 0:
             resultLine("\(sync.uploaded) auf atlas gesichert", .green)
         case .done:
-            resultLine("Alles aktuell — nichts zu tun", .white.opacity(0.5))
+            resultLine("Alles aktuell — nichts zu tun", .secondary)
         case .failed(let m):
             resultLine(m, .red)
         default:

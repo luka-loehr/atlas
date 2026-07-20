@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Dark settings screen: server host + connection, library stats, cache,
+/// Settings screen: server host + connection, library stats, cache,
 /// iPhone-Sync (auto-backup / manual backup / device cleanup), trash and about.
 /// Reads live state from `Library`; destructive/side-effecting actions are
 /// delegated to the caller via closures.
@@ -38,12 +38,8 @@ struct SettingsScreen: View {
                 trashSection
                 aboutSection
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.black.ignoresSafeArea())
             .navigationTitle("Einstellungen")
-            .tint(.white)
         }
-        .preferredColorScheme(.dark)
         .task {
             if library.stats == nil { await library.loadStats() }
         }
@@ -79,25 +75,25 @@ struct SettingsScreen: View {
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .font(.system(size: 14, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.primary)
             }
             HStack {
                 icon("dot.radiowaves.left.and.right", library.online ? .green : .red)
-                Text("Status").foregroundStyle(.white)
+                Text("Status").foregroundStyle(.primary)
                 Spacer()
                 HStack(spacing: 6) {
                     Circle().fill(library.online ? .green : .red).frame(width: 8, height: 8)
                     Text(library.online ? "Verbunden" : "Offline")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.secondary)
                 }
             }
             Button { testConnection() } label: {
                 HStack {
                     icon("antenna.radiowaves.left.and.right", .blue)
-                    Text("Verbindung testen").foregroundStyle(.white)
+                    Text("Verbindung testen").foregroundStyle(.primary)
                     Spacer()
-                    if testing { ProgressView().tint(.white) }
+                    if testing { ProgressView() }
                 }
             }
             .disabled(testing)
@@ -105,9 +101,7 @@ struct SettingsScreen: View {
             Text("Server")
         } footer: {
             Text("atlas-Host im Tailnet. Format host:port.")
-        }
-        .listRowBackground(Color.white.opacity(0.05))
-    }
+        }    }
 
     private var librarySection: some View {
         Section("Bibliothek") {
@@ -124,14 +118,12 @@ struct SettingsScreen: View {
             } else {
                 HStack {
                     icon("photo", .blue)
-                    Text("Statistik wird geladen …").foregroundStyle(.white.opacity(0.5))
+                    Text("Statistik wird geladen …").foregroundStyle(.secondary)
                     Spacer()
-                    ProgressView().tint(.white)
+                    ProgressView()
                 }
             }
-        }
-        .listRowBackground(Color.white.opacity(0.05))
-    }
+        }    }
 
     private var cacheSection: some View {
         Section {
@@ -143,30 +135,28 @@ struct SettingsScreen: View {
             } label: {
                 HStack {
                     icon("trash", .gray)
-                    Text("Cache leeren").foregroundStyle(.white)
+                    Text("Cache leeren").foregroundStyle(.primary)
                 }
             }
         } header: {
             Text("Cache")
         } footer: {
             Text("Thumbnails und Vorschauen werden bei Bedarf neu von atlas geladen.")
-        }
-        .listRowBackground(Color.white.opacity(0.05))
-    }
+        }    }
 
     private var syncSection: some View {
         Section {
             Toggle(isOn: $autoBackup) {
                 HStack {
                     icon("arrow.triangle.2.circlepath", .green)
-                    Text("Auto-Backup").foregroundStyle(.white)
+                    Text("Auto-Backup").foregroundStyle(.primary)
                 }
             }
             .tint(.green)
             Button { onSyncNow() } label: {
                 HStack {
                     icon("icloud.and.arrow.up", .blue)
-                    Text("Jetzt sichern").foregroundStyle(.white)
+                    Text("Jetzt sichern").foregroundStyle(.primary)
                 }
             }
             Button(role: .destructive) { confirmCleanup = true } label: {
@@ -179,9 +169,7 @@ struct SettingsScreen: View {
             Text("iPhone-Sync")
         } footer: {
             Text("Neue Aufnahmen automatisch auf atlas sichern.")
-        }
-        .listRowBackground(Color.white.opacity(0.05))
-    }
+        }    }
 
     private var trashSection: some View {
         Section("Papierkorb") {
@@ -191,9 +179,7 @@ struct SettingsScreen: View {
                     Text("Papierkorb leeren").foregroundStyle(.red)
                 }
             }
-        }
-        .listRowBackground(Color.white.opacity(0.05))
-    }
+        }    }
 
     private var aboutSection: some View {
         Section("Über") {
@@ -201,13 +187,11 @@ struct SettingsScreen: View {
             valueRow("Version", appVersion, "info.circle", .gray)
             HStack {
                 icon("externaldrive.connected.to.line.below", .indigo)
-                Text("Server").foregroundStyle(.white)
+                Text("Server").foregroundStyle(.primary)
                 Spacer()
-                Text("läuft auf atlas").foregroundStyle(.white.opacity(0.5))
+                Text("läuft auf atlas").foregroundStyle(.secondary)
             }
-        }
-        .listRowBackground(Color.white.opacity(0.05))
-    }
+        }    }
 
     // MARK: - Building blocks
 
@@ -223,11 +207,11 @@ struct SettingsScreen: View {
                           _ system: String, _ color: Color) -> some View {
         HStack {
             icon(system, color)
-            Text(title).foregroundStyle(.white)
+            Text(title).foregroundStyle(.primary)
             Spacer()
             Text(value)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)

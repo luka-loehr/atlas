@@ -24,8 +24,6 @@ targets:
       properties:
         CFBundleDisplayName: Atlas Fotos
         UILaunchScreen: {}
-        UIStatusBarStyle: UIStatusBarStyleLightContent
-        UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

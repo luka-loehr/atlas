@@ -13,7 +13,7 @@ struct AlbumsScreen: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
                     peopleRow
                     utilities
@@ -31,7 +31,7 @@ struct AlbumsScreen: View {
                     } else if loaded {
                         Text("keine Alben")
                             .font(.system(size: 14))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.tertiary)
                             .padding(.top, 40)
                     }
                 }
@@ -63,7 +63,7 @@ struct AlbumsScreen: View {
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.tertiary)
                         .padding(.trailing, 16)
                         .padding(.top, 8)
                 }
@@ -82,7 +82,7 @@ struct AlbumsScreen: View {
                                     Text(person.displayName)
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundStyle(person.name == nil
-                                                         ? .white.opacity(0.45) : .white)
+                                                         ? .tertiary : .primary)
                                         .lineLimit(1)
                                         .frame(width: 76)
                                 }
@@ -109,7 +109,7 @@ struct AlbumsScreen: View {
                 divider
                 utilityRow(.trash)
             }
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 16)
             .disabled(authing)
         }
@@ -125,12 +125,12 @@ struct AlbumsScreen: View {
                     .background(kind.tint.gradient, in: RoundedRectangle(cornerRadius: 9))
                 Text(kind.title)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Spacer()
                 if kind == .locked {
-                    Image(systemName: "lock.fill").font(.system(size: 12)).foregroundStyle(.white.opacity(0.35))
+                    Image(systemName: "lock.fill").font(.system(size: 12)).foregroundStyle(.tertiary)
                 }
-                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.white.opacity(0.3))
+                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -140,13 +140,13 @@ struct AlbumsScreen: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(.white.opacity(0.06)).frame(height: 1).padding(.leading, 62)
+        Rectangle().fill(Color(.separator).opacity(0.5)).frame(height: 1).padding(.leading, 62)
     }
 
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.top, 18)
@@ -225,15 +225,15 @@ struct SpecialCollectionScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             if assets.isEmpty && loaded {
                 empty
             } else {
                 grid
             }
             if busy {
-                ProgressView().tint(.white).padding(20)
-                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 16))
+                ProgressView().padding(20)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
             }
         }
         .navigationTitle(kind.title)
@@ -321,11 +321,11 @@ struct SpecialCollectionScreen: View {
 
     private var empty: some View {
         VStack(spacing: 12) {
-            Image(systemName: kind.icon).font(.system(size: 34)).foregroundStyle(.white.opacity(0.25))
+            Image(systemName: kind.icon).font(.system(size: 34)).foregroundStyle(.tertiary)
             Text(kind == .trash ? "Papierkorb ist leer"
                  : kind == .archive ? "Archiv ist leer" : "Nichts Gesperrtes")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -370,10 +370,10 @@ struct AlbumCard: View {
                 .overlay {
                     if locked {
                         ZStack {
-                            Rectangle().fill(Color.white.opacity(0.06))
+                            Rectangle().fill(Color(.secondarySystemFill))
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 30))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .foregroundStyle(.secondary)
                         }
                     } else {
                         Thumb(url: album.cover.flatMap { library.client.thumbURL($0, 512) })
@@ -382,16 +382,16 @@ struct AlbumCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             HStack(spacing: 5) {
                 if locked {
-                    Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                    Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Text(album.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
             Text("\(album.count)")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -406,7 +406,7 @@ struct AlbumScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             ScrollView {
                 LazyVGrid(columns: cols, spacing: 2) {
                     ForEach(assets) { asset in
