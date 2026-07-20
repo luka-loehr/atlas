@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Watches ~/takeout/photos for takeout zips and ingests each exactly once,
+# sequentially (never two ingests at once — they'd thrash CPU/IO/DB).
+#
+# A zip is considered done when a "<zip>.ingested" marker exists; the marker is
+# only written after ingest_takeout.py exits 0, so a crashed/interrupted ingest
+# re-runs on the next pass (the ingester itself is idempotent — known hashes
+# are skipped). Runs forever; start via screen/systemd:
+#   screen -dmS ingestwatch bash ~/atlas/apps/atlas-photos/ingest/ingest_watcher.sh
+set -u
+DIR="$HOME/takeout/photos"
+ING="$HOME/atlas/apps/atlas-photos/ingest/ingest_takeout.py"
+LOG="$HOME/ingest_watcher.log"
+
+echo "$(date -Is) watcher up" >> "$LOG"
+while true; do
+  shopt -s nullglob
+  for zip in "$DIR"/takeout-*.zip; do
+    [ -e "$zip.ingested" ] && continue
+    # wait until the zip is stable (rsync may still be writing/replacing it)
+    s1=$(stat -c%s "$zip" 2>/dev/null || echo 0)
+    sleep 10
+    s2=$(stat -c%s "$zip" 2>/dev/null || echo 0)
+    [ "$s1" != "$s2" ] || [ "$s1" -lt 1000000 ] && continue
+
+    echo "$(date -Is) INGEST-START $(basename "$zip") ($((s1/1024/1024/1024))G)" >> "$LOG"
+    if python3 "$ING" "$zip" >> "$LOG" 2>&1; then
+      touch "$zip.ingested"
+      echo "$(date -Is) INGEST-DONE $(basename "$zip")" >> "$LOG"
+    else
+      echo "$(date -Is) INGEST-FAILED $(basename "$zip") — retry naechster Durchlauf" >> "$LOG"
+      sleep 300
+    fi
+  done
+  shopt -u nullglob
+  sleep 60
+done
