@@ -606,7 +606,8 @@ async fn graph(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
 
     // persons (>=3 photos, top 60)
     let prow = c.query(
-        "SELECT p.id, coalesce(p.display_name,''), count(DISTINCT f.asset_id) n
+        "SELECT p.id, coalesce(p.display_name,''), count(DISTINCT f.asset_id) n,
+                p.cover_face_id
          FROM persons p JOIN faces f ON f.person_id=p.id
          WHERE p.merged_into IS NULL
          GROUP BY p.id HAVING count(DISTINCT f.asset_id) >= 3
@@ -617,6 +618,7 @@ async fn graph(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
             "label": r.get::<_, String>(1),
             "kind": "person",
             "size": r.get::<_, i64>(2),
+            "cover": r.get::<_, Option<i64>>(3),
         }));
     }
 
