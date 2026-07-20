@@ -277,9 +277,10 @@ private struct Filmstrip: View {
                         // follows finger and momentum with zero lag; neighbors
                         // fade slightly so the middle one carries the weight
                         .visualEffect { content, proxy in
-                            let mid = proxy.frame(in: .scrollView(axis: .horizontal)).midX
-                            let center = UIScreen.main.bounds.width / 2
-                            let d = abs(mid - center)
+                            let f = proxy.frame(in: .scrollView(axis: .horizontal))
+                            let vis = proxy.bounds(of: .scrollView(axis: .horizontal))
+                            let center = vis.map(\.midX) ?? UIScreen.main.bounds.width / 2
+                            let d = abs(f.midX - center)
                             let t = max(0, 1 - d / 85)
                             return content
                                 .scaleEffect(1 + 0.28 * t)
@@ -300,7 +301,7 @@ private struct Filmstrip: View {
         // .never = a fast flick keeps its momentum across MANY thumbs (the
         // "flywheel" feel of a mechanical lens ring) and still snaps at rest;
         // a slow controlled drag clicks thumb by thumb
-        .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
+        .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByFew))
         .frame(height: 70)
         // mechanical lens-click on every detent (scrub AND page swipe)
         .sensoryFeedback(.selection, trigger: index)

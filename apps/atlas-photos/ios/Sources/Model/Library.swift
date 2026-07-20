@@ -91,6 +91,16 @@ final class Library {
         await loadFirst()
     }
 
+    /// Insert a freshly captured asset at its timeline position immediately —
+    /// the grid shows it before the server has even finished ingesting it.
+    func insertLocally(_ asset: Asset) {
+        guard !assets.contains(where: { $0.id == asset.id }) else { return }
+        let at = asset.takenAt ?? Date()
+        let idx = assets.firstIndex { ($0.takenAt ?? .distantPast) <= at } ?? assets.count
+        assets.insert(asset, at: idx)
+        rebuildSections()
+    }
+
     /// Drop assets from the in-memory timeline immediately (after archive /
     /// lock / trash / delete) so the grid closes the gap without a round-trip.
     func removeLocally(_ ids: Set<String>) {

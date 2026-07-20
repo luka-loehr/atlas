@@ -63,6 +63,14 @@ final class ThumbLoader {
 
     func cached(_ url: URL) -> UIImage? { ram.object(forKey: url as NSURL) }
 
+    /// Seeds the RAM cache with a locally generated image under a SERVER url —
+    /// a fresh iPhone photo shows its on-device thumbnail instantly while the
+    /// server one is still being generated; once the RAM entry is evicted the
+    /// normal load path fetches the (visually identical) server thumb.
+    func seed(_ url: URL, image: UIImage) {
+        ram.setObject(image, forKey: url as NSURL, cost: image.decodedCost)
+    }
+
     /// Grid thumbnails: fetched and fully decoded off-main.
     func load(_ url: URL) async -> UIImage? { await fetch(url, maxPixel: nil) }
 
