@@ -286,6 +286,9 @@ private struct Filmstrip: View {
                                 .scaleEffect(1 + 0.28 * t)
                                 .opacity(0.72 + 0.28 * max(0, 1 - d / 130))
                         }
+                        // center wins the overlap — z falls off with distance
+                        // so every thumb overlaps its farther neighbor on BOTH sides
+                        .zIndex(-Double(abs(i - index)))
                         .id(i)
                         .onTapGesture { index = i }
                 }
