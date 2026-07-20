@@ -8,12 +8,24 @@ struct TerminalSheet: View {
     var token: String
     @Environment(\.dismiss) private var dismiss
 
+    // Face-ID gate: the shell (and its websocket) only exists AFTER a
+    // successful unlock — whoever holds the phone can read metrics, but
+    // cannot type a single character into atlas without authenticating.
+    // Every presentation starts locked again (fresh @State per cover).
+    @State private var unlocked = false
+    @State private var authFailed = false
+    @State private var authing = false
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                TerminalBridge(host: host, token: token)
-                    .ignoresSafeArea(.container, edges: .bottom)
+                if unlocked {
+                    TerminalBridge(host: host, token: token)
+                        .ignoresSafeArea(.container, edges: .bottom)
+                } else {
+                    lockView
+                }
             }
             .navigationTitle("luka@atlas")
             .navigationBarTitleDisplayMode(.inline)
@@ -29,6 +41,49 @@ struct TerminalSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task { await unlock() }   // Face ID direkt beim Öffnen anstoßen
+    }
+
+    private var lockView: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 52))
+                .foregroundStyle(.white.opacity(0.35))
+            Text("Terminal gesperrt")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+            Text("Zugriff auf die atlas-Shell erfordert Face ID.")
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+            if authFailed {
+                Button {
+                    Task { await unlock() }
+                } label: {
+                    Label("Mit Face ID entsperren", systemImage: "faceid")
+                        .font(.system(size: 15, weight: .semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                }
+                .buttonStyle(.glassProminent)
+            } else if authing {
+                ProgressView().tint(.white)
+            }
+        }
+        .padding(32)
+    }
+
+    private func unlock() async {
+        guard !unlocked, !authing else { return }
+        authing = true
+        authFailed = false
+        let ok = await Biometric.authenticate(reason: "Terminal-Zugriff auf atlas freigeben")
+        authing = false
+        if ok {
+            withAnimation(.snappy) { unlocked = true }
+        } else {
+            authFailed = true
+        }
     }
 }
 
