@@ -38,7 +38,6 @@ struct AlbumsScreen: View {
                 .refreshable { await load() }
             }
             .navigationTitle("Alben")
-            .toolbarBackground(.black, for: .navigationBar)
             .navigationDestination(item: $openAlbum) { album in
                 AlbumScreen(library: library, album: album)
             }

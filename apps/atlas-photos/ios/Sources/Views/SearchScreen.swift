@@ -35,7 +35,6 @@ struct SearchScreen: View {
                 }
             }
             .navigationTitle("Suche")
-            .toolbarBackground(.black, for: .navigationBar)
         }
         .searchable(text: $query, prompt: "Name, Album, Jahr …")
         .onChange(of: query) { _, q in
