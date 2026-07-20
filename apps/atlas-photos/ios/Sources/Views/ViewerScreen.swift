@@ -263,8 +263,8 @@ private struct Filmstrip: View {
     let client: PhotoClient
     @State private var pos: Int?
 
-    private let cell: CGFloat = 50
-    private let gap: CGFloat = 4
+    private let cell: CGFloat = 36
+    private let gap: CGFloat = 3
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -272,7 +272,7 @@ private struct Filmstrip: View {
                 ForEach(Array(assets.enumerated()), id: \.offset) { i, a in
                     Thumb(url: client.thumbURL(a.id, 512))
                         .frame(width: cell, height: cell)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                         // the CENTER item is simply bigger — pure geometry,
                         // follows finger and momentum with zero lag; neighbors
                         // fade slightly so the middle one carries the weight
@@ -281,10 +281,10 @@ private struct Filmstrip: View {
                             let vis = proxy.bounds(of: .scrollView(axis: .horizontal))
                             let center = vis.map(\.midX) ?? UIScreen.main.bounds.width / 2
                             let d = abs(f.midX - center)
-                            let t = max(0, 1 - d / 85)
+                            let t = max(0, 1 - d / 70)
                             return content
-                                .scaleEffect(1 + 0.28 * t)
-                                .opacity(0.72 + 0.28 * max(0, 1 - d / 130))
+                                .scaleEffect(1 + 0.20 * t)
+                                .opacity(0.72 + 0.28 * max(0, 1 - d / 110))
                         }
                         // center wins the overlap — z falls off with distance
                         // so every thumb overlaps its farther neighbor on BOTH sides
@@ -294,7 +294,7 @@ private struct Filmstrip: View {
                 }
             }
             .scrollTargetLayout()
-            .frame(height: 70)
+            .frame(height: 46)
         }
         // margins so the first/last thumb can also rest dead-center
         .contentMargins(.horizontal,
@@ -305,7 +305,7 @@ private struct Filmstrip: View {
         // "flywheel" feel of a mechanical lens ring) and still snaps at rest;
         // a slow controlled drag clicks thumb by thumb
         .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByFew))
-        .frame(height: 70)
+        .frame(height: 46)
         // mechanical lens-click on every detent (scrub AND page swipe)
         .sensoryFeedback(.selection, trigger: index)
         .onAppear { pos = index }
@@ -486,7 +486,7 @@ private struct VideoPlayerView: View {
                 controlBar
                     .frame(maxWidth: 560)
                     .padding(.horizontal, 26)
-                    .padding(.bottom, 152)
+                    .padding(.bottom, 138)
                     .transition(.opacity)
             }
         }
