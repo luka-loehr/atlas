@@ -466,6 +466,8 @@ private struct VideoPlayerView: View {
     @State private var duration: Double = 0
     @State private var scrubbing = false
 
+    @State private var muted = false
+
     var body: some View {
         ZStack {
             if let player {
@@ -477,49 +479,72 @@ private struct VideoPlayerView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        .overlay {                                   // center play/pause
+        // Apple-style compact control pill: [play/pause | thin progress | mute]
+        // — sits above the filmstrip block, capped width so landscape stays sane
+        .overlay(alignment: .bottom) {
             if chrome, player != nil {
-                Button { togglePlay() } label: {
-                    Image(systemName: playing ? "pause.fill" : "play.fill")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 64, height: 64)
-                        .glassEffect(.regular, in: .circle)
-                }
-                .transition(.opacity)
-            }
-        }
-        .overlay(alignment: .bottom) {               // scrubber above filmstrip block
-            if chrome, player != nil, duration > 0 {
-                HStack(spacing: 10) {
-                    Text(fmt(current))
-                        .font(.system(size: 11, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(.secondary)
-                    Slider(
-                        value: Binding(get: { current },
-                                       set: { current = $0 }),
-                        in: 0...max(duration, 0.1)
-                    ) { editing in
-                        scrubbing = editing
-                        if !editing {
-                            player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
-                                         toleranceBefore: .zero, toleranceAfter: .zero)
-                        }
-                    }
-                    Text(fmt(duration))
-                        .font(.system(size: 11, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: .capsule)
-                .padding(.horizontal, 22)
-                .padding(.bottom, 160)   // clears filmstrip + action bar
-                .transition(.opacity)
+                controlBar
+                    .frame(maxWidth: 560)
+                    .padding(.horizontal, 26)
+                    .padding(.bottom, 152)
+                    .transition(.opacity)
             }
         }
         .task { await setup() }
         .onDisappear { player?.pause(); playing = false }
+    }
+
+    private var controlBar: some View {
+        HStack(spacing: 14) {
+            Button { togglePlay() } label: {
+                Image(systemName: playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            progressBar
+            Button {
+                muted.toggle()
+                player?.isMuted = muted
+            } label: {
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
+    }
+
+    /// Thin Apple-Photos-style progress line, draggable to seek.
+    private var progressBar: some View {
+        GeometryReader { geo in
+            let frac = duration > 0 ? min(max(current / duration, 0), 1) : 0
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.18)).frame(height: 4)
+                Capsule().fill(.primary.opacity(0.85))
+                    .frame(width: max(4, geo.size.width * frac), height: 4)
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        scrubbing = true
+                        current = duration * min(max(v.location.x / geo.size.width, 0), 1)
+                    }
+                    .onEnded { _ in
+                        player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
+                                     toleranceBefore: .zero, toleranceAfter: .zero)
+                        scrubbing = false
+                    }
+            )
+        }
+        .frame(height: 28)
     }
 
     private func togglePlay() {
@@ -563,11 +588,6 @@ private struct VideoPlayerView: View {
         }
     }
 
-    private func fmt(_ t: Double) -> String {
-        guard t.isFinite else { return "0:00" }
-        let s = Int(t.rounded())
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
 }
 
 /// Bare AVPlayerLayer host (aspect-fit, no controls).
