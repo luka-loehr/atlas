@@ -39,7 +39,7 @@ struct ViewerScreen: View {
             if !pages.isEmpty {
                 PhotoPager(index: $index, count: pages.count) { i in
                     ViewerPage(library: library, asset: pages[i], chrome: chrome,
-                               bottomInset: chromeBottomHeight + 16) {
+                               bottomInset: chromeBottomHeight + 14) {
                         withAnimation(.easeInOut(duration: 0.22)) { chrome.toggle() }
                     }
                 }
@@ -90,9 +90,11 @@ struct ViewerScreen: View {
                 bottomBar(asset)
             }
             .padding(.bottom, 6)
-            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) {
-                chromeBottomHeight = $0
-            }
+            .onGeometryChange(for: CGFloat.self, of: {
+                // distance from the stack's TOP edge to the PHYSICAL screen
+                // bottom — pages ignore safe areas, so measure in global space
+                UIScreen.main.bounds.height - $0.frame(in: .global).minY
+            }) { chromeBottomHeight = $0 }
         }
     }
 
@@ -529,38 +531,19 @@ private struct VideoPlayerView: View {
         .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
     }
 
-    /// Thin Apple-Photos-style progress line, draggable to seek.
+    /// Native system slider — the seeker from the very first version.
     private var progressBar: some View {
-        GeometryReader { geo in
-            let frac = duration > 0 ? min(max(current / duration, 0), 1) : 0
-            ZStack(alignment: .leading) {
-                Capsule().fill(.primary.opacity(0.18)).frame(height: 4)
-                Capsule().fill(.primary.opacity(0.85))
-                    .frame(width: max(4, geo.size.width * frac), height: 4)
-                // the draggable knob — grows while scrubbing
-                Circle()
-                    .fill(.primary)
-                    .frame(width: scrubbing ? 18 : 13, height: scrubbing ? 18 : 13)
-                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                    .offset(x: geo.size.width * frac - (scrubbing ? 9 : 6.5))
-                    .animation(.snappy(duration: 0.15), value: scrubbing)
+        Slider(
+            value: Binding(get: { current }, set: { current = $0 }),
+            in: 0...max(duration, 0.1)
+        ) { editing in
+            scrubbing = editing
+            if !editing {
+                player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
+                             toleranceBefore: .zero, toleranceAfter: .zero)
             }
-            .frame(maxHeight: .infinity, alignment: .center)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { v in
-                        scrubbing = true
-                        current = duration * min(max(v.location.x / geo.size.width, 0), 1)
-                    }
-                    .onEnded { _ in
-                        player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
-                                     toleranceBefore: .zero, toleranceAfter: .zero)
-                        scrubbing = false
-                    }
-            )
         }
-        .frame(height: 28)
+        .tint(.primary)
     }
 
     private func togglePlay() {
