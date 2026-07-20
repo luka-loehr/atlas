@@ -24,6 +24,19 @@ RUN python3 -m pip install --no-cache-dir \
         pillow \
         pillow-heif
 
+# insightface depends on plain `onnxruntime` (CPU); pip installs BOTH, and the
+# CPU wheel shadows the GPU one (same module name) — the CUDA EP then simply
+# doesn't exist ('available: Azure, CPU'). Purge the CPU wheel, force-reinstall
+# the GPU wheel, and provide the cu12 runtime libs its CUDA EP links against
+# (the base image is cu13; entrypoint_gpu.sh puts nvidia/*/lib on the loader
+# path). Verified need: cudnn9 + cublas + cufft + curand.
+RUN python3 -m pip uninstall -y onnxruntime \
+    && python3 -m pip install --no-cache-dir --force-reinstall onnxruntime-gpu \
+    && python3 -m pip install --no-cache-dir \
+        "nvidia-cudnn-cu12" "nvidia-cublas-cu12" "nvidia-cufft-cu12" "nvidia-curand-cu12" \
+    && python3 -c "import onnxruntime as o; ps=o.get_available_providers(); \
+        assert 'CUDAExecutionProvider' in ps, ps; print('ORT providers OK:', ps)"
+
 WORKDIR /app
 
 # The vllm/vllm-openai image's own entrypoint launches the OpenAI API server —
