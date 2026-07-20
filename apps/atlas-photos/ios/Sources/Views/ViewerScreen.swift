@@ -49,7 +49,7 @@ struct ViewerScreen: View {
 
             if busy {
                 ProgressView().tint(chrome ? nil : Color.white).padding(18)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 14))
             }
         }
         .statusBarHidden(!chrome)
@@ -105,8 +105,7 @@ struct ViewerScreen: View {
             }
             .padding(.horizontal, 26)
             .padding(.vertical, 7)
-            .background(.background, in: Capsule())
-            .shadow(color: .black.opacity(0.10), radius: 8, y: 2)
+            .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
             Spacer()
             Menu {
                 Button {
@@ -149,8 +148,7 @@ struct ViewerScreen: View {
             }
             .padding(.horizontal, 30)
             .padding(.vertical, 15)
-            .background(.background, in: Capsule())
-            .shadow(color: .black.opacity(0.10), radius: 8, y: 2)
+            .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
             Spacer()
             CircleButton(icon: "trash") { confirmTrash = true }
         }
@@ -249,8 +247,7 @@ struct CircleButton: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
-                .background(.background, in: Circle())
-                .shadow(color: .black.opacity(0.10), radius: 8, y: 2)
+                .glassEffect(.regular, in: .circle)   // iOS 26 Liquid Glass
         }
     }
 }
