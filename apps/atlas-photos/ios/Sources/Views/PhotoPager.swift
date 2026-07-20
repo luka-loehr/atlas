@@ -61,6 +61,11 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
             let p = Page(rootView: AnyView(parent.content(i)))
             p.pageIndex = i
             p.view.backgroundColor = .clear
+            // pages must fill the ENTIRE screen: without this the hosting
+            // controller insets its SwiftUI content by the safe areas and the
+            // photo can never extend behind notch/home bar (black bars even
+            // when fully zoomed in)
+            p.safeAreaRegions = []
             return p
         }
 
