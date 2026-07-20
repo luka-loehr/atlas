@@ -29,6 +29,8 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
 
     func updateUIViewController(_ pager: UIPageViewController, context: Context) {
         context.coordinator.parent = self
+        // never touch the pager mid-swipe (interactive transition in flight)
+        if context.coordinator.transitioning { return }
         // Re-render the visible page on every SwiftUI update — video pages
         // depend on the parent's `chrome` state for their own controls.
         if let cur = pager.viewControllers?.first as? Coordinator.Page,
@@ -52,6 +54,9 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
         var parent: PhotoPager
+        /// true while an interactive swipe/transition is in flight — external
+        /// setViewControllers during that window would crash UIPageViewController
+        var transitioning = false
 
         init(_ parent: PhotoPager) { self.parent = parent }
 
@@ -88,10 +93,23 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
             return page(at: i + 1)
         }
 
+        /// Fires the moment a swipe STARTS — the filmstrip below follows the
+        /// finger immediately instead of waiting for the page animation to end.
+        func pageViewController(_ p: UIPageViewController,
+                                willTransitionTo pending: [UIViewController]) {
+            transitioning = true
+            if let i = (pending.first as? Page)?.pageIndex, parent.index != i {
+                parent.index = i
+            }
+        }
+
         func pageViewController(_ p: UIPageViewController, didFinishAnimating _: Bool,
                                 previousViewControllers _: [UIViewController],
                                 transitionCompleted completed: Bool) {
-            guard completed, let i = currentIndex(of: p) else { return }
+            transitioning = false
+            // completed OR cancelled: sync to whatever is actually visible
+            // (a cancelled swipe reverts the eager index from willTransitionTo)
+            guard let i = currentIndex(of: p) else { return }
             if parent.index != i { parent.index = i }
         }
     }
