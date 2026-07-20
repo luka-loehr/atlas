@@ -21,6 +21,7 @@ x-pipeline-common: &pipeline-common
 
 services:
   pipeline-cpu:
+    user: "1000:1000"    # thumbs als luka schreiben — Host-Tools duerfen sie dann anfassen
     <<: *pipeline-common
     build:
       context: .
