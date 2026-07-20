@@ -9,15 +9,18 @@ struct Asset: Codable, Sendable, Identifiable, Hashable {
     let width: Int?
     let height: Int?
     let durationS: Double?
+    // optional so JSON cached before the server started sending it still decodes
+    var favorite: Bool? = nil
 
     var isVideo: Bool { type == "video" }
+    var isFavorite: Bool { favorite ?? false }
     var aspect: Double {
         guard let w = width, let h = height, h > 0 else { return 1 }
         return Double(w) / Double(h)
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, type, width, height
+        case id, type, width, height, favorite
         case takenAt = "taken_at"
         case durationS = "duration_s"
     }
