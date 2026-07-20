@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AVKit
 
 /// Full-screen pager: shows the 1024 thumb instantly (from grid cache, scaled),
@@ -46,7 +47,7 @@ private struct ViewerPage: View {
         if asset.isVideo {
             VideoPlayerView(url: library.client.streamURL(asset.id))
         } else {
-            ZoomableImage(
+            ZoomablePhoto(
                 preview: library.client.thumbURL(asset.id, 1024),
                 full: library.client.originalURL(asset.id)
             )
@@ -54,45 +55,89 @@ private struct ViewerPage: View {
     }
 }
 
-/// Shows the preview immediately, swaps in the full-res original, pinch-zoom.
-private struct ZoomableImage: View {
+/// Loads the 1024 preview instantly (cached from the grid), swaps in the
+/// full-res original, then hosts it in a UIScrollView for zoom. At zoom 1 the
+/// scroll view doesn't consume drags, so the pager (horizontal) and the
+/// zoom-transition dismiss (down) keep working — exactly like Apple Photos.
+private struct ZoomablePhoto: View {
     let preview: URL?
     let full: URL?
-    @State private var scale: CGFloat = 1
-    @State private var offset: CGSize = .zero
+    @State private var image: UIImage?
 
     var body: some View {
-        GeometryReader { geo in
-            AsyncImage(url: full, transaction: .init(animation: .default)) { phase in
-                switch phase {
-                case .success(let img):
-                    zoomable(img, geo)
-                default:
-                    Thumb(url: preview)   // instant, cached from the grid
-                        .scaledToFit()
-                }
+        Group {
+            if let image {
+                ZoomableScrollView { image }
+            } else {
+                Thumb(url: preview)
+                    .aspectRatio(contentMode: .fit)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .task {
+            if let p = preview, image == nil, let img = await ThumbLoader.shared.load(p) {
+                if image == nil { image = img }
+            }
+            if let f = full, let img = await ThumbLoader.shared.load(f) {
+                image = img
+            }
         }
     }
+}
 
-    private func zoomable(_ img: Image, _ geo: GeometryProxy) -> some View {
-        img.resizable().scaledToFit()
-            .scaleEffect(scale)
-            .offset(offset)
-            .gesture(
-                MagnificationGesture()
-                    .onChanged { scale = max(1, $0) }
-                    .onEnded { _ in if scale < 1.05 { withAnimation { scale = 1; offset = .zero } } }
-            )
-            .simultaneousGesture(
-                DragGesture()
-                    .onChanged { if scale > 1 { offset = $0.translation } }
-                    .onEnded { _ in if scale <= 1 { withAnimation { offset = .zero } } }
-            )
-            .onTapGesture(count: 2) {
-                withAnimation { scale = scale > 1 ? 1 : 2.5; offset = .zero }
+/// UIScrollView-backed pinch/pan/double-tap zoom for one image.
+private struct ZoomableScrollView: UIViewRepresentable {
+    let image: UIImage
+    init(image: () -> UIImage) { self.image = image() }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scroll = UIScrollView()
+        scroll.delegate = context.coordinator
+        scroll.maximumZoomScale = 5
+        scroll.minimumZoomScale = 1
+        scroll.bounces = false                     // don't eat drags at zoom 1
+        scroll.alwaysBounceVertical = false
+        scroll.alwaysBounceHorizontal = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.backgroundColor = .clear
+        scroll.contentInsetAdjustmentBehavior = .never
+
+        let iv = context.coordinator.imageView
+        iv.image = image
+        iv.contentMode = .scaleAspectFit
+        iv.frame = scroll.bounds
+        iv.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scroll.addSubview(iv)
+
+        let dt = UITapGestureRecognizer(target: context.coordinator,
+                                        action: #selector(Coordinator.doubleTap(_:)))
+        dt.numberOfTapsRequired = 2
+        scroll.addGestureRecognizer(dt)
+        return scroll
+    }
+
+    func updateUIView(_ scroll: UIScrollView, context: Context) {
+        context.coordinator.imageView.image = image
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        let imageView = UIImageView()
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+        @objc func doubleTap(_ g: UITapGestureRecognizer) {
+            guard let scroll = g.view as? UIScrollView else { return }
+            if scroll.zoomScale > 1 {
+                scroll.setZoomScale(1, animated: true)
+            } else {
+                let pt = g.location(in: imageView)
+                let size = scroll.bounds.size
+                let rect = CGRect(x: pt.x - size.width / 6, y: pt.y - size.height / 6,
+                                  width: size.width / 3, height: size.height / 3)
+                scroll.zoom(to: rect, animated: true)
             }
+        }
     }
 }
 
