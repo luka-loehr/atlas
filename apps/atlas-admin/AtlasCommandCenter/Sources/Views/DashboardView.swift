@@ -45,18 +45,20 @@ struct DashboardView: View {
         GlassCard(padding: 16) {
             HStack(spacing: 6) {
                 RingGauge(
-                    value: m.cpu.usage, label: "CPU", systemImage: "cpu",
+                    value: model.cpuLive ?? m.cpu.usage, label: "CPU", systemImage: "cpu",
                     detail: "\(m.cpu.cores) Kerne"
                 )
                 if let g = m.gpu {
                     RingGauge(
-                        value: g.usage, label: "GPU", systemImage: "cpu.fill",
+                        value: model.gpuLive ?? g.usage, label: "GPU", systemImage: "cpu.fill",
                         detail: memText(g.memUsedMb, g.memTotalMb)
                     )
                 }
                 RingGauge(
-                    value: m.mem.usage, label: "RAM", systemImage: "memorychip",
-                    detail: String(format: "%.1f/%.0f GB", m.mem.usedGb, m.mem.totalGb)
+                    value: model.memLive ?? m.mem.usage, label: "RAM", systemImage: "memorychip",
+                    detail: String(format: "%.1f/%.0f GB",
+                                   model.memGbLive > 0 ? model.memGbLive : m.mem.usedGb,
+                                   m.mem.totalGb)
                 )
             }
         }

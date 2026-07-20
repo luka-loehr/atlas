@@ -553,13 +553,21 @@ async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resu
         &[&id, &kind, &taken, &dest_str, &name, &size],
     )
     .await?;
+    // fresh uploads jump the queue: thumb first (grid shows something within
+    // ~a second even mid-backfill), then meta; the AI stages keep default 100
     c.execute(
-        "INSERT INTO ingest_jobs (kind, owner_type, owner_id)
-         VALUES ('thumb', 'asset', $1) ON CONFLICT DO NOTHING",
+        "INSERT INTO ingest_jobs (kind, owner_type, owner_id, priority)
+         VALUES ('thumb', 'asset', $1, 10) ON CONFLICT DO NOTHING",
         &[&id],
     )
     .await?;
-    for job in ["meta", "embed", "faces", "caption"] {
+    c.execute(
+        "INSERT INTO ingest_jobs (kind, owner_type, owner_id, priority)
+         VALUES ('meta', 'asset', $1, 20) ON CONFLICT DO NOTHING",
+        &[&id],
+    )
+    .await?;
+    for job in ["embed", "faces", "caption"] {
         c.execute(
             "INSERT INTO ingest_jobs (kind, owner_type, owner_id)
              VALUES ($1, 'asset', $2) ON CONFLICT DO NOTHING",
