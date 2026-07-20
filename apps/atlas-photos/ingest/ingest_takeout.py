@@ -3,7 +3,8 @@
 
 Reads media DIRECTLY from the takeout zips (no unpacking), merges the JSON
 sidecars (which may live in a DIFFERENT zip — classic takeout), dedupes by
-BLAKE3 content hash, writes originals + 256/1024 WebP thumbs and fills
+SHA256 content hash (the canonical id shared by the server upload path and the
+iOS app), writes originals + 256/1024 WebP thumbs and fills
 Postgres (assets, albums, ingest_jobs).
 
     python3 ingest_takeout.py ~/takeout/photos/*.zip
@@ -21,7 +22,7 @@ import zipfile
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 
-import blake3
+import hashlib
 import psycopg
 from PIL import Image, ImageOps
 import pillow_heif
@@ -163,7 +164,7 @@ def process_entry(args):
             data = z.read(entry)
     except Exception as e:
         return {"error": f"{entry}: read failed {e}"}
-    hash_id = blake3.blake3(data).hexdigest()[:32]
+    hash_id = hashlib.sha256(data).hexdigest()   # full SHA256 = canonical id (matches server + iOS)
     name = os.path.basename(entry)
     ext = os.path.splitext(name)[1].lower()
     is_video = ext in VIDEO_EXT
