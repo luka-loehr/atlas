@@ -290,7 +290,7 @@ async fn text_embedding(q: &str) -> Option<Vec<f32>> {
             .as_array()?
             .iter()
             .map(|x| x.as_f64().map(|f| f as f32))
-            .collect()
+            .collect::<Option<Vec<f32>>>()
     };
     match tokio::time::timeout(std::time::Duration::from_millis(800), fut).await {
         Ok(Some(v)) if v.len() == 768 => Some(v),
