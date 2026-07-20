@@ -8,6 +8,7 @@ struct PhotosScreen: View {
     @State private var shareBundle: ShareBundle?
     @State private var confirmDelete = false
     @State private var busy = false
+    @State private var lastViewedId: String?   // zoom-return cell stays on top
     @Namespace private var zoom
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)

@@ -253,38 +253,41 @@ struct CircleButton: View {
 }
 
 /// Horizontal strip of neighbor thumbnails; tap jumps, current is highlighted.
-/// Centered snap-scrubber: the selected thumb is ALWAYS in the middle.
-/// Scrolling the strip scrubs through the photos (each snap flips the pager),
-/// swiping the pager re-centers the strip — two-way, like Google Photos.
+/// Centered snap-scrubber, camera-lens style: a FIXED ring sits in the middle
+/// and never moves — the thumbs scroll underneath it, snap thumb-by-thumb and
+/// grow as they pass under the ring (geometry-driven, not index-driven, so
+/// nothing ever jumps sideways). Every detent click gives haptic feedback.
 private struct Filmstrip: View {
     let assets: [Asset]
     @Binding var index: Int
     let client: PhotoClient
     @State private var pos: Int?
 
-    private let cell: CGFloat = 48
+    private let cell: CGFloat = 50
+    private let gap: CGFloat = 4
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 3) {
+            LazyHStack(spacing: gap) {
                 ForEach(Array(assets.enumerated()), id: \.offset) { i, a in
                     Thumb(url: client.thumbURL(a.id, 512))
                         .frame(width: cell, height: cell)
-                        .clipShape(RoundedRectangle(cornerRadius: i == index ? 9 : 6))
-                        .overlay {
-                            if i == index {
-                                RoundedRectangle(cornerRadius: 9)
-                                    .strokeBorder(.primary.opacity(0.7), lineWidth: 1.5)
-                            }
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        // grow smoothly while passing under the fixed ring —
+                        // pure geometry, follows the finger with zero lag
+                        .visualEffect { content, proxy in
+                            let mid = proxy.frame(in: .scrollView(axis: .horizontal)).midX
+                            let center = UIScreen.main.bounds.width / 2
+                            let d = abs(mid - center)
+                            let scale = 1 + 0.22 * max(0, 1 - d / 70)
+                            return content.scaleEffect(scale)
                         }
-                        .scaleEffect(i == index ? 1.22 : 1)
-                        .animation(.snappy(duration: 0.18), value: i == index)
                         .id(i)
                         .onTapGesture { index = i }
                 }
             }
             .scrollTargetLayout()
-            .frame(height: 66)
+            .frame(height: 70)
         }
         // margins so the first/last thumb can also rest dead-center
         .contentMargins(.horizontal,
@@ -292,7 +295,16 @@ private struct Filmstrip: View {
                         for: .scrollContent)
         .scrollPosition(id: $pos, anchor: .center)
         .scrollTargetBehavior(.viewAligned)   // snaps thumb-by-thumb
-        .frame(height: 66)
+        // THE ring: fixed dead-center, thumbs move — it never does
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(.primary.opacity(0.9), lineWidth: 2)
+                .frame(width: cell + 10, height: cell + 10)
+                .allowsHitTesting(false)
+        }
+        .frame(height: 70)
+        // mechanical lens-click on every detent (scrub AND page swipe)
+        .sensoryFeedback(.selection, trigger: index)
         .onAppear { pos = index }
         .onChange(of: index) { _, i in
             if pos != i { withAnimation(.snappy) { pos = i } }
