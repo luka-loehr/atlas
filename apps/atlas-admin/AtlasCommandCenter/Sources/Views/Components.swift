@@ -26,7 +26,6 @@ struct RingGauge: View {
                     )
                     .rotationEffect(.degrees(-90))
                     .shadow(color: tint.opacity(0.5), radius: 6)
-                    .animation(.smooth(duration: 0.5), value: ratio)
                 VStack(spacing: 1) {
                     Image(systemName: systemImage)
                         .font(.system(size: 13, weight: .semibold))
@@ -35,12 +34,16 @@ struct RingGauge: View {
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monoDigits()
+                        .contentTransition(.numericText(value: value))
                     Text("%")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.4))
                 }
             }
             .frame(width: 96, height: 96)
+            // one animation over the whole ring: arc, heat color, glow and the
+            // rolling number all glide together instead of stepping
+            .animation(.smooth(duration: 0.6), value: value)
 
             VStack(spacing: 1) {
                 Text(label)

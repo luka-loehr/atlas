@@ -18,6 +18,13 @@ final class DashboardModel {
     var netUpHistory: [Double] = []
     var netDownMbps: Double = 0
     var netUpMbps: Double = 0
+    var memSamples: [(Date, Double)] = []
+    var memGbLive: Double = 0
+
+    // smoothed live values for the hero rings (fallback: polled metrics)
+    var cpuLive: Double? { wsConnected ? cpuSamples.last?.1 : nil }
+    var gpuLive: Double? { wsConnected ? gpuSamples.last?.1 : nil }
+    var memLive: Double? { wsConnected ? memSamples.last?.1 : nil }
     private var lastNet: (rx: UInt64, tx: UInt64, at: Date)?
 
     // Time-stamped live samples for the charts: fed every 500 ms by the
@@ -159,7 +166,12 @@ final class DashboardModel {
         case .data(let raw): data = raw
         @unknown default: data = nil
         }
-        guard let data, let frame = try? JSONDecoder().decode(WSFrame.self, from: data) else { return }
+        guard let data else { return }
+        if let boot = try? JSONDecoder().decode(WSBootstrap.self, from: data) {
+            seed(boot.history)
+            return
+        }
+        guard let frame = try? JSONDecoder().decode(WSFrame.self, from: data) else { return }
         apply(frame)
     }
 
@@ -168,6 +180,8 @@ final class DashboardModel {
         let now = Date()
         appendSample(&cpuSamples, now, f.cpu)
         appendSample(&gpuSamples, now, f.gpu)
+        appendSample(&memSamples, now, f.mem)
+        memGbLive = f.memGb
         if let last = lastWSNet {
             // cumulative counters: a smaller value means the agent restarted — skip that delta
             if f.rx >= last.rx, f.tx >= last.tx, f.tsMs > last.tsMs {
@@ -182,6 +196,37 @@ final class DashboardModel {
             }
         }
         lastWSNet = (f.rx, f.tx, f.tsMs)
+    }
+
+    private struct WSBootstrap: Decodable { let history: [WSFrame] }
+
+    /// Seeds the buffers from the agent's 10-minute ring buffer so charts are
+    /// filled the moment the screen opens. Server timestamps are mapped onto
+    /// the client clock via the newest frame; EMA runs over the seed exactly
+    /// like over live data.
+    private func seed(_ frames: [WSFrame]) {
+        guard let latest = frames.last else { return }
+        wsConnected = true
+        cpuSamples = []; gpuSamples = []; memSamples = []
+        downSamples = []; upSamples = []
+        let now = Date()
+        var prevNet: (rx: UInt64, tx: UInt64, tsMs: UInt64)?
+        for f in frames {
+            let t = now.addingTimeInterval(-Double(latest.tsMs - f.tsMs) / 1000)
+            appendSample(&cpuSamples, t, f.cpu)
+            appendSample(&gpuSamples, t, f.gpu)
+            appendSample(&memSamples, t, f.mem)
+            if let p = prevNet, f.rx >= p.rx, f.tx >= p.tx, f.tsMs > p.tsMs {
+                let dt = Double(f.tsMs - p.tsMs) / 1000
+                appendSample(&downSamples, t, Double(f.rx - p.rx) * 8 / dt / 1_000_000)
+                appendSample(&upSamples, t, Double(f.tx - p.tx) * 8 / dt / 1_000_000)
+            }
+            prevNet = (f.rx, f.tx, f.tsMs)
+        }
+        memGbLive = latest.memGb
+        netDownMbps = downSamples.last?.1 ?? 0
+        netUpMbps = upSamples.last?.1 ?? 0
+        lastWSNet = (latest.rx, latest.tx, latest.tsMs)
     }
 
     private func metricsSocketURL() -> URL? {
