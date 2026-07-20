@@ -16,8 +16,11 @@ struct DashboardView: View {
                     if model.online, let m = model.metrics {
                         gauges(m)
                         chips(m)
+                        SectionLabel(text: "Verlauf")
                         LoadChart(cpu: model.cpuHistory, gpu: model.gpuHistory)
+                        SectionLabel(text: "Speicher")
                         bars(m)
+                        SectionLabel(text: "Container")
                         ContainersCard(containers: m.containers)
                         footer
                     } else if model.metrics == nil && model.lastError == nil {

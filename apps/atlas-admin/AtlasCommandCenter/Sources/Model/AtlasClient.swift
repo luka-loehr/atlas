@@ -12,39 +12,6 @@ struct ContainerDetail: Codable, Sendable {
     let logs: String
 }
 
-struct Show: Codable, Sendable, Identifiable, Hashable {
-    let name: String
-    let file: String
-    let title: String
-    let bpm: Double
-    let durationS: Double
-    let running: Bool
-    var id: String { name }
-    enum CodingKeys: String, CodingKey {
-        case name, file, title, bpm, running
-        case durationS = "duration_s"
-    }
-}
-
-struct ShowsResponse: Codable, Sendable {
-    let bridge: Bool
-    let shows: [Show]
-}
-
-struct CreateStatus: Codable, Sendable {
-    let running: Bool
-    let done: Bool
-    let failed: Bool
-    let phase: String       // idle|start|download|analyze|gemini|claude|compile|commit|done
-    let percent: Double     // download progress 0…100
-    let title: String
-    let thumb: Bool
-    let name: String?
-    let ai: String          // live claude thinking/output ticker (last lines)
-    let summary: String     // AI dramaturgy summary once composed
-    let log: String
-}
-
 /// Talks to atlas-agent over the tailnet.
 struct AtlasClient: Sendable {
     var host: String          // e.g. "atlas.your-tailnet.ts.net:8787"
@@ -89,27 +56,9 @@ struct AtlasClient: Sendable {
         try await get("/api/docker/\(name)", ContainerDetail.self)
     }
 
-    // lightshow --------------------------------------------------------------
-    func shows() async throws -> ShowsResponse { try await get("/api/shows", ShowsResponse.self) }
-    func createShow(url: String, ai: Bool = true) async throws {
-        try await post("/api/shows/create", body: ai ? "ai \(url)" : url)
-    }
-    func createStatus() async throws -> CreateStatus { try await get("/api/shows/create/status", CreateStatus.self) }
-    func startShow(_ name: String) async throws { try await post("/api/shows/start", body: name) }
-    func stopShow() async throws { try await post("/api/shows/stop") }
-    func stopBridge() async throws { try await post("/api/bridge/stop") }
-    func audioURL(_ name: String) -> URL? { URL(string: "http://\(host)/api/shows/audio/\(name)") }
-    func createThumbURL() -> URL? { URL(string: "http://\(host)/api/shows/create/thumb") }
-    func showThumbURL(_ name: String) -> URL? { URL(string: "http://\(host)/api/shows/thumb/\(name)") }
-
-    // fog --------------------------------------------------------------------
-    func fog(ms: Int) async throws { try await post("/api/fog", body: String(ms)) }
-    func fogStop() async throws { try await post("/api/fog/stop") }
-
-    // calibration ------------------------------------------------------------
-    func saveCalibration(ms: Double) async throws {
-        try await post("/api/calibrate/save", body: String(format: "%.0f", ms))
-    }
+    // exit node / activity -----------------------------------------------------
+    func vpn() async throws -> VPNStatus { try await get("/api/vpn", VPNStatus.self) }
+    func activity() async throws -> ActivityData { try await get("/api/activity", ActivityData.self) }
 
     // power ------------------------------------------------------------------
     func power(_ action: String) async throws { try await post("/api/power/\(action)") }

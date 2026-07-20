@@ -204,6 +204,9 @@ pub fn show_start(name: &str) -> String {
     if !std::path::Path::new(&format!("{dir}/shows/{file}")).exists() {
         return r#"{"error":"unknown show"}"#.into();
     }
+    // a held manual frame would peak-merge into the show's frames
+    MANUAL_ON.store(false, Ordering::SeqCst);
+    *MANUAL.lock().unwrap() = [0u8; 21];
     stop_player_gently();
     if !ensure_bridge() {
         return r#"{"error":"bridge failed to start (see /tmp/atlas-bridge.log)"}"#.into();
@@ -274,39 +277,52 @@ fn plugs_off_rest() {
 // and the lamp channels are all zero, so the bridge's peak-hold ignores them.
 // Works standalone AND while a show is running.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 static FOG_GEN: AtomicU64 = AtomicU64::new(0);
 
-fn artnet_fog_packet(on: bool) -> [u8; 18 + 19] {
-    let mut p = [0u8; 37];
+/// A minimal Art-Net OpDmx packet carrying `dmx` (any length ≤ 512).
+fn artnet_packet(dmx: &[u8]) -> Vec<u8> {
+    let mut p = vec![0u8; 18 + dmx.len()];
     p[..8].copy_from_slice(b"Art-Net\0");
     p[8] = 0x00; // OpDmx low
     p[9] = 0x50; // OpDmx high
     p[10] = 0;   // proto hi
     p[11] = 14;  // proto lo
     // seq, phys, subuni, net = 0
-    p[16] = 0;   // length hi
-    p[17] = 19;  // length lo
-    p[18 + 18] = if on { 255 } else { 0 }; // channel 19 (0-based 18)
+    p[16] = (dmx.len() >> 8) as u8; // length hi
+    p[17] = (dmx.len() & 0xff) as u8; // length lo
+    p[18..].copy_from_slice(dmx);
     p
 }
 
-fn send_fog_packet(on: bool) {
+fn send_frame(dmx: &[u8]) {
     if let Ok(sock) = std::net::UdpSocket::bind("127.0.0.1:0") {
-        let _ = sock.send_to(&artnet_fog_packet(on), "127.0.0.1:6454");
+        let _ = sock.send_to(&artnet_packet(dmx), "127.0.0.1:6454");
     }
+}
+
+/// 19-channel fog-only frame: lamp channels zero (peak-hold ignores them),
+/// too short to touch the laser/strobe channels 20/21.
+fn send_fog_packet(on: bool) {
+    let mut f = [0u8; 19];
+    f[18] = if on { 255 } else { 0 };
+    send_frame(&f);
 }
 
 /// Start fog for up to `ms` (hold-to-fog: the app calls /api/fog on press and
 /// /api/fog/stop on release). Ensures the bridge is up, then heartbeats fog
 /// packets at 30 Hz until stop/timeout, then sends explicit fog-low packets.
 pub fn fog(ms: u64) -> String {
+    // claim the generation BEFORE the (possibly seconds-long) bridge startup:
+    // a release arriving while the bridge still handshakes must invalidate
+    // this press, otherwise fog runs the full timeout with the finger lifted.
+    let generation = FOG_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     if !ensure_bridge() {
         return r#"{"error":"bridge failed to start (see /tmp/atlas-bridge.log)"}"#.into();
     }
     let ms = ms.clamp(200, 30_000);
-    let generation = FOG_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
         while std::time::Instant::now() < deadline
@@ -330,6 +346,95 @@ pub fn fog_stop() -> String {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     r#"{"ok":true,"stopped":true}"#.into()
+}
+
+// ---- manual lights ---------------------------------------------------------
+//
+// The Lightshow app drives every fixture directly — no show needed. It POSTs
+// the full 21-channel DMX frame (6×RGB lamps, ch 20 laser, ch 21 strobe plug;
+// ch 19 fog is forced 0, fog keeps its own hold-to-fog endpoints). The agent
+// stores the frame and heartbeats it to the bridge at 30 Hz, so it coexists
+// with fog packets through the bridge's per-tick peak-hold. An all-zero frame
+// stops the heartbeat after a few explicit blackout packets.
+
+static MANUAL: Mutex<[u8; 21]> = Mutex::new([0u8; 21]);
+static MANUAL_ON: AtomicBool = AtomicBool::new(false);
+static MANUAL_HEARTBEAT: AtomicBool = AtomicBool::new(false);
+
+fn manual_heartbeat() {
+    if MANUAL_HEARTBEAT.swap(true, Ordering::SeqCst) {
+        return; // already running
+    }
+    std::thread::spawn(|| loop {
+        if MANUAL_ON.load(Ordering::SeqCst) {
+            let frame = *MANUAL.lock().unwrap();
+            send_frame(&frame);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(33));
+    });
+}
+
+fn manual_blackout() {
+    let zero = [0u8; 21];
+    for _ in 0..3 {
+        send_frame(&zero);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// Current manual state for the app (bridge status + the held frame).
+pub fn lights_get() -> String {
+    let frame = *MANUAL.lock().unwrap();
+    let ch: Vec<String> = frame.iter().map(|v| v.to_string()).collect();
+    format!(
+        "{{\"bridge\":{},\"on\":{},\"channels\":[{}]}}",
+        bridge_running(),
+        MANUAL_ON.load(Ordering::SeqCst),
+        ch.join(",")
+    )
+}
+
+/// Body: up to 21 channel values 0…255, separated by anything non-numeric.
+pub fn lights_set(body: &str) -> String {
+    let mut frame = [0u8; 21];
+    let mut n = 0;
+    for tok in body.split(|c: char| !c.is_ascii_digit()).filter(|t| !t.is_empty()) {
+        if n >= 21 {
+            break;
+        }
+        frame[n] = tok.parse::<u16>().unwrap_or(0).min(255) as u8;
+        n += 1;
+    }
+    if n == 0 {
+        return r#"{"error":"expected channel values as body"}"#.into();
+    }
+    frame[18] = 0; // fog stays hold-to-fog only
+    let active = frame.iter().any(|&v| v > 0);
+    if active && !ensure_bridge() {
+        return r#"{"error":"bridge failed to start (see /tmp/atlas-bridge.log)"}"#.into();
+    }
+    *MANUAL.lock().unwrap() = frame;
+    if active {
+        MANUAL_ON.store(true, Ordering::SeqCst);
+        manual_heartbeat();
+    } else {
+        MANUAL_ON.store(false, Ordering::SeqCst);
+        if bridge_running() {
+            manual_blackout();
+        }
+    }
+    lights_get()
+}
+
+/// Everything dark, heartbeat off. Also used before a show starts so the
+/// manual frame can't peak-merge into the show's frames.
+pub fn lights_off() -> String {
+    MANUAL_ON.store(false, Ordering::SeqCst);
+    *MANUAL.lock().unwrap() = [0u8; 21];
+    if bridge_running() {
+        manual_blackout();
+    }
+    lights_get()
 }
 
 // ---- YouTube -> show ------------------------------------------------------
@@ -502,7 +607,7 @@ pub fn audio_file(name: &str) -> Option<std::path::PathBuf> {
 
 // ---- tiny JSON field pickers (avoid a serde dep for a couple of fields) ----
 
-fn extract_str(text: &str, key: &str) -> Option<String> {
+pub fn extract_str(text: &str, key: &str) -> Option<String> {
     let pat = format!("\"{key}\"");
     let i = text.find(&pat)? + pat.len();
     let rest = &text[i..];
@@ -513,7 +618,7 @@ fn extract_str(text: &str, key: &str) -> Option<String> {
     Some(after[..end].to_string())
 }
 
-fn extract_num(text: &str, key: &str) -> Option<f64> {
+pub fn extract_num(text: &str, key: &str) -> Option<f64> {
     let pat = format!("\"{key}\"");
     let i = text.find(&pat)? + pat.len();
     let rest = &text[i..];

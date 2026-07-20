@@ -10,6 +10,11 @@
 //!   POST /api/shows/start        -> start the bridge + play a show  (body: name)
 //!   POST /api/shows/stop         -> stop player + bridge
 //!   POST /api/fog                -> fog burst                        (body: ms)
+//!   GET  /api/lights             -> manual-control state (bridge + 21ch frame)
+//!   POST /api/lights/set         -> hold a manual DMX frame          (body: 21 values)
+//!   POST /api/lights/off         -> manual frame off / blackout
+//!   GET  /api/vpn                -> exit-node stats (tailscale, AdGuard, accumulators)
+//!   GET  /api/activity           -> per-day online minutes/boots/commits (heatmap)
 //!   POST /api/power/{shutdown,restart}  (require token)
 //!
 //! Auth: if ATLAS_AGENT_TOKEN is set, every request needs
@@ -17,8 +22,10 @@
 //! change state always need the token when one is configured.
 
 mod actions;
+mod activity;
 mod metrics;
 mod terminal;
+mod vpn;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -36,6 +43,7 @@ fn main() {
         eprintln!("atlas-agent: cannot bind :{port}: {e}");
         std::process::exit(1);
     });
+    vpn::start_sampler();
     println!(
         "atlas-agent {} on :{port} (auth: {})",
         env!("CARGO_PKG_VERSION"),
@@ -134,6 +142,15 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
         ("POST", "/api/fog/stop") if can_act => {
             respond(&mut stream, 200, &actions::fog_stop());
         }
+        ("GET", "/api/lights") => respond(&mut stream, 200, &actions::lights_get()),
+        ("POST", "/api/lights/set") if can_act => {
+            respond(&mut stream, 200, &actions::lights_set(&req.body));
+        }
+        ("POST", "/api/lights/off") if can_act => {
+            respond(&mut stream, 200, &actions::lights_off());
+        }
+        ("GET", "/api/vpn") => respond(&mut stream, 200, &vpn::vpn()),
+        ("GET", "/api/activity") => respond(&mut stream, 200, &activity::activity()),
         ("POST", "/api/power/shutdown") if can_act => power(&mut stream, "poweroff"),
         ("POST", "/api/power/restart") if can_act => power(&mut stream, "reboot"),
         ("POST", _) => respond(&mut stream, 403, r#"{"error":"a token is required for this action"}"#),
