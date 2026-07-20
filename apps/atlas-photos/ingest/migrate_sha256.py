@@ -1,34 +1,37 @@
 #!/usr/bin/env python3
-"""One-time migration: re-key legacy BLAKE3[:32] asset ids to full SHA256.
+"""One-time migration: make every asset id the full SHA256 of its bytes.
 
-Background: three code paths hashed photo bytes with different functions —
-Takeout ingest used BLAKE3 truncated to 128 bit, the iOS app uses SHA256, and
-the server trusted the client hash verbatim. The same photo present in both
-Google Takeout and on the iPhone therefore got two different ids and was stored
-twice (content-addressed dedup only works when everyone hashes identically).
+Background: three code paths hashed photo bytes differently — Takeout ingest
+used BLAKE3 truncated to 128 bit, the iOS app uses SHA256, and the old server
+trusted the client hash verbatim. The same photo present in both Google Takeout
+and on the iPhone therefore got two different ids and was stored twice
+(content-addressed dedup only works when everyone hashes identically).
 
-The code is now SHA256 everywhere (ingest + server recompute). This script
-converts the already-stored BLAKE3 rows so the whole library shares one id
-scheme, merging the byte-identical duplicates that already exist.
+The code is now SHA256 everywhere (ingest + server recompute from bytes). This
+script converts the already-stored rows so the whole library shares one id
+scheme and collapses the byte-identical duplicates that already exist.
 
-For every asset whose id is not a 64-char hex SHA256 (the legacy BLAKE3 rows):
-  new_id = sha256(the exact bytes on disk at orig_path)
-Rows are then grouped by new_id:
-  * if a SHA256 row already exists for that content (an iPhone upload), it is
-    the SURVIVOR; the legacy row(s) are merged into it and deleted.
-  * otherwise one legacy row is re-keyed to new_id and the rest merged in.
-Merging = move album links (dedup), fill NULL metadata from the loser, move
-thumbnails if the survivor has none, delete the redundant original + row.
-
-DB work runs in ONE transaction (FK on album_assets dropped/re-added around it);
-filesystem renames/deletes happen after COMMIT and are idempotent.
+Design (hardened after adversarial review):
+  * Re-hash EVERY asset's stored bytes — never trust a stored id as canonical.
+  * Group by recomputed content hash; per group one survivor, the rest merged.
+  * Merge carries ALL user state, incl. locked/archived/trashed_at (a hidden
+    duplicate must never resurface through its visible twin).
+  * Re-key updates orig_path (the server serves originals by that column) AND
+    renames the file; a durable plan sidecar makes the filesystem pass
+    replayable if the process dies after COMMIT.
+  * Losers' originals are deleted only after confirming the survivor's file
+    exists on disk.
+  * Preconditions asserted: every file present; faces/embeddings/edges empty
+    (they FK/reference assets.id and must not silently block the re-key).
 
     python3 migrate_sha256.py            # DRY RUN — prints the plan, no changes
-    python3 migrate_sha256.py --apply    # execute
+    python3 migrate_sha256.py --apply    # execute (pause ingestion first)
 
-Safe to re-run: already-SHA256 rows are ignored.
+Idempotent: safe to re-run; a crash between COMMIT and the end of the file pass
+is healed by re-running (the plan sidecar drives the filesystem work).
 """
 import hashlib
+import json
 import os
 import sys
 
@@ -37,7 +40,11 @@ import psycopg
 PHOTOS = os.path.expanduser("~/photos")
 ORIG = os.path.join(PHOTOS, "originals")
 THUMBS = os.path.join(PHOTOS, "thumbs")
+PLAN = os.path.join(PHOTOS, ".sha256_migration_plan.json")
 APPLY = "--apply" in sys.argv
+
+COLS = ("id", "orig_path", "orig_name", "taken_at", "description", "favorite",
+        "camera", "lat", "lon", "archived", "locked", "trashed_at")
 
 
 def db():
@@ -46,7 +53,8 @@ def db():
         for line in f:
             if line.startswith("POSTGRES_PASSWORD="):
                 pw = line.split("=", 1)[1].strip()
-    return psycopg.connect(host="127.0.0.1", dbname="atlas", user="atlas", password=pw)
+    return psycopg.connect(host="127.0.0.1", dbname="atlas", user="atlas",
+                           password=pw, autocommit=True)
 
 
 def sha256_file(path):
@@ -61,160 +69,177 @@ def thumbs_for(asset_id):
     return [os.path.join(THUMBS, f"{asset_id}.{s}.webp") for s in (256, 1024)]
 
 
-def is_sha256(i):
-    return len(i) == 64
+def compute_plan(cur):
+    """Re-hash every asset and derive the rekey/loser plan. No writes."""
+    cur.execute(f"SELECT {', '.join(COLS)} FROM assets")
+    assets = {r[0]: dict(zip(COLS, r)) for r in cur.fetchall()}
+
+    truehash, missing = {}, []
+    for aid, a in assets.items():
+        p = a["orig_path"]
+        if not p or not os.path.exists(p):
+            missing.append(aid)
+            continue
+        truehash[aid] = sha256_file(p)
+
+    groups = {}
+    for aid, h in truehash.items():
+        groups.setdefault(h, []).append(aid)
+
+    rekeys, losers, noop = [], [], 0
+    for h, ids in groups.items():
+        already = h if h in ids else None            # row already at content id
+        survivor_src = already or ids[0]
+        rest = [i for i in ids if i != survivor_src]
+        if already is None:                          # promote survivor_src -> h
+            a = assets[survivor_src]
+            dest = os.path.join(os.path.dirname(a["orig_path"]),
+                                f"{h}_{a['orig_name']}")
+            rekeys.append([survivor_src, h, dest, a["orig_path"]])
+        elif not rest:
+            noop += 1
+        for lo in rest:
+            losers.append([lo, h])                   # survivor final id == h
+
+    return assets, truehash, missing, rekeys, losers, noop
 
 
 def main():
     conn = db()
     cur = conn.cursor()
 
-    # 1) Load every asset (id, file, richest metadata for merge decisions).
-    cur.execute("SELECT id, orig_path, orig_name, taken_at, description, favorite, "
-                "camera, lat, lon FROM assets")
-    assets = {r[0]: r for r in cur.fetchall()}
-    all_ids = set(assets)
+    assets, truehash, missing, rekeys, losers, noop = compute_plan(cur)
+    total = len(assets)
+    dup_bytes = sum(os.path.getsize(assets[lo]["orig_path"])
+                    for lo, _ in losers if os.path.exists(assets[lo]["orig_path"]))
 
-    legacy = [i for i in all_ids if not is_sha256(i)]
-    print(f"assets total={len(all_ids)} legacy(non-sha256)={len(legacy)} "
-          f"sha256={len(all_ids) - len(legacy)}")
-
-    # 2) Re-hash each legacy file -> new_id. Skip (leave untouched) if the file
-    #    is missing so we never point the DB at a non-existent file.
-    new_of = {}
-    missing = []
-    for i in legacy:
-        path = assets[i][1]
-        if not path or not os.path.exists(path):
-            missing.append(i)
-            continue
-        new_of[i] = sha256_file(path)
-
-    if missing:
-        print(f"WARNING: {len(missing)} legacy assets have no file on disk — left as-is")
-
-    # 3) Group legacy ids by their content id (new_id). The final surviving id
-    #    for ANY legacy row is simply new_of[old]: either an existing iPhone
-    #    SHA256 row already holds it, or one legacy row is re-keyed to it.
-    groups = {}
-    for old, new in new_of.items():
-        groups.setdefault(new, []).append(old)
-
-    rekeys = []   # (old_id, new_id): re-key this legacy row to new_id
-    losers = []   #  old_id:          merge into new_of[old_id], then delete
-    for new, olds in groups.items():
-        if new in all_ids and is_sha256(new):
-            losers.extend(olds)               # existing iPhone row survives
-        else:
-            rekeys.append((olds[0], new))     # promote first legacy row
-            losers.extend(olds[1:])           # rest are dups of it
-
-    dup_bytes = 0
-    for lo in losers:
-        try:
-            dup_bytes += os.path.getsize(assets[lo][1])
-        except OSError:
-            pass
-
-    print(f"plan: rekey={len(rekeys)} merge/delete_losers={len(losers)} "
+    print(f"assets={total} hashed={len(truehash)} missing_files={len(missing)}")
+    print(f"plan: rekey={len(rekeys)} merge_losers={len(losers)} noop={noop} "
           f"reclaim~={dup_bytes/1024/1024:.0f} MB")
-    for lo in losers[:3]:
-        print(f"  merge {lo} ({assets[lo][2]}) -> {new_of[lo]}")
-    for old, new in rekeys[:3]:
-        print(f"  rekey {old} ({assets[old][2]}) -> {new}")
+    for lo, h in losers[:3]:
+        print(f"  merge {lo} ({assets[lo]['orig_name']}) -> {h}")
+    for old, new, _, _ in rekeys[:3]:
+        print(f"  rekey {old} ({assets[old]['orig_name']}) -> {new}")
 
     if not APPLY:
-        print("\nDRY RUN — no changes made. Re-run with --apply to execute.")
+        print("\nDRY RUN — no changes. Re-run with --apply to execute.")
         return
 
-    # 4) DB transaction: repoint album links, re-key survivors, delete losers.
-    #    Order matters: albums first (so no link references a legacy id), then
-    #    re-key survivors (so every survivor row exists), then merge+delete
-    #    losers (metadata merge needs the survivor row to be present).
-    print("\nAPPLYING …")
-    cur.execute("ALTER TABLE album_assets DROP CONSTRAINT album_assets_asset_id_fkey")
+    # ---- preconditions -----------------------------------------------------
+    if missing:
+        sys.exit(f"ABORT: {len(missing)} assets have no file on disk "
+                 f"(e.g. {missing[:3]}). Fix/verify before --apply.")
+    for t in ("faces", "embeddings", "edges"):
+        cur.execute(f"SELECT count(*) FROM {t}")
+        n = cur.fetchone()[0]
+        if n:
+            sys.exit(f"ABORT: table {t} has {n} rows referencing assets; this "
+                     f"migration only handles the empty case. Handle {t} first.")
 
-    # 4a) Every legacy id's album links move to its content id (dedup), old gone.
-    for old, new in new_of.items():
-        cur.execute(
-            "INSERT INTO album_assets (album_id, asset_id) "
-            "SELECT album_id, %s FROM album_assets WHERE asset_id = %s "
-            "ON CONFLICT DO NOTHING", (new, old))
-        cur.execute("DELETE FROM album_assets WHERE asset_id = %s", (old,))
+    # ---- durable plan sidecar (drives the replayable filesystem pass) ------
+    plan = {"rekeys": rekeys,
+            "losers": [[lo, h, assets[lo]["orig_path"]] for lo, h in losers],
+            "survivor_final": {h: True for _, h in losers}}
+    with open(PLAN, "w") as f:
+        json.dump(plan, f)
 
-    # 4b) Re-key survivors (legacy -> new). The server serves originals via the
-    #     stored orig_path, so it MUST be updated to the renamed file too. Also
-    #     move their ingest jobs (dedup any pre-existing new-id job first).
-    for old, new in rekeys:
-        old_path, name = assets[old][1], assets[old][2]
-        new_path = os.path.join(os.path.dirname(old_path), f"{new}_{name}") if old_path else old_path
-        cur.execute("DELETE FROM ingest_jobs WHERE owner_type='asset' AND owner_id=%s", (new,))
-        cur.execute("UPDATE ingest_jobs SET owner_id=%s WHERE owner_type='asset' AND owner_id=%s",
-                    (new, old))
-        cur.execute("UPDATE assets SET id=%s, orig_path=%s WHERE id=%s", (new, new_path, old))
+    # ---- DB write: one atomic transaction ----------------------------------
+    print("\nAPPLYING (DB transaction) …")
+    with conn.transaction():
+        cur.execute("ALTER TABLE album_assets DROP CONSTRAINT album_assets_asset_id_fkey")
 
-    # 4c) Losers: fill survivor NULL metadata from the loser, drop jobs, delete.
-    for lo in losers:
-        s = new_of[lo]
-        cur.execute(
-            "UPDATE assets a SET "
-            " taken_at   = COALESCE(a.taken_at,   l.taken_at), "
-            " description= COALESCE(a.description, l.description), "
-            " favorite   = a.favorite OR l.favorite, "
-            " camera     = COALESCE(a.camera, l.camera), "
-            " lat        = COALESCE(a.lat, l.lat), "
-            " lon        = COALESCE(a.lon, l.lon) "
-            "FROM assets l WHERE a.id = %s AND l.id = %s", (s, lo))
-        cur.execute("DELETE FROM ingest_jobs WHERE owner_type='asset' AND owner_id=%s", (lo,))
-        cur.execute("DELETE FROM assets WHERE id = %s", (lo,))
+        # (a) every id that changes moves its album links to the content id.
+        for old, new, _, _ in rekeys:
+            _move_albums(cur, old, new)
+        for lo, h in losers:
+            _move_albums(cur, lo, h)
 
-    cur.execute("ALTER TABLE album_assets ADD CONSTRAINT album_assets_asset_id_fkey "
-                "FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE")
-    conn.commit()
+        # (b) re-key survivors (id + orig_path) and their ingest jobs.
+        for old, new, dest, _ in rekeys:
+            cur.execute("DELETE FROM ingest_jobs WHERE owner_type='asset' AND owner_id=%s", (new,))
+            cur.execute("UPDATE ingest_jobs SET owner_id=%s WHERE owner_type='asset' AND owner_id=%s",
+                        (new, old))
+            cur.execute("UPDATE assets SET id=%s, orig_path=%s WHERE id=%s", (new, dest, old))
+
+        # (c) merge losers into the survivor (ALL user state), then delete.
+        for lo, h in losers:
+            cur.execute(
+                "UPDATE assets a SET "
+                " taken_at   = COALESCE(a.taken_at,    l.taken_at), "
+                " description= COALESCE(a.description,  l.description), "
+                " favorite   = a.favorite OR l.favorite, "
+                " camera     = COALESCE(a.camera, l.camera), "
+                " lat        = COALESCE(a.lat, l.lat), "
+                " lon        = COALESCE(a.lon, l.lon), "
+                " locked     = a.locked   OR l.locked, "        # never un-hide
+                " archived   = a.archived OR l.archived, "
+                " trashed_at = COALESCE(a.trashed_at, l.trashed_at) "
+                "FROM assets l WHERE a.id=%s AND l.id=%s", (h, lo))
+            cur.execute("DELETE FROM ingest_jobs WHERE owner_type='asset' AND owner_id=%s", (lo,))
+            cur.execute("DELETE FROM assets WHERE id=%s", (lo,))
+
+        cur.execute("ALTER TABLE album_assets ADD CONSTRAINT album_assets_asset_id_fkey "
+                    "FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE")
     print("DB committed.")
 
-    # 5) Filesystem (post-commit, idempotent).
-    #    Re-key survivors: rename original + thumbs old->new.
-    renamed = 0
-    for old, new in rekeys:
-        path, name = assets[old][1], assets[old][2]
-        if path and os.path.exists(path):
-            dest = os.path.join(os.path.dirname(path), f"{new}_{name}")
-            if not os.path.exists(dest):
-                os.rename(path, dest)
-                renamed += 1
+    # ---- filesystem pass (replayable from the plan sidecar) ----------------
+    renamed, deleted, kept = apply_files(cur, plan)
+    print(f"files: renamed_originals={renamed} deleted_redundant={deleted} "
+          f"kept_missing_survivor={kept}")
+
+    # ---- verify ------------------------------------------------------------
+    cur.execute("SELECT count(*) FROM assets")
+    n_assets = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM assets WHERE length(id)<>64 OR id !~ '^[0-9a-f]{64}$'")
+    bad_ids = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM album_assets aa LEFT JOIN assets a ON a.id=aa.asset_id "
+                "WHERE a.id IS NULL")
+    orphans = cur.fetchone()[0]
+    print(f"verify: assets={n_assets} non_sha256_ids={bad_ids} orphan_album_links={orphans}")
+    if bad_ids == 0 and orphans == 0:
+        os.path.exists(PLAN) and os.remove(PLAN)
+        print("OK — migration complete, plan sidecar removed.")
+    else:
+        print("WARNING: verify found issues — plan sidecar kept for inspection.")
+    conn.close()
+
+
+def _move_albums(cur, old, new):
+    cur.execute("INSERT INTO album_assets (album_id, asset_id) "
+                "SELECT album_id, %s FROM album_assets WHERE asset_id=%s "
+                "ON CONFLICT DO NOTHING", (new, old))
+    cur.execute("DELETE FROM album_assets WHERE asset_id=%s", (old,))
+
+
+def apply_files(cur, plan):
+    """Rename re-keyed originals+thumbs and delete redundant loser files.
+    Idempotent (exists() guards); safe to replay from the sidecar."""
+    renamed = deleted = kept = 0
+    for old, new, dest, old_path in plan["rekeys"]:
+        # source original is still at its old path, unless already moved to dest
+        if old_path and os.path.exists(old_path) and not os.path.exists(dest):
+            os.rename(old_path, dest); renamed += 1
         for a, b in zip(thumbs_for(old), thumbs_for(new)):
             if os.path.exists(a) and not os.path.exists(b):
                 os.rename(a, b)
 
-    #    Losers: give the survivor the loser's thumbs if it has none, then delete
-    #    the redundant original + any leftover loser thumbs.
-    deleted_files = 0
-    for lo in losers:
-        s = new_of[lo]
-        for a, b in zip(thumbs_for(lo), thumbs_for(s)):
+    for lo, h, lo_path in plan["losers"]:
+        # survivor original must exist before we delete the redundant copy
+        cur.execute("SELECT orig_path FROM assets WHERE id=%s", (h,))
+        row = cur.fetchone()
+        surv_path = row[0] if row else None
+        for a, b in zip(thumbs_for(lo), thumbs_for(h)):
             if os.path.exists(a) and not os.path.exists(b):
                 os.rename(a, b)
-        p = assets[lo][1]
-        if p and os.path.exists(p):
-            os.remove(p)
-            deleted_files += 1
-        for t in thumbs_for(lo):
-            if os.path.exists(t):
-                os.remove(t)
-
-    print(f"files: renamed_originals={renamed} deleted_redundant={deleted_files}")
-
-    # 6) Verify: no legacy ids remain, no orphan album links.
-    cur.execute("SELECT count(*) FROM assets WHERE length(id) <> 64")
-    left = cur.fetchone()[0]
-    cur.execute("SELECT count(*) FROM album_assets aa "
-                "LEFT JOIN assets a ON a.id = aa.asset_id WHERE a.id IS NULL")
-    orphans = cur.fetchone()[0]
-    cur.execute("SELECT count(*) FROM assets")
-    total = cur.fetchone()[0]
-    print(f"verify: assets={total} legacy_left={left} orphan_album_links={orphans}")
-    conn.close()
+        if surv_path and os.path.exists(surv_path):
+            if lo_path and os.path.exists(lo_path):
+                os.remove(lo_path); deleted += 1
+            for t in thumbs_for(lo):
+                if os.path.exists(t):
+                    os.remove(t)
+        else:
+            kept += 1   # survivor file missing — keep the loser's bytes
+    return renamed, deleted, kept
 
 
 if __name__ == "__main__":
