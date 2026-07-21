@@ -14,7 +14,6 @@ struct AssetInfo: Codable {
     var lat: Double?
     var lon: Double?
     var place: String?
-    var caption: String?
     var favorite: Bool?
     var durationS: Double?
     var tags: [String]?
@@ -42,7 +41,7 @@ struct AssetInfo: Codable {
         case origName = "orig_name"
         case camera, width, height
         case sizeBytes = "size_bytes"
-        case lat, lon, place, caption, favorite
+        case lat, lon, place, favorite
         case durationS = "duration_s"
         case tags, exif
     }
