@@ -27,6 +27,13 @@ struct PhotosScreen: View {
         Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumns)
     }
 
+    /// Decode target for a grid cell: its pixel size (+ small headroom) so we
+    /// never hold a full 512/2048 bitmap for a tiny cell — less decode, less RAM.
+    private var cellMaxPixel: CGFloat {
+        let w = UIScreen.main.bounds.width / CGFloat(max(gridColumns, 1))
+        return w * UIScreen.main.scale * 1.15
+    }
+
     /// Eine Zoom-Stufe weiter (in = Zellen größer = weniger Spalten).
     private func stepZoom(in zoomIn: Bool) {
         let levels = Self.zoomLevels
@@ -117,6 +124,7 @@ struct PhotosScreen: View {
                             ForEach(section.assets) { asset in
                                 SelectableThumb(asset: asset,
                                                 thumbURL: library.client.thumbURL(asset.id, gridColumns == 1 ? 2048 : 512),
+                                                maxPixel: cellMaxPixel,
                                                 selection: selection, namespace: zoom) { pick = asset }
                                     .task {
                                         await library.loadMoreIfNeeded(current: asset)
@@ -133,9 +141,9 @@ struct PhotosScreen: View {
         }
         .scrollPosition(id: $scrolledSectionID, anchor: .top)
         .overlay(alignment: .trailing) {
-            if !selection.active, library.scale.count > 1 {
-                TimeScrubber(scale: library.scale, sections: library.sections,
-                             scrolledID: $scrolledSectionID)
+            if !selection.active, !library.scrubIndex.entries.isEmpty {
+                TimeScrubber(index: library.scrubIndex, scrolledID: $scrolledSectionID,
+                             onScrubbing: { library.scrubbing = $0 })
             }
         }
         .scrollIndicators(.hidden)
@@ -237,55 +245,31 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-/// Google-Fotos-Schnellscroller am rechten Rand mit STABILER, bildmengen-
-/// proportionaler Skala: Grundlage ist `scale` (alle Monate + Anzahl, aus
-/// /api/timeline/summary), nicht die geladenen Sektionen — dadurch verschiebt
-/// sich nichts beim Nachladen, und ein Monat mit vielen Bildern bekommt
-/// proportional mehr Platz auf der Bahn. Springen setzt `scrolledID` auf die
-/// (im Hintergrund voll geladene) Tages-Sektion des Zielmonats.
+/// Google-Fotos-Schnellscroller am rechten Rand. Nutzt den PRECOMPUTED
+/// `Library.ScrubIndex` (id→Anteil, Monat→Sektion, Labels), damit der
+/// Scroll-/Drag-Pfad KEINE O(n)-Scans, Calendar- oder DateFormatter-Aufrufe pro
+/// Frame macht — das war die Haupt-Hitzequelle beim schnellen Scrubben.
 struct TimeScrubber: View {
-    let scale: [MonthBucket]
-    let sections: [Library.DaySection]
+    let index: Library.ScrubIndex
     @Binding var scrolledID: String?
+    var onScrubbing: (Bool) -> Void = { _ in }
 
     @State private var dragging = false
     @State private var dragFrac: CGFloat = 0
-    @State private var lastMonthKey = ""
+    @State private var lastMonth = ""
 
     private let space = "scrubTrack"
-
-    private struct Entry { let month: String; let year: Int; let date: Date; let start: CGFloat; let end: CGFloat }
-
-    /// Kumulative Anteile pro Monat (neueste zuerst, oben = 0).
-    private var entries: [Entry] {
-        let total = max(scale.reduce(0) { $0 + $1.count }, 1)
-        var acc = 0
-        return scale.map { b in
-            let start = CGFloat(acc) / CGFloat(total)
-            acc += b.count
-            let end = CGFloat(acc) / CGFloat(total)
-            let (y, d) = Self.parse(b.month)
-            return Entry(month: b.month, year: y, date: d, start: start, end: end)
-        }
-    }
 
     private var yearMarks: [(year: Int, frac: CGFloat)] {
         var seen = Set<Int>()
         var out: [(Int, CGFloat)] = []
-        for e in entries where seen.insert(e.year).inserted { out.append((e.year, e.start)) }
+        for e in index.entries where seen.insert(e.year).inserted { out.append((e.year, e.start)) }
         return out.map { (year: $0.0, frac: $0.1) }
     }
 
-    /// Anteil der aktuell obersten Sektion (fein per Tag innerhalb des Monats).
     private var currentFrac: CGFloat {
-        guard let id = scrolledID,
-              let sec = sections.first(where: { $0.id == id }),
-              let e = entries.first(where: { $0.month == Self.monthKey(sec.date) }) else { return 0 }
-        let cal = Calendar.current
-        let day = cal.component(.day, from: sec.date)
-        let dim = cal.range(of: .day, in: .month, for: sec.date)?.count ?? 30
-        let dayFrac = CGFloat(day - 1) / CGFloat(max(dim - 1, 1))
-        return e.start + dayFrac * (e.end - e.start)
+        guard let id = scrolledID else { return 0 }
+        return index.fracByID[id] ?? 0
     }
 
     var body: some View {
@@ -344,46 +328,38 @@ struct TimeScrubber: View {
                 if !dragging {
                     withAnimation(.snappy(duration: 0.2)) { dragging = true }
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    onScrubbing(true)
                 }
                 let f = clamp(v.location.y / h, 0, 1)
                 dragFrac = f
                 let t = target(f)
-                if t.month != lastMonthKey {
-                    lastMonthKey = t.month
+                if t.month != lastMonth {
+                    lastMonth = t.month
                     UISelectionFeedbackGenerator().selectionChanged()
                     if let id = t.id, id != scrolledID { scrolledID = id }
                 }
             }
-            .onEnded { _ in withAnimation(.easeOut(duration: 0.25)) { dragging = false } }
+            .onEnded { _ in
+                onScrubbing(false)
+                withAnimation(.easeOut(duration: 0.25)) { dragging = false }
+            }
     }
 
-    /// Zielmonat für einen Bahn-Anteil: Label + (falls geladen) Sektions-Id.
+    /// Zielmonat für einen Bahn-Anteil: O(log n) Binärsuche über die Entries,
+    /// dann precomputed Label + Sektions-Id.
     private func target(_ f: CGFloat) -> (month: String, label: String, id: String?) {
-        let es = entries
-        guard let e = es.first(where: { f >= $0.start && f < $0.end }) ?? es.last else {
-            return ("", "", nil)
+        let es = index.entries
+        guard !es.isEmpty else { return ("", "", nil) }
+        var lo = 0, hi = es.count - 1, found = es.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            if f < es[mid].start { hi = mid - 1 }
+            else if f >= es[mid].end { lo = mid + 1 }
+            else { found = mid; break }
         }
-        let id = sections.first(where: { Self.monthKey($0.date) == e.month })?.id
-        return (e.month, Self.label(e.date), id)
+        let e = es[clamp(found, 0, es.count - 1)]
+        return (e.month, e.label, index.idByMonth[e.month])
     }
 
     private func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(max(v, lo), hi) }
-
-    // MARK: date helpers
-
-    private static func parse(_ ym: String) -> (Int, Date) {
-        let p = ym.split(separator: "-")
-        let y = Int(p.first ?? "0") ?? 0
-        let m = p.count > 1 ? (Int(p[1]) ?? 1) : 1
-        let d = Calendar.current.date(from: DateComponents(year: y, month: m, day: 1)) ?? Date()
-        return (y, d)
-    }
-    private static func monthKey(_ d: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month], from: d)
-        return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
-    }
-    private static func label(_ d: Date) -> String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "MMM yyyy"
-        return f.string(from: d)
-    }
 }
