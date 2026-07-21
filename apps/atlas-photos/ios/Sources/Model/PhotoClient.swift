@@ -100,6 +100,18 @@ struct PhotoClient: Sendable {
         return r.items
     }
 
+    struct DayCount: Codable {
+        let d: String   // "yyyy-MM-dd"
+        let n: Int
+    }
+
+    /// GitHub-Style-Aktivität: Fotos pro Tag, letzte ~53 Wochen.
+    func heatmap() async throws -> [DayCount] {
+        struct R: Codable { let items: [DayCount] }
+        let r: R = try await get("/api/heatmap")
+        return r.items
+    }
+
     struct SearchResult {
         var persons: [Person] = []
         var items: [Asset] = []
