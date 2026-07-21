@@ -411,10 +411,12 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
         .await?;
     let mut items: Vec<Asset> = rows.iter().map(asset_from).collect();
 
-    // 3) semantic fill via SigLIP2 — only when structured search came up thin,
-    //    so name/place queries stay precise and "Hund"-style content queries
-    //    still find everything
-    if items.len() < 60 {
+    // 3) semantic search via SigLIP2 — runs for any query that isn't already a
+    //    huge exact-match set, and contributes GENEROUSLY: a content query like
+    //    "disco" should surface every photo AND video that looks the part, not
+    //    just the few that happen to carry the tag. Structured hits still rank
+    //    first; semantic (photos + videos, from the same vector index) fills in.
+    if items.len() < 150 {
         if let Some(vec) = text_embedding(&term).await {
             let vstr = format!(
                 "[{}]",
@@ -427,23 +429,27 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                          FROM embeddings e JOIN assets ON assets.id = e.owner_id
                          WHERE e.model = 'siglip2' {VISIBLE}
                          ORDER BY e.vec <=> $1::text::vector
-                         LIMIT 150",
+                         LIMIT 200",
                     ),
                     &[&vstr],
                 )
                 .await?;
             if let Some(best) = srows.first().map(|r| r.get::<_, f64>(r.len() - 1)) {
-                let cutoff = best + 0.05;
+                // wide relative window — SigLIP text↔image distances sit close
+                // together, so a tiny margin (the old 0.05) starved results
+                let cutoff = best + 0.25;
+                let mut added = 0;
                 let seen: std::collections::HashSet<String> =
                     items.iter().map(|a| a.id.clone()).collect();
                 for r in &srows {
                     let dist: f64 = r.get(r.len() - 1);
-                    if dist > cutoff {
+                    if dist > cutoff || added >= 140 {
                         break;
                     }
                     let a = asset_from(r);
                     if !seen.contains(&a.id) {
                         items.push(a);
+                        added += 1;
                     }
                 }
             }
