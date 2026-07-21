@@ -163,15 +163,15 @@ fn cpu_temp() -> Option<f64> {
     let out = Command::new("sensors").output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     for l in text.lines() {
-        if l.contains("Package id") || l.contains("Tctl") || l.contains("Tdie") {
-            if let Some(idx) = l.find('+') {
-                let num: String = l[idx + 1..]
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '.')
-                    .collect();
-                if let Ok(v) = num.parse::<f64>() {
-                    return Some(v);
-                }
+        if (l.contains("Package id") || l.contains("Tctl") || l.contains("Tdie"))
+            && let Some(idx) = l.find('+')
+        {
+            let num: String = l[idx + 1..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            if let Ok(v) = num.parse::<f64>() {
+                return Some(v);
             }
         }
     }
@@ -226,13 +226,13 @@ fn read_rapl_energy() -> Option<u64> {
 fn cpu_power_w() -> Option<f64> {
     let e1 = read_rapl_energy()?;
     let t1 = Instant::now();
-    if let Ok(mut guard) = RAPL_LAST.lock() {
-        if let Some((prev_e, prev_t)) = *guard {
-            let dt = t1.duration_since(prev_t).as_secs_f64();
-            if dt > 0.05 && dt < 5.0 {
-                *guard = Some((e1, t1));
-                return rapl_delta_w(prev_e, e1, dt);
-            }
+    if let Ok(mut guard) = RAPL_LAST.lock()
+        && let Some((prev_e, prev_t)) = *guard
+    {
+        let dt = t1.duration_since(prev_t).as_secs_f64();
+        if dt > 0.05 && dt < 5.0 {
+            *guard = Some((e1, t1));
+            return rapl_delta_w(prev_e, e1, dt);
         }
     }
     thread::sleep(Duration::from_millis(120));

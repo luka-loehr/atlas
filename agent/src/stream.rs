@@ -112,10 +112,9 @@ pub fn handle_ws(mut stream: TcpStream, ws_key: &str) {
         }
         drop(h);
         let boot = format!("{{\"history\":[{}]}}", joined.join(","));
-        if ws.write_message(Message::Text(boot)).is_err() {
+        if ws.send(Message::Text(boot)).is_err() {
             return;
         }
-        let _ = ws.flush();
     }
 
     // live: push each new sample as the sampler produces it
@@ -128,10 +127,9 @@ pub fn handle_ws(mut stream: TcpStream, ws_key: &str) {
         }
         last_ts = s.ts_ms;
         // send error == client gone (close or dead TCP) -> exit cleanly
-        if ws.write_message(Message::Text(fmt_sample(&s))).is_err() {
+        if ws.send(Message::Text(fmt_sample(&s))).is_err() {
             break;
         }
-        let _ = ws.flush();
     }
 }
 
