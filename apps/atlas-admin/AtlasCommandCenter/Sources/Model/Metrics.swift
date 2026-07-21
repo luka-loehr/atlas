@@ -12,11 +12,17 @@ struct Metrics: Codable, Sendable {
     let power: Power?
     let disk: Disk
     let net: Net?
+    let system: SystemInfo?
     let containers: [Container]
 
     enum CodingKeys: String, CodingKey {
-        case hostname, ts, load, cpu, mem, gpu, power, disk, net, containers
+        case hostname, ts, load, cpu, mem, gpu, power, disk, net, system, containers
         case uptimeS = "uptime_s"
+    }
+
+    struct SystemInfo: Codable, Sendable {
+        let kernel: String
+        let os: String
     }
 
     /// Full-system power estimate: measured CPU (RAPL) + GPU + baseline / PSU.
