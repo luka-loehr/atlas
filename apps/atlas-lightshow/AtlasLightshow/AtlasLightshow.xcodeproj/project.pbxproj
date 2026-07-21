@@ -13,6 +13,7 @@
 		3DFC7488F3DC9A822A2C39B9 /* ShowAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498A2CD08BA3775697E2ED00 /* ShowAudio.swift */; };
 		429E0661B4F349652100D6BA /* AtlasLightshowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF01A54A2916A7896CC727F /* AtlasLightshowApp.swift */; };
 		62B5A7CF9CD93BFF26FD16D8 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47278349F52D9983A5D9886E /* Theme.swift */; };
+		8B15F103DCEDC5DA487AFD2B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 07ECFBC7477A16EADD9E7F2E /* Assets.xcassets */; };
 		8E10624565130ECEF4CE116D /* ShowsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26CFB9D1F0CFC6E068D05BF /* ShowsScreen.swift */; };
 		950277B629D9EEFAD97AE114 /* LightsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62058E4AF88668139EE69096 /* LightsScreen.swift */; };
 		A7A4087503940F01E8EBC3FC /* ShowPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4460A7CF04697BA5E74A82E8 /* ShowPlayerView.swift */; };
@@ -22,6 +23,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		07ECFBC7477A16EADD9E7F2E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		171DF91AA51BC796EF3E6A36 /* VisualizerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerView.swift; sourceTree = "<group>"; };
 		2FD36902A4917206DFAB8C8E /* AtlasLightshow.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AtlasLightshow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A6B83B6C4A3A3A4A76171B0 /* CalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationView.swift; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 		D17D714ED9626265C8BF6E37 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				07ECFBC7477A16EADD9E7F2E /* Assets.xcassets */,
 				7D37FA4E8F8797171CE44AB3 /* Info.plist */,
 				D30F1B733B486C4D360D620B /* App */,
 				03D5CCD4BFEED036359654AD /* Model */,
@@ -107,6 +110,7 @@
 			buildConfigurationList = B642F1B6A4561AABAA0B6922 /* Build configuration list for PBXNativeTarget "AtlasLightshow" */;
 			buildPhases = (
 				BA1CF1309334ADD6F4421553 /* Sources */,
+				6DEE8A2A9B311D1622840EE8 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -148,6 +152,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		6DEE8A2A9B311D1622840EE8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8B15F103DCEDC5DA487AFD2B /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		BA1CF1309334ADD6F4421553 /* Sources */ = {
@@ -210,6 +225,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -240,7 +256,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -278,6 +294,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -308,7 +325,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
