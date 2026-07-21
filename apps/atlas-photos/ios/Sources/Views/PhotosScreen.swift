@@ -19,6 +19,9 @@ struct PhotosScreen: View {
     /// Kumulierter Pinch-Faktor seit dem letzten Stufenwechsel — erlaubt
     /// mehrere Stufen in EINER durchgehenden Pinch-Bewegung.
     @State private var pinchBase: CGFloat = 1
+    /// Id der obersten sichtbaren Tages-Sektion — koppelt Scroll-Position und
+    /// den Jahr/Monat-Schnellscroller (TimeScrubber) bidirektional.
+    @State private var scrolledSectionID: String?
 
     private var cols: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumns)
@@ -102,26 +105,36 @@ struct PhotosScreen: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
                 ForEach(library.sections) { section in
-                    Text(section.date.sectionTitle())
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 14)
-                        .padding(.bottom, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    LazyVGrid(columns: cols, spacing: 2) {
-                        ForEach(section.assets) { asset in
-                            SelectableThumb(asset: asset,
-                                            thumbURL: library.client.thumbURL(asset.id, gridColumns == 1 ? 2048 : 512),
-                                            selection: selection, namespace: zoom) { pick = asset }
-                                .task {
-                                    await library.loadMoreIfNeeded(current: asset)
-                                    library.prefetch(around: asset)
-                                }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(section.date.sectionTitle())
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 14)
+                            .padding(.bottom, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        LazyVGrid(columns: cols, spacing: 2) {
+                            ForEach(section.assets) { asset in
+                                SelectableThumb(asset: asset,
+                                                thumbURL: library.client.thumbURL(asset.id, gridColumns == 1 ? 2048 : 512),
+                                                selection: selection, namespace: zoom) { pick = asset }
+                                    .task {
+                                        await library.loadMoreIfNeeded(current: asset)
+                                        library.prefetch(around: asset)
+                                    }
+                            }
                         }
+                        .padding(.horizontal, 2)
                     }
-                    .padding(.horizontal, 2)
+                    .id(section.id)
                 }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollPosition(id: $scrolledSectionID, anchor: .top)
+        .overlay(alignment: .trailing) {
+            if !selection.active, library.sections.count > 12 {
+                TimeScrubber(sections: library.sections, scrolledID: $scrolledSectionID)
             }
         }
         .scrollIndicators(.hidden)
@@ -221,4 +234,151 @@ struct PhotosScreen: View {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+
+/// Google-Fotos-Schnellscroller am rechten Rand: ein Griff, den man vertikal
+/// zieht, um blitzschnell zu einem Jahr/Monat zu springen. Während des Ziehens
+/// erscheinen Jahres-Marken entlang der Bahn und eine große Monats/Jahr-Blase,
+/// dazu ein haptischer Tick bei jedem Monatswechsel.
+///
+/// Bidirektional über `scrolledID` (an ScrollView.scrollPosition gebunden):
+/// scrollt der Nutzer normal, wandert der Griff mit; zieht er den Griff, scrollt
+/// das Raster.
+struct TimeScrubber: View {
+    let sections: [Library.DaySection]
+    @Binding var scrolledID: String?
+
+    @State private var dragging = false
+    @State private var dragFrac: CGFloat = 0
+    @State private var lastMonthKey = ""
+
+    private let space = "scrubTrack"
+
+    private var count: Int { sections.count }
+
+    private var currentIndex: Int {
+        guard let id = scrolledID,
+              let i = sections.firstIndex(where: { $0.id == id }) else { return 0 }
+        return i
+    }
+
+    /// Jahr → Anteil (0…1) der obersten (neuesten) Sektion dieses Jahres.
+    private var yearMarks: [(year: Int, frac: CGFloat)] {
+        guard count > 1 else { return [] }
+        let cal = Calendar.current
+        var seen = Set<Int>()
+        var out: [(Int, CGFloat)] = []
+        for (i, s) in sections.enumerated() {
+            let y = cal.component(.year, from: s.date)
+            if seen.insert(y).inserted {
+                out.append((y, CGFloat(i) / CGFloat(count - 1)))
+            }
+        }
+        return out.map { (year: $0.0, frac: $0.1) }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            let frac = dragging
+                ? dragFrac
+                : (count > 1 ? CGFloat(currentIndex) / CGFloat(count - 1) : 0)
+            let handleY = clamp(frac * h, 22, h - 22)
+
+            ZStack(alignment: .topTrailing) {
+                if dragging {
+                    ForEach(yearMarks, id: \.year) { m in
+                        Text(String(m.year))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(.regularMaterial, in: Capsule())
+                            .position(x: geo.size.width - 34, y: clamp(m.frac * h, 12, h - 12))
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                    Text(monthLabel(at: targetIndex(dragFrac)))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.regularMaterial, in: Capsule())
+                        .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
+                        .position(x: geo.size.width - 118, y: handleY)
+                        .allowsHitTesting(false)
+                        .transition(.scale.combined(with: .opacity))
+                }
+
+                handle
+                    .position(x: geo.size.width - 20, y: handleY)
+                    .gesture(drag(h: h))
+            }
+            .coordinateSpace(.named(space))
+            .frame(width: geo.size.width, height: h)
+        }
+        .frame(width: 150)
+        .frame(maxHeight: .infinity)
+    }
+
+    private var handle: some View {
+        Image(systemName: "chevron.up.chevron.down")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(.primary)
+            .frame(width: 36, height: 46)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+            .shadow(color: .black.opacity(0.18), radius: 4, y: 1)
+            .scaleEffect(dragging ? 1.12 : 1)
+            .animation(.snappy(duration: 0.2), value: dragging)
+            .contentShape(Rectangle().inset(by: -12))
+    }
+
+    private func drag(h: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(space))
+            .onChanged { v in
+                if !dragging {
+                    withAnimation(.snappy(duration: 0.2)) { dragging = true }
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                }
+                let f = clamp(v.location.y / h, 0, 1)
+                dragFrac = f
+                let idx = targetIndex(f)
+                let id = sections[idx].id
+                if id != scrolledID { scrolledID = id }
+                let mk = monthKey(at: idx)
+                if mk != lastMonthKey {
+                    lastMonthKey = mk
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+            }
+            .onEnded { _ in
+                withAnimation(.easeOut(duration: 0.25)) { dragging = false }
+            }
+    }
+
+    private func targetIndex(_ frac: CGFloat) -> Int {
+        guard count > 0 else { return 0 }
+        return clamp(Int((frac * CGFloat(count - 1)).rounded()), 0, count - 1)
+    }
+
+    private func monthLabel(at i: Int) -> String {
+        guard sections.indices.contains(i) else { return "" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = "MMM yyyy"
+        return f.string(from: sections[i].date)
+    }
+
+    private func monthKey(at i: Int) -> String {
+        guard sections.indices.contains(i) else { return "" }
+        let cal = Calendar.current
+        let c = cal.dateComponents([.year, .month], from: sections[i].date)
+        return "\(c.year ?? 0)-\(c.month ?? 0)"
+    }
+
+    private func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T {
+        min(max(v, lo), hi)
+    }
 }
