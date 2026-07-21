@@ -20,8 +20,6 @@
 		737554793CEE6F84DE46D60A /* Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D9F7D26D9F48BBFD68DBDF /* Metrics.swift */; };
 		77D38D4737AF6AE255E050FA /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 806AE68F9DA5F6E6C4B53BFF /* SwiftTerm */; };
 		798BDD5053320B8F1C67B440 /* ContainersCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D90AAA9452AFAA59368476C /* ContainersCard.swift */; };
-		82464E5374E26AA311BBDE27 /* PowerHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE3F18796F5B09B83AFEB858 /* PowerHistory.swift */; };
-		9295122348ECF17319EDBB27 /* CostCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB27EB6B7BBC431A3834D5F /* CostCard.swift */; };
 		94A90975FF2447306CE217C3 /* TerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1DA1C48087ADBB9860C7F6 /* TerminalScreen.swift */; };
 		B3BDDD4736B648FA5C27782F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE9F988C923FA9A7223EBA22 /* Theme.swift */; };
 		D366B1F8645427F76339A1CE /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C4834796302945E127FEBB /* Components.swift */; };
@@ -50,10 +48,8 @@
 		BCEB04150C50AD0F6ABAB6CD /* ChartLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartLive.swift; sourceTree = "<group>"; };
 		BE9F988C923FA9A7223EBA22 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		DB90DBC8663F75EE46ACF664 /* VPNScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNScreen.swift; sourceTree = "<group>"; };
-		DE3F18796F5B09B83AFEB858 /* PowerHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerHistory.swift; sourceTree = "<group>"; };
 		DF026EAE5B89507FAF5EF464 /* VPNModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNModel.swift; sourceTree = "<group>"; };
 		E002FA00ADD0C7ABB62F0220 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		EBB27EB6B7BBC431A3834D5F /* CostCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCard.swift; sourceTree = "<group>"; };
 		F2EAC2AD27E0F693D6B7C975 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		FC28F7BB9CC597E5849143A7 /* StatusHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusHero.swift; sourceTree = "<group>"; };
 		FE61ABE5A08468F661CD9B49 /* Biometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Biometric.swift; sourceTree = "<group>"; };
@@ -79,7 +75,6 @@
 				FE61ABE5A08468F661CD9B49 /* Biometric.swift */,
 				9520AAA2E2DAA249CDBAF5FE /* DashboardModel.swift */,
 				A3D9F7D26D9F48BBFD68DBDF /* Metrics.swift */,
-				DE3F18796F5B09B83AFEB858 /* PowerHistory.swift */,
 				DF026EAE5B89507FAF5EF464 /* VPNModel.swift */,
 			);
 			path = Model;
@@ -119,7 +114,6 @@
 				BCEB04150C50AD0F6ABAB6CD /* ChartLive.swift */,
 				74C4834796302945E127FEBB /* Components.swift */,
 				1D90AAA9452AFAA59368476C /* ContainersCard.swift */,
-				EBB27EB6B7BBC431A3834D5F /* CostCard.swift */,
 				93838A19A0D4BA554A00F5DB /* DashboardScreen.swift */,
 				F2EAC2AD27E0F693D6B7C975 /* DashboardView.swift */,
 				55CC7A2450FBEA1F8B33C37C /* LoadChart.swift */,
@@ -209,14 +203,12 @@
 				324DFE8C2D864D290CACF498 /* ChartLive.swift in Sources */,
 				D366B1F8645427F76339A1CE /* Components.swift in Sources */,
 				798BDD5053320B8F1C67B440 /* ContainersCard.swift in Sources */,
-				9295122348ECF17319EDBB27 /* CostCard.swift in Sources */,
 				0F00791844397EE81EA6288F /* DashboardModel.swift in Sources */,
 				6F7E1093E6CB8657AD533CAB /* DashboardScreen.swift in Sources */,
 				DCECDC66C220E70D65A290B4 /* DashboardView.swift in Sources */,
 				42CF6103E7525E5FFD87D312 /* LoadChart.swift in Sources */,
 				737554793CEE6F84DE46D60A /* Metrics.swift in Sources */,
 				E04B1621B20CC5B4E0FB134B /* NetChart.swift in Sources */,
-				82464E5374E26AA311BBDE27 /* PowerHistory.swift in Sources */,
 				F9E4D7C95F886F1BE2C239C1 /* SettingsView.swift in Sources */,
 				15CB9847CE554A9450DC6025 /* StatusHero.swift in Sources */,
 				94A90975FF2447306CE217C3 /* TerminalScreen.swift in Sources */,
