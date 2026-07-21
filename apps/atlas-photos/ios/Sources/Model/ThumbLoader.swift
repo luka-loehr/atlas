@@ -125,7 +125,7 @@ final class ThumbLoader {
     private var prefetchInflight: Set<URL> = []
     private var prefetchQueue: [URL] = []
     private var prefetchActive: Set<URL> = []
-    private let prefetchLimit = 4
+    private let prefetchLimit = 6
 
     /// Append-style prefetch (used by the viewer for a few neighbours).
     func prefetch(_ urls: [URL]) {

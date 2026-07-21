@@ -125,8 +125,11 @@ final class Library {
         lastPrefetchAt = now
         lastPrefetchIndex = idx
 
-        let ahead  = ((idx + 1) ..< min(idx + 25, assets.count)).map { $0 }
-        let behind = (max(idx - 8, 0) ..< idx).reversed().map { $0 }
+        // look further ahead so thumbnails are ready BEFORE they scroll in — safe
+        // now that decodes are bounded/cancellable and the window is pruned, not
+        // appended (so this never becomes a runaway flood)
+        let ahead  = ((idx + 1) ..< min(idx + 49, assets.count)).map { $0 }
+        let behind = (max(idx - 16, 0) ..< idx).reversed().map { $0 }
         let urls = (ahead + behind).compactMap { client.thumbURL(assets[$0].id, 512) }
         ThumbLoader.shared.setPrefetchWindow(urls)
     }
