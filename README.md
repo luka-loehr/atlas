@@ -14,7 +14,7 @@ builder/      pinned Docker build images: lambda (Rust→Graviton via Zig),
               node (Next.js + cloudflared), flutter (Android SDK)
 backend/      THE data foundation: postgres:17 + pgvector in Docker —
               media library, knowledge-graph (nodes=domain tables, edges),
-              embeddings (HNSW), resumable ingest queue  → backend/README.md
+              Qwen3-VL embeddings, resumable ingest queue  → backend/README.md
 apps/
   atlas-admin/      iOS app "Atlas" (SwiftUI, iOS 26 Liquid Glass): dashboard,
                     real terminal, docker, exit-node/VPN stats page,
@@ -44,7 +44,8 @@ atlas boot && atlas agent           # wake + metrics/terminal server
 cd backend/docker && docker compose up -d   # the database (on atlas)
 ```
 
-Per-area docs: [backend](backend/README.md) ·
+Per-area docs: [cli](cli/README.md) · [agent](agent/README.md) ·
+[backend](backend/README.md) ·
 [atlas-admin](apps/atlas-admin/README.md) ·
 [atlas-photos](apps/atlas-photos/README.md) ·
 [lightshows](lightshows/README.md)

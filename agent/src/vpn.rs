@@ -170,11 +170,11 @@ pub fn start_sampler() {
 /// its env file for basic auth.
 fn adguard() -> String {
     let mut args: Vec<String> = vec!["-s".into(), "-m".into(), "3".into()];
-    if let Ok(auth) = std::env::var("ATLAS_ADGUARD_AUTH") {
-        if !auth.is_empty() {
-            args.push("-u".into());
-            args.push(auth);
-        }
+    if let Ok(auth) = std::env::var("ATLAS_ADGUARD_AUTH")
+        && !auth.is_empty()
+    {
+        args.push("-u".into());
+        args.push(auth);
     }
     args.push(format!("{ADGUARD_URL}/control/stats"));
     let out = Command::new("curl")

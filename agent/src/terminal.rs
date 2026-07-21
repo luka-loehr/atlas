@@ -62,23 +62,21 @@ pub fn serve(mut stream: TcpStream, ws_key: &str) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     let mut w = ws_out.lock().unwrap();
-                    if w.write_message(Message::Binary(buf[..n].to_vec())).is_err() {
+                    if w.send(Message::Binary(buf[..n].to_vec())).is_err() {
                         break;
                     }
-                    let _ = w.flush();
                 }
             }
         }
         // shell ended -> tell the client
         if let Ok(mut w) = ws_out.lock() {
-            let _ = w.write_message(Message::Close(None));
-            let _ = w.flush();
+            let _ = w.send(Message::Close(None));
         }
     });
 
     // client -> PTY (keystrokes + resize control)
     loop {
-        match ws_read.read_message() {
+        match ws_read.read() {
             Ok(Message::Binary(d)) => {
                 if pty_writer.write_all(&d).is_err() {
                     break;
@@ -97,8 +95,7 @@ pub fn serve(mut stream: TcpStream, ws_key: &str) {
             }
             Ok(Message::Ping(p)) => {
                 if let Ok(mut w) = ws_write.lock() {
-                    let _ = w.write_message(Message::Pong(p));
-                    let _ = w.flush();
+                    let _ = w.send(Message::Pong(p));
                 }
             }
             Ok(Message::Close(_)) | Err(_) => break,
