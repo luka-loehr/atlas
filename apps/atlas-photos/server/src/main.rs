@@ -303,9 +303,9 @@ fn regex_escape(s: &str) -> String {
     out
 }
 
-/// POST to the local SigLIP2 text-embedding sidecar (embed-api, 127.0.0.1:8093).
-/// Any failure — sidecar down, timeout, bad JSON — degrades to None and the
-/// search silently falls back to structured-only results.
+/// POST to the local Qwen3-VL-Embedding text-embedding sidecar (embed-api,
+/// 127.0.0.1:8093). Any failure — sidecar down, timeout, bad JSON — degrades to
+/// None and the search silently falls back to structured-only results.
 async fn text_embedding(q: &str) -> Option<Vec<f32>> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let body = serde_json::json!({ "text": q }).to_string();
@@ -329,14 +329,17 @@ async fn text_embedding(q: &str) -> Option<Vec<f32>> {
             .map(|x| x.as_f64().map(|f| f as f32))
             .collect::<Option<Vec<f32>>>()
     };
-    match tokio::time::timeout(std::time::Duration::from_millis(800), fut).await {
-        Ok(Some(v)) if v.len() == 768 => Some(v),
+    // Qwen3-VL-Embedding-2B runs CPU-only in the sidecar: ~1-3 s per query, and
+    // slower while the GPU re-embed pipeline is hammering the box. 6 s ceiling so
+    // a real query never gets cut off; a wedged sidecar still degrades cleanly.
+    match tokio::time::timeout(std::time::Duration::from_millis(6000), fut).await {
+        Ok(Some(v)) if v.len() == 2048 => Some(v),
         _ => None,
     }
 }
 
 /// Unified search: person names, places (incl. "Kroatien" -> cc), tags,
-/// captions, albums, filenames, years — plus SigLIP2 semantic ranking when
+/// captions, albums, filenames, years — plus Qwen3-VL semantic ranking when
 /// the structured hits are thin. Response keeps the v1 `items` key and adds
 /// `persons` chips.
 async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json<serde_json::Value>, Api> {
@@ -410,11 +413,17 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
         .await?;
     let mut items: Vec<Asset> = rows.iter().map(asset_from).collect();
 
-    // 3) semantic search via SigLIP2 — runs for any query that isn't already a
-    //    huge exact-match set, and contributes GENEROUSLY: a content query like
-    //    "disco" should surface every photo AND video that looks the part, not
-    //    just the few that happen to carry the tag. Structured hits still rank
-    //    first; semantic (photos + videos, from the same vector index) fills in.
+    // 3) semantic search via Qwen3-VL-Embedding — runs for any query that isn't
+    //    already a huge exact-match set, and contributes GENEROUSLY: a content
+    //    query like "disco" should surface every photo AND video that looks the
+    //    part, not just the few that happen to carry the tag. Structured hits
+    //    still rank first; semantic (photos + videos, same vector space) fills in.
+    //
+    //    Zero-loss retrieval: an EXACT full-precision float32 cosine scan over
+    //    every qwen3vl vector — no ANN index, no approximation. At this library
+    //    size (~27k × 2048-dim) the exact scan is a few tens of ms, utterly
+    //    dwarfed by the 1-3 s CPU query embedding, so an HNSW index would buy
+    //    nothing but a recall gap. The ranking you see is bit-exact.
     if items.len() < 150 {
         if let Some(vec) = text_embedding(&term).await {
             let vstr = format!(
@@ -426,7 +435,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                     &format!(
                         "SELECT {ASSET_COLS}, (e.vec <=> $1::text::vector) AS dist
                          FROM embeddings e JOIN assets ON assets.id = e.owner_id
-                         WHERE e.model = 'siglip2' {VISIBLE}
+                         WHERE e.model = 'qwen3vl' {VISIBLE}
                          ORDER BY e.vec <=> $1::text::vector
                          LIMIT 200",
                     ),
@@ -434,8 +443,10 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                 )
                 .await?;
             if let Some(best) = srows.first().map(|r| r.get::<_, f64>(r.len() - 1)) {
-                // wide relative window — SigLIP text↔image distances sit close
-                // together, so a tiny margin (the old 0.05) starved results
+                // relative window off the best hit — keeps results that sit
+                // within a cosine-distance margin of the top match. Starting
+                // point for Qwen's distribution; tune against real queries
+                // ("Hund", "disco") once the re-embed completes.
                 let cutoff = best + 0.25;
                 let mut added = 0;
                 let seen: std::collections::HashSet<String> =

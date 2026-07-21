@@ -1,5 +1,5 @@
 # atlas-photos pipeline — GPU worker image
-# Handles: embed (SigLIP2), faces (InsightFace buffalo_l), caption (vLLM Qwen2.5-VL-3B-AWQ)
+# Handles: embed (Qwen3-VL-Embedding-2B), faces (InsightFace buffalo_l), caption (vLLM Qwen2.5-VL-3B-AWQ)
 #
 # Base image ships torch + vllm + CUDA runtime — do NOT pip-install torch/vllm on top.
 # NOTE: pipeline source is NOT baked into this image. docker-compose mounts
@@ -23,6 +23,16 @@ RUN python3 -m pip install --no-cache-dir \
         "psycopg[binary]" \
         pillow \
         pillow-heif
+
+# Qwen3-VL-Embedding-2B (embed stage + embed-api sidecar): the model repo's
+# scripts/qwen3_vl_embedding.py helper needs qwen-vl-utils for its chat-template
+# preprocessing; `av` (PyAV) is the FFmpeg-backed decoder qwen-vl-utils uses to
+# pull the 12 evenly-spaced frames out of each video. torchcodec/torchvision/
+# transformers are already in the vllm base image. Pinned to the versions the
+# migration was validated against.
+RUN python3 -m pip install --no-cache-dir \
+        "qwen-vl-utils==0.0.14" \
+        "av==18.0.0"
 
 # insightface depends on plain `onnxruntime` (CPU); pip installs BOTH, and the
 # CPU wheel shadows the GPU one (same module name) — the CUDA EP then simply

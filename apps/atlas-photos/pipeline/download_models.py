@@ -5,7 +5,7 @@ Runs as the entrypoint of the pipeline-gpu container before worker_gpu.py:
 skips anything already on disk, so after the first boot this is a no-op that
 takes a second. Downloads:
 
-  - google/siglip2-base-patch16-384        (embed, HF hub -> /models/hf)
+  - Qwen/Qwen3-VL-Embedding-2B             (embed, HF hub -> /models/hf)
   - Qwen/Qwen2.5-VL-3B-Instruct-AWQ        (caption, HF hub -> /models/hf)
   - insightface buffalo_l                  (faces -> /models/insightface)
 """
@@ -16,7 +16,7 @@ MODELS = os.environ.get("MODELS_DIR", "/models")
 os.environ.setdefault("HF_HOME", os.path.join(MODELS, "hf"))
 
 HF_REPOS = [
-    "google/siglip2-base-patch16-384",
+    "Qwen/Qwen3-VL-Embedding-2B",
     "Qwen/Qwen2.5-VL-3B-Instruct-AWQ",
 ]
 INSIGHT_ROOT = os.path.join(MODELS, "insightface")

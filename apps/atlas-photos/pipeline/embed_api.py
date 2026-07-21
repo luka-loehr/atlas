@@ -1,54 +1,52 @@
-"""SigLIP2 text-embedding sidecar for semantic photo search.
+"""Qwen3-VL-Embedding-2B text-embedding sidecar for semantic photo search.
 
-POST /embed {"text": "..."}  ->  {"vec": [768 floats, L2-normalized]}
+POST /embed {"text": "..."}  ->  {"vec": [2048 floats, L2-normalized]}
 GET  /health                 ->  {"ok": true}
 
-Runs CPU-only next to the pipeline workers (compose service `embed-api`).
-Shares the HF cache volume with the GPU worker, so startup needs no download.
-Text-tower inference on CPU is tens of milliseconds — fine for live search.
+The query MUST use the same model the images were embedded with (same joint
+space). Runs CPU-only next to the pipeline (compose service `embed-api`) — a
+2B VL model on CPU is ~1-3 s per query, the price for query/image space parity.
 Bound to 127.0.0.1: only the Rust photo server on the same host may call it.
 """
 
 import json
 import os
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import numpy as np
 import torch
 
-MODEL_ID = "google/siglip2-base-patch16-384"
+MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
 PORT = int(os.environ.get("EMBED_API_PORT", "8093"))
 
-torch.set_num_threads(max(2, (os.cpu_count() or 4) // 4))
+torch.set_num_threads(max(2, (os.cpu_count() or 4) // 2))
 
-_model = None
-_processor = None
+_embedder = None
 # torch inference is serialized: concurrent forward passes on CPU just fight
 # over the same cores and blow up latency for everyone
 _infer_lock = threading.Lock()
 
 
 def load():
-    global _model, _processor
-    from transformers import AutoModel, AutoProcessor
+    global _embedder
+    from huggingface_hub import snapshot_download
+    mp = snapshot_download(MODEL_ID)
+    sys.path.insert(0, os.path.join(mp, "scripts"))
+    from qwen3_vl_embedding import Qwen3VLEmbedder
+    _embedder = Qwen3VLEmbedder(model_name_or_path=mp, torch_dtype=torch.float32)
 
-    _model = AutoModel.from_pretrained(MODEL_ID, torch_dtype=torch.float32)
-    _model.eval()
-    _processor = AutoProcessor.from_pretrained(MODEL_ID)
 
-
-@torch.no_grad()
 def embed_text(text: str) -> list[float]:
-    # SigLIP is trained on 64-token max_length-padded text — deviating from
-    # that at inference degrades retrieval quality
-    inputs = _processor(
-        text=[text], padding="max_length", max_length=64, return_tensors="pt"
-    )
-    feats = _model.get_text_features(**inputs)
-    if not torch.is_tensor(feats):
-        feats = feats.pooler_output
-    v = feats[0]
-    v = v / v.norm()
+    with _infer_lock:
+        v = _embedder.process([{"text": text}])[0]
+    if hasattr(v, "detach"):
+        v = v.detach().float().cpu().numpy()
+    v = np.asarray(v, dtype=np.float32).reshape(-1)
+    n = np.linalg.norm(v)
+    if n > 0:
+        v = v / n
     return [round(float(x), 6) for x in v.tolist()]
 
 
