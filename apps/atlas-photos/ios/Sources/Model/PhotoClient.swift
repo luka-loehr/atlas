@@ -77,9 +77,9 @@ struct PhotoClient: Sendable {
         return r.months
     }
 
-    func timeline(before: Date?) async throws -> [Asset] {
+    func timeline(before: Date?, limit: Int = 300) async throws -> [Asset] {
         struct R: Codable { let items: [Asset] }
-        var path = "/api/timeline?limit=300"
+        var path = "/api/timeline?limit=\(limit)"
         if let before {
             let iso = ISO8601DateFormatter().string(from: before)
             path += "&before=\(iso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? iso)"

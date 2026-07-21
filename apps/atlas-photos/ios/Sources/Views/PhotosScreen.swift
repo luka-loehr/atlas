@@ -133,8 +133,9 @@ struct PhotosScreen: View {
         }
         .scrollPosition(id: $scrolledSectionID, anchor: .top)
         .overlay(alignment: .trailing) {
-            if !selection.active, library.sections.count > 12 {
-                TimeScrubber(sections: library.sections, scrolledID: $scrolledSectionID)
+            if !selection.active, library.scale.count > 1 {
+                TimeScrubber(scale: library.scale, sections: library.sections,
+                             scrolledID: $scrolledSectionID)
             }
         }
         .scrollIndicators(.hidden)
@@ -236,16 +237,14 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-
-/// Google-Fotos-Schnellscroller am rechten Rand: ein Griff, den man vertikal
-/// zieht, um blitzschnell zu einem Jahr/Monat zu springen. Während des Ziehens
-/// erscheinen Jahres-Marken entlang der Bahn und eine große Monats/Jahr-Blase,
-/// dazu ein haptischer Tick bei jedem Monatswechsel.
-///
-/// Bidirektional über `scrolledID` (an ScrollView.scrollPosition gebunden):
-/// scrollt der Nutzer normal, wandert der Griff mit; zieht er den Griff, scrollt
-/// das Raster.
+/// Google-Fotos-Schnellscroller am rechten Rand mit STABILER, bildmengen-
+/// proportionaler Skala: Grundlage ist `scale` (alle Monate + Anzahl, aus
+/// /api/timeline/summary), nicht die geladenen Sektionen — dadurch verschiebt
+/// sich nichts beim Nachladen, und ein Monat mit vielen Bildern bekommt
+/// proportional mehr Platz auf der Bahn. Springen setzt `scrolledID` auf die
+/// (im Hintergrund voll geladene) Tages-Sektion des Zielmonats.
 struct TimeScrubber: View {
+    let scale: [MonthBucket]
     let sections: [Library.DaySection]
     @Binding var scrolledID: String?
 
@@ -255,62 +254,66 @@ struct TimeScrubber: View {
 
     private let space = "scrubTrack"
 
-    private var count: Int { sections.count }
+    private struct Entry { let month: String; let year: Int; let date: Date; let start: CGFloat; let end: CGFloat }
 
-    private var currentIndex: Int {
-        guard let id = scrolledID,
-              let i = sections.firstIndex(where: { $0.id == id }) else { return 0 }
-        return i
+    /// Kumulative Anteile pro Monat (neueste zuerst, oben = 0).
+    private var entries: [Entry] {
+        let total = max(scale.reduce(0) { $0 + $1.count }, 1)
+        var acc = 0
+        return scale.map { b in
+            let start = CGFloat(acc) / CGFloat(total)
+            acc += b.count
+            let end = CGFloat(acc) / CGFloat(total)
+            let (y, d) = Self.parse(b.month)
+            return Entry(month: b.month, year: y, date: d, start: start, end: end)
+        }
     }
 
-    /// Jahr → Anteil (0…1) der obersten (neuesten) Sektion dieses Jahres.
     private var yearMarks: [(year: Int, frac: CGFloat)] {
-        guard count > 1 else { return [] }
-        let cal = Calendar.current
         var seen = Set<Int>()
         var out: [(Int, CGFloat)] = []
-        for (i, s) in sections.enumerated() {
-            let y = cal.component(.year, from: s.date)
-            if seen.insert(y).inserted {
-                out.append((y, CGFloat(i) / CGFloat(count - 1)))
-            }
-        }
+        for e in entries where seen.insert(e.year).inserted { out.append((e.year, e.start)) }
         return out.map { (year: $0.0, frac: $0.1) }
+    }
+
+    /// Anteil der aktuell obersten Sektion (fein per Tag innerhalb des Monats).
+    private var currentFrac: CGFloat {
+        guard let id = scrolledID,
+              let sec = sections.first(where: { $0.id == id }),
+              let e = entries.first(where: { $0.month == Self.monthKey(sec.date) }) else { return 0 }
+        let cal = Calendar.current
+        let day = cal.component(.day, from: sec.date)
+        let dim = cal.range(of: .day, in: .month, for: sec.date)?.count ?? 30
+        let dayFrac = CGFloat(day - 1) / CGFloat(max(dim - 1, 1))
+        return e.start + dayFrac * (e.end - e.start)
     }
 
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
-            let frac = dragging
-                ? dragFrac
-                : (count > 1 ? CGFloat(currentIndex) / CGFloat(count - 1) : 0)
+            let frac = dragging ? dragFrac : currentFrac
             let handleY = clamp(frac * h, 22, h - 22)
-
             ZStack(alignment: .topTrailing) {
                 if dragging {
                     ForEach(yearMarks, id: \.year) { m in
                         Text(String(m.year))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(.regularMaterial, in: Capsule())
                             .position(x: geo.size.width - 34, y: clamp(m.frac * h, 12, h - 12))
                             .allowsHitTesting(false)
-                            .transition(.opacity)
                     }
-                    Text(monthLabel(at: targetIndex(dragFrac)))
+                    Text(target(dragFrac).label)
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
                         .background(.regularMaterial, in: Capsule())
                         .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
                         .position(x: geo.size.width - 118, y: handleY)
                         .allowsHitTesting(false)
                         .transition(.scale.combined(with: .opacity))
                 }
-
                 handle
                     .position(x: geo.size.width - 20, y: handleY)
                     .gesture(drag(h: h))
@@ -344,41 +347,43 @@ struct TimeScrubber: View {
                 }
                 let f = clamp(v.location.y / h, 0, 1)
                 dragFrac = f
-                let idx = targetIndex(f)
-                let id = sections[idx].id
-                if id != scrolledID { scrolledID = id }
-                let mk = monthKey(at: idx)
-                if mk != lastMonthKey {
-                    lastMonthKey = mk
+                let t = target(f)
+                if t.month != lastMonthKey {
+                    lastMonthKey = t.month
                     UISelectionFeedbackGenerator().selectionChanged()
+                    if let id = t.id, id != scrolledID { scrolledID = id }
                 }
             }
-            .onEnded { _ in
-                withAnimation(.easeOut(duration: 0.25)) { dragging = false }
-            }
+            .onEnded { _ in withAnimation(.easeOut(duration: 0.25)) { dragging = false } }
     }
 
-    private func targetIndex(_ frac: CGFloat) -> Int {
-        guard count > 0 else { return 0 }
-        return clamp(Int((frac * CGFloat(count - 1)).rounded()), 0, count - 1)
+    /// Zielmonat für einen Bahn-Anteil: Label + (falls geladen) Sektions-Id.
+    private func target(_ f: CGFloat) -> (month: String, label: String, id: String?) {
+        let es = entries
+        guard let e = es.first(where: { f >= $0.start && f < $0.end }) ?? es.last else {
+            return ("", "", nil)
+        }
+        let id = sections.first(where: { Self.monthKey($0.date) == e.month })?.id
+        return (e.month, Self.label(e.date), id)
     }
 
-    private func monthLabel(at i: Int) -> String {
-        guard sections.indices.contains(i) else { return "" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        f.dateFormat = "MMM yyyy"
-        return f.string(from: sections[i].date)
-    }
+    private func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(max(v, lo), hi) }
 
-    private func monthKey(at i: Int) -> String {
-        guard sections.indices.contains(i) else { return "" }
-        let cal = Calendar.current
-        let c = cal.dateComponents([.year, .month], from: sections[i].date)
-        return "\(c.year ?? 0)-\(c.month ?? 0)"
-    }
+    // MARK: date helpers
 
-    private func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T {
-        min(max(v, lo), hi)
+    private static func parse(_ ym: String) -> (Int, Date) {
+        let p = ym.split(separator: "-")
+        let y = Int(p.first ?? "0") ?? 0
+        let m = p.count > 1 ? (Int(p[1]) ?? 1) : 1
+        let d = Calendar.current.date(from: DateComponents(year: y, month: m, day: 1)) ?? Date()
+        return (y, d)
+    }
+    private static func monthKey(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month], from: d)
+        return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
+    }
+    private static func label(_ d: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "MMM yyyy"
+        return f.string(from: d)
     }
 }
