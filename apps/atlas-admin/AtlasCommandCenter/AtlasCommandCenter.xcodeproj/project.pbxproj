@@ -20,6 +20,7 @@
 		737554793CEE6F84DE46D60A /* Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D9F7D26D9F48BBFD68DBDF /* Metrics.swift */; };
 		77D38D4737AF6AE255E050FA /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 806AE68F9DA5F6E6C4B53BFF /* SwiftTerm */; };
 		798BDD5053320B8F1C67B440 /* ContainersCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D90AAA9452AFAA59368476C /* ContainersCard.swift */; };
+		8B51883612721F17F074A6E2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 939D42608E5C414DD0841DE2 /* Assets.xcassets */; };
 		94A90975FF2447306CE217C3 /* TerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1DA1C48087ADBB9860C7F6 /* TerminalScreen.swift */; };
 		B3BDDD4736B648FA5C27782F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE9F988C923FA9A7223EBA22 /* Theme.swift */; };
 		D366B1F8645427F76339A1CE /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C4834796302945E127FEBB /* Components.swift */; };
@@ -41,6 +42,7 @@
 		74C4834796302945E127FEBB /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		7D1DA1C48087ADBB9860C7F6 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
 		93838A19A0D4BA554A00F5DB /* DashboardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScreen.swift; sourceTree = "<group>"; };
+		939D42608E5C414DD0841DE2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9520AAA2E2DAA249CDBAF5FE /* DashboardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardModel.swift; sourceTree = "<group>"; };
 		A1FCBCB7FE6D82DC06328C0F /* ActivityModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityModel.swift; sourceTree = "<group>"; };
 		A3D9F7D26D9F48BBFD68DBDF /* Metrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Metrics.swift; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 		3113F83466EF60AAB7A39EFE /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				939D42608E5C414DD0841DE2 /* Assets.xcassets */,
 				2215587F4029916AF7DED9EB /* Info.plist */,
 				5E18E729201935892BD12129 /* App */,
 				09329209A77FAD9D25A5D24C /* Model */,
@@ -143,6 +146,7 @@
 			buildConfigurationList = DB8F6EFD7E2AB14630CE1452 /* Build configuration list for PBXNativeTarget "AtlasCommandCenter" */;
 			buildPhases = (
 				A1CBAE42BBB78F636CF7853F /* Sources */,
+				0A7123BF89267299765E9FD4 /* Resources */,
 				CF19BF866FFAFB228E4BC248 /* Frameworks */,
 			);
 			buildRules = (
@@ -190,6 +194,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		0A7123BF89267299765E9FD4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8B51883612721F17F074A6E2 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A1CBAE42BBB78F636CF7853F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -225,6 +240,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -255,7 +271,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -286,6 +302,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -316,7 +333,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
