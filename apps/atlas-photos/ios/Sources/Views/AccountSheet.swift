@@ -71,24 +71,16 @@ struct AccountSheet: View {
     }
 
     private var header: some View {
-        VStack(spacing: 10) {
-            ZStack {
-                Circle().fill(LinearGradient(colors: [.blue, .purple],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 72, height: 72)
-                Image(systemName: "photo.stack.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.white)
-            }
+        VStack(spacing: 12) {
+            // Liquid-Glass-Logo statt Farbverlauf — ruhig und material-nativ.
+            Image(systemName: "photo.stack")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 78, height: 78)
+                .glassEffect(.regular, in: Circle())
             Text("Deine Bibliothek")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
-            HStack(spacing: 6) {
-                Circle().fill(library.online ? .green : .red).frame(width: 7, height: 7)
-                Text(library.online ? "mit atlas verbunden" : "offline")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 

@@ -19,6 +19,8 @@ struct PhotosScreen: View {
     /// Kumulierter Pinch-Faktor seit dem letzten Stufenwechsel — erlaubt
     /// mehrere Stufen in EINER durchgehenden Pinch-Bewegung.
     @State private var pinchBase: CGFloat = 1
+    /// Ganz oben im Grid? Steuert die Atlas-Wortmarke oben rechts.
+    @State private var atTop = true
 
     private var cols: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumns)
@@ -67,9 +69,18 @@ struct PhotosScreen: View {
                         Button("Fertig") { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
                     } else {
                         // Auswahl startet wie bei Apple per Long-Press auf ein
-                        // Bild — oben rechts bleibt nur noch das Konto.
-                        Button { showAccount = true } label: {
-                            Image(systemName: "person.crop.circle").font(.system(size: 22))
+                        // Bild — oben rechts: Atlas-Wortmarke (nur ganz oben,
+                        // verschwindet beim Scrollen) + Konto.
+                        HStack(spacing: 10) {
+                            if atTop {
+                                Text("Atlas")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                                    .transition(.opacity)
+                            }
+                            Button { showAccount = true } label: {
+                                Image(systemName: "person.crop.circle").font(.system(size: 22))
+                            }
                         }
                     }
                 }
@@ -124,6 +135,11 @@ struct PhotosScreen: View {
             }
         }
         .scrollIndicators(.hidden)
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentOffset.y + geo.contentInsets.top <= 12
+        } action: { _, isTop in
+            withAnimation(.easeInOut(duration: 0.2)) { atTop = isTop }
+        }
         // Pinch-Zoom fürs Raster (wie Apple Fotos): simultaneousGesture, damit
         // Scrollen und Zell-Taps unangetastet bleiben. Stufen werden schon
         // WÄHREND der Geste geschaltet (Schwellen 1.25/0.8 relativ zur letzten
