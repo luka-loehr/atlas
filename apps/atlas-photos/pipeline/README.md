@@ -6,7 +6,7 @@ Two always-on workers on **atlas** that drain the `ingest_jobs` queue in Postgre
 | Service        | Jobs                                  | Image base              |
 |----------------|---------------------------------------|-------------------------|
 | `pipeline-cpu` | thumb, meta, geocode, event_scan      | python:3.12-slim        |
-| `pipeline-gpu` | embed (SigLIP2), faces (InsightFace), caption (vLLM Qwen2.5-VL-3B-AWQ) | vllm/vllm-openai:latest |
+| `pipeline-gpu` | embed (Qwen3-VL-Embedding-2B), faces (InsightFace), caption→tags (vLLM Qwen2.5-VL-3B-AWQ) | vllm/vllm-openai:latest |
 
 The pipeline **source is mounted** into the containers at `/app` (read-only), not
 baked into the images. Deploying new code:
@@ -35,7 +35,7 @@ Expectations:
 - `vllm/vllm-openai:latest` pull is **large** (~10 GB download, ~20 GB on disk);
   the CPU image is ~1 GB. One-time cost.
 - On its **first start the GPU container downloads ~6 GB of models**
-  (SigLIP2 base, buffalo_l, Qwen2.5-VL-3B-AWQ) into `/home/atlas/models`
+  (Qwen3-VL-Embedding-2B, buffalo_l, Qwen2.5-VL-3B-AWQ) into `/home/atlas/models`
   before the worker loop begins — watch `docker logs -f pipeline-gpu`.
   Subsequent starts skip this (idempotent check).
 - Requires migration 003 to be applied (queue columns, faces.embedding,

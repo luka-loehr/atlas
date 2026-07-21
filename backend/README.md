@@ -12,13 +12,14 @@ volume, `127.0.0.1:5432` — remote dev via `ssh atlas -L 5432:localhost:5432`).
   (`('asset', <hash>) --shows--> ('person', 7)`), with `rel`, `props`,
   `confidence`. Traversals via `WITH RECURSIVE`; Apache AGE (Cypher) can be
   added later without moving data.
-- **`embeddings`** holds all vectors (`vector(768)`, HNSW per model).
-  First citizens: `siglip2` image vectors (semantic search), `arcface`
-  face vectors (person clustering). Text models join with the mail/doc layers.
+- **`embeddings`** holds all vectors. First citizen: `qwen3vl` — Qwen3-VL
+  multimodal image/video vectors (`vector(2048)`, semantic search over an
+  exact fp32 cosine scan, no ANN index at this library size). `arcface`
+  face vectors live on `faces` (person clustering). Text models join later.
 - **`ingest_jobs`** is the resumable work queue: every asset spawns its
   pending jobs (thumb, embed, faces, whisper, caption); GPU workers drain it
   whenever atlas is awake — pausing atlas pauses the pipeline, nothing breaks.
-- IDs for media are **BLAKE3 content hashes** — dedupe key and immutable
+- IDs for media are **SHA-256 content hashes** — dedupe key and immutable
   asset-URL key for `atlas-photos` in one.
 
 ## Run
@@ -37,7 +38,7 @@ tracked in `schema_migrations`.
 
 | consumer | talks via |
 |---|---|
-| `apps/atlas-photos` server (Rust/axum + sqlx) | timeline, assets, albums |
+| `apps/atlas-photos` server (Rust/axum + tokio-postgres/deadpool) | timeline, assets, albums |
 | ingest workers (Python: takeout, mail, owntracks…) | assets, edges, ingest_jobs |
-| ML workers (GPU: SigLIP, InsightFace, Whisper, VLM) | embeddings, faces, ingest_jobs |
+| ML workers (GPU: Qwen3-VL-Embedding, InsightFace, VLM tags) | embeddings, faces, tags, ingest_jobs |
 | MCP `atlas-memory` (Hermes/Claude) | semantic_search, graph_query, add_fact |
