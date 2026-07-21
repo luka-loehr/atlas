@@ -200,7 +200,7 @@ struct SettingsScreen: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
-            .background(color.gradient, in: RoundedRectangle(cornerRadius: 7))
+            .background(color, in: RoundedRectangle(cornerRadius: 7))
     }
 
     private func valueRow(_ title: String, _ value: String,
