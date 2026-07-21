@@ -24,8 +24,6 @@ struct DashboardView: View {
                                  downNow: model.netDownMbps, upNow: model.netUpMbps)
                         SectionLabel(text: "Speicher")
                         bars(m)
-                        SectionLabel(text: "Strom & Kosten")
-                        CostCard(history: model.power, systemW: m.power?.systemW)
                         SectionLabel(text: "Container")
                         ContainersCard(containers: m.containers)
                         if let s = m.system {

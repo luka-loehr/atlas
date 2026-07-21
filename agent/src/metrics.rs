@@ -264,18 +264,6 @@ fn rapl_delta_w(prev: u64, cur: u64, dt: f64) -> Option<f64> {
     Some(de as f64 / 1_000_000.0 / dt)
 }
 
-/// Self-contained full-system power sample (own 200 ms RAPL window + GPU),
-/// independent of the live-metrics RAPL state — used by the energy logger.
-pub fn system_power_sample() -> Option<f64> {
-    let e1 = read_rapl_energy()?;
-    let t1 = Instant::now();
-    thread::sleep(Duration::from_millis(200));
-    let e2 = read_rapl_energy()?;
-    let cpu = rapl_delta_w(e1, e2, t1.elapsed().as_secs_f64())?;
-    let (_, gpu) = gpu_json();
-    Some((cpu + gpu + 35.0) / 0.88)
-}
-
 /// Distro pretty name, e.g. "Ubuntu 26.04 LTS".
 fn os_pretty() -> String {
     fs::read_to_string("/etc/os-release")

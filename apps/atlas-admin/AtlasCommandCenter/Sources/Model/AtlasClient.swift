@@ -62,7 +62,6 @@ struct AtlasClient: Sendable {
 
     // power ------------------------------------------------------------------
     func power(_ action: String) async throws { try await post("/api/power/\(action)") }
-    func powerDaily() async throws -> PowerHistory { try await get("/api/power/daily", PowerHistory.self) }
 
     // terminal ---------------------------------------------------------------
     func terminalURL() -> URL? {
