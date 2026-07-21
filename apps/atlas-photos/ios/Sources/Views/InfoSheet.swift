@@ -174,27 +174,15 @@ struct InfoSheet: View {
         item.openInMaps()
     }
 
-    // MARK: - KI-Beschreibung + Tags (read-only, prominent — ersetzt das
-    // frühere Untertitel-Feld an derselben Stelle)
+    // MARK: - Tags (read-only). KI-Beschreibungen wurden entfernt — die
+    // generierten Sätze waren zu unzuverlässig; die Tags reichen.
 
     @ViewBuilder
     private var aiSection: some View {
-        let cap = info?.caption
         let tags = info?.tags ?? []
-        if cap != nil || !tags.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                if let cap {
-                    Text(cap)
-                        .font(.system(size: 20, weight: .regular))
-                        .lineSpacing(3)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !tags.isEmpty {
-                    FlowChips(items: tags)
-                }
-            }
-            .padding(.top, 4)
+        if !tags.isEmpty {
+            FlowChips(items: tags)
+                .padding(.top, 4)
         }
     }
 

@@ -352,12 +352,10 @@ class CaptionStage:
             if parsed is None:
                 results.append((jid, f"caption JSON unparseable: {text[:120]!r}"))
                 continue
-            caption, tags = parsed
+            _caption, tags = parsed   # caption verworfen — nur Tags werden gespeichert
             try:
                 with conn.transaction():
                     cur = conn.cursor()
-                    cur.execute("UPDATE assets SET caption=%s WHERE id=%s",
-                                (caption, aid))
                     for t in tags:
                         cur.execute(
                             """INSERT INTO tags (asset_id, tag, source)

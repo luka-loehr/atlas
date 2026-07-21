@@ -395,7 +395,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                      FROM assets a2
                      LEFT JOIN album_assets aa ON aa.asset_id = a2.id
                      LEFT JOIN albums al ON al.id = aa.album_id
-                     WHERE a2.caption ~* $6 OR a2.orig_name ILIKE $1
+                     WHERE a2.orig_name ILIKE $1
                         OR al.title ILIKE $1 OR to_char(a2.taken_at, 'YYYY') = $5
                  )
                  SELECT {ASSET_COLS}, min(h.prio) AS prio
@@ -405,8 +405,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                  ORDER BY min(h.prio), assets.taken_at DESC NULLS LAST
                  LIMIT 600"
             ),
-            &[&like, &tag_prefix, &person_ids, &cc, &term,
-              &format!(r"\m{}", regex_escape(&term))],
+            &[&like, &tag_prefix, &person_ids, &cc, &term],
         )
         .await?;
     let mut items: Vec<Asset> = rows.iter().map(asset_from).collect();
@@ -568,7 +567,6 @@ async fn asset_info(State(app): State<App>, Path(id): Path<String>) -> Result<Re
         "size_bytes": r.get::<_, Option<i64>>(6),
         "lat": r.get::<_, Option<f64>>(7),
         "lon": r.get::<_, Option<f64>>(8),
-        "caption": r.get::<_, Option<String>>(9),
         "favorite": r.get::<_, bool>(10),
         "duration_s": r.get::<_, Option<f64>>(11),
         "place": place,
