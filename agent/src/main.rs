@@ -25,6 +25,7 @@
 mod actions;
 mod activity;
 mod metrics;
+mod power;
 mod stream;
 mod terminal;
 mod vpn;
@@ -47,6 +48,7 @@ fn main() {
     });
     vpn::start_sampler();
     stream::start_sampler();   // 10-min Metrics-History ab Boot
+    power::start_logger();     // Energie/Kosten pro Tag in Postgres
     println!(
         "atlas-agent {} on :{port} (auth: {})",
         env!("CARGO_PKG_VERSION"),
@@ -91,6 +93,9 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
         ("GET", "/health") => respond(&mut stream, 200, r#"{"ok":true}"#),
         ("GET", "/api/metrics") | ("GET", "/") => {
             respond(&mut stream, 200, &metrics::collect())
+        }
+        ("GET", "/api/power/daily") => {
+            respond(&mut stream, 200, &power::daily_json())
         }
         ("GET", "/term") if req.ws_key.is_some() => {
             terminal::serve(stream, &req.ws_key.unwrap());
