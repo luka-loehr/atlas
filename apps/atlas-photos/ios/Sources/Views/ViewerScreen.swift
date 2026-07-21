@@ -522,14 +522,17 @@ private struct VideoPlayerView: View {
     }
 
     private var controlBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 8) {
             Button { togglePlay() } label: {
                 Image(systemName: playing ? "pause.fill" : "play.fill")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.primary)
-                    .frame(width: 28, height: 28)
+                    // generous 52×44 hit area (icon stays small) so the primary
+                    // control is hard to miss — Apple's 44pt minimum and then some
+                    .frame(width: 52, height: 44)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             progressBar
             Button {
                 muted.toggle()
@@ -538,12 +541,13 @@ private struct VideoPlayerView: View {
                 Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
         .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
     }
 
