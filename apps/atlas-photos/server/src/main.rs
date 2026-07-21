@@ -59,6 +59,7 @@ async fn main() {
     let router = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/api/stats", get(stats))
+        .route("/api/heatmap", get(heatmap))
         .route("/api/timeline/summary", get(summary))
         .route("/api/timeline", get(timeline))
         .route("/api/albums", get(albums))
@@ -253,6 +254,27 @@ async fn album_assets(State(app): State<App>, Path(id): Path<i64>) -> Result<Jso
         )
         .await?;
     let items: Vec<Asset> = rows.iter().map(asset_from).collect();
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+/// GitHub-style Aktivitäts-Heatmap: Foto-Anzahl pro Tag, letzte ~53 Wochen.
+async fn heatmap(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            "SELECT to_char(taken_at::date, 'YYYY-MM-DD') AS d, count(*)::int AS n
+             FROM assets
+             WHERE taken_at IS NOT NULL
+               AND taken_at > now() - interval '372 days'
+               AND NOT archived AND trashed_at IS NULL AND NOT locked
+             GROUP BY 1 ORDER BY 1",
+            &[],
+        )
+        .await?;
+    let items: Vec<_> = rows
+        .iter()
+        .map(|r| serde_json::json!({ "d": r.get::<_, String>(0), "n": r.get::<_, i32>(1) }))
+        .collect();
     Ok(Json(serde_json::json!({ "items": items })))
 }
 
