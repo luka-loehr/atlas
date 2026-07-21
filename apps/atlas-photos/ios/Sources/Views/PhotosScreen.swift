@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PhotosScreen: View {
     var library: Library
@@ -11,7 +12,27 @@ struct PhotosScreen: View {
     @State private var lastViewedId: String?   // zoom-return cell stays on top
     @Namespace private var zoom
 
-    private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
+    /// Apple-Fotos-Raster-Zoom: Pinch schaltet durch die Spaltenstufen.
+    /// Persistiert, damit die App mit der zuletzt gewählten Dichte startet.
+    private static let zoomLevels = [1, 3, 5, 9]
+    @AppStorage("photos.gridColumns") private var gridColumns = 3
+    /// Kumulierter Pinch-Faktor seit dem letzten Stufenwechsel — erlaubt
+    /// mehrere Stufen in EINER durchgehenden Pinch-Bewegung.
+    @State private var pinchBase: CGFloat = 1
+
+    private var cols: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumns)
+    }
+
+    /// Eine Zoom-Stufe weiter (in = Zellen größer = weniger Spalten).
+    private func stepZoom(in zoomIn: Bool) {
+        let levels = Self.zoomLevels
+        guard let i = levels.firstIndex(of: gridColumns) else { gridColumns = 3; return }
+        let next = zoomIn ? i - 1 : i + 1
+        guard levels.indices.contains(next) else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.snappy(duration: 0.32)) { gridColumns = levels[next] }
+    }
 
     var body: some View {
         NavigationStack {
@@ -90,7 +111,7 @@ struct PhotosScreen: View {
                     LazyVGrid(columns: cols, spacing: 2) {
                         ForEach(section.assets) { asset in
                             SelectableThumb(asset: asset,
-                                            thumbURL: library.client.thumbURL(asset.id, 512),
+                                            thumbURL: library.client.thumbURL(asset.id, gridColumns == 1 ? 2048 : 512),
                                             selection: selection, namespace: zoom) { pick = asset }
                                 .task {
                                     await library.loadMoreIfNeeded(current: asset)
@@ -103,6 +124,24 @@ struct PhotosScreen: View {
             }
         }
         .scrollIndicators(.hidden)
+        // Pinch-Zoom fürs Raster (wie Apple Fotos): simultaneousGesture, damit
+        // Scrollen und Zell-Taps unangetastet bleiben. Stufen werden schon
+        // WÄHREND der Geste geschaltet (Schwellen 1.25/0.8 relativ zur letzten
+        // Stufe), sodass ein langer Pinch mehrere Stufen durchläuft.
+        .simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { value in
+                    let ratio = value.magnification / pinchBase
+                    if ratio > 1.25 {
+                        pinchBase = value.magnification
+                        stepZoom(in: true)
+                    } else if ratio < 0.8 {
+                        pinchBase = value.magnification
+                        stepZoom(in: false)
+                    }
+                }
+                .onEnded { _ in pinchBase = 1 }
+        )
         .refreshable { await library.refresh() }
         .selectionToolbar(selection,
             onShare:    { shareSelected() },
