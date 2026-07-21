@@ -45,15 +45,10 @@ struct PhotosScreen: View {
                     if selection.active {
                         Button("Fertig") { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
                     } else {
-                        Menu {
-                            Button { withAnimation(.snappy(duration: 0.4)) { selection.enter() } } label: {
-                                Label("Auswählen", systemImage: "checkmark.circle")
-                            }
-                            Button { showAccount = true } label: {
-                                Label("Konto & Einstellungen", systemImage: "person.crop.circle")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle").font(.system(size: 22))
+                        // Auswahl startet wie bei Apple per Long-Press auf ein
+                        // Bild — oben rechts bleibt nur noch das Konto.
+                        Button { showAccount = true } label: {
+                            Image(systemName: "person.crop.circle").font(.system(size: 22))
                         }
                     }
                 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Feder für das An-/Abwählen einer Zelle — schnell, minimal-bouncy (Apple-Ton).
 private let selectSpring: Animation = .snappy(duration: 0.26, extraBounce: 0.05)
@@ -63,6 +64,18 @@ struct SelectableModifier: ViewModifier {
                     onOpen()
                 }
             }
+            // Apple-Fotos-Geste: Bild gedrückt halten → Auswahl-Modus startet
+            // mit genau diesem Bild. simultaneousGesture statt onLongPressGesture,
+            // sonst schluckt der ScrollView-Pan die Geste; maximumDistance großzügig,
+            // damit ein Mikro-Wackler des Fingers den Hold nicht abbricht.
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.35, maximumDistance: 18)
+                    .onEnded { _ in
+                        guard !selection.active else { return }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(selectSpring) { selection.enter(with: id) }
+                    }
+            )
     }
 }
 
