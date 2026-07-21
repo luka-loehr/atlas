@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Binding var token: String
     var onDone: () -> Void
 
+    @AppStorage("power.pricePerKwh") private var price = 0.40
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -27,6 +28,23 @@ struct SettingsView: View {
                     Text("atlas-agent")
                 } footer: {
                     Text("Adresse des atlas-agent im Tailnet. Der Token ist nur nötig, wenn der Agent mit ATLAS_AGENT_TOKEN läuft — Strom-Aktionen brauchen ihn immer.")
+                }
+
+                Section {
+                    LabeledContent("Strompreis") {
+                        HStack(spacing: 4) {
+                            TextField("0.40", value: $price, format: .number.precision(.fractionLength(2)))
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 70)
+                            Text("€/kWh").foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Kosten")
+                } footer: {
+                    Text("Dein Arbeitspreis pro Kilowattstunde — Basis für die Kosten-Hochrechnung und den Tagesverlauf. Deutscher Haushaltsstrom liegt 2026 grob bei 0,35–0,42 €/kWh.")
                 }
 
                 Section {

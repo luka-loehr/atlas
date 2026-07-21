@@ -24,8 +24,13 @@ struct DashboardView: View {
                                  downNow: model.netDownMbps, upNow: model.netUpMbps)
                         SectionLabel(text: "Speicher")
                         bars(m)
+                        SectionLabel(text: "Strom & Kosten")
+                        CostCard(history: model.power, systemW: m.power?.systemW)
                         SectionLabel(text: "Container")
                         ContainersCard(containers: m.containers)
+                        if let s = m.system {
+                            systemInfo(s, uptime: m.uptimeS)
+                        }
                         footer
                     } else if model.metrics == nil && model.lastError == nil {
                         loading
@@ -108,6 +113,41 @@ struct DashboardView: View {
                 )
             }
         }
+    }
+
+    private func systemInfo(_ s: Metrics.SystemInfo, uptime: Int) -> some View {
+        GlassCard {
+            VStack(spacing: 0) {
+                infoRow("Betriebssystem", s.os, "opticaldisc.fill")
+                infoDivider
+                infoRow("Kernel", s.kernel, "cpu.fill")
+                infoDivider
+                infoRow("Laufzeit", uptimeText(uptime), "clock.arrow.circlepath")
+            }
+        }
+    }
+
+    private func infoRow(_ label: String, _ value: String, _ icon: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).font(.system(size: 13))
+                .foregroundStyle(Theme.accent).frame(width: 20)
+            Text(label).font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+            Spacer()
+            Text(value).font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white).lineLimit(1).truncationMode(.middle)
+        }
+        .padding(.vertical, 9)
+    }
+
+    private var infoDivider: some View {
+        Rectangle().fill(.white.opacity(0.07)).frame(height: 1)
+    }
+
+    private func uptimeText(_ s: Int) -> String {
+        let d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60
+        if d > 0 { return "\(d) d \(h) h" }
+        if h > 0 { return "\(h) h \(m) m" }
+        return "\(m) m"
     }
 
     private var footer: some View {

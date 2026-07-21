@@ -21,6 +21,10 @@ final class DashboardModel {
     var memSamples: [(Date, Double)] = []
     var memGbLive: Double = 0
 
+    // energy / cost history (per-day Wh + lifetime total), polled ~every 15 s
+    var power: PowerHistory?
+    private var lastPowerFetch: Date?
+
     // smoothed live values for the hero rings (fallback: polled metrics)
     var cpuLive: Double? { wsConnected ? cpuSamples.last?.1 : nil }
     var gpuLive: Double? { wsConnected ? gpuSamples.last?.1 : nil }
@@ -83,6 +87,11 @@ final class DashboardModel {
             online = true
             lastError = nil
             updatedAt = Date()
+            // energy history changes slowly — poll it far less often than metrics
+            if lastPowerFetch == nil || Date().timeIntervalSince(lastPowerFetch!) > 15 {
+                lastPowerFetch = Date()
+                if let p = try? await client.powerDaily() { power = p }
+            }
             if !wsConnected {
                 push(&cpuHistory, m.cpu.usage)
                 push(&gpuHistory, m.gpu?.usage ?? 0)
