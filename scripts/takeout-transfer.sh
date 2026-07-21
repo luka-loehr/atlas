@@ -13,16 +13,21 @@
 set -u
 DL="$HOME/Downloads"
 REMOTE_DIR="takeout/photos"
+# Direktes Heimnetz-LAN (Gigabit) statt Tailscale-Relay.
+HOST="atlas-lan"
+# NUR der Foto-Export. Die Google-Drive-Datei (20260720T115546Z-1-001.zip)
+# bleibt bewusst lokal und wird nie angefasst.
+PHOTOS_GLOB="takeout-20260719T213848Z-*.zip"
 
 canonical() {            # "takeout-…-1-004 (1).zip" -> "takeout-…-1-004.zip"
   basename "$1" | sed -E 's/ \(([0-9]+)\)\.zip$/.zip/'
 }
 
-remote_size() { ssh -o ConnectTimeout=15 atlas "stat -c%s 'takeout/photos/$1' 2>/dev/null" 2>/dev/null; }
+remote_size() { ssh -o ConnectTimeout=15 "$HOST" "stat -c%s 'takeout/photos/$1' 2>/dev/null" 2>/dev/null; }
 
 while true; do
   shopt -s nullglob
-  for zip in "$DL"/takeout-*.zip; do
+  for zip in "$DL"/$PHOTOS_GLOB; do
     [ -e "$zip" ] || continue
     # skip if a matching part is still downloading
     [ -e "$zip.crdownload" ] && continue
@@ -44,8 +49,8 @@ while true; do
       continue
     fi
 
-    echo "TRANSFER-START $name ($((s1/1024/1024/1024))G) → atlas"
-    if rsync -a --partial --timeout=120 "$zip" "atlas:$REMOTE_DIR/$name"; then
+    echo "TRANSFER-START $name ($((s1/1024/1024/1024))G) → atlas (LAN)"
+    if rsync -a --partial --timeout=120 "$zip" "$HOST:$REMOTE_DIR/$name"; then
       rsize=$(remote_size "$name")
       if [ "$rsize" = "$s1" ]; then
         rm -f "$zip"
