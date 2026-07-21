@@ -38,6 +38,7 @@ struct SelectionBadge: View {
 struct SelectableThumb: View {
     let asset: Asset
     let thumbURL: URL?
+    var maxPixel: CGFloat? = nil
     var selection: Selection
     let namespace: Namespace.ID
     let onOpen: () -> Void
@@ -54,7 +55,7 @@ struct SelectableThumb: View {
         Color.clear
             .aspectRatio(1, contentMode: .fill)
             .overlay {
-                Thumb(url: thumbURL)
+                Thumb(url: thumbURL, maxPixel: maxPixel)
                     .scaleEffect(isSel ? 0.88 : 1)
                     .clipShape(RoundedRectangle(cornerRadius: isSel ? 9 : 0, style: .continuous))
                     .overlay {

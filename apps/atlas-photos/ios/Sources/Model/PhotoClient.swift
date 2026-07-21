@@ -52,6 +52,10 @@ struct LibraryStats: Codable, Sendable {
 struct PhotoClient: Sendable {
     var host: String   // "atlas.your-tailnet.ts.net:8788"
 
+    /// Constructing ISO8601DateFormatter is expensive — hoist it out of the
+    /// per-page timeline hot path.
+    private static let iso = ISO8601DateFormatter()
+
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
@@ -81,7 +85,7 @@ struct PhotoClient: Sendable {
         struct R: Codable { let items: [Asset] }
         var path = "/api/timeline?limit=\(limit)"
         if let before {
-            let iso = ISO8601DateFormatter().string(from: before)
+            let iso = Self.iso.string(from: before)
             path += "&before=\(iso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? iso)"
         }
         let r: R = try await get(path)

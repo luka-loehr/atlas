@@ -278,8 +278,8 @@ private struct Filmstrip: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: gap) {
-                ForEach(Array(assets.enumerated()), id: \.offset) { i, a in
-                    Thumb(url: client.thumbURL(a.id, 512))
+                ForEach(assets.indices, id: \.self) { i in
+                    Thumb(url: client.thumbURL(assets[i].id, 512))
                         .frame(width: cell, height: cell)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         // the CENTER item is simply bigger — pure geometry,
@@ -480,6 +480,8 @@ private struct VideoPlayerView: View {
     var onTap: () -> Void
 
     @State private var player: AVPlayer?
+    @State private var timeObs: Any?
+    @State private var endObs: Any?
     @State private var playing = false
     @State private var current: Double = 0
     @State private var duration: Double = 0
@@ -516,7 +518,7 @@ private struct VideoPlayerView: View {
             }
         }
         .task { await setup() }
-        .onDisappear { player?.pause(); playing = false }
+        .onDisappear { teardown() }
     }
 
     private var controlBar: some View {
@@ -586,21 +588,31 @@ private struct VideoPlayerView: View {
         p.play()
         playing = true
 
-        p.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-                                  queue: .main) { t in
+        timeObs = p.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+                                            queue: .main) { [weak p] t in
             MainActor.assumeIsolated {
+                guard let p else { return }
                 if !scrubbing { current = t.seconds }
                 if duration <= 0, let d = p.currentItem?.duration.seconds,
                    d.isFinite, d > 0 { duration = d }
             }
         }
-        NotificationCenter.default.addObserver(
+        endObs = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: p.currentItem, queue: .main) { _ in
             MainActor.assumeIsolated { playing = false }
         }
     }
 
+    /// Full teardown so every swiped-past video releases its AVPlayer +
+    /// observers + decode buffers instead of leaking across the session.
+    private func teardown() {
+        if let t = timeObs { player?.removeTimeObserver(t); timeObs = nil }
+        if let e = endObs { NotificationCenter.default.removeObserver(e); endObs = nil }
+        player?.pause()
+        player = nil
+        playing = false
+    }
 }
 
 /// Bare AVPlayerLayer host (aspect-fit, no controls).
