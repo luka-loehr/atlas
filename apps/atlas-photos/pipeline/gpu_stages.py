@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The three GPU stages of the pipeline: embed (SigLIP2), faces (InsightFace),
-caption (Qwen2.5-VL via vLLM).
+"""The three GPU stages of the pipeline: embed (Qwen3-VL-Embedding-2B), faces
+(InsightFace), caption (Qwen2.5-VL via vLLM).
 
 Each stage is load()/process_batch(conn, jobs)/unload(). Only ONE stage may be
 loaded at a time (8GB card) — worker_gpu.py enforces the sequencing. Heavy
@@ -60,52 +60,74 @@ def free_cuda():
 # ------------------------------------------------------------------ embed ---
 
 class EmbedStage:
-    """SigLIP2 image embeddings -> embeddings(model='siglip2', vec vector(768))."""
+    """Qwen3-VL-Embedding-2B: image + REAL video-frame embeddings in one joint
+    text/image/video space -> embeddings(model='qwen3vl', vec vector(2048))."""
     KIND = "embed"
-    BATCH = 32
-    MODEL_ID = "google/siglip2-base-patch16-384"
+    BATCH = 6            # VL model is heavy; small batch keeps 8 GB happy
+    MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
+    VIDEO_FRAMES = 12   # sampled evenly across the whole clip (see process_batch)
 
     def load(self):
-        import torch
-        from transformers import AutoModel, AutoProcessor
+        import os as _os, sys as _sys, torch
+        from huggingface_hub import snapshot_download
+        mp = snapshot_download(self.MODEL_ID)
+        _sys.path.insert(0, _os.path.join(mp, "scripts"))
+        from qwen3_vl_embedding import Qwen3VLEmbedder
         self.torch = torch
-        self.model = AutoModel.from_pretrained(
-            self.MODEL_ID, dtype=torch.float16).to("cuda").eval()
-        self.processor = AutoProcessor.from_pretrained(self.MODEL_ID)
+        # bf16 is the precision Qwen ships and was trained in — faithful to the
+        # published model (fp32 wouldn't improve on the checkpoint and won't fit
+        # in 8 GB). Images keep their full 2048px thumb resolution below.
+        self.model = Qwen3VLEmbedder(model_name_or_path=mp, torch_dtype=torch.bfloat16)
+
+    def _to_vec(self, v):
+        import numpy as np
+        if hasattr(v, "detach"):
+            v = v.detach().float().cpu().numpy()
+        v = np.asarray(v, dtype=np.float32).reshape(-1)
+        n = np.linalg.norm(v)
+        return v / n if n > 0 else v
 
     def process_batch(self, conn, jobs):
         results = []
-        imgs, keep = [], []
+        aids = [aid for _, aid in jobs]
+        cur = conn.cursor()
+        cur.execute("SELECT id, type, orig_path FROM assets WHERE id = ANY(%s)", (aids,))
+        meta = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+
+        inputs, keep = [], []
         for jid, aid in jobs:
-            p = thumb(aid, 512, 2048)
+            typ, opath = meta.get(aid, (None, None))
+            # videos: embed real frames from the original file
+            if typ == "video" and opath:
+                vpath = opath.replace("/home/atlas/photos", "/photos")
+                if os.path.exists(vpath):
+                    inputs.append({"video": vpath, "max_frames": self.VIDEO_FRAMES, "fps": 1.0})
+                    keep.append((jid, aid))
+                    continue
+            # photos (and videos whose file is missing): embed the 2048 thumb
+            p = thumb(aid, 2048, 512)
             if not p:
                 results.append((jid, RETRY + "no thumb yet"))
                 continue
-            try:
-                imgs.append(Image.open(p).convert("RGB"))
-                keep.append((jid, aid))
-            except Exception as e:
-                results.append((jid, f"thumb unreadable: {type(e).__name__}: {e}"))
+            inputs.append({"image": p})
+            keep.append((jid, aid))
         if not keep:
             return results
 
-        torch = self.torch
-        inputs = self.processor(images=imgs, return_tensors="pt")
-        inputs = {k: v.to("cuda", torch.float16) if v.is_floating_point() else v.to("cuda")
-                  for k, v in inputs.items()}
-        with torch.no_grad():
-            feats = self.model.get_image_features(**inputs)
-        # newer transformers returns BaseModelOutputWithPooling, older a tensor
-        if not torch.is_tensor(feats):
-            feats = feats.pooler_output
-        feats = torch.nn.functional.normalize(feats.float(), dim=-1).cpu().numpy()
-
         cur = conn.cursor()
-        for (jid, aid), vec in zip(keep, feats):
+        # process one input at a time: mixed image/video batches are unreliable,
+        # and a single bad file mustn't fail the whole batch
+        for (jid, aid), inp in zip(keep, inputs):
+            try:
+                emb = self.model.process([inp])[0]
+                vec = self._to_vec(emb)
+            except Exception as e:
+                results.append((jid, RETRY + f"qwen embed: {type(e).__name__}: {str(e)[:80]}"))
+                continue
             try:
                 cur.execute(
                     """INSERT INTO embeddings (owner_type, owner_id, model, vec)
-                       VALUES ('asset', %s, 'siglip2', %s::vector)
+                       VALUES ('asset', %s, 'qwen3vl', %s::vector)
                        ON CONFLICT (owner_type, owner_id, model)
                        DO UPDATE SET vec = EXCLUDED.vec""",
                     (aid, vec_lit(vec)))
@@ -115,7 +137,7 @@ class EmbedStage:
         return results
 
     def unload(self):
-        self.model = self.processor = None
+        self.model = None
         free_cuda()
 
 

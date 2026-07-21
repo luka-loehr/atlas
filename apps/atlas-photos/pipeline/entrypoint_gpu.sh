@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # atlas-photos pipeline — GPU container entrypoint.
-# 1. download_models.py: idempotent — fetches SigLIP2, buffalo_l and
-#    Qwen2.5-VL-3B-AWQ into /models (HF_HOME=/models/hf) only if missing.
+# 1. download_models.py: idempotent — fetches Qwen3-VL-Embedding-2B, buffalo_l
+#    and Qwen2.5-VL-3B-AWQ into /models (HF_HOME=/models/hf) only if missing.
 # 2. exec worker_gpu.py: the sequenced GPU worker loop (embed -> faces -> caption).
 set -e
 
