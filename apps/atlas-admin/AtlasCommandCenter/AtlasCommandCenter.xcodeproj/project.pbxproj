@@ -9,8 +9,10 @@
 /* Begin PBXBuildFile section */
 		033A7D802C7DC5A7956ABE9D /* AtlasCommandCenterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DA9FD74F7C7103834796FAE /* AtlasCommandCenterApp.swift */; };
 		0F00791844397EE81EA6288F /* DashboardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9520AAA2E2DAA249CDBAF5FE /* DashboardModel.swift */; };
+		1524B918CE1951BD0DE665C0 /* Biometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE61ABE5A08468F661CD9B49 /* Biometric.swift */; };
 		15CB9847CE554A9450DC6025 /* StatusHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC28F7BB9CC597E5849143A7 /* StatusHero.swift */; };
 		1D959F3896C8C466FA1AEE54 /* ActivityScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDF390B413425610C59F4FC /* ActivityScreen.swift */; };
+		324DFE8C2D864D290CACF498 /* ChartLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCEB04150C50AD0F6ABAB6CD /* ChartLive.swift */; };
 		42CF6103E7525E5FFD87D312 /* LoadChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55CC7A2450FBEA1F8B33C37C /* LoadChart.swift */; };
 		454CF3F7B852E9F44A739956 /* VPNModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF026EAE5B89507FAF5EF464 /* VPNModel.swift */; };
 		51933F2481C67B7DBF4C5CC6 /* VPNScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB90DBC8663F75EE46ACF664 /* VPNScreen.swift */; };
@@ -23,8 +25,8 @@
 		D366B1F8645427F76339A1CE /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C4834796302945E127FEBB /* Components.swift */; };
 		DCECDC66C220E70D65A290B4 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2EAC2AD27E0F693D6B7C975 /* DashboardView.swift */; };
 		DD6B38FE82EE8B6ABF72ECBB /* ActivityModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FCBCB7FE6D82DC06328C0F /* ActivityModel.swift */; };
+		E04B1621B20CC5B4E0FB134B /* NetChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A731B65F3CC180A835F4B05B /* NetChart.swift */; };
 		EB2FA0166D4F3235EDFC6878 /* AtlasClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 085BEA7CFE500B8050D52334 /* AtlasClient.swift */; };
-		F1EA689E9181D2A8E8E3C50E /* DockerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8EC8221C26488A8A60CF24 /* DockerScreen.swift */; };
 		F9E4D7C95F886F1BE2C239C1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E002FA00ADD0C7ABB62F0220 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
@@ -42,13 +44,15 @@
 		9520AAA2E2DAA249CDBAF5FE /* DashboardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardModel.swift; sourceTree = "<group>"; };
 		A1FCBCB7FE6D82DC06328C0F /* ActivityModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityModel.swift; sourceTree = "<group>"; };
 		A3D9F7D26D9F48BBFD68DBDF /* Metrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Metrics.swift; sourceTree = "<group>"; };
+		A731B65F3CC180A835F4B05B /* NetChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetChart.swift; sourceTree = "<group>"; };
+		BCEB04150C50AD0F6ABAB6CD /* ChartLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartLive.swift; sourceTree = "<group>"; };
 		BE9F988C923FA9A7223EBA22 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		CD8EC8221C26488A8A60CF24 /* DockerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockerScreen.swift; sourceTree = "<group>"; };
 		DB90DBC8663F75EE46ACF664 /* VPNScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNScreen.swift; sourceTree = "<group>"; };
 		DF026EAE5B89507FAF5EF464 /* VPNModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNModel.swift; sourceTree = "<group>"; };
 		E002FA00ADD0C7ABB62F0220 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F2EAC2AD27E0F693D6B7C975 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		FC28F7BB9CC597E5849143A7 /* StatusHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusHero.swift; sourceTree = "<group>"; };
+		FE61ABE5A08468F661CD9B49 /* Biometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Biometric.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +72,7 @@
 			children = (
 				A1FCBCB7FE6D82DC06328C0F /* ActivityModel.swift */,
 				085BEA7CFE500B8050D52334 /* AtlasClient.swift */,
+				FE61ABE5A08468F661CD9B49 /* Biometric.swift */,
 				9520AAA2E2DAA249CDBAF5FE /* DashboardModel.swift */,
 				A3D9F7D26D9F48BBFD68DBDF /* Metrics.swift */,
 				DF026EAE5B89507FAF5EF464 /* VPNModel.swift */,
@@ -106,12 +111,13 @@
 			isa = PBXGroup;
 			children = (
 				4CDF390B413425610C59F4FC /* ActivityScreen.swift */,
+				BCEB04150C50AD0F6ABAB6CD /* ChartLive.swift */,
 				74C4834796302945E127FEBB /* Components.swift */,
 				1D90AAA9452AFAA59368476C /* ContainersCard.swift */,
 				93838A19A0D4BA554A00F5DB /* DashboardScreen.swift */,
 				F2EAC2AD27E0F693D6B7C975 /* DashboardView.swift */,
-				CD8EC8221C26488A8A60CF24 /* DockerScreen.swift */,
 				55CC7A2450FBEA1F8B33C37C /* LoadChart.swift */,
+				A731B65F3CC180A835F4B05B /* NetChart.swift */,
 				E002FA00ADD0C7ABB62F0220 /* SettingsView.swift */,
 				FC28F7BB9CC597E5849143A7 /* StatusHero.swift */,
 				7D1DA1C48087ADBB9860C7F6 /* TerminalScreen.swift */,
@@ -193,14 +199,16 @@
 				1D959F3896C8C466FA1AEE54 /* ActivityScreen.swift in Sources */,
 				EB2FA0166D4F3235EDFC6878 /* AtlasClient.swift in Sources */,
 				033A7D802C7DC5A7956ABE9D /* AtlasCommandCenterApp.swift in Sources */,
+				1524B918CE1951BD0DE665C0 /* Biometric.swift in Sources */,
+				324DFE8C2D864D290CACF498 /* ChartLive.swift in Sources */,
 				D366B1F8645427F76339A1CE /* Components.swift in Sources */,
 				798BDD5053320B8F1C67B440 /* ContainersCard.swift in Sources */,
 				0F00791844397EE81EA6288F /* DashboardModel.swift in Sources */,
 				6F7E1093E6CB8657AD533CAB /* DashboardScreen.swift in Sources */,
 				DCECDC66C220E70D65A290B4 /* DashboardView.swift in Sources */,
-				F1EA689E9181D2A8E8E3C50E /* DockerScreen.swift in Sources */,
 				42CF6103E7525E5FFD87D312 /* LoadChart.swift in Sources */,
 				737554793CEE6F84DE46D60A /* Metrics.swift in Sources */,
+				E04B1621B20CC5B4E0FB134B /* NetChart.swift in Sources */,
 				F9E4D7C95F886F1BE2C239C1 /* SettingsView.swift in Sources */,
 				15CB9847CE554A9450DC6025 /* StatusHero.swift in Sources */,
 				94A90975FF2447306CE217C3 /* TerminalScreen.swift in Sources */,

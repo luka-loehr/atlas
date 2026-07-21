@@ -24,9 +24,6 @@ struct RootView: View {
             Tab("Aktivität", systemImage: "square.grid.3x3.fill", value: 2) {
                 ActivityScreen(host: host, token: token)
             }
-            Tab("Docker", systemImage: "shippingbox.fill", value: 3) {
-                DockerScreen(host: host, token: token)
-            }
         }
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
