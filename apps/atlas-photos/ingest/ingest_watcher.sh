@@ -29,10 +29,21 @@ while true; do
     s2=$(stat -c%s "$zip" 2>/dev/null || echo 0)
     [ "$s1" != "$s2" ] || [ "$s1" -lt 1000000 ] && continue
 
+    # validate the archive before ingesting — a rsync --partial leftover under
+    # the final name is stable-but-truncated and would crash the ingester
+    # (BadZipFile) and burn a 5-min retry every pass. Skip until it's whole.
+    if ! unzip -l "$zip" >/dev/null 2>&1; then
+      echo "$(date -Is) SKIP $(basename "$zip") — noch kein vollstaendiges Zip (Transfer laeuft?)" >> "$LOG"
+      continue
+    fi
+
     echo "$(date -Is) INGEST-START $(basename "$zip") ($((s1/1024/1024/1024))G)" >> "$LOG"
     if python3 "$ING" "$zip" >> "$LOG" 2>&1; then
       touch "$zip.ingested"
-      echo "$(date -Is) INGEST-DONE $(basename "$zip")" >> "$LOG"
+      # zip is now redundant: originals are extracted to ~/photos + in the DB.
+      # Delete it so the archive and its unpacked copy don't sit on disk at 2x.
+      rm -f "$zip"
+      echo "$(date -Is) INGEST-DONE $(basename "$zip") — Zip geloescht (Originale gesichert)" >> "$LOG"
     else
       echo "$(date -Is) INGEST-FAILED $(basename "$zip") — retry naechster Durchlauf" >> "$LOG"
       sleep 300
