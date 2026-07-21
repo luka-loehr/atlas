@@ -11,10 +11,14 @@ final class Library {
 
     var assets: [Asset] = []
     var sections: [DaySection] = []
+    /// Full month distribution (all months + counts, newest first) — the stable,
+    /// pagination-independent scale for the TimeScrubber. Filled once on start.
+    var scale: [MonthBucket] = []
     var stats: LibraryStats?
     var online = true
     var loading = false
     private var reachedEnd = false
+    private var loadingAll = false
 
     struct DaySection: Identifiable {
         let id: String            // "2024-07-15"
@@ -26,6 +30,26 @@ final class Library {
         async let s: Void = loadStats()
         await loadFirst()
         _ = await s
+        // scale (for the scrubber) + full timeline in the background so the grid
+        // shows instantly but the scrubber gets a stable full-range scale and
+        // every jump target exists.
+        Task { scale = (try? await client.summary()) ?? [] }
+        Task { await loadAll() }
+    }
+
+    /// Pull every remaining asset in one bulk request so all day-sections exist
+    /// (the scrubber can then jump anywhere without the range shifting).
+    func loadAll() async {
+        guard !loadingAll, !reachedEnd else { return }
+        loadingAll = true
+        defer { loadingAll = false }
+        guard let last = assets.last?.takenAt else { reachedEnd = true; return }
+        if let rest = try? await client.timeline(before: last, limit: 100_000), !rest.isEmpty {
+            let known = Set(assets.map(\.id))
+            assets.append(contentsOf: rest.filter { !known.contains($0.id) })
+            rebuildSections()
+        }
+        reachedEnd = true
     }
 
     func loadStats() async {

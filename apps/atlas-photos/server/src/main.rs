@@ -188,7 +188,9 @@ struct TimelineQ {
 
 async fn timeline(State(app): State<App>, Query(q): Query<TimelineQ>) -> Result<Json<serde_json::Value>, Api> {
     let c = app.pool.get().await?;
-    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+    // high cap so the app can bulk-load the whole (lightweight) timeline once —
+    // the scrubber needs every section present for a stable, full-range scale
+    let limit = q.limit.unwrap_or(200).clamp(1, 100_000);
     let rows = match q.before {
         Some(b) => {
             c.query(
