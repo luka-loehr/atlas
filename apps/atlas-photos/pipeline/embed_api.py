@@ -21,7 +21,9 @@ import torch
 MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
 PORT = int(os.environ.get("EMBED_API_PORT", "8093"))
 
-torch.set_num_threads(max(2, (os.cpu_count() or 4) // 2))
+# most cores for snappy queries; leave a few for postgres + the GPU pipeline's
+# CPU-side work. Measured ~0.2-1.2 s per query at this width.
+torch.set_num_threads(max(4, (os.cpu_count() or 4) * 3 // 4))
 
 _embedder = None
 # torch inference is serialized: concurrent forward passes on CPU just fight
@@ -79,8 +81,9 @@ class Handler(BaseHTTPRequestHandler):
             if not text:
                 self._json(400, {"error": "text required"})
                 return
-            with _infer_lock:
-                vec = embed_text(text[:300])
+            # embed_text() already serializes on _infer_lock; taking it here too
+            # would re-enter the non-reentrant lock and deadlock every request.
+            vec = embed_text(text[:300])
             self._json(200, {"vec": vec})
         except Exception as e:  # noqa: BLE001 — sidecar must never die on a query
             self._json(500, {"error": str(e)})
