@@ -28,7 +28,7 @@ services:
       dockerfile: Dockerfile.cpu
     image: atlas-pipeline-cpu
 
-  # SigLIP2-Text-Embeddings fuer die semantische Suche. Nutzt das GPU-Image
+  # Qwen3-VL-Embedding-2B Text-Embeddings fuer die semantische Suche. Nutzt das GPU-Image
   # (torch+transformers sind da schon drin), aber OHNE GPU-Reservierung —
   # torch laeuft dann auf CPU. Lauscht nur auf 127.0.0.1:8093 (Rust-Server).
   embed-api:
