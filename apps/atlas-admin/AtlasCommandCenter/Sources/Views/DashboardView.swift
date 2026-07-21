@@ -76,8 +76,14 @@ struct DashboardView: View {
             if let g = m.gpu {
                 StatChip(icon: "thermometer.high", value: "\(Int(g.tempC))°",
                          label: "GPU", tint: Theme.heat(g.tempC / 90))
+            }
+            // Ganzsystem-Leistung (CPU+GPU+Baseline), nicht mehr nur die GPU.
+            if let sys = m.power?.systemW {
+                StatChip(icon: "bolt.fill", value: String(format: "%.0fW", sys),
+                         label: "System", tint: Theme.warn)
+            } else if let g = m.gpu {
                 StatChip(icon: "bolt.fill", value: String(format: "%.0fW", g.powerW),
-                         label: "Power", tint: Theme.warn)
+                         label: "GPU", tint: Theme.warn)
             }
             StatChip(icon: "gauge.with.dots.needle.50percent",
                      value: String(format: "%.2f", m.load.first ?? 0),
