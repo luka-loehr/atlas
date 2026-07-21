@@ -30,6 +30,8 @@ pub fn collect() -> String {
     let sys_power = cpu_power.map(|c| (c + gpu_power + 35.0) / 0.88);
     let (disk_used, disk_total, disk_pct) = disk();
     let (net_rx, net_tx) = net_bytes();
+    let kernel = read_trim("/proc/sys/kernel/osrelease").unwrap_or_default();
+    let os = os_pretty();
     let containers = super::actions::containers();
 
     format!(
@@ -42,6 +44,7 @@ pub fn collect() -> String {
             "\"power\":{{\"cpu_w\":{cpuw},\"gpu_w\":{gpuw:.1},\"system_w\":{sysw}}},",
             "\"disk\":{{\"used_gb\":{du},\"total_gb\":{dt},\"usage\":{dp}}},",
             "\"net\":{{\"rx_bytes\":{nrx},\"tx_bytes\":{ntx}}},",
+            "\"system\":{{\"kernel\":\"{kern}\",\"os\":\"{os}\"}},",
             "\"containers\":{containers}}}"
         ),
         host = json_str(&hostname),
@@ -65,6 +68,8 @@ pub fn collect() -> String {
         dp = disk_pct,
         nrx = net_rx,
         ntx = net_tx,
+        kern = json_str(&kernel),
+        os = json_str(&os),
         containers = containers,
     )
 }
@@ -257,6 +262,29 @@ fn rapl_delta_w(prev: u64, cur: u64, dt: f64) -> Option<f64> {
         (max - prev).saturating_add(cur)
     };
     Some(de as f64 / 1_000_000.0 / dt)
+}
+
+/// Self-contained full-system power sample (own 200 ms RAPL window + GPU),
+/// independent of the live-metrics RAPL state — used by the energy logger.
+pub fn system_power_sample() -> Option<f64> {
+    let e1 = read_rapl_energy()?;
+    let t1 = Instant::now();
+    thread::sleep(Duration::from_millis(200));
+    let e2 = read_rapl_energy()?;
+    let cpu = rapl_delta_w(e1, e2, t1.elapsed().as_secs_f64())?;
+    let (_, gpu) = gpu_json();
+    Some((cpu + gpu + 35.0) / 0.88)
+}
+
+/// Distro pretty name, e.g. "Ubuntu 26.04 LTS".
+fn os_pretty() -> String {
+    fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_string()))
+        })
+        .unwrap_or_default()
 }
 
 fn disk() -> (u64, u64, u64) {
