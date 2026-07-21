@@ -50,6 +50,14 @@ final class Library {
             rebuildSections()
         }
         reachedEnd = true
+        // if the offline thumb cache is on, quietly top up any thumbnails not yet
+        // stored (new uploads) — the existing ones are skipped by a cheap check
+        if ThumbLoader.shared.persistentEnabled {
+            let urls = assets.compactMap { client.thumbURL($0.id, 512) }
+            Task.detached(priority: .background) {
+                for u in urls { _ = await ThumbLoader.shared.ensurePersistent(u) }
+            }
+        }
     }
 
     func loadStats() async {

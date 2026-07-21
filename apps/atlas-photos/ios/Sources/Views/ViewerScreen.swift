@@ -337,9 +337,11 @@ private struct ViewerPage: View {
     var body: some View {
         if asset.isVideo {
             VideoPlayerView(url: library.client.streamURL(asset.id),
+                            poster: library.client.thumbURL(asset.id, 512),
                             chrome: chrome, bottomInset: bottomInset, onTap: onTap)
         } else {
             ZoomablePhoto(
+                thumb: library.client.thumbURL(asset.id, 512),
                 preview: library.client.thumbURL(asset.id, 2048),
                 full: library.client.originalURL(asset.id),
                 onTap: onTap
@@ -353,8 +355,9 @@ private struct ViewerPage: View {
 /// the scroll view doesn't consume drags, so the pager (horizontal) and the
 /// zoom-transition dismiss (down) keep working — exactly like Apple Photos.
 private struct ZoomablePhoto: View {
-    let preview: URL?
-    let full: URL?
+    let thumb: URL?      // 512, cached from the grid → instant, offline-safe
+    let preview: URL?    // 2048
+    let full: URL?       // original
     var onTap: () -> Void = {}
     @State private var image: UIImage?
 
@@ -363,17 +366,21 @@ private struct ZoomablePhoto: View {
             if let image {
                 ZoomableScrollView(image: { image }, onSingleTap: onTap)
             } else {
-                Thumb(url: preview)
+                Thumb(url: thumb)
                     .aspectRatio(contentMode: .fit)
                     .contentShape(Rectangle())
                     .onTapGesture { onTap() }
             }
         }
         .task(id: full) {
-            // instant: the 2048 preview (decoded off-main, quick)
-            if image == nil, let p = preview, let img = await ThumbLoader.shared.load(p) {
-                if image == nil { image = img }
+            // 1) the grid's 512 thumb is already cached → show the photo (blurry)
+            //    INSTANTLY instead of a grey wait, even on bad internet / offline
+            if image == nil, let t = thumb {
+                if let c = ThumbLoader.shared.cached(t) { image = c }
+                else if let img = await ThumbLoader.shared.load(t), image == nil { image = img }
             }
+            // 2) sharpen to the 2048 preview
+            if let p = preview, let img = await ThumbLoader.shared.load(p) { image = img }
             // full quality ONLY when the user actually settles on this photo:
             // while scrubbing through the strip each page lives < 600ms, its
             // task gets cancelled here and no original is ever downloaded
@@ -467,6 +474,7 @@ private struct ZoomableScrollView: UIViewRepresentable {
 /// the filmstrip and the video controls always hide together).
 private struct VideoPlayerView: View {
     let url: URL?
+    var poster: URL?
     var chrome: Bool
     var bottomInset: CGFloat = 150
     var onTap: () -> Void
@@ -485,7 +493,13 @@ private struct VideoPlayerView: View {
                 PlayerLayerView(player: player)
                     .ignoresSafeArea()
             } else {
+                // no empty black box while the stream prepares: show the poster
+                // thumbnail (cached from the grid) with a spinner over it
+                Thumb(url: poster)
+                    .aspectRatio(contentMode: .fit)
                 ProgressView()
+                    .tint(.white)
+                    .controlSize(.large)
             }
         }
         .contentShape(Rectangle())

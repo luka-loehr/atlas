@@ -17,6 +17,7 @@ struct SettingsScreen: View {
     @State private var cacheBytes: Int64 = 0
     @State private var confirmCleanup = false
     @State private var confirmTrash = false
+    @State private var thumbCache = ThumbCache()
 
     init(library: Library,
          onSyncNow: @escaping () -> Void = {},
@@ -33,6 +34,7 @@ struct SettingsScreen: View {
             Form {
                 serverSection
                 librarySection
+                offlineCacheSection
                 cacheSection
                 syncSection
                 trashSection
@@ -45,6 +47,7 @@ struct SettingsScreen: View {
         }
         .onAppear {
             refreshCacheSize()
+            thumbCache.refresh()
             library.host = host
         }
         .onChange(of: host) { _, new in library.host = new }
@@ -124,6 +127,53 @@ struct SettingsScreen: View {
                 }
             }
         }    }
+
+    private var offlineCacheSection: some View {
+        Section {
+            valueRow("Offline gespeichert",
+                     "\(thumbCache.storedCount) · \(fmtBytes(thumbCache.storedBytes))",
+                     "arrow.down.circle.fill", .indigo)
+            if thumbCache.downloading {
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: Double(thumbCache.done),
+                                 total: Double(max(thumbCache.total, 1)))
+                        .tint(.indigo)
+                    Text("\(thumbCache.done) / \(thumbCache.total) geladen")
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                .padding(.vertical, 2)
+            } else {
+                Button {
+                    Task {
+                        await library.loadAll()
+                        let urls = library.assets.compactMap { library.client.thumbURL($0.id, 512) }
+                        await thumbCache.downloadAll(urls: urls)
+                    }
+                } label: {
+                    HStack {
+                        icon("arrow.down.to.line", .indigo)
+                        Text(thumbCache.storedCount > 0 ? "Neue Vorschaubilder nachladen"
+                                                        : "Alle Vorschaubilder laden")
+                            .foregroundStyle(.primary)
+                    }
+                }
+                if thumbCache.storedCount > 0 {
+                    Button(role: .destructive) {
+                        thumbCache.clear()
+                    } label: {
+                        HStack {
+                            icon("trash", .gray)
+                            Text("Offline-Cache löschen").foregroundStyle(.primary)
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Offline-Cache")
+        } footer: {
+            Text("Lädt alle Raster-Vorschaubilder (~0,7 GB) dauerhaft aufs iPhone. Die Bibliothek scrollt dann sofort und lässt sich auch durchblättern, wenn atlas aus ist. Neue Fotos werden beim Öffnen automatisch ergänzt.")
+        }
+    }
 
     private var cacheSection: some View {
         Section {

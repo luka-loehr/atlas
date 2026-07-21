@@ -24,6 +24,79 @@ final class ThumbLoader {
         cfg.urlCache = cache
         cfg.requestCachePolicy = .returnCacheDataElseLoad
         session = URLSession(configuration: cfg)
+        persistentEnabled = UserDefaults.standard.bool(forKey: "thumbs.persistentCache")
+    }
+
+    // MARK: Persistent store (user-triggered "download all")
+    //
+    // A deliberate, never-evicted on-disk copy of the grid thumbnails so the
+    // whole library scrolls instantly and browses OFFLINE while atlas sleeps.
+    // Keyed by the URL path+query (NOT the host) so it survives a LAN↔tailnet
+    // host switch and the immutable `?v=` version busts stale entries.
+
+    /// When on, every 512-thumb fetch is also written to the persistent store,
+    /// so browsing fills gaps and freshly uploaded photos cache automatically.
+    var persistentEnabled = false
+
+    private let persistentDir: URL? = {
+        let fm = FileManager.default
+        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        let dir = base.appendingPathComponent("ThumbCache", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    private func persistentPath(_ url: URL) -> URL? {
+        guard let dir = persistentDir else { return nil }
+        let raw = url.path + "?" + (url.query ?? "")
+        let name = String(raw.unicodeScalars.map {
+            CharacterSet.alphanumerics.contains($0) ? Character($0) : "_"
+        })
+        return dir.appendingPathComponent(name + ".thmb")
+    }
+
+    private func persistentData(_ url: URL) -> Data? {
+        guard let p = persistentPath(url) else { return nil }
+        return try? Data(contentsOf: p)
+    }
+    func hasPersistent(_ url: URL) -> Bool {
+        guard let p = persistentPath(url) else { return false }
+        return FileManager.default.fileExists(atPath: p.path)
+    }
+    private func writePersistent(_ url: URL, _ data: Data) {
+        guard let p = persistentPath(url) else { return }
+        try? data.write(to: p, options: .atomic)
+    }
+
+    /// Fetch (if missing) and persist one thumbnail. Returns false on failure.
+    func ensurePersistent(_ url: URL) async -> Bool {
+        if hasPersistent(url) { return true }
+        guard let data = try? await session.data(from: url).0 else { return false }
+        writePersistent(url, data)
+        return true
+    }
+
+    func clearPersistent() {
+        guard let dir = persistentDir else { return }
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    func persistentStats() -> (count: Int, bytes: Int64) {
+        guard let dir = persistentDir,
+              let items = try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { return (0, 0) }
+        var bytes: Int64 = 0
+        for f in items {
+            bytes += Int64((try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        return (items.count, bytes)
+    }
+
+    func setPersistentEnabled(_ on: Bool) {
+        persistentEnabled = on
+        UserDefaults.standard.set(on, forKey: "thumbs.persistentCache")
     }
 
     // MARK: Prefetch (aggressive precache)
@@ -83,7 +156,20 @@ final class ThumbLoader {
     private func fetch(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {
         let key = url as NSURL
         if let img = ram.object(forKey: key) { return img }
+        // grid thumbs (maxPixel == nil): try the persistent store first — instant
+        // and works with atlas offline
+        if maxPixel == nil, let data = persistentData(url) {
+            let decoded = await Task.detached(priority: .userInitiated) {
+                Self.decode(data, maxPixel: nil)
+            }.value
+            if let img = decoded {
+                ram.setObject(img, forKey: key, cost: img.decodedCost)
+                return img
+            }
+        }
         guard let data = try? await session.data(from: url).0 else { return nil }
+        // keep the full local set complete: persist grid thumbs when enabled
+        if maxPixel == nil, persistentEnabled { writePersistent(url, data) }
         let img = await Task.detached(priority: .userInitiated) {
             Self.decode(data, maxPixel: maxPixel)
         }.value
@@ -145,5 +231,56 @@ private struct ThumbInner: View {
             if let c = ThumbLoader.shared.cached(url) { image = c; return }
             image = await ThumbLoader.shared.load(url)
         }
+    }
+}
+
+/// Drives the "Offline-Cache" settings: download every grid thumbnail into the
+/// persistent store (with progress), show its size, delete it, top up new ones.
+@MainActor
+@Observable
+final class ThumbCache {
+    var downloading = false
+    var done = 0
+    var total = 0
+    var storedCount = 0
+    var storedBytes: Int64 = 0
+
+    var enabled: Bool { ThumbLoader.shared.persistentEnabled }
+
+    init() { refresh() }
+
+    func refresh() {
+        let s = ThumbLoader.shared.persistentStats()
+        storedCount = s.count
+        storedBytes = s.bytes
+    }
+
+    /// Download every not-yet-stored thumbnail (8 in parallel). Re-running only
+    /// fetches the new ones — cheap file-exists check skips the rest.
+    func downloadAll(urls: [URL]) async {
+        guard !downloading, !urls.isEmpty else { return }
+        ThumbLoader.shared.setPersistentEnabled(true)
+        downloading = true
+        done = 0
+        total = urls.count
+        var i = 0
+        let chunk = 8
+        while i < urls.count {
+            let slice = Array(urls[i ..< min(i + chunk, urls.count)])
+            await withTaskGroup(of: Void.self) { g in
+                for u in slice { g.addTask { _ = await ThumbLoader.shared.ensurePersistent(u) } }
+            }
+            i += slice.count
+            done = i
+            if i % 240 < chunk { refresh() }
+        }
+        downloading = false
+        refresh()
+    }
+
+    func clear() {
+        ThumbLoader.shared.clearPersistent()
+        ThumbLoader.shared.setPersistentEnabled(false)
+        refresh()
     }
 }
