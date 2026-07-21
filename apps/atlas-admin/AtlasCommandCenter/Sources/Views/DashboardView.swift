@@ -5,8 +5,10 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            GlassEffectContainer(spacing: 16) {
-                VStack(spacing: 16) {
+            // KEIN GlassEffectContainer um den ganzen Scroll-Inhalt: der lässt
+            // alle Glass-Layer beim Scrollen permanent gegeneinander blenden
+            // (Compositing-Kosten pro Frame) — die Karten tragen ihr Glass selbst.
+            VStack(spacing: 16) {
                     StatusHero(
                         metrics: model.metrics,
                         online: model.online,
@@ -33,7 +35,6 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 30)
-            }
         }
         .scrollIndicators(.hidden)
         .refreshable { await model.refresh() }

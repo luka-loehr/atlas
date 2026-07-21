@@ -24,69 +24,6 @@ struct SelectionBadge: View {
     }
 }
 
-/// Legt den Auswahl-Look (Inset-Skalierung + Ecken + Abdunkeln + Häkchen) über
-/// beliebigen Zell-Inhalt und übernimmt die Tap-Logik. Tap im Auswahl-Modus
-/// togglet; sonst wird `onOpen()` gerufen (z. B. Viewer öffnen).
-///
-/// Nutzung an einer bestehenden Zelle:
-/// ```
-/// Color.clear.aspectRatio(1, contentMode: .fill).overlay { Thumb(url: …) }
-///     .selectable(id: asset.id, selection: selection) { pick = asset }
-/// ```
-struct SelectableModifier: ViewModifier {
-    let id: String
-    var selection: Selection
-    let onOpen: () -> Void
-
-    func body(content: Content) -> some View {
-        let isSel = selection.contains(id)
-        content
-            .scaleEffect(isSel ? 0.88 : 1)
-            .clipShape(RoundedRectangle(cornerRadius: isSel ? 9 : 0, style: .continuous))
-            .overlay {
-                if isSel {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(.black.opacity(0.18))   // dezentes Abdunkeln
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if selection.active {
-                    SelectionBadge(selected: isSel)
-                        .padding(5)
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if selection.active {
-                    withAnimation(selectSpring) { selection.toggle(id) }
-                } else {
-                    onOpen()
-                }
-            }
-            // Apple-Fotos-Geste: Bild gedrückt halten → Auswahl-Modus startet
-            // mit genau diesem Bild. simultaneousGesture statt onLongPressGesture,
-            // sonst schluckt der ScrollView-Pan die Geste; maximumDistance großzügig,
-            // damit ein Mikro-Wackler des Fingers den Hold nicht abbricht.
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.35, maximumDistance: 18)
-                    .onEnded { _ in
-                        guard !selection.active else { return }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        withAnimation(selectSpring) { selection.enter(with: id) }
-                    }
-            )
-    }
-}
-
-extension View {
-    /// Macht eine Grid-Zelle auswählbar (siehe `SelectableModifier`).
-    func selectable(id: String, selection: Selection,
-                    onOpen: @escaping () -> Void) -> some View {
-        modifier(SelectableModifier(id: id, selection: selection, onOpen: onOpen))
-    }
-}
-
 /// Fertige, auswählbare Foto-Zelle — Drop-in-Ersatz für `PhotosScreen.cell(asset)`.
 /// Rendert Thumb + Video-Badge + Auswahl-Häkchen und behandelt Tap/Zoom-Quelle.
 /// Die Paginierung (`loadMoreIfNeeded`) bleibt Aufgabe des Aufrufers via `.task`.
@@ -104,6 +41,13 @@ struct SelectableThumb: View {
     var selection: Selection
     let namespace: Namespace.ID
     let onOpen: () -> Void
+
+    /// Nach erfolgreichem Long-Press feuert beim Loslassen AUCH der Tap —
+    /// ohne Guard würde er das eben ausgewählte Foto sofort wieder abwählen.
+    /// Timestamp statt Bool: Feuert der Tap ausnahmsweise NICHT (Finger beim
+    /// Heben verrutscht, Touch gecancelt), verfällt der Guard von selbst und
+    /// frisst nicht den nächsten echten Tap.
+    @State private var holdFiredAt: Date?
 
     var body: some View {
         let isSel = selection.contains(asset.id)
@@ -143,11 +87,28 @@ struct SelectableThumb: View {
             .contentShape(Rectangle())
             .matchedTransitionSource(id: asset.id, in: namespace)
             .onTapGesture {
+                if let t = holdFiredAt, Date().timeIntervalSince(t) < 0.8 {
+                    holdFiredAt = nil
+                    return
+                }
                 if selection.active {
                     withAnimation(selectSpring) { selection.toggle(asset.id) }
                 } else {
                     onOpen()
                 }
             }
+            // Apple-Fotos-Geste: gedrückt halten → Auswahl-Modus mit diesem Bild.
+            // simultaneousGesture, damit der ScrollView-Pan die Geste nicht
+            // schluckt; 12pt Toleranz: genug gegen Finger-Mikro-Wackler, aber
+            // knapp genug, dass langsames Scrollen nicht falsch auslöst.
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.35, maximumDistance: 12)
+                    .onEnded { _ in
+                        guard !selection.active else { return }
+                        holdFiredAt = Date()
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(selectSpring) { selection.enter(with: asset.id) }
+                    }
+            )
     }
 }

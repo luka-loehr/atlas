@@ -23,7 +23,7 @@ struct NetChart: View {
                     rate("arrow.down", downNow, Theme.accent)
                     rate("arrow.up", upNow, Theme.violet)
                 }
-                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
+                TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { context in
                     chart(now: context.date)
                 }
                 .frame(height: 110)
