@@ -64,8 +64,15 @@ fn boots() -> Vec<(i64, i64)> {
 
 /// Commit timestamps in the monorepo clone.
 fn commits() -> Vec<i64> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into());
-    let repo = format!("{home}/atlas");
+    // ATLAS_REPO_DIR: git checkout whose commits feed the heatmap
+    // (default: the monorepo clone at $HOME/atlas)
+    let repo = std::env::var("ATLAS_REPO_DIR")
+        .ok()
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+            format!("{home}/atlas")
+        });
     run(
         "git",
         &["-C", &repo, "log", "--since=160 days ago", "--format=%ct"],

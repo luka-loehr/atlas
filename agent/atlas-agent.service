@@ -5,10 +5,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=luka
-Environment="PATH=/home/atlas/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# The account the agent runs as — adjust to your deployment. It needs the
+# `docker` group for /api/docker, and passwordless sudo for exactly
+# `poweroff` and `reboot` if the power endpoints should work.
+User=atlas
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/local/bin/atlas-agent
-# optional: ATLAS_AGENT_TOKEN / ATLAS_AGENT_PORT (file may be absent)
+# Optional env file (may be absent): ATLAS_AGENT_TOKEN (bearer token —
+# strongly recommended), ATLAS_AGENT_BIND / ATLAS_AGENT_PORT, and the other
+# ATLAS_* overrides (see the README). Without a token the agent refuses all
+# state-changing routes unless ATLAS_AGENT_OPEN=1 explicitly opts into
+# trusting the tailnet/firewall instead.
 EnvironmentFile=-/etc/atlas-agent.env
 Restart=always
 RestartSec=2

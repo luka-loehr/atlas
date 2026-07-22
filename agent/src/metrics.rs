@@ -24,10 +24,20 @@ pub fn collect() -> String {
     let mem_usage = if mem_total > 0.0 { mem_used / mem_total * 100.0 } else { 0.0 };
     let (gpu, gpu_power) = gpu_json();
     let cpu_power = cpu_power_w();
-    // Ganzsystem-Schaetzung: gemessene CPU (RAPL) + GPU (nvidia-smi) + Baseline
-    // (DRAM, Board/VRM, Storage, Luefter, ~35 W) / PSU-Wirkungsgrad (~0.88).
-    // Exakt nur mit Steckdosen-Messgeraet — das hier ist die Software-Naeherung.
-    let sys_power = cpu_power.map(|c| (c + gpu_power + 35.0) / 0.88);
+    // Whole-system estimate: measured CPU (RAPL) + GPU (nvidia-smi) + an idle
+    // baseline (DRAM, board/VRM, storage, fans), divided by PSU efficiency.
+    // Only a wall-plug meter is exact — this is the software approximation.
+    // ATLAS_POWER_BASELINE_W / ATLAS_PSU_EFFICIENCY: calibrate per machine.
+    let baseline_w: f64 = std::env::var("ATLAS_POWER_BASELINE_W")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(35.0);
+    let psu_eff: f64 = std::env::var("ATLAS_PSU_EFFICIENCY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|e| *e > 0.0)
+        .unwrap_or(0.88);
+    let sys_power = cpu_power.map(|c| (c + gpu_power + baseline_w) / psu_eff);
     let (disk_used, disk_total, disk_pct) = disk();
     let (net_rx, net_tx) = net_bytes();
     let kernel = read_trim("/proc/sys/kernel/osrelease").unwrap_or_default();
