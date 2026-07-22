@@ -162,12 +162,11 @@ pub async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<
     let c = app.pool.get().await?;
     let files: Vec<_> = c
         .query(
-            &format!(
-                "SELECT {FILE_COLS}, fo.name FROM drive_files
-                 LEFT JOIN drive_folders fo ON fo.id = drive_files.folder_id
-                 WHERE drive_files.name ILIKE $1 AND trashed_at IS NULL
-                 ORDER BY lower(drive_files.name) LIMIT 200"
-            ),
+            "SELECT df.id, df.name, df.hash, df.size_bytes, df.mime, df.modified_at, fo.name
+             FROM drive_files df
+             LEFT JOIN drive_folders fo ON fo.id = df.folder_id
+             WHERE df.name ILIKE $1 AND df.trashed_at IS NULL
+             ORDER BY lower(df.name) LIMIT 200",
             &[&like],
         )
         .await?
