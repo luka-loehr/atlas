@@ -27,7 +27,7 @@ struct TerminalSheet: View {
                     lockView
                 }
             }
-            .navigationTitle("user@atlas")
+            .navigationTitle("Terminal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbar {

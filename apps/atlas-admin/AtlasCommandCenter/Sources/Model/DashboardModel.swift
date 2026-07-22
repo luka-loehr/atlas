@@ -9,13 +9,7 @@ final class DashboardModel {
     var lastError: String?
     var updatedAt: Date?
 
-    // rolling history for the sparkline (usage %, newest last)
-    var cpuHistory: [Double] = []
-    var gpuHistory: [Double] = []
-
     // network rates in Mbit/s, derived from the agent's cumulative counters
-    var netDownHistory: [Double] = []
-    var netUpHistory: [Double] = []
     var netDownMbps: Double = 0
     var netUpMbps: Double = 0
     var memSamples: [(Date, Double)] = []
@@ -36,14 +30,13 @@ final class DashboardModel {
     var upSamples: [(Date, Double)] = []
     var wsConnected = false
 
-    var host: String = "atlas.your-tailnet.ts.net:8787"
+    var host: String = ""     // always injected by DashboardScreen before start()
     var token: String = ""
 
     private var loopTask: Task<Void, Never>?
     private var wsTask: Task<Void, Never>?
     private var socket: URLSessionWebSocketTask?
     private var lastWSNet: (rx: UInt64, tx: UInt64, tsMs: UInt64)?
-    private let maxHistory = 60
     private let sampleWindow: TimeInterval = 75
 
     func start() {
@@ -84,8 +77,6 @@ final class DashboardModel {
             lastError = nil
             updatedAt = Date()
             if !wsConnected {
-                push(&cpuHistory, m.cpu.usage)
-                push(&gpuHistory, m.gpu?.usage ?? 0)
                 let now = Date()
                 appendSample(&cpuSamples, now, m.cpu.usage)
                 appendSample(&gpuSamples, now, m.gpu?.usage ?? 0)
@@ -97,8 +88,6 @@ final class DashboardModel {
                     if dt > 0.2 {
                         netDownMbps = Double(net.rxBytes - last.rx) * 8 / dt / 1_000_000
                         netUpMbps = Double(net.txBytes - last.tx) * 8 / dt / 1_000_000
-                        push(&netDownHistory, netDownMbps)
-                        push(&netUpHistory, netUpMbps)
                         appendSample(&downSamples, now, netDownMbps)
                         appendSample(&upSamples, now, netUpMbps)
                     }
@@ -249,11 +238,6 @@ final class DashboardModel {
         arr.append((t, smoothed))
         let cutoff = t.addingTimeInterval(-sampleWindow)
         while let first = arr.first, first.0 < cutoff { arr.removeFirst() }
-    }
-
-    private func push(_ arr: inout [Double], _ v: Double) {
-        arr.append(v)
-        if arr.count > maxHistory { arr.removeFirst(arr.count - maxHistory) }
     }
 
     private func friendly(_ error: Error) -> String {
