@@ -196,3 +196,10 @@ between stages (batch sizes 6/16/8). The vLLM engine only exists while caption
 jobs are pending. A stage whose model fails to load backs off for 15 min
 without blocking the other stages. If `nvidia-smi` ever shows two models
 resident, that is a bug.
+
+## Model licenses
+
+The pipeline downloads model weights at runtime; they keep their own licenses,
+separate from this repository's MIT license. In particular the InsightFace
+`buffalo_l` face-recognition weights are licensed for **non-commercial research
+use only** — the MIT license here covers the code, not these weights.

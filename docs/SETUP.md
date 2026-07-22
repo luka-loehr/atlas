@@ -218,6 +218,7 @@ interface — then the tailnet is the only way in even from your own LAN.
 
 ```bash
 cd ~/atlas          # your clone, on the Mac
+# Rust toolchain, if you don't have one: https://rustup.rs (or `brew install rustup`)
 cargo install --path cli        # installs `atlas` into ~/.cargo/bin
 ```
 

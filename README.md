@@ -89,9 +89,16 @@ Per-area docs:
 
 Everything meets on your private tailnet; the server sleeps until woken.
 
+> **Note:** docs are English; the CLI output and the three iOS app UIs are
+> German (the author's daily drivers). Contributions translating them are welcome.
+
 ## License
 
 [MIT](LICENSE) — use it, fork it, build your own.
+
+The MIT license covers the code in this repository. Model weights downloaded
+at runtime (e.g. InsightFace `buffalo_l`, non-commercial research license)
+keep their own licenses.
 
 ## Support
 

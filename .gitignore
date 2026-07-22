@@ -12,3 +12,4 @@ lightshows/shows/*.jpg
 lightshows/shows/*.wav
 .env
 *.local
+scripts/atlas-faces/

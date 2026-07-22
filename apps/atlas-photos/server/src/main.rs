@@ -40,6 +40,8 @@ pub(crate) struct App {
     pub(crate) drive_dir: PathBuf,
     /// ATLAS_PHOTOS_TOKEN — when set, every route (except /health) requires it.
     token: Option<String>,
+    /// ATLAS_PHOTOS_OPEN=1 — tokenless mode also allows mutations (tailnet trust).
+    open_mode: bool,
 }
 
 #[tokio::main]
@@ -84,8 +86,16 @@ async fn main() {
     // query parameter (for direct media URLs). Unset = open access — only
     // acceptable on a private, trusted network (e.g. a tailnet).
     let token = std::env::var("ATLAS_PHOTOS_TOKEN").ok().filter(|t| !t.is_empty());
+    // ATLAS_PHOTOS_OPEN=1: without a token, mutating routes (non-GET) are
+    // refused unless this explicit tailnet-trust opt-in is set — same
+    // fail-closed posture as atlas-agent.
+    let open_mode = std::env::var("ATLAS_PHOTOS_OPEN").map(|v| v == "1").unwrap_or(false);
     if token.is_none() {
-        println!("WARNING: ATLAS_PHOTOS_TOKEN not set — API is unauthenticated (tailnet-only mode)");
+        if open_mode {
+            println!("WARNING: ATLAS_PHOTOS_TOKEN not set, ATLAS_PHOTOS_OPEN=1 — API fully open (tailnet-only mode)");
+        } else {
+            println!("NOTE: no ATLAS_PHOTOS_TOKEN — reads are open, mutations refused (set a token or ATLAS_PHOTOS_OPEN=1)");
+        }
     }
 
     // ATLAS_PHOTOS_MAX_UPLOAD: upload body cap in MiB (default 512). Upload
@@ -97,7 +107,7 @@ async fn main() {
         * 1024
         * 1024;
 
-    let app = App { pool, photos_dir, drive_dir, token };
+    let app = App { pool, photos_dir, drive_dir, token, open_mode };
     let router = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/api/stats", get(stats))
@@ -181,7 +191,17 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 /// Unset token = fully open (documented tailnet-only mode).
 async fn require_token(State(app): State<App>, req: Request, next: Next) -> Response {
     let Some(expected) = app.token.as_deref() else {
-        return next.run(req).await;
+        // no token configured: reads pass; mutations need the explicit
+        // ATLAS_PHOTOS_OPEN=1 opt-in (fail closed, like atlas-agent)
+        let read_only = matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD);
+        if read_only || app.open_mode {
+            return next.run(req).await;
+        }
+        return (
+            StatusCode::FORBIDDEN,
+            "mutations need ATLAS_PHOTOS_TOKEN (or ATLAS_PHOTOS_OPEN=1 on a trusted network)",
+        )
+            .into_response();
     };
     if req.uri().path() == "/health" {
         return next.run(req).await;

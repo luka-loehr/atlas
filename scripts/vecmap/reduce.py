@@ -3,7 +3,7 @@
 Warum die Personen mit in den Vektor muessen: die Bild-Embeddings beschreiben
 BILDINHALT, nicht Identitaet. Ohne diesen Schritt liegen Fotos derselben Person
 ueber die ganze Wolke verstreut (Strandfoto zu Strand, Kuechenfoto zu Kueche)
-und ein "Flug zu Luka" haette kein Ziel. Deshalb:
+und ein "Flug nach Kroatien" haette kein Ziel. Deshalb:
 
     feature = [ normalize(PCA50) , W * normalize(person_onehot) ]
 

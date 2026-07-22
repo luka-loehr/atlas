@@ -25,7 +25,8 @@ from lslib.compiler import compile_show
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ATLAS = "atlas"
-ATLAS_DIR = "~/projects/lightshow"
+# LIGHTSHOW_REMOTE_DIR: lightshows checkout on the GPU host (analysis venv lives in analyze/)
+ATLAS_DIR = os.environ.get("LIGHTSHOW_REMOTE_DIR", "~/atlas/lightshows")
 CACHE = os.path.join(ROOT, "analysis_cache")
 SHOWS = os.path.join(ROOT, "shows")
 

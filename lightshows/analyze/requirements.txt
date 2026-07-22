@@ -1,0 +1,4 @@
+# GPU song analysis venv (analyze_song.py)
+numpy>=1.26
+librosa>=0.10
+beat_this  # https://github.com/CPJKU/beat_this

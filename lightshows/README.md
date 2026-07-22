@@ -301,3 +301,9 @@ xLights setup at your bridge host to drive the real lights from xLights.
   switches laser/strobe plugs off synchronously on shutdown.
 - **`--ai` uploads the full song audio** to the Gemini API — keep that in
   mind for material you are not allowed to share.
+
+## A note on audio
+
+The repo intentionally contains **no audio files** — shows ship as `.show.json`
+choreography plus derived analysis data only. Use the YouTube/URL ingestion
+only with content you have the rights to use.

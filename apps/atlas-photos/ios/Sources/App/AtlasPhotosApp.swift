@@ -77,6 +77,8 @@ struct RootView: View {
     // empty until configured, e.g. "atlas.your-tailnet.ts.net:8788"
     @AppStorage("photos.host") private var host = ""
     @AppStorage("photos.autoBackup") private var autoBackup = false
+    // erster Start ohne konfigurierten Server: Einstellungen direkt anbieten
+    @State private var showFirstRunSettings = false
 
     var body: some View {
         TabView {
@@ -94,7 +96,12 @@ struct RootView: View {
             }
         }
         .tint(.primary)
+        .sheet(isPresented: $showFirstRunSettings) {
+            // Aktionen sind ohne konfigurierten Server bedeutungslos — leere Closures
+            SettingsScreen(library: library, onSyncNow: {}, onCleanupDevice: {}, onEmptyTrash: {})
+        }
         .task {
+            if host.isEmpty { showFirstRunSettings = true }
             library.host = host
             if autoBackup, watchSync == nil {
                 let sync = DeviceSync(client: library.client)
