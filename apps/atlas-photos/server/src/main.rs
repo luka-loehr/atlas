@@ -14,6 +14,7 @@
 //!   GET /api/assets/:id/stream           Range streaming (AVPlayer)
 
 mod countries;
+mod drive;
 
 use std::path::PathBuf;
 
@@ -32,15 +33,17 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
 #[derive(Clone)]
-struct App {
-    pool: Pool,
+pub(crate) struct App {
+    pub(crate) pool: Pool,
     photos_dir: PathBuf,
+    pub(crate) drive_dir: PathBuf,
 }
 
 #[tokio::main]
 async fn main() {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into());
     let photos_dir = PathBuf::from(std::env::var("PHOTOS_DIR").unwrap_or(format!("{home}/photos")));
+    let drive_dir = PathBuf::from(std::env::var("DRIVE_DIR").unwrap_or(format!("{home}/drive")));
     let password = std::fs::read_to_string(format!("{home}/atlas/backend/docker/.env"))
         .ok()
         .and_then(|s| {
@@ -58,7 +61,7 @@ async fn main() {
         .create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)
         .expect("pg pool");
 
-    let app = App { pool, photos_dir };
+    let app = App { pool, photos_dir, drive_dir };
     let router = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/api/stats", get(stats))
@@ -99,6 +102,25 @@ async fn main() {
             "/api/upload",
             post(upload).layer(DefaultBodyLimit::max(1024 * 1024 * 1024)),
         )
+        // drive — the "Dateien" domain (folder tree + content-addressed blobs)
+        .route("/api/drive/list", get(drive::list))
+        .route("/api/drive/recent", get(drive::recent))
+        .route("/api/drive/search", get(drive::search))
+        .route("/api/drive/stats", get(drive::stats))
+        .route("/api/drive/blob/{hash}/{name}", get(drive::blob))
+        .route(
+            "/api/drive/upload",
+            post(drive::upload).layer(DefaultBodyLimit::max(4 * 1024 * 1024 * 1024)),
+        )
+        .route("/api/drive/folders", post(drive::folder_create))
+        .route("/api/drive/folders/{id}/rename", post(drive::folder_rename))
+        .route("/api/drive/folders/{id}/delete", post(drive::folder_delete))
+        .route("/api/drive/files/{id}/rename", post(drive::file_rename))
+        .route("/api/drive/move", post(drive::mv))
+        .route("/api/drive/trash", get(drive::trash_list).post(drive::trash_put))
+        .route("/api/drive/restore", post(drive::restore))
+        .route("/api/drive/delete", post(drive::delete))
+        .route("/api/drive/trash/empty", post(drive::trash_empty))
         .with_state(app);
 
     let addr = "0.0.0.0:8788";
@@ -293,7 +315,7 @@ struct SearchQ {
 }
 
 /// Escape LIKE metacharacters so user input can't act as a pattern.
-fn like_escape(s: &str) -> String {
+pub(crate) fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
@@ -938,13 +960,13 @@ async fn stream(State(app): State<App>, Path(id): Path<String>, headers: HeaderM
     original(State(app), Path(id), headers).await
 }
 
-fn safe_id(id: &str) -> bool {
+pub(crate) fn safe_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Lowercase-hex SHA256 of `bytes` — the canonical content id for the whole
 /// system (matches the Python Takeout ingest and the iOS CryptoKit hash).
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(bytes);
     let mut s = String::with_capacity(64);
@@ -1005,7 +1027,7 @@ async fn serve_immutable(path: PathBuf, headers: HeaderMap) -> Response {
 
 // ------------------------------------------------------------------ error ---
 
-struct Api(String);
+pub(crate) struct Api(pub(crate) String);
 
 impl<E: std::fmt::Display> From<E> for Api {
     fn from(e: E) -> Self {

@@ -21,7 +21,8 @@ apps/
                     GitHub-style activity heatmap
   atlas-lightshow/  iOS app "Lightshow": shows + AI-show creation, manual
                     per-light control, fail-safe hold-to-fog, calibration
-  atlas-photos/     self-built Google Photos (server: Rust/axum · ios: SwiftUI)
+  atlas-photos/     iOS app "Storage": self-built Google Photos + Google Drive
+                    (server: Rust/axum · ios: SwiftUI) — Fotos · Alben · Dateien
 lightshows/   the full lightshow production system (merged with history):
               GPU song analysis, v6 dark-gap compiler, Gemini+Claude AI
               composer, Art-Net→Hue bridge, fog hardware  → lightshows/README.md
