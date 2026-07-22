@@ -72,6 +72,9 @@ async fn main() {
         .route("/api/assets/{id}/original", get(original))
         .route("/api/assets/{id}/stream", get(stream))
         .route("/api/assets/{id}/info", get(asset_info))
+        // experimental: UMAP vector map (static bundle under photos/vecmap)
+        .route("/map", get(map_index))
+        .route("/map/{*path}", get(map_asset))
         .route("/api/persons", get(persons))
         .route("/api/persons/{id}/assets", get(person_assets))
         .route("/api/persons/{id}/rename", post(person_rename))
@@ -888,6 +891,38 @@ fn sha256_hex(bytes: &[u8]) -> String {
         s.push_str(&format!("{b:02x}"));
     }
     s
+}
+
+// -------------------------------------------------------------- vecmap ---
+
+/// Experimental: a UMAP projection of every Qwen3-VL embedding, rendered as a
+/// zoomable WebGL mosaic of the real thumbnails. The bundle (map.html,
+/// layout.json, tiles/atlas_*.webp) is generated offline into
+/// {photos_dir}/vecmap — regenerating it is just overwriting those files, so
+/// the cache window is deliberately short.
+async fn map_index(State(app): State<App>, headers: HeaderMap) -> Response {
+    serve_map(app.photos_dir.join("vecmap").join("map.html"), headers).await
+}
+
+async fn map_asset(State(app): State<App>, Path(path): Path<String>, headers: HeaderMap) -> Response {
+    // only the generated bundle is reachable — no traversal out of vecmap/
+    if path.contains("..") || path.starts_with('/') || path.contains('\\') {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    serve_map(app.photos_dir.join("vecmap").join(path), headers).await
+}
+
+async fn serve_map(path: PathBuf, headers: HeaderMap) -> Response {
+    let mut req = axum::http::Request::new(axum::body::Body::empty());
+    *req.headers_mut() = headers;
+    match ServeFile::new(path).oneshot(req).await {
+        Ok(mut resp) => {
+            resp.headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=60"));
+            resp.into_response()
+        }
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// ServeFile handles Range requests (AVPlayer) + content types; we add the
