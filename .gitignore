@@ -5,3 +5,10 @@ build-device/
 xcuserdata/
 apps/atlas-photos/ios/build/
 __pycache__/
+.DS_Store
+*.pyc
+lightshows/shows/*.mp3
+lightshows/shows/*.jpg
+lightshows/shows/*.wav
+.env
+*.local
