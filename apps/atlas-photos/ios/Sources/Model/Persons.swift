@@ -15,6 +15,16 @@ struct Person: Codable, Sendable, Identifiable, Hashable {
     }
 }
 
+/// One detected face on an asset, resolved to its person (GET /api/assets/{id}/faces).
+struct AssetFace: Codable, Sendable, Identifiable, Hashable {
+    let face: Int64
+    let person: Int64
+    let name: String?
+
+    var id: Int64 { face }
+    var displayName: String { name ?? "Unbenannt" }
+}
+
 extension PhotoClient {
     func persons() async throws -> [Person] {
         struct R: Codable { let items: [Person] }
@@ -51,6 +61,34 @@ extension PhotoClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         struct Body: Encodable { let name: String }
         req.httpBody = try JSONEncoder().encode(Body(name: name))
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
+    func assetFaces(_ assetId: String) async throws -> [AssetFace] {
+        struct R: Codable { let items: [AssetFace] }
+        guard let url = URL(string: "http://\(host)/api/assets/\(assetId)/faces") else {
+            throw URLError(.badURL)
+        }
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(R.self, from: data).items
+    }
+
+    /// Make one concrete face crop the person's avatar everywhere.
+    func setPersonCover(_ personId: Int64, faceId: Int64) async throws {
+        guard let url = URL(string: "http://\(host)/api/persons/\(personId)/cover") else {
+            throw URLError(.badURL)
+        }
+        var req = URLRequest(url: url, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        struct Body: Encodable { let face_id: Int64 }
+        req.httpBody = try JSONEncoder().encode(Body(face_id: faceId))
         let (_, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)

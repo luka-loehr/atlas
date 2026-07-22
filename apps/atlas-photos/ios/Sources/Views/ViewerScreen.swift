@@ -40,7 +40,8 @@ struct ViewerScreen: View {
                 PhotoPager(index: $index, count: pages.count) { i in
                     ViewerPage(library: library, asset: pages[i], chrome: chrome,
                                bottomInset: chromeBottomHeight + 14) {
-                        withAnimation(.easeInOut(duration: 0.22)) { chrome.toggle() }
+                        // NO withAnimation: chrome pops in/out instantly, both ways
+                        chrome.toggle()
                     }
                 }
                 .ignoresSafeArea()
@@ -48,7 +49,6 @@ struct ViewerScreen: View {
 
             if chrome, let asset = pages[safe: index] {
                 chromeOverlay(asset)
-                    .transition(.opacity)
             }
 
             if busy {
@@ -136,7 +136,7 @@ struct ViewerScreen: View {
 
     private func bottomBar(_ asset: Asset) -> some View {
         HStack {
-            CircleButton(icon: "square.and.arrow.up") { shareCurrent() }
+            CircleButton(icon: "square.and.arrow.up", nudge: -1.5) { shareCurrent() }
             Spacer()
             HStack(spacing: 34) {
                 Button { toggleFavorite(asset) } label: {
@@ -246,8 +246,12 @@ struct ViewerScreen: View {
 }
 
 /// Round floating button (system-background circle, primary icon) — Google-Photos chrome.
+/// `nudge` shifts the glyph vertically for optical centering: symbols like
+/// square.and.arrow.up carry their visual mass (the box) below the bounding-box
+/// center, so geometric centering makes them sit visibly low in the circle.
 struct CircleButton: View {
     let icon: String
+    var nudge: CGFloat = 0
     let action: () -> Void
 
     var body: some View {
@@ -255,6 +259,7 @@ struct CircleButton: View {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.primary)
+                .offset(y: nudge)
                 .frame(width: 44, height: 44)
                 .glassEffect(.regular, in: .circle)   // iOS 26 Liquid Glass
         }
@@ -514,7 +519,6 @@ private struct VideoPlayerView: View {
                     .frame(maxWidth: 560)
                     .padding(.horizontal, 26)
                     .padding(.bottom, bottomInset)
-                    .transition(.opacity)
             }
         }
         .task { await setup() }
