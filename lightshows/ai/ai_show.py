@@ -4,7 +4,7 @@ Runs on the GPU host (needs a Gemini API key — GEMINI_API_KEY env var or key
 file, see below — plus Claude Code auth).
 
     from ai.ai_show import compose
-    seq, summary = compose(analysis, song_path, title)
+    seq, summary, music = compose(analysis, song_path, title, song_file)
 
 Pipeline:
   1. Gemini (native audio understanding) hears the mp3 -> genre, mood,

@@ -31,8 +31,9 @@ import colorsys, math
 NCHAN = 21
 SONG_END_S = 260.4
 AUDIO_LATENCY_MS = 300          # AirPods (ear-calibrated via beat_cal.py)
-LASER_LATENCY_MS = 3900         # TODO: re-measure WORST-case warm-up; any pre-flicker
-STROBEPLUG_LATENCY_MS = 6500    # during charging would leak into the pre-drop blackouts
+LASER_LATENCY_MS = 3900         # typical warm-up, not a measured worst case; any
+STROBEPLUG_LATENCY_MS = 6500    # pre-flicker while charging would leak into the
+                                # pre-drop blackouts
 
 # ---- channel map (0-based DMX index) -----------------------------------
 DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH, FOG, LASER, STROBE_PLUG = 0, 3, 6, 9, 12, 15, 18, 19, 20

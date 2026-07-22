@@ -9,7 +9,6 @@ struct PhotosScreen: View {
     @State private var shareBundle: ShareBundle?
     @State private var confirmDelete = false
     @State private var busy = false
-    @State private var lastViewedId: String?   // zoom-return cell stays on top
     @Namespace private var zoom
 
     /// Apple-Fotos-Raster-Zoom: Pinch schaltet durch die Spaltenstufen.

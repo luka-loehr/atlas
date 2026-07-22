@@ -54,4 +54,5 @@ for key, text in CONCEPTS.items():
     print(key, "best", result[key][0][1], "cut", result[key][-1][1])
 
 os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
-json.dump(result, open(OUT, "w"))
+with open(OUT, "w") as f:
+    json.dump(result, f)

@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-import AVKit
+import AVFoundation
 
 /// Full-screen viewer, Google-Photos style.
 ///

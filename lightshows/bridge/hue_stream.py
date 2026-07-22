@@ -33,6 +33,7 @@ LASER_THRESHOLD = 128                    # >= 50% -> laser plug on
 LASER_V1 = "22"                          # Hue plug (ex-Kaktus) v1 light id
 
 STROBEPLUG_IDX = 20                      # 0-based index of DMX channel 21
+STROBEPLUG_THRESHOLD = 128               # >= 50% -> strobe plug on
 STROBEPLUG_V1 = "25"                     # Hue plug (ex-Drucker) v1 light id
 
 def set_plug(v1_id, on, label, wait=False):
@@ -206,7 +207,7 @@ def main():
 
         # hardware strobe cue (channel 21) -> Hue plug on/off, transitions only
         if len(dmx) > STROBEPLUG_IDX:
-            want_sp = dmx[STROBEPLUG_IDX] >= LASER_THRESHOLD
+            want_sp = dmx[STROBEPLUG_IDX] >= STROBEPLUG_THRESHOLD
             if want_sp != strobeplug_on:
                 set_strobeplug(want_sp)
                 strobeplug_on = want_sp

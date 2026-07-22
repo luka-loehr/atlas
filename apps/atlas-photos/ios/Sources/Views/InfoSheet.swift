@@ -9,7 +9,6 @@ struct InfoSheet: View {
     var library: Library
     var asset: Asset
 
-    @Environment(\.dismiss) private var dismiss
     @State private var info: AssetInfo?
     @State private var faces: [AssetFace] = []
     @State private var coverSet: Set<Int64> = []   // persons whose avatar now IS this photo

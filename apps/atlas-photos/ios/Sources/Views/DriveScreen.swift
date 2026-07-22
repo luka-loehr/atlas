@@ -154,7 +154,7 @@ struct DriveFolderScreen: View {
                 VStack(spacing: 10) {
                     ProgressView(value: Double(uploadDone), total: Double(uploadTotal))
                         .frame(width: 160)
-                    Text("Hochladen \(uploadDone + 1)/\(uploadTotal)…")
+                    Text("Hochladen \(min(uploadDone + 1, uploadTotal))/\(uploadTotal)…")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                 }

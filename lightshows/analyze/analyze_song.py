@@ -79,7 +79,6 @@ def main():
 
     win = int(round(250.0 / hop_ms))
     rms_s = smooth(rms_n, win * 4)                    # ~1s for structure
-    sub_s = smooth(sub_n, win)
 
     # ---- drop candidates: sub-bass slam right after a dip ---------------
     def band_mean(x, a_ms, b_ms):

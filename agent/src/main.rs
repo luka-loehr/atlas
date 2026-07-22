@@ -259,6 +259,8 @@ fn parse_request(stream: &mut TcpStream) -> Option<Req> {
     }
     let mut body = String::new();
     if content_len > 0 {
+        // bodies are capped at 16 KiB — larger requests get truncated; all
+        // documented routes (show creation, calibration, lighting) stay far below
         let mut buf = vec![0u8; content_len.min(16_384)];
         reader.read_exact(&mut buf).ok()?;
         body = String::from_utf8_lossy(&buf).into_owned();
