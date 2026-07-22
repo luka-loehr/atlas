@@ -17,7 +17,6 @@ colorcurves/
 palettes/
 valuecurves/
 *.mp3
-!shows/*.mp3
 .venv/
 downloads/
 calibration.json
