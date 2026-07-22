@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Networks computer="luka-mac" GlobalFPPProxy="">
+<Networks computer="" GlobalFPPProxy="">
   <Controller Id="64001" Name="atlas" Description="Art-Net -> hue_stream.py auf atlas" Type="Ethernet" Vendor="" Model="" Variant="" ActiveState="Active" AutoSize="0" AutoLayout="0" FullxLightsControl="0" DefaultBrightnessUnderFullControl="100" IP="192.168.1.100" Protocol="ArtNet" FPPProxy="" Priority="100" Managed="0" SuppressDuplicates="0" KeepChannelNumbers="1">
-    <network NetworkType="ArtNet" ComPort="192.168.1.100" BaudRate="0" MaxChannels="19" Description="LightShow Universe 0 (1-18 Hue, 19 Nebel)"/>
+    <network NetworkType="ArtNet" ComPort="192.168.1.100" BaudRate="0" MaxChannels="21" Description="LightShow Universe 0 (1-18 Hue, 19 Nebel, 20 Laser, 21 Strobe)"/>
   </Controller>
 </Networks>

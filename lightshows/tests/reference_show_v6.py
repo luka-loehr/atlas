@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Headless show engine v5 "EXTREME MODE" — RUNS ON THE MAC.
+"""Frozen legacy show engine v5 "EXTREME MODE" — the golden-test oracle.
+
+tests/golden.py loads this module and compares its render(t) frame-by-frame
+against the modular lslib Player. The render() half must stay FROZEN; the
+old standalone Art-Net playback engine was removed (superseded by
+lslib/player.py + play.py).
 
 v5 = EXTREME: hardware strobe on EVERY drop (6.5s pre-power, windows merged
 where a re-strike is physically impossible), ~2.3x more fog, triple white
@@ -7,9 +12,6 @@ kick flashes on drop 1, full-room 255 white slams on every beat in drops.
 v4 = club-master teardown: peaks unclipped (drops -> 1.0 full white),
 high-energy sections lifted 0.30-0.42 -> 0.80-0.90, builds actually build,
 10s hardware-strobe SOLO at drop 3 (all Hue black).
-
-Plays the song locally AND streams Art-Net to the bridge on atlas
-(Hue + fog/disco + laser + hardware strobe).
 
 v3 = full MIR rebuild (two librosa agents + own kick-lattice verification):
   - TRUE tempo 130.00 BPM. Beat lattice anchored on the measured drop-1
@@ -23,15 +25,9 @@ v3 = full MIR rebuild (two librosa agents + own kick-lattice verification):
   - Single-frame accents on the strongest measured impacts.
   - Fog (disco globe!) only in lit phases; laser + hardware strobe with
     warm-up pre-power (3.9s / 6.5s).
-
-Usage:  python3 show.py [start_s] [end_s]
 """
-import colorsys, math, os, shutil, socket, struct, subprocess, sys, time
+import colorsys, math
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-MP3 = os.path.join(BASE, "music.mp3")
-ARTNET_TARGET = ("192.168.1.100", 6454)
-FPS = 25
 NCHAN = 21
 SONG_END_S = 260.4
 AUDIO_LATENCY_MS = 300          # AirPods (ear-calibrated via beat_cal.py)
@@ -511,63 +507,3 @@ def render(t):
     if any((vs - STROBEPLUG_LATENCY_MS) <= t < ve for vs, ve in STROBEPLUG_CUES):
         dmx[STROBE_PLUG] = 255
     return bytes(dmx)
-
-# ---- engine -------------------------------------------------------------
-def artnet(dmx, seq):
-    if len(dmx) % 2:                                  # Art-Net requires even length
-        dmx = bytes(dmx) + b"\x00"
-    pkt = b"Art-Net\x00" + struct.pack("<H", 0x5000) + struct.pack(">H", 14)
-    return pkt + bytes([seq & 0xff, 0]) + struct.pack("<H", 0) + struct.pack(">H", len(dmx)) + dmx
-
-def main():
-    start_s = float(sys.argv[1]) if len(sys.argv) > 1 else 0.0
-    end_s = float(sys.argv[2]) if len(sys.argv) > 2 else SONG_END_S
-    play_audio = os.path.exists(MP3)
-
-    preroll_s = 20.0 if start_s == 0 else 0.0         # fog pre-roll only for the full show
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    audio = None
-    if play_audio and start_s > 0:
-        if shutil.which("ffplay"):
-            audio = subprocess.Popen(["ffplay", "-nodisp", "-autoexit",
-                                      "-loglevel", "quiet", "-ss", str(start_s), MP3])
-        else:
-            play_audio = False
-    if preroll_s:
-        print(f"pre-roll: {preroll_s:.0f}s pure fog — dark & silent, the room fills ...", flush=True)
-    print(f"playing {start_s:.1f}s -> {end_s:.1f}s  |  audio={'yes' if play_audio else 'no'}  |  "
-          f"130.00 BPM lattice (anchor {ANCHOR/1000:.2f}s)", flush=True)
-
-    seq = 0
-    t0 = time.monotonic()
-    next_t = t0
-    try:
-        while True:
-            song_s = start_s + (time.monotonic() - t0) - preroll_s
-            if song_s >= end_s:
-                break
-            if play_audio and audio is None and song_s >= 0:
-                audio = subprocess.Popen(["afplay", MP3])   # music starts AFTER the fog fills
-            song_ms = song_s * 1000.0 - (AUDIO_LATENCY_MS if play_audio else 0)
-            seq = (seq + 1) & 0xff
-            try:
-                sock.sendto(artnet(render(song_ms), seq), ARTNET_TARGET)
-            except OSError:
-                pass                                  # brief network blip must not kill the show
-            next_t += 1.0 / FPS
-            time.sleep(max(0.0, next_t - time.monotonic()))
-    finally:
-        for _ in range(3):
-            seq = (seq + 1) & 0xff
-            try:
-                sock.sendto(artnet(bytes(NCHAN), seq), ARTNET_TARGET)
-            except OSError:
-                pass
-            time.sleep(1.0 / FPS)
-        if audio:
-            audio.terminate()
-    print("done", flush=True)
-
-if __name__ == "__main__":
-    main()

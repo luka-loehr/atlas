@@ -1,6 +1,7 @@
 """AI show composer — Gemini LISTENS to the song, Claude COMPOSES the show.
 
-Runs on atlas (needs ~/.config/atlas-ai/gemini.key + Claude Code auth).
+Runs on the GPU host (needs a Gemini API key — GEMINI_API_KEY env var or key
+file, see below — plus Claude Code auth).
 
     from ai.ai_show import compose
     seq, summary = compose(analysis, song_path, title)
@@ -26,7 +27,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from lslib import sequence  # noqa: E402
 
-GEMINI_KEY_FILE = os.path.expanduser("~/.config/atlas-ai/gemini.key")
+# Gemini API key: GEMINI_API_KEY env var wins; otherwise read from the file at
+# ATLAS_GEMINI_KEY_FILE (default ~/.config/atlas-ai/gemini.key).
+GEMINI_KEY_FILE = os.path.expanduser(
+    os.environ.get("ATLAS_GEMINI_KEY_FILE", "~/.config/atlas-ai/gemini.key"))
 GEMINI_MODEL = "gemini-flash-latest"   # resolves to gemini-3.5-flash (native audio)
 CLAUDE = os.path.expanduser("~/.local/bin/claude")
 LASER_LEAD = 3900
@@ -53,8 +57,10 @@ Cover the ENTIRE song with sections (no gaps). Times in seconds, precise."""
 def gemini_listen(song_path):
     """Up to 3 attempts — flash occasionally emits broken JSON even in
     JSON mode; a light repair pass catches truncated/trailing-comma output."""
-    with open(GEMINI_KEY_FILE) as f:
-        key = f.read().strip()
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        with open(GEMINI_KEY_FILE) as f:
+            key = f.read().strip()
     with open(song_path, "rb") as f:
         audio_b64 = base64.b64encode(f.read()).decode()
     body = {
@@ -70,9 +76,11 @@ def gemini_listen(song_path):
     for attempt in range(3):
         try:
             req = urllib.request.Request(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
                 data=json.dumps(body).encode(), method="POST",
-                headers={"Content-Type": "application/json"})
+                headers={"Content-Type": "application/json",
+                         # key in header, not URL: query strings leak into logs
+                         "x-goog-api-key": key})
             with urllib.request.urlopen(req, timeout=300) as r:
                 resp = json.load(r)
             text = resp["candidates"][0]["content"]["parts"][0]["text"]
@@ -118,7 +126,7 @@ def _repair_json(text):
 
 # ---------------------------------------------------------------- Claude ----
 
-SYSTEM_PROMPT = """You are the lighting designer for Luka's room rig. You write
+SYSTEM_PROMPT = """You are the lighting designer for the room rig. You write
 complete light-show sequence files (.show.json v1). Output ONLY valid JSON, no
 markdown fences, no commentary.
 
@@ -160,7 +168,7 @@ be VISIBLE; warm-up leads are handled downstream — do NOT subtract them.
 
 # Effect catalog (fx -> params p)
 - solid: constant color all lamps. p:{"color":[h,s,v]} h 0-1, v 0-1
-- intro_gradient: slow hue drift, gentle. p:{"h0":0.6,"h1":0.9,"v":0.25}
+- intro_gradient: slow blue-white shelf ramp + ceiling beat bump. p:{}
 - fade: linear fade. p:{"channels":"regale","hue":0.7,"sat":1.0,"v0":0.3,"v1":0.0}
 - dim_hold: constant dim color. p:{"channels":"regale","color":[h,s,v]}
 - dim_pulse: dim beat pulse. p:{"channels":"regale","hue":0.7,"sat":1.0,"v":0.15,"decay":250}
@@ -187,8 +195,9 @@ be VISIBLE; warm-up leads are handled downstream — do NOT subtract them.
 - hit_black: white slam then TRUE BLACK (pair with strobe device window).
   p:{"hit":t0}
 - blip / circle_tick / circle_walk / chase / rainbow_build / bridge_crossfade /
-  outro_fade: transitional/verse textures, use sparingly. blip p:{"hue":0.6,"v":0.3}
-  outro_fade p:{} rainbow_build p:{"v0":0.2,"v1":0.6}
+  outro_fade: transitional/verse textures, use sparingly.
+  blip p:{"at":ms,"width":80,"color":[h,s,v]} (dim pre-boom blip out of black)
+  outro_fade p:{} rainbow_build p:{}
 
 # Accents
 Single-frame white overlays for key moments (vocal shouts, impacts):
