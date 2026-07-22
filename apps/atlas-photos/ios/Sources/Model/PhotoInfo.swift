@@ -55,6 +55,7 @@ extension PhotoClient {
         }
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AtlasAuth.apply(to: &req)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)

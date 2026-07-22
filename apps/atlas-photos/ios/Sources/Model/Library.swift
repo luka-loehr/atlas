@@ -7,7 +7,9 @@ import CoreGraphics
 @MainActor
 @Observable
 final class Library {
-    var host = "atlas.your-tailnet.ts.net:8788"
+    /// Server host:port, e.g. "atlas.your-tailnet.ts.net:8788". Empty until the
+    /// user configures it (Einstellungen / Account sheet, key "photos.host").
+    var host = ""
     var client: PhotoClient { PhotoClient(host: host) }
 
     var assets: [Asset] = []

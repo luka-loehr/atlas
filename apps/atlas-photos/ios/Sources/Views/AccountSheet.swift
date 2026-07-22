@@ -2,7 +2,9 @@ import SwiftUI
 
 struct AccountSheet: View {
     var library: Library
-    @AppStorage("photos.host") private var host = "atlas.your-tailnet.ts.net:8788"
+    @AppStorage("photos.host") private var host = ""
+    // optional bearer token, sent as "Authorization: Bearer <token>" (see AtlasAuth)
+    @AppStorage("photos.token") private var token = ""
     @Environment(\.dismiss) private var dismiss
     @State private var sync: DeviceSync?
     @State private var showSync = false
@@ -24,6 +26,7 @@ struct AccountSheet: View {
                         }
                         settingsLink
                         hostRow
+                        tokenRow
                     }
                     .padding(20)
                 }
@@ -164,12 +167,31 @@ struct AccountSheet: View {
                 .foregroundStyle(.tertiary)
             HStack {
                 Image(systemName: "server.rack").foregroundStyle(.secondary)
-                TextField("host:port", text: $host)
+                TextField("atlas.your-tailnet.ts.net:8788", text: $host)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .foregroundStyle(.primary)
                     .font(.system(size: 13, design: .monospaced))
                     .onSubmit { library.host = host; Task { await library.refresh() } }
+            }
+            .padding(12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private var tokenRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TOKEN")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            HStack {
+                Image(systemName: "key").foregroundStyle(.secondary)
+                TextField("Token (optional)", text: $token)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .foregroundStyle(.primary)
+                    .font(.system(size: 13, design: .monospaced))
+                    .onSubmit { Task { await library.refresh() } }
             }
             .padding(12)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))

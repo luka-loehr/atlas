@@ -31,7 +31,7 @@ struct SelectionBadge: View {
 /// Nutzung:
 /// ```
 /// SelectableThumb(asset: asset,
-///                 thumbURL: library.client.thumbURL(asset.id, 256),
+///                 thumbURL: library.client.thumbURL(asset.id, 512),
 ///                 selection: selection, namespace: zoom) { pick = asset }
 ///     .task { await library.loadMoreIfNeeded(current: asset) }
 /// ```

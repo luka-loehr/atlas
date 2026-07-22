@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Auswahl-Zustand für den Foto-Grid (Apple-Fotos-Stil "Auswählen").
-/// Wird über Asset-IDs (blake3-Hash, `Asset.id`) geführt — passt zu `Asset: Hashable`.
+/// Wird über Asset-IDs (SHA-256-Hash, `Asset.id`) geführt — passt zu `Asset: Hashable`.
 /// Als `@Observable` an Zellen weiterreichen; Reads in `body` registrieren die
 /// Abhängigkeit automatisch, es braucht kein `@State`/`@Bindable` an den Zellen.
 @MainActor

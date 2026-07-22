@@ -10,7 +10,9 @@ struct SettingsScreen: View {
     var onCleanupDevice: () -> Void
     var onEmptyTrash: () -> Void
 
-    @AppStorage("photos.host") private var host = "atlas.your-tailnet.ts.net:8788"
+    @AppStorage("photos.host") private var host = ""
+    // optional bearer token, sent as "Authorization: Bearer <token>" (see AtlasAuth)
+    @AppStorage("photos.token") private var token = ""
     @AppStorage("photos.autoBackup") private var autoBackup = false
 
     @State private var testing = false
@@ -73,10 +75,18 @@ struct SettingsScreen: View {
         Section {
             HStack {
                 icon("server.rack", .indigo)
-                TextField("host:port", text: $host)
+                TextField("atlas.your-tailnet.ts.net:8788", text: $host)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundStyle(.primary)
+            }
+            HStack {
+                icon("key.fill", .orange)
+                TextField("Token (optional)", text: $token)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .font(.system(size: 14, design: .monospaced))
                     .foregroundStyle(.primary)
             }
@@ -103,7 +113,7 @@ struct SettingsScreen: View {
         } header: {
             Text("Server")
         } footer: {
-            Text("atlas-Host im Tailnet. Format host:port.")
+            Text("atlas-Host im Tailnet. Format host:port. Token nur nötig, wenn der Server einen Bearer-Token verlangt.")
         }    }
 
     private var librarySection: some View {

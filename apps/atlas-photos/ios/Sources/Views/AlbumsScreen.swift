@@ -22,7 +22,7 @@ struct AlbumsScreen: View {
                         LazyVGrid(columns: cols, spacing: 18) {
                             ForEach(userAlbums) { album in
                                 Button { openAlbum = album } label: {
-                                    AlbumCard(library: library, album: album, locked: false)
+                                    AlbumCard(library: library, album: album)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -361,34 +361,19 @@ struct SpecialCollectionScreen: View {
 struct AlbumCard: View {
     var library: Library
     var album: Album
-    var locked: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Color.clear
                 .aspectRatio(1, contentMode: .fit)     // square, fits column width
                 .overlay {
-                    if locked {
-                        ZStack {
-                            Rectangle().fill(Color(.secondarySystemFill))
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 30))
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Thumb(url: album.cover.flatMap { library.client.thumbURL($0, 512) })
-                    }
+                    Thumb(url: album.cover.flatMap { library.client.thumbURL($0, 512) })
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            HStack(spacing: 5) {
-                if locked {
-                    Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Text(album.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-            }
+            Text(album.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
             Text("\(album.count)")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)

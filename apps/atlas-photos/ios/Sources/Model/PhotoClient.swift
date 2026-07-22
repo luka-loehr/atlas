@@ -14,10 +14,6 @@ struct Asset: Codable, Sendable, Identifiable, Hashable {
 
     var isVideo: Bool { type == "video" }
     var isFavorite: Bool { favorite ?? false }
-    var aspect: Double {
-        guard let w = width, let h = height, h > 0 else { return 1 }
-        return Double(w) / Double(h)
-    }
 
     enum CodingKeys: String, CodingKey {
         case id, type, width, height, favorite
@@ -48,9 +44,42 @@ struct LibraryStats: Codable, Sendable {
     let albums: Int
 }
 
+/// Optional bearer-token auth for the atlas-photos server. The token lives in
+/// UserDefaults under "photos.token" (set in Einstellungen / Account sheet,
+/// "Token (optional)"). Empty (the default) means no auth — matching a server
+/// that runs without a token. When set, every request carries
+/// "Authorization: Bearer <token>".
+enum AtlasAuth {
+    static var token: String {
+        (UserDefaults.standard.string(forKey: "photos.token") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Adds the Authorization header when a token is configured.
+    static func apply(to req: inout URLRequest) {
+        let t = token
+        guard !t.isEmpty else { return }
+        req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+    }
+
+    /// Ready-made GET request for direct URLSession downloads.
+    static func request(_ url: URL, timeoutInterval: TimeInterval = 60) -> URLRequest {
+        var req = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        apply(to: &req)
+        return req
+    }
+
+    /// AVURLAsset options carrying the header (video streaming).
+    static var avAssetOptions: [String: Any] {
+        let t = token
+        guard !t.isEmpty else { return [:] }
+        return ["AVURLAssetHTTPHeaderFieldsKey": ["Authorization": "Bearer \(t)"]]
+    }
+}
+
 /// Talks to the atlas-photos server over the tailnet.
 struct PhotoClient: Sendable {
-    var host: String   // "atlas.your-tailnet.ts.net:8788"
+    var host: String   // e.g. "atlas.your-tailnet.ts.net:8788"
 
     /// Constructing ISO8601DateFormatter is expensive — hoist it out of the
     /// per-page timeline hot path.
@@ -66,6 +95,7 @@ struct PhotoClient: Sendable {
         guard let url = URL(string: "http://\(host)\(path)") else { throw URLError(.badURL) }
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AtlasAuth.apply(to: &req)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)

@@ -204,7 +204,7 @@ struct PhotosScreen: View {
             var urls: [URL] = []
             for id in ids {
                 guard let src = library.client.originalURL(id) else { continue }
-                if let (tmp, resp) = try? await URLSession.shared.download(from: src) {
+                if let (tmp, resp) = try? await URLSession.shared.download(for: AtlasAuth.request(src, timeoutInterval: 600)) {
                     let ext = (resp.suggestedFilename as NSString?)?.pathExtension.nilIfEmpty ?? "jpg"
                     let dest = FileManager.default.temporaryDirectory
                         .appendingPathComponent("\(id).\(ext)")

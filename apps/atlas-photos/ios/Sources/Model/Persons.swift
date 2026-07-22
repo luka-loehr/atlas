@@ -31,7 +31,7 @@ extension PhotoClient {
         guard let url = URL(string: "http://\(host)/api/persons") else {
             throw URLError(.badURL)
         }
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await URLSession.shared.data(for: AtlasAuth.request(url, timeoutInterval: 15))
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
@@ -43,7 +43,7 @@ extension PhotoClient {
         guard let url = URL(string: "http://\(host)/api/persons/\(id)/assets") else {
             throw URLError(.badURL)
         }
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await URLSession.shared.data(for: AtlasAuth.request(url, timeoutInterval: 15))
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
@@ -59,6 +59,7 @@ extension PhotoClient {
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        AtlasAuth.apply(to: &req)
         struct Body: Encodable { let name: String }
         req.httpBody = try JSONEncoder().encode(Body(name: name))
         let (_, resp) = try await URLSession.shared.data(for: req)
@@ -72,7 +73,7 @@ extension PhotoClient {
         guard let url = URL(string: "http://\(host)/api/assets/\(assetId)/faces") else {
             throw URLError(.badURL)
         }
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await URLSession.shared.data(for: AtlasAuth.request(url, timeoutInterval: 15))
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
@@ -87,6 +88,7 @@ extension PhotoClient {
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        AtlasAuth.apply(to: &req)
         struct Body: Encodable { let face_id: Int64 }
         req.httpBody = try JSONEncoder().encode(Body(face_id: faceId))
         let (_, resp) = try await URLSession.shared.data(for: req)
