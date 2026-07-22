@@ -78,6 +78,8 @@ async fn main() {
         .route("/api/persons", get(persons))
         .route("/api/persons/{id}/assets", get(person_assets))
         .route("/api/persons/{id}/rename", post(person_rename))
+        .route("/api/persons/{id}/cover", post(person_cover))
+        .route("/api/assets/{id}/faces", get(asset_faces))
         .route("/api/faces/{id}/crop", get(face_crop))
         // archived / trashed / locked buckets (same asset JSON shape as timeline)
         .route("/api/archive", get(archive))
@@ -846,6 +848,65 @@ async fn person_rename(
         .execute("UPDATE persons SET display_name = $2 WHERE id = $1", &[&id, &val])
         .await?;
     Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+#[derive(Deserialize)]
+struct Cover {
+    face_id: i64,
+}
+
+/// Set a person's avatar to one concrete face crop. The face must belong to
+/// that person (or to a cluster merged into it) — otherwise no row updates.
+async fn person_cover(
+    State(app): State<App>,
+    Path(id): Path<i64>,
+    Json(b): Json<Cover>,
+) -> Result<Json<serde_json::Value>, Api> {
+    let c = app.pool.get().await?;
+    let n = c
+        .execute(
+            "UPDATE persons SET cover_face_id = $2
+             WHERE id = $1 AND EXISTS (
+                 SELECT 1 FROM faces f JOIN persons p ON p.id = f.person_id
+                 WHERE f.id = $2 AND (p.id = $1 OR p.merged_into = $1))",
+            &[&id, &b.face_id],
+        )
+        .await?;
+    Ok(Json(serde_json::json!({ "updated": n })))
+}
+
+/// Faces detected on one asset, resolved to their (un-merged) person — feeds
+/// the person row in the viewer's info sheet.
+async fn asset_faces(
+    State(app): State<App>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, Api> {
+    if !safe_id(&id) {
+        return Ok(Json(serde_json::json!({ "items": [] })));
+    }
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            "SELECT f.id, COALESCE(p2.id, p.id), COALESCE(p2.display_name, p.display_name)
+             FROM faces f
+             JOIN persons p ON p.id = f.person_id
+             LEFT JOIN persons p2 ON p2.id = p.merged_into
+             WHERE f.asset_id = $1
+             ORDER BY f.quality DESC NULLS LAST",
+            &[&id],
+        )
+        .await?;
+    let items: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "face": r.get::<_, i64>(0),
+                "person": r.get::<_, i64>(1),
+                "name": r.get::<_, Option<String>>(2),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items })))
 }
 
 /// Square avatar crop written by the face worker (photos/faces/<face_id>.webp).

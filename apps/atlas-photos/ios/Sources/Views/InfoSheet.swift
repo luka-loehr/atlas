@@ -2,31 +2,47 @@ import SwiftUI
 import MapKit
 
 /// Detail sheet for one asset — Apple-/Google-Photos style:
-/// date + filename, gray camera card (model + format badge, MP · resolution ·
-/// size, ISO | focal | ev | ƒ | shutter), a map with the photo as pin, the
-/// place name and the pipeline's tags.
+/// person chips + tags up top, date + filename, gray camera card (model +
+/// format badge, MP · resolution · size, ISO | focal | ev | ƒ | shutter),
+/// a map with the photo as pin, and per person a "make this the avatar" row.
 struct InfoSheet: View {
     var library: Library
     var asset: Asset
 
     @Environment(\.dismiss) private var dismiss
     @State private var info: AssetInfo?
+    @State private var faces: [AssetFace] = []
+    @State private var coverSet: Set<Int64> = []   // persons whose avatar now IS this photo
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                aiSection
-                dateRow
-                cameraCard
-                mapCard
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    personTagFlow
+                    dateRow
+                    cameraCard
+                    mapCard
+                    coverSection
+                }
+                .padding(18)
+                .padding(.top, 8)
             }
-            .padding(18)
-            .padding(.top, 8)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .presentationDragIndicator(.visible)
         .task {
-            info = try? await library.client.assetInfo(asset.id)
+            async let i = library.client.assetInfo(asset.id)
+            async let f = library.client.assetFaces(asset.id)
+            info = try? await i
+            faces = (try? await f) ?? []
         }
+    }
+
+    /// Best face per person, pipeline already sorts by quality.
+    private var personsOnPhoto: [AssetFace] {
+        var seen = Set<Int64>(), out: [AssetFace] = []
+        for f in faces where seen.insert(f.person).inserted { out.append(f) }
+        return out
     }
 
     // MARK: - Date + filename
@@ -174,15 +190,100 @@ struct InfoSheet: View {
         item.openInMaps()
     }
 
-    // MARK: - Tags (read-only). KI-Beschreibungen wurden entfernt — die
-    // generierten Sätze waren zu unzuverlässig; die Tags reichen.
+    // MARK: - Persons + tags. One shared flow up top: tappable person chips
+    // (face + name -> their photo grid) first, then the pipeline's tags.
+    // KI-Beschreibungen wurden entfernt — die generierten Sätze waren zu
+    // unzuverlässig; die Tags reichen.
 
     @ViewBuilder
-    private var aiSection: some View {
+    private var personTagFlow: some View {
         let tags = info?.tags ?? []
-        if !tags.isEmpty {
-            FlowChips(items: tags)
-                .padding(.top, 4)
+        if !personsOnPhoto.isEmpty || !tags.isEmpty {
+            FlowLayout(spacing: 8) {
+                ForEach(personsOnPhoto) { f in
+                    NavigationLink {
+                        PersonDetailScreen(
+                            library: library,
+                            person: Person(id: f.person, name: f.name,
+                                           coverFace: f.face, photos: 0))
+                    } label: {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle().fill(Color(.secondarySystemFill))
+                                Thumb(url: library.client.faceCropURL(f.face))
+                            }
+                            .frame(width: 26, height: 26)
+                            .clipShape(Circle())
+                            Text(f.displayName)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(f.name == nil ? .secondary : .primary)
+                                .lineLimit(1)   // chip stays one line, truncates
+                        }
+                        .padding(.leading, 4)
+                        .padding(.trailing, 12)
+                        .padding(.vertical, 4)
+                        .background(Color(uiColor: .secondarySystemBackground),
+                                    in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                ForEach(tags, id: \.self) { tag in
+                    Text(tag)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(uiColor: .secondarySystemBackground),
+                                    in: Capsule())
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    // MARK: - "Als Titelbild festlegen" — one row per person on the photo;
+    // sets persons.cover_face_id to THIS photo's face crop.
+
+    @ViewBuilder
+    private var coverSection: some View {
+        if !personsOnPhoto.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(personsOnPhoto) { f in
+                    let done = coverSet.contains(f.person)
+                    Button {
+                        Task {
+                            do {
+                                try await library.client.setPersonCover(f.person, faceId: f.face)
+                                coverSet.insert(f.person)
+                            } catch {}
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle().fill(Color(.secondarySystemFill))
+                                Thumb(url: library.client.faceCropURL(f.face))
+                            }
+                            .frame(width: 34, height: 34)
+                            .clipShape(Circle())
+                            Text(done ? "Titelbild von \(f.displayName) aktualisiert"
+                                      : "Als Titelbild von \(f.displayName) festlegen")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(done ? .secondary : .primary)
+                            Spacer()
+                            Image(systemName: done ? "checkmark.circle.fill"
+                                                   : "person.crop.circle.badge.checkmark")
+                                .font(.system(size: 18))
+                                .foregroundStyle(done ? AnyShapeStyle(.green)
+                                                      : AnyShapeStyle(.secondary))
+                        }
+                        .padding(12)
+                        .background(Color(uiColor: .secondarySystemBackground),
+                                    in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(done)
+                }
+            }
         }
     }
 
@@ -195,33 +296,18 @@ struct InfoSheet: View {
     }
 }
 
-/// Simple wrapping chip layout for tags.
-struct FlowChips: View {
-    let items: [String]
-
-    var body: some View {
-        FlowLayout(spacing: 8) {
-            ForEach(items, id: \.self) { tag in
-                Text(tag)
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color(uiColor: .secondarySystemBackground),
-                                in: Capsule())
-            }
-        }
-    }
-}
-
-/// Minimal flow layout (wraps children like text).
+/// Minimal flow layout (wraps children like text). Children are proposed the
+/// container width (not .unspecified), so an over-long chip caps at the row
+/// width and truncates instead of drawing past the sheet edge.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
+        let child = ProposedViewSize(width: width.isFinite ? width : nil, height: nil)
         var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
         for s in subviews {
-            let sz = s.sizeThatFits(.unspecified)
+            let sz = s.sizeThatFits(child)
             if x + sz.width > width, x > 0 { x = 0; y += rowH + spacing; rowH = 0 }
             x += sz.width + spacing
             rowH = max(rowH, sz.height)
@@ -230,13 +316,14 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let child = ProposedViewSize(width: bounds.width, height: nil)
         var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
         for s in subviews {
-            let sz = s.sizeThatFits(.unspecified)
+            let sz = s.sizeThatFits(child)
             if x + sz.width > bounds.maxX, x > bounds.minX {
                 x = bounds.minX; y += rowH + spacing; rowH = 0
             }
-            s.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            s.place(at: CGPoint(x: x, y: y), proposal: child)
             x += sz.width + spacing
             rowH = max(rowH, sz.height)
         }
