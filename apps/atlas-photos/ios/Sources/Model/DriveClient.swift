@@ -21,11 +21,13 @@ struct DriveFile: Codable, Sendable, Identifiable, Hashable {
     let size: Int64
     let mime: String?
     let modifiedAt: Date?
-    // only present in search results: the containing folder's name
+    // only present in search results: the containing folder's name and, for
+    // content hits, the match context inside the file
     var folder: String? = nil
+    var snippet: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, hash, size, mime, folder
+        case id, name, hash, size, mime, folder, snippet
         case modifiedAt = "modified_at"
     }
 }

@@ -151,8 +151,31 @@ pub struct SearchQ {
     q: String,
 }
 
-/// Filename search across all folders; each hit carries its folder name so the
-/// result row can show where it lives.
+/// Case-insensitive match context: ±60 chars around the first occurrence.
+/// Char-aligned lowercase (first mapping only) so byte offsets can't drift.
+fn snippet(text: &str, term: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let lc: Vec<char> = chars.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
+    let t: Vec<char> = term.chars().map(|c| c.to_lowercase().next().unwrap_or(c)).collect();
+    if t.is_empty() || t.len() > lc.len() {
+        return String::new();
+    }
+    let Some(p) = lc.windows(t.len()).position(|w| w == &t[..]) else {
+        return String::new();
+    };
+    let start = p.saturating_sub(60);
+    let end = (p + t.len() + 60).min(chars.len());
+    let body: String = chars[start..end].iter().collect();
+    format!(
+        "{}{}{}",
+        if start > 0 { "…" } else { "" },
+        body.split_whitespace().collect::<Vec<_>>().join(" "),
+        if end < chars.len() { "…" } else { "" },
+    )
+}
+
+/// Search across all folders: filename matches first, then content matches
+/// (extracted text, see ingest/extract_drive_text.py) with a match snippet.
 pub async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json<serde_json::Value>, Api> {
     let term = s.q.trim();
     if term.is_empty() {
@@ -160,7 +183,7 @@ pub async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<
     }
     let like = format!("%{}%", crate::like_escape(term));
     let c = app.pool.get().await?;
-    let files: Vec<_> = c
+    let mut files: Vec<_> = c
         .query(
             "SELECT df.id, df.name, df.hash, df.size_bytes, df.mime, df.modified_at, fo.name
              FROM drive_files df
@@ -177,6 +200,22 @@ pub async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<
             j
         })
         .collect();
+    let content_rows = c
+        .query(
+            "SELECT df.id, df.name, df.hash, df.size_bytes, df.mime, df.modified_at, fo.name, df.text
+             FROM drive_files df
+             LEFT JOIN drive_folders fo ON fo.id = df.folder_id
+             WHERE df.text ILIKE $1 AND df.name NOT ILIKE $1 AND df.trashed_at IS NULL
+             ORDER BY df.modified_at DESC LIMIT 50",
+            &[&like],
+        )
+        .await?;
+    for r in &content_rows {
+        let mut j = file_json(r);
+        j["folder"] = serde_json::json!(r.get::<_, Option<String>>(6));
+        j["snippet"] = serde_json::json!(snippet(r.get::<_, &str>(7), term));
+        files.push(j);
+    }
     let folders: Vec<_> = c
         .query(
             "SELECT id, name FROM drive_folders WHERE name ILIKE $1 ORDER BY lower(name) LIMIT 50",
@@ -397,6 +436,16 @@ pub async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> 
     if let Some(old) = old_hash {
         gc_blobs(&app, &[old]).await?;
     }
+    // best-effort: fill drive_files.text so the new file is content-searchable
+    tokio::spawn(async move {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into());
+        let _ = tokio::process::Command::new("python3")
+            .arg(format!("{home}/atlas/apps/atlas-photos/ingest/extract_drive_text.py"))
+            .arg("--file-id")
+            .arg(id.to_string())
+            .output()
+            .await;
+    });
     Ok(Json(serde_json::json!({ "id": id, "hash": hash, "replaced": replaced })).into_response())
 }
 

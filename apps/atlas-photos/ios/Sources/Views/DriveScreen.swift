@@ -246,6 +246,13 @@ struct DriveFolderScreen: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    if let snippet = f.snippet, !snippet.isEmpty {
+                        Text(snippet)
+                            .font(.system(size: 12))
+                            .italic()
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(2)
+                    }
                 }
                 Spacer()
                 if busyFileID == f.id { ProgressView() }
