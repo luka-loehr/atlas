@@ -1,0 +1,4 @@
+# Ingest tools (Takeout/Drive → Postgres + thumbnails)
+psycopg[binary]>=3.1
+Pillow>=10.0
+pillow-heif>=0.13

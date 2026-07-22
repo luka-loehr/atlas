@@ -46,6 +46,4 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.AtlasPhotos
-        CODE_SIGNING_ALLOWED: YES
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: YOURTEAMID
+        CODE_SIGNING_ALLOWED: NO
