@@ -36,5 +36,6 @@ python3 serve.py                # -> http://localhost:8890
 ```
 
 `serve.py` liefert die Seite und proxied `/trash` + `/restore` an den
-atlas-Server (gleiche Origin, kein CORS). Bilder kommen direkt von
-`atlas.your-tailnet.ts.net:8788`.
+atlas-Server (gleiche Origin, kein CORS). Bilder kommen direkt vom
+atlas-photos-Server; dessen Basis-URL kommt aus `ATLAS_PHOTOS_URL`
+(Default: `http://atlas.your-tailnet.ts.net:8788`).

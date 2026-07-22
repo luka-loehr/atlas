@@ -5,16 +5,14 @@
 <title>Aussortieren</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗑</text></svg>">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #08090b; --panel: #0e1014; --line: #23262d;
     --txt: #ece9e2; --dim: #6f7480; --faint: #3a3e47;
     --red: #ff6257; --green: #59d98c;
     --glow: 210 90% 60%;
-    --serif: "Fraunces", ui-serif, Georgia, serif;
-    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; }
@@ -167,7 +165,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const ATLAS = "http://atlas.your-tailnet.ts.net:8788";
+let ATLAS = "";          // Thumb-Basis-URL, kommt von serve.py (/state)
 const CATS  = { screenshot: "Screenshot", dark: "Leer / Schwarz", blurry: "Unscharf", doc: "Dokument" };
 const HUES  = { screenshot: "210 90% 60%", dark: "268 70% 65%", blurry: "38 95% 60%", doc: "160 70% 55%" };
 
@@ -184,6 +182,7 @@ Promise.all([
   fetch("/state").then(r => r.json()),
 ]).then(([list, state]) => {
   all = list;
+  ATLAS = state.atlas || "";
   decided = state.decided || {};
   queue = all.filter(c => !decided[c.id]);
   $("loading").style.display = "none";
@@ -243,7 +242,7 @@ function render() {
 
 async function send(id, action) {
   const r = await fetch("/decide", { method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Triage": "1" },
     body: JSON.stringify({ id, action }) });
   if (!r.ok) throw new Error("Server " + r.status);
 }
