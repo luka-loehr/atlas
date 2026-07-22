@@ -2,14 +2,13 @@ import Foundation
 
 struct Show: Codable, Sendable, Identifiable, Hashable {
     let name: String
-    let file: String
     let title: String
     let bpm: Double
     let durationS: Double
     let running: Bool
     var id: String { name }
     enum CodingKeys: String, CodingKey {
-        case name, file, title, bpm, running
+        case name, title, bpm, running
         case durationS = "duration_s"
     }
 }

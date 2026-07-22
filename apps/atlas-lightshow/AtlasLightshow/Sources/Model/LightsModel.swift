@@ -45,8 +45,6 @@ final class LightsModel {
         Color(red: 0.55, green: 0.45, blue: 1.0),
     ]
 
-    var anythingOn: Bool { on.contains(true) || laser || strobe }
-
     /// The 21-channel DMX frame the bridge understands (ch 19 fog always 0).
     private func frame() -> [Int] {
         var ch = [Int](repeating: 0, count: 21)

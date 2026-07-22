@@ -26,8 +26,13 @@ open AtlasLightshow.xcodeproj
 
 Pick your iPhone, set your signing team (target
 `com.lukaloehr.AtlasLightshow`), run. Settings (gear on the Shows tab) hold
-the agent host (default `atlas.your-tailnet.ts.net:8787`) and optional token —
-same agent, same tailnet as the admin app.
+the agent host (e.g. `atlas.your-tailnet.ts.net:8787` — empty on first launch,
+the app opens Settings for you) and optional token — same agent, same tailnet
+as the admin app.
+
+Optional Xcode scheme environment variables for demos/screenshots:
+`ATLAS_TAB=1` starts on the Lichter tab, `ATLAS_DEMO_SHOW=<name>` auto-opens
+that show's player.
 
 ## How it talks to atlas
 
