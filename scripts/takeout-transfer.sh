@@ -12,18 +12,25 @@
 # Emits one line per meaningful event (Monitor turns each into a notification).
 set -u
 DL="$HOME/Downloads"
-REMOTE_DIR="takeout/photos"
-# Direktes Heimnetz-LAN (Gigabit) statt Tailscale-Relay.
-HOST="atlas-lan"
-# NUR der Foto-Export. Die Google-Drive-Datei (20260720T115546Z-1-001.zip)
-# bleibt bewusst lokal und wird nie angefasst.
-PHOTOS_GLOB="takeout-20260719T213848Z-*.zip"
+# ATLAS_SSH_HOST: SSH-Ziel (Host-Alias aus ~/.ssh/config); im Heimnetz besser
+# ein direkter LAN-Alias (Gigabit) statt Tailscale-Relay.
+HOST="${ATLAS_SSH_HOST:-atlas}"
+# REMOTE_DIR: Zielverzeichnis auf dem Server (relativ zum Remote-$HOME).
+REMOTE_DIR="${REMOTE_DIR:-takeout/photos}"
+# TAKEOUT_GLOB: nur Teile, die darauf passen, werden angefasst — z.B. auf den
+# Zeitstempel EINES Exports einschraenken ("takeout-20260101T000000Z-*.zip"),
+# damit andere Takeout-Downloads lokal bleiben.
+PHOTOS_GLOB="${TAKEOUT_GLOB:-takeout-*.zip}"
 
 canonical() {            # "takeout-…-1-004 (1).zip" -> "takeout-…-1-004.zip"
   basename "$1" | sed -E 's/ \(([0-9]+)\)\.zip$/.zip/'
 }
 
-remote_size() { ssh -o ConnectTimeout=15 "$HOST" "stat -c%s 'takeout/photos/$1' 2>/dev/null" 2>/dev/null; }
+remote_size() {          # printf %q: Dateiname sicher fuer die Remote-Shell quoten
+  local q
+  q=$(printf '%q' "$REMOTE_DIR/$1")
+  ssh -o ConnectTimeout=15 "$HOST" "stat -c%s $q 2>/dev/null" 2>/dev/null
+}
 
 while true; do
   shopt -s nullglob

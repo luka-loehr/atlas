@@ -8,12 +8,15 @@ Browser zeigt also nie wieder bereits Geloeschtes.
     python3 serve.py            # -> http://localhost:8890
 """
 import json
+import os
 import threading
+import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-ATLAS = "http://atlas.your-tailnet.ts.net:8788"
+# ATLAS_PHOTOS_URL: Basis-URL des atlas-photos-Servers (Thumbs + Mutations-API).
+ATLAS = os.environ.get("ATLAS_PHOTOS_URL", "http://atlas.your-tailnet.ts.net:8788")
 PORT = 8890
 HERE = Path(__file__).resolve().parent
 STATE = HERE / "decided.json"
@@ -55,11 +58,28 @@ class Handler(SimpleHTTPRequestHandler):
                 save_state(decided)
             except Exception:
                 pass  # atlas nicht erreichbar -> lokaler Stand reicht
-        self.reply({"decided": decided})
+        # "atlas" mitliefern: index.html bekommt die Thumb-Basis-URL von hier
+        # statt sie selbst zu hardcoden.
+        self.reply({"decided": decided, "atlas": ATLAS})
+
+    def csrf_ok(self):
+        # CSRF-Schutz: Custom-Header erzwingen (cross-origin ohne CORS-Preflight
+        # unmoeglich) und, falls der Browser Origin schickt, localhost verlangen.
+        if self.headers.get("X-Triage") != "1":
+            return False
+        origin = self.headers.get("Origin")
+        if origin:
+            host = urllib.parse.urlsplit(origin).hostname
+            if host not in ("localhost", "127.0.0.1"):
+                return False
+        return True
 
     def do_POST(self):
         if self.path != "/decide":
             self.send_error(404)
+            return
+        if not self.csrf_ok():
+            self.send_error(403)
             return
         try:
             b = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -99,7 +119,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    import os
     os.chdir(HERE)
     print(f"Aussortieren: http://localhost:{PORT}")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
