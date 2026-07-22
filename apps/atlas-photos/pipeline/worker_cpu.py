@@ -22,7 +22,7 @@ import db
 import handlers_cpu
 import jobqueue as jobq
 
-from concurrent.futures import ThreadPoolExecutor, wait  # after jobq import
+from concurrent.futures import ThreadPoolExecutor, wait
 
 KINDS = ["thumb", "meta", "geocode", "event_scan"]
 THREAD_HANDLERS = {

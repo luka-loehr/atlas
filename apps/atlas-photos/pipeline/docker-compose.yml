@@ -1,5 +1,6 @@
 # atlas-photos pipeline — CPU + GPU workers, autostart on boot.
-# Host paths are for atlas (Ubuntu). Run from this directory:
+# Host paths are configurable via a .env file next to this compose file
+# (copy .env.example -> .env). Run from this directory:
 #   docker compose up -d --build
 # Autostart: restart: unless-stopped + enabled docker daemon => power button is all.
 name: atlas-pipeline
@@ -12,16 +13,20 @@ x-pipeline-common: &pipeline-common
     MODELS_DIR: /models
     HF_HOME: /models/hf
     PG_ENV_FILE: /secrets/.env
+    # git revision of the Qwen embedding repo — its bundled code is executed,
+    # pin a commit sha for supply-chain safety (see .env.example)
+    ATLAS_EMBED_REVISION: ${ATLAS_EMBED_REVISION:-main}
   volumes:
-    - /home/atlas/photos:/photos
-    - /home/atlas/models:/models
-    - /home/atlas/atlas/backend/docker/.env:/secrets/.env:ro
+    - ${ATLAS_PHOTOS_DIR:-/srv/atlas/photos}:/photos
+    - ${ATLAS_MODELS_DIR:-/srv/atlas/models}:/models
+    - ${ATLAS_PG_ENV_FILE:-../../../backend/docker/.env}:/secrets/.env:ro
     # Source is mounted, not baked in: git pull + docker compose restart = new code.
-    - /home/atlas/atlas/apps/atlas-photos/pipeline:/app:ro
+    - .:/app:ro
 
 services:
   pipeline-cpu:
-    user: "1000:1000"    # thumbs als luka schreiben — Host-Tools duerfen sie dann anfassen
+    # write thumbs as the library-owning host user so host tools may touch them
+    user: "${ATLAS_PIPELINE_UID:-1000}:${ATLAS_PIPELINE_GID:-1000}"
     <<: *pipeline-common
     build:
       context: .

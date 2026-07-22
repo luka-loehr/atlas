@@ -15,12 +15,13 @@ import gc
 import os
 import signal
 import socket
-import sys
 import threading
 import time
 
 import psycopg
 
+import db
+import jobqueue as jobq
 from gpu_stages import EmbedStage, FaceStage, CaptionStage, free_cuda
 
 WORKER = f"gpu:{socket.gethostname()}:{os.getpid()}"
@@ -28,73 +29,15 @@ REAP_EVERY = 300  # s
 IDLE_SLEEP = 30   # s
 
 
-# --------------------------------------------------------------------- db ---
-
-def pg_password():
-    for path in ("/secrets/.env", os.path.expanduser("~/atlas/backend/docker/.env")):
-        if os.path.exists(path):
-            with open(path) as f:
-                for line in f:
-                    if line.startswith("POSTGRES_PASSWORD="):
-                        return line.split("=", 1)[1].strip()
-    raise RuntimeError("POSTGRES_PASSWORD not found in /secrets/.env")
-
-
-def db():
-    return psycopg.connect(host="127.0.0.1", dbname="atlas", user="atlas",
-                           password=pg_password(), autocommit=True)
-
-
 # ------------------------------------------------------------------ queue ---
-
-def reap(conn):
-    """Requeue jobs whose worker died (stale or never-set heartbeat)."""
-    cur = conn.cursor()
-    cur.execute(
-        """UPDATE ingest_jobs SET status='pending', locked_by=NULL, updated_at=now()
-           WHERE status='running'
-             AND (heartbeat_at < now() - interval '10 minutes'
-                  OR heartbeat_at IS NULL)""")
-    if cur.rowcount:
-        print(f"reaped {cur.rowcount} zombie jobs", flush=True)
-
+# claim/done/fail/reap come from jobqueue.py (shared with the CPU worker);
+# db.py provides the connection (PG_ENV_FILE/PGHOST-aware).
 
 def has_pending(conn, kind):
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM ingest_jobs WHERE status='pending' AND kind=%s "
                 "AND run_after <= now() LIMIT 1", (kind,))
     return cur.fetchone() is not None
-
-
-def claim(conn, kind, limit):
-    """Single-statement claim: no duplicates across workers (SKIP LOCKED)."""
-    cur = conn.cursor()
-    cur.execute(
-        """UPDATE ingest_jobs
-           SET status='running', locked_by=%s, heartbeat_at=now(), updated_at=now()
-           WHERE id IN (SELECT id FROM ingest_jobs
-                        WHERE status='pending' AND kind = ANY(%s)
-                          AND run_after <= now()
-                        ORDER BY priority, id LIMIT %s
-                        FOR UPDATE SKIP LOCKED)
-           RETURNING id, kind, owner_id""", (WORKER, [kind], limit))
-    return cur.fetchall()
-
-
-def done(conn, job_id):
-    conn.cursor().execute(
-        "UPDATE ingest_jobs SET status='done', error=NULL, updated_at=now() "
-        "WHERE id=%s", (job_id,))
-
-
-def fail(conn, job_id, err):
-    conn.cursor().execute(
-        """UPDATE ingest_jobs
-           SET attempts = attempts + 1, error = %s, updated_at = now(),
-               locked_by = NULL, heartbeat_at = NULL,
-               status = CASE WHEN attempts + 1 >= 5 THEN 'failed' ELSE 'pending' END,
-               run_after = now() + (attempts + 1) * interval '5 min'
-           WHERE id = %s""", (str(err)[:2000], job_id))
 
 
 def retry_later(conn, job_id, why):
@@ -131,7 +74,7 @@ class Heartbeat(threading.Thread):
                 continue
             try:
                 if conn is None or conn.closed:
-                    conn = db()
+                    conn = db.connect()
                 conn.cursor().execute(
                     "UPDATE ingest_jobs SET heartbeat_at=now() "
                     "WHERE id = ANY(%s) AND status='running'", (ids,))
@@ -180,7 +123,7 @@ def drain(conn, stage, hb, stop):
     _backoff_until.pop(stage.KIND, None)
     try:
         while not stop.is_set():
-            jobs = claim(conn, stage.KIND, stage.BATCH)
+            jobs = jobq.claim(conn, WORKER, [stage.KIND], stage.BATCH)
             if not jobs:
                 break
             hb.track([j[0] for j in jobs])
@@ -193,13 +136,13 @@ def drain(conn, stage, hb, stop):
             ok = nfail = nretry = 0
             for jid, err in results:
                 if err is None:
-                    done(conn, jid)
+                    jobq.done(conn, jid)
                     ok += 1
                 elif str(err).startswith("RETRY:"):
                     retry_later(conn, jid, err)   # input not ready — no penalty
                     nretry += 1
                 else:
-                    fail(conn, jid, err)
+                    jobq.fail(conn, jid, err)
                     nfail += 1
             hb.track([])
             print(f"[{stage.KIND}] n={len(jobs)} ok={ok} fail={nfail} "
@@ -225,7 +168,7 @@ def main():
     conn = None
     while conn is None and not stop.is_set():
         try:
-            conn = db()
+            conn = db.connect()
         except psycopg.OperationalError as e:
             print(f"waiting for postgres ({e}) ...", flush=True)
             stop.wait(5)
@@ -240,9 +183,9 @@ def main():
     while not stop.is_set():
         try:
             if conn.closed:
-                conn = db()
+                conn = db.connect()
             if time.monotonic() - last_reap > REAP_EVERY:
-                reap(conn)
+                jobq.reap(conn)
                 last_reap = time.monotonic()
             for stage in stages:
                 if stop.is_set():

@@ -4,7 +4,7 @@
 Reads media DIRECTLY from the takeout zips (no unpacking), merges the JSON
 sidecars (which may live in a DIFFERENT zip — classic takeout), dedupes by
 SHA256 content hash (the canonical id shared by the server upload path and the
-iOS app), writes originals + 256/1024 WebP thumbs and fills
+iOS app), writes originals + 512/2048 WebP thumbs and fills
 Postgres (assets, albums, ingest_jobs).
 
     python3 ingest_takeout.py ~/takeout/photos/*.zip
@@ -28,9 +28,12 @@ from PIL import Image, ImageOps
 import pillow_heif
 
 pillow_heif.register_heif_opener()
-Image.MAX_IMAGE_PIXELS = None
+# Decompression-bomb guard: high explicit ceiling instead of disabling it.
+# ATLAS_MAX_IMAGE_PIXELS: max decoded pixels per image (default 500 MP).
+Image.MAX_IMAGE_PIXELS = int(os.environ.get("ATLAS_MAX_IMAGE_PIXELS", 500_000_000))
 
-PHOTOS = os.path.expanduser("~/photos")
+# PHOTOS_DIR: photo library root (default ~/photos)
+PHOTOS = os.environ.get("PHOTOS_DIR", os.path.expanduser("~/photos"))
 ORIG = os.path.join(PHOTOS, "originals")
 THUMBS = os.path.join(PHOTOS, "thumbs")
 
@@ -40,12 +43,22 @@ VIDEO_EXT = {".mp4", ".mov", ".m4v", ".3gp", ".avi", ".mkv", ".webm", ".mts"}
 
 
 def db():
-    pw = ""
-    with open(os.path.expanduser("~/atlas/backend/docker/.env")) as f:
-        for line in f:
-            if line.startswith("POSTGRES_PASSWORD="):
-                pw = line.split("=", 1)[1].strip()
-    return psycopg.connect(host="127.0.0.1", dbname="atlas", user="atlas", password=pw)
+    # POSTGRES_PASSWORD directly, or parsed from $PG_ENV_FILE
+    # (default: ~/atlas/backend/docker/.env, the backend compose secrets file)
+    pw = os.environ.get("POSTGRES_PASSWORD", "")
+    if not pw:
+        env_file = os.environ.get(
+            "PG_ENV_FILE", os.path.expanduser("~/atlas/backend/docker/.env"))
+        with open(env_file) as f:
+            for line in f:
+                if line.startswith("POSTGRES_PASSWORD="):
+                    pw = line.split("=", 1)[1].strip()
+    return psycopg.connect(
+        host=os.environ.get("PGHOST", "127.0.0.1"),
+        port=int(os.environ.get("PGPORT", "5432")),
+        dbname=os.environ.get("PGDATABASE", "atlas"),
+        user=os.environ.get("PGUSER", "atlas"),
+        password=pw)
 
 
 # ------------------------------------------------------------ sidecar map ---
@@ -190,8 +203,9 @@ def process_entry(args):
             f.write(data)
 
     w = h = dur = None
-    thumb256 = os.path.join(THUMBS, f"{hash_id}.256.webp")
-    if not os.path.exists(thumb256):
+    # skip only when the 512 WebP already exists (re-runs stay cheap)
+    thumb512 = os.path.join(THUMBS, f"{hash_id}.512.webp")
+    if not os.path.exists(thumb512):
         try:
             if is_video:
                 w, h, dur = make_video_thumbs(dest, hash_id)
@@ -253,11 +267,11 @@ def main(zips):
     albums = {}
     done = 0
     errors = 0
-    with ProcessPoolExecutor(max_workers=14) as ex:
+    # ATLAS_INGEST_WORKERS: process-pool width (default: all cores)
+    workers = int(os.environ.get("ATLAS_INGEST_WORKERS", os.cpu_count() or 4))
+    with ProcessPoolExecutor(max_workers=workers) as ex:
         for res in ex.map(process_entry, todo, chunksize=8):
             done += 1
-            if res is None:
-                continue
             if "error" in res:
                 errors += 1
                 if errors < 20:

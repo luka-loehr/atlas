@@ -286,9 +286,20 @@ fn ext_mime(name: &str) -> &'static str {
     }
 }
 
+/// Content types that are safe to render inline in a browser. Anything else —
+/// notably text/html, image/svg+xml and application/xml, which can run script
+/// on this origin — is forced to Content-Disposition: attachment.
+fn inline_safe(mime: &str) -> bool {
+    (mime.starts_with("image/") && mime != "image/svg+xml")
+        || mime.starts_with("video/")
+        || mime.starts_with("audio/")
+        || matches!(mime, "application/pdf" | "text/plain; charset=utf-8" | "text/csv" | "application/json")
+}
+
 /// Immutable, Range-capable blob download. The URL carries the display name
 /// only for the content type and so shared/downloaded copies get a real
-/// filename — content is addressed purely by hash.
+/// filename — content is addressed purely by hash. Script-capable types are
+/// never rendered inline (stored-XSS guard) and every response is nosniff.
 pub async fn blob(
     State(app): State<App>,
     Path((hash, name)): Path<(String, String)>,
@@ -305,9 +316,13 @@ pub async fn blob(
                 header::CACHE_CONTROL,
                 HeaderValue::from_static("public, max-age=31536000, immutable"),
             );
-            if let Ok(v) = HeaderValue::from_str(ext_mime(&name)) {
+            resp.headers_mut()
+                .insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+            let mime = ext_mime(&name);
+            if let Ok(v) = HeaderValue::from_str(mime) {
                 resp.headers_mut().insert(header::CONTENT_TYPE, v);
             }
+            let disposition = if inline_safe(mime) { "inline" } else { "attachment" };
             // RFC 5987 filename* so umlauts survive; plain fallback for the rest
             let ascii: String = name
                 .chars()
@@ -321,7 +336,7 @@ pub async fn blob(
                 })
                 .collect();
             if let Ok(v) = HeaderValue::from_str(&format!(
-                "inline; filename=\"{ascii}\"; filename*=UTF-8''{encoded}"
+                "{disposition}; filename=\"{ascii}\"; filename*=UTF-8''{encoded}"
             )) {
                 resp.headers_mut().insert(header::CONTENT_DISPOSITION, v);
             }
@@ -436,11 +451,17 @@ pub async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> 
     if let Some(old) = old_hash {
         gc_blobs(&app, &[old]).await?;
     }
-    // best-effort: fill drive_files.text so the new file is content-searchable
+    // best-effort: fill drive_files.text so the new file is content-searchable.
+    // ATLAS_DRIVE_EXTRACTOR: path to the extraction script (default:
+    // $HOME/atlas/apps/atlas-photos/ingest/extract_drive_text.py — i.e. the
+    // repo checked out at ~/atlas). Silently no-ops if the script is missing.
     tokio::spawn(async move {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into());
+        let script = std::env::var("ATLAS_DRIVE_EXTRACTOR").unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            format!("{home}/atlas/apps/atlas-photos/ingest/extract_drive_text.py")
+        });
         let _ = tokio::process::Command::new("python3")
-            .arg(format!("{home}/atlas/apps/atlas-photos/ingest/extract_drive_text.py"))
+            .arg(script)
             .arg("--file-id")
             .arg(id.to_string())
             .output()
@@ -480,10 +501,10 @@ pub struct NewFolder {
 }
 
 /// mkdir -p semantics: creating an existing (parent, name) returns its id.
-pub async fn folder_create(State(app): State<App>, Json(b): Json<NewFolder>) -> Result<Json<serde_json::Value>, Api> {
+pub async fn folder_create(State(app): State<App>, Json(b): Json<NewFolder>) -> Result<Response, Api> {
     let name = b.name.trim();
     if name.is_empty() {
-        return Err(Api("empty name".into()));
+        return Ok((StatusCode::BAD_REQUEST, "empty name").into_response());
     }
     let c = app.pool.get().await?;
     let r = c
@@ -494,7 +515,7 @@ pub async fn folder_create(State(app): State<App>, Json(b): Json<NewFolder>) -> 
             &[&b.parent_id, &name],
         )
         .await?;
-    Ok(Json(serde_json::json!({ "id": r.get::<_, i64>(0) })))
+    Ok(Json(serde_json::json!({ "id": r.get::<_, i64>(0) })).into_response())
 }
 
 #[derive(Deserialize)]

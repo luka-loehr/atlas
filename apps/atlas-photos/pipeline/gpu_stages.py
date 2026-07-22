@@ -26,6 +26,11 @@ PHOTOS = os.environ.get("PHOTOS_DIR", "/photos")
 THUMBS = os.path.join(PHOTOS, "thumbs")
 FACE_CROPS = os.path.join(PHOTOS, "faces")
 
+# ATLAS_EMBED_REVISION: git revision of the embedding model repo — its bundled
+# scripts/ code is imported and executed, so pin a commit sha to freeze the
+# supply chain (default "main").
+EMBED_REVISION = os.environ.get("ATLAS_EMBED_REVISION", "main")
+
 # A job settled with this prefix is requeued WITHOUT an attempts penalty —
 # used when the input thumb simply doesn't exist yet (the CPU worker is still
 # thumbnailing a fresh ingest). Prevents mass-'failed' GPU jobs during the
@@ -39,6 +44,22 @@ def thumb(asset_id, *sizes):
         p = os.path.join(THUMBS, f"{asset_id}.{s}.webp")
         if os.path.exists(p):
             return p
+    return None
+
+
+def resolve_original(orig_path):
+    """assets.orig_path is a host path (e.g. /home/atlas/photos/...); inside
+    the container the library is mounted at $PHOTOS_DIR (/photos). Remap via
+    the /photos/ marker (same approach as handlers_cpu.resolve_path).
+    Returns None when the file can't be found."""
+    if os.path.exists(orig_path):
+        return orig_path
+    marker = "/photos/"
+    i = orig_path.find(marker)
+    if i >= 0:
+        cand = os.path.join(PHOTOS, orig_path[i + len(marker):])
+        if os.path.exists(cand):
+            return cand
     return None
 
 
@@ -70,7 +91,7 @@ class EmbedStage:
     def load(self):
         import os as _os, sys as _sys, torch
         from huggingface_hub import snapshot_download
-        mp = snapshot_download(self.MODEL_ID)
+        mp = snapshot_download(self.MODEL_ID, revision=EMBED_REVISION)
         _sys.path.insert(0, _os.path.join(mp, "scripts"))
         from qwen3_vl_embedding import Qwen3VLEmbedder
         self.torch = torch
@@ -99,8 +120,8 @@ class EmbedStage:
             typ, opath = meta.get(aid, (None, None))
             # videos: embed real frames from the original file
             if typ == "video" and opath:
-                vpath = opath.replace("/home/atlas/photos", "/photos")
-                if os.path.exists(vpath):
+                vpath = resolve_original(opath)
+                if vpath:
                     inputs.append({"video": vpath, "max_frames": self.VIDEO_FRAMES, "fps": 1.0})
                     keep.append((jid, aid))
                     continue
@@ -318,7 +339,9 @@ TAG_JUNK = ("keyword", "lowercase", "english", "5-12", "stichwort", "tags")
 
 
 class CaptionStage:
-    """Qwen2.5-VL-3B-AWQ via offline vLLM -> assets.caption (German) + tags."""
+    """Qwen2.5-VL-3B-AWQ via offline vLLM -> tags only. The German caption is
+    generated for JSON validation (a model that produces a coherent caption
+    yields far better tags) but deliberately discarded, not stored."""
     KIND = "caption"
     BATCH = 8
     MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct-AWQ"
