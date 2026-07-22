@@ -46,8 +46,13 @@ struct AtlasPhotosApp: App {
                 task.setTaskCompleted(success: true)
                 return
             }
-            let host = UserDefaults.standard.string(forKey: "photos.host")
-                ?? "atlas.your-tailnet.ts.net:8788"
+            // host is user-configured (Einstellungen / Account sheet, key
+            // "photos.host") — without one there is nothing to back up to
+            guard let host = UserDefaults.standard.string(forKey: "photos.host"),
+                  !host.isEmpty else {
+                task.setTaskCompleted(success: true)
+                return
+            }
             let sync = DeviceSync(client: PhotoClient(host: host))
             backgroundSync = sync
             guard await sync.requestAccess() else {
@@ -69,7 +74,8 @@ struct RootView: View {
     @State private var library = Library()
     @State private var watchSync: DeviceSync?
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("photos.host") private var host = "atlas.your-tailnet.ts.net:8788"
+    // empty until configured, e.g. "atlas.your-tailnet.ts.net:8788"
+    @AppStorage("photos.host") private var host = ""
     @AppStorage("photos.autoBackup") private var autoBackup = false
 
     var body: some View {

@@ -180,7 +180,7 @@ struct ViewerScreen: View {
         busy = true
         Task {
             defer { busy = false }
-            if let (tmp, resp) = try? await URLSession.shared.download(from: src) {
+            if let (tmp, resp) = try? await URLSession.shared.download(for: AtlasAuth.request(src, timeoutInterval: 600)) {
                 let ext = (resp.suggestedFilename as NSString?)?.pathExtension
                 let dest = FileManager.default.temporaryDirectory
                     .appendingPathComponent("\(a.id).\(ext?.isEmpty == false ? ext! : "jpg")")
@@ -590,7 +590,8 @@ private struct VideoPlayerView: View {
         // play sound even with the ringer/Focus on silent (like Photos/YouTube)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        let p = AVPlayer(url: url)
+        // AVURLAsset options carry the optional bearer token to the stream endpoint
+        let p = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: url, options: AtlasAuth.avAssetOptions)))
         p.isMuted = false
         player = p
         p.play()

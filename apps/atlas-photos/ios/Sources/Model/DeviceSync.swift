@@ -93,13 +93,6 @@ final class DeviceSync {
         watcher = w
     }
 
-    func stopWatching() {
-        if let w = watcher { PHPhotoLibrary.shared().unregisterChangeObserver(w) }
-        watcher = nil
-        watchDebounce?.cancel()
-        watchDebounce = nil
-    }
-
     private func libraryChanged() {
         watchDebounce?.cancel()
         watchDebounce = Task { [weak self] in
@@ -233,18 +226,6 @@ final class DeviceSync {
                 if !done { done = true; cont.resume(returning: img) }
             }
         }
-    }
-
-    /// Clears cached hashes and counters (e.g. after external library changes).
-    func reset() {
-        guard !running else { return }
-        hashByLocalId.removeAll()
-        serverHaveHashes.removeAll()
-        scanned = 0; deviceCount = 0; missingCount = 0; backedUpCount = 0
-        total = 0; uploaded = 0; failed = 0
-        deletedFromDevice = 0; reclaimedBytes = 0
-        lastError = nil
-        phase = .idle
     }
 
     // MARK: Flow A.1 — Scan

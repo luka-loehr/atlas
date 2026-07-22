@@ -52,15 +52,9 @@ struct DriveListing: Codable, Sendable {
     }
 }
 
-struct DriveStats: Codable, Sendable {
-    let files: Int
-    let bytes: Int64
-    let folders: Int
-}
-
 /// Talks to the drive endpoints of the atlas server (same host as the photos).
 struct DriveClient: Sendable {
-    var host: String   // "atlas.your-tailnet.ts.net:8788"
+    var host: String   // e.g. "atlas.your-tailnet.ts.net:8788"
 
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -72,6 +66,7 @@ struct DriveClient: Sendable {
         guard let url = URL(string: "http://\(host)\(path)") else { throw URLError(.badURL) }
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AtlasAuth.apply(to: &req)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
@@ -85,6 +80,7 @@ struct DriveClient: Sendable {
         var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        AtlasAuth.apply(to: &req)
         let clean = body.compactMapValues { $0 }
         req.httpBody = try JSONSerialization.data(withJSONObject: clean)
         let (_, resp) = try await URLSession.shared.data(for: req)
@@ -99,11 +95,6 @@ struct DriveClient: Sendable {
         try await get("/api/drive/list" + (folder.map { "?folder=\($0)" } ?? ""))
     }
 
-    func recent() async throws -> [DriveFile] {
-        let r: DriveListing = try await get("/api/drive/recent")
-        return r.files
-    }
-
     func search(_ q: String) async throws -> DriveListing {
         let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
         return try await get("/api/drive/search?q=\(enc)")
@@ -113,8 +104,6 @@ struct DriveClient: Sendable {
         let r: DriveListing = try await get("/api/drive/trash")
         return r.files
     }
-
-    func stats() async throws -> DriveStats { try await get("/api/drive/stats") }
 
     // MARK: Mutations
 
@@ -160,6 +149,7 @@ struct DriveClient: Sendable {
         if let mtime = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
             req.setValue("\(Int(mtime.timeIntervalSince1970))", forHTTPHeaderField: "X-Modified-At")
         }
+        AtlasAuth.apply(to: &req)
         let (_, resp) = try await URLSession.shared.upload(for: req, fromFile: file)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
@@ -181,7 +171,7 @@ struct DriveClient: Sendable {
         let dest = dir.appendingPathComponent(f.name)
         if FileManager.default.fileExists(atPath: dest.path) { return dest }
         guard let url = blobURL(f) else { throw URLError(.badURL) }
-        let (tmp, resp) = try await URLSession.shared.download(from: url)
+        let (tmp, resp) = try await URLSession.shared.download(for: AtlasAuth.request(url, timeoutInterval: 600))
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }

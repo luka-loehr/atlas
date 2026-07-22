@@ -96,7 +96,7 @@ struct SearchScreen: View {
             Text("Suche in deiner Bibliothek")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text("Personen, Orte, Dinge — z. B. Mia, Kroatien, Hund, 2019")
+            Text("Personen, Orte, Dinge — z. B. Mia, Strand, Hund, 2019")
                 .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

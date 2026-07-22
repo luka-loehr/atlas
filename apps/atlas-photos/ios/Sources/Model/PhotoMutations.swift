@@ -38,6 +38,7 @@ extension PhotoClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AtlasAuth.apply(to: &req)
         req.httpBody = try Self.mutationEncoder.encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -51,6 +52,7 @@ extension PhotoClient {
         guard let url = URL(string: "http://\(host)\(path)") else { throw URLError(.badURL) }
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AtlasAuth.apply(to: &req)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
@@ -125,13 +127,14 @@ extension PhotoClient {
 
     // MARK: - Upload (POST /api/upload, raw body + headers)
 
-    /// Uploads one asset's bytes. `hash` is the blake3 content id the server
+    /// Uploads one asset's bytes. `hash` is the SHA-256 content id the server
     /// keys on; `takenAt` (unix seconds) is sent only when known.
     func upload(data: Data, filename: String, takenAt: Date?, hash: String) async throws {
         guard let url = URL(string: "http://\(host)/api/upload") else { throw URLError(.badURL) }
         var req = URLRequest(url: url, timeoutInterval: 120)
         req.httpMethod = "POST"
         req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        AtlasAuth.apply(to: &req)
         req.setValue(filename, forHTTPHeaderField: "X-Filename")
         req.setValue(hash, forHTTPHeaderField: "X-Content-Hash")
         if let takenAt {

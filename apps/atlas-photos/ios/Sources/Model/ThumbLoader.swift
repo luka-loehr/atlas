@@ -98,7 +98,7 @@ final class ThumbLoader {
 
     func ensurePersistent(_ url: URL) async -> Bool {
         if hasPersistent(url) { return true }
-        guard let data = try? await session.data(from: url).0 else { return false }
+        guard let data = try? await session.data(for: AtlasAuth.request(url)).0 else { return false }
         Self.writePersistent(url, data)
         return true
     }
@@ -202,7 +202,7 @@ final class ThumbLoader {
                 return img
             }
         }
-        guard !Task.isCancelled, let data = try? await session.data(from: url).0 else { return nil }
+        guard !Task.isCancelled, let data = try? await session.data(for: AtlasAuth.request(url)).0 else { return nil }
         if persist, persistentEnabled {
             Task.detached(priority: .background) { Self.writePersistent(url, data) }
         }
