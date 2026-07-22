@@ -136,7 +136,7 @@ def main(zips):
     cur.execute("SELECT count(*), coalesce(sum(size_bytes),0) FROM drive_files WHERE trashed_at IS NULL")
     total, size = cur.fetchone()
     print(f"done: +{added} added, {updated} updated, {skipped} unchanged "
-          f"-> {total} files, {size / 1e9:.2f} GB")
+          f"-> {total} files, {float(size) / 1e9:.2f} GB")
     conn.close()
 
 
