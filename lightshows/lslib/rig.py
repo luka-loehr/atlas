@@ -1,9 +1,30 @@
 """Fixture map + color helpers for the 21-channel Art-Net rig."""
 import colorsys
+import os
 
 NCHAN = 21
 FPS = 25
-ARTNET_TARGET = ("192.168.1.100", 6454)
+
+def _artnet_host():
+    """Art-Net bridge host, resolved in order:
+    1. ATLAS_ARTNET_HOST env var (IP/hostname of the machine running
+       bridge/hue_stream.py)
+    2. lightshows/artnet_host.local — gitignored file, single line with the host
+    3. default 192.168.1.100
+    """
+    host = os.environ.get("ATLAS_ARTNET_HOST")
+    if host:
+        return host
+    local = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "artnet_host.local")
+    if os.path.exists(local):
+        with open(local) as f:
+            host = f.read().strip()
+        if host:
+            return host
+    return "192.168.1.100"
+
+ARTNET_TARGET = (_artnet_host(), 6454)
 
 # ---- channel map (0-based DMX index) -----------------------------------
 DECKE, DISPLAY1, REGAL_HINT, REGAL_LINK, DISPLAY2, REGAL_RECH = 0, 3, 6, 9, 12, 15

@@ -203,7 +203,12 @@ def main():
 
 
 def git_autopush(name, title):
-    """Commit + push the new show (json + audio + thumb + analysis). Non-fatal."""
+    """Commit + push the new show (json + audio + thumb + analysis). Non-fatal.
+    Opt-in: downloaded audio/thumbnails may not be redistributable, so nothing
+    is committed unless explicitly enabled."""
+    # ATLAS_AUTOPUSH: set to "1" to auto-commit+push each newly compiled show
+    if os.environ.get("ATLAS_AUTOPUSH") != "1":
+        return
     def g(*args):
         return subprocess.run(["git", "-C", ROOT, *args],
                               capture_output=True, text=True)
@@ -220,7 +225,7 @@ def git_autopush(name, title):
     if g("commit", "-m", f"show: {title}").returncode == 0:
         print(f"git: commit 'show: {title}'", flush=True)
         r = g("push")
-        print("git: gepusht -> github.com/luka-loehr/lightshow" if r.returncode == 0
+        print("git: gepusht" if r.returncode == 0
               else f"git: Push fehlgeschlagen (committet): {r.stderr.strip()[-200:]}",
               flush=True)
 

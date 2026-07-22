@@ -15,8 +15,10 @@ Rule of thumb:
 import os, socket, struct, subprocess, sys, time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(BASE))
+from lslib.rig import ARTNET_TARGET   # env ATLAS_ARTNET_HOST / artnet_host.local
+
 MP3 = os.path.join(BASE, "music.mp3")
-ARTNET_TARGET = ("192.168.1.100", 6454)
 FPS = 25
 NCHAN = 21
 
