@@ -17,8 +17,11 @@ import zipfile
 
 import psycopg
 
-BLOBS = os.path.expanduser("~/drive/blobs")
+# DRIVE_DIR: drive blob root (default ~/drive, matching the Rust server)
+BLOBS = os.path.join(os.environ.get("DRIVE_DIR", os.path.expanduser("~/drive")), "blobs")
 CAP = 200_000  # chars per file — plenty for search, keeps rows small
+# zip-bomb guard: skip Office-XML members whose DECOMPRESSED size exceeds this
+MAX_MEMBER = 50 * 2**20
 
 TEXT_EXT = {"txt", "md", "csv", "log", "json", "xml", "html", "htm", "js", "ts",
             "py", "swift", "rs", "c", "cpp", "h", "sh", "yml", "yaml", "toml",
@@ -26,12 +29,22 @@ TEXT_EXT = {"txt", "md", "csv", "log", "json", "xml", "html", "htm", "js", "ts",
 
 
 def db():
-    pw = ""
-    with open(os.path.expanduser("~/atlas/backend/docker/.env")) as f:
-        for line in f:
-            if line.startswith("POSTGRES_PASSWORD="):
-                pw = line.split("=", 1)[1].strip()
-    return psycopg.connect(host="127.0.0.1", dbname="atlas", user="atlas", password=pw)
+    # POSTGRES_PASSWORD directly, or parsed from $PG_ENV_FILE
+    # (default: ~/atlas/backend/docker/.env, the backend compose secrets file)
+    pw = os.environ.get("POSTGRES_PASSWORD", "")
+    if not pw:
+        env_file = os.environ.get(
+            "PG_ENV_FILE", os.path.expanduser("~/atlas/backend/docker/.env"))
+        with open(env_file) as f:
+            for line in f:
+                if line.startswith("POSTGRES_PASSWORD="):
+                    pw = line.split("=", 1)[1].strip()
+    return psycopg.connect(
+        host=os.environ.get("PGHOST", "127.0.0.1"),
+        port=int(os.environ.get("PGPORT", "5432")),
+        dbname=os.environ.get("PGDATABASE", "atlas"),
+        user=os.environ.get("PGUSER", "atlas"),
+        password=pw)
 
 
 def strip_xml(xml):
@@ -45,6 +58,10 @@ def office_xml(path, members):
         names = z.namelist()
         for pattern in members:
             for m in sorted(n for n in names if re.fullmatch(pattern, n)):
+                # size check BEFORE decompressing — a crafted docx can hold a
+                # multi-GB highly-compressed member that would OOM this process
+                if z.getinfo(m).file_size > MAX_MEMBER:
+                    continue
                 out.append(strip_xml(z.read(m).decode("utf-8", "ignore")))
                 if sum(len(o) for o in out) > CAP:
                     return " ".join(out)

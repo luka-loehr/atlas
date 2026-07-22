@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Backfill missing thumbnails.
+"""MANUAL RECOVERY TOOL — backfill missing thumbnails without the pipeline.
 
-The upload path enqueues a 'thumb' ingest_job but nothing processed the queue,
-so iPhone-uploaded (and a few failed-ingest) assets have no 256/1024 WebP on
-disk and render blank in the grid. This generates the missing thumbs from each
-asset's original, fills width/height/duration where absent, and clears the
-processed thumb jobs.
+Normally the pipeline-cpu worker handles 'thumb' jobs; this script predates it
+and is kept only for recovery (e.g. the pipeline is down and the grid renders
+blank tiles). It generates missing 512/2048 WebP thumbs from each asset's
+original, fills width/height/duration where absent, and DELETES the processed
+thumb job rows directly — bypassing the queue protocol, so only run it while
+the pipeline workers are stopped.
 
     python3 make_thumbs.py            # generate for every asset missing a thumb
     python3 make_thumbs.py --all      # regenerate for ALL assets (force)

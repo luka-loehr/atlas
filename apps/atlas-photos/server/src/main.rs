@@ -20,8 +20,9 @@ use std::path::PathBuf;
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -37,31 +38,66 @@ pub(crate) struct App {
     pub(crate) pool: Pool,
     photos_dir: PathBuf,
     pub(crate) drive_dir: PathBuf,
+    /// ATLAS_PHOTOS_TOKEN — when set, every route (except /health) requires it.
+    token: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into());
+    let home = std::env::var("HOME").expect("HOME must be set");
+    // PHOTOS_DIR / DRIVE_DIR: library roots (default $HOME/photos, $HOME/drive)
     let photos_dir = PathBuf::from(std::env::var("PHOTOS_DIR").unwrap_or(format!("{home}/photos")));
     let drive_dir = PathBuf::from(std::env::var("DRIVE_DIR").unwrap_or(format!("{home}/drive")));
-    let password = std::fs::read_to_string(format!("{home}/atlas/backend/docker/.env"))
+    // POSTGRES_PASSWORD directly from the environment, or parsed from the
+    // PG_ENV_FILE secrets file (default: $HOME/atlas/backend/docker/.env,
+    // the backend compose secrets file — same convention as pipeline/db.py).
+    let password = std::env::var("POSTGRES_PASSWORD")
         .ok()
-        .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.strip_prefix("POSTGRES_PASSWORD=").map(str::to_string))
-        })
-        .expect("POSTGRES_PASSWORD in backend/docker/.env");
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let env_file = std::env::var("PG_ENV_FILE")
+                .unwrap_or(format!("{home}/atlas/backend/docker/.env"));
+            std::fs::read_to_string(&env_file)
+                .ok()
+                .and_then(|s| {
+                    s.lines()
+                        .find_map(|l| l.strip_prefix("POSTGRES_PASSWORD=").map(str::to_string))
+                })
+                .unwrap_or_else(|| {
+                    panic!("set POSTGRES_PASSWORD (or a POSTGRES_PASSWORD= line in {env_file})")
+                })
+        });
 
+    // PGHOST / PGPORT / PGDATABASE / PGUSER, mirroring pipeline/db.py
     let mut cfg = PgConfig::new();
-    cfg.host = Some("127.0.0.1".into());
-    cfg.dbname = Some("atlas".into());
-    cfg.user = Some("atlas".into());
+    cfg.host = Some(std::env::var("PGHOST").unwrap_or_else(|_| "127.0.0.1".into()));
+    cfg.port = std::env::var("PGPORT").ok().and_then(|p| p.parse().ok());
+    cfg.dbname = Some(std::env::var("PGDATABASE").unwrap_or_else(|_| "atlas".into()));
+    cfg.user = Some(std::env::var("PGUSER").unwrap_or_else(|_| "atlas".into()));
     cfg.password = Some(password);
     let pool = cfg
         .create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)
         .expect("pg pool");
 
-    let app = App { pool, photos_dir, drive_dir };
+    // ATLAS_PHOTOS_TOKEN: optional bearer token. When set, ALL routes except
+    // /health require "Authorization: Bearer <token>" or a ?token=<token>
+    // query parameter (for direct media URLs). Unset = open access — only
+    // acceptable on a private, trusted network (e.g. a tailnet).
+    let token = std::env::var("ATLAS_PHOTOS_TOKEN").ok().filter(|t| !t.is_empty());
+    if token.is_none() {
+        println!("WARNING: ATLAS_PHOTOS_TOKEN not set — API is unauthenticated (tailnet-only mode)");
+    }
+
+    // ATLAS_PHOTOS_MAX_UPLOAD: upload body cap in MiB (default 512). Upload
+    // bodies are fully buffered in RAM, so keep this within what the box can spare.
+    let max_upload: usize = std::env::var("ATLAS_PHOTOS_MAX_UPLOAD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(512)
+        * 1024
+        * 1024;
+
+    let app = App { pool, photos_dir, drive_dir, token };
     let router = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/api/stats", get(stats))
@@ -100,7 +136,7 @@ async fn main() {
         .route("/api/exists", post(exists))
         .route(
             "/api/upload",
-            post(upload).layer(DefaultBodyLimit::max(1024 * 1024 * 1024)),
+            post(upload).layer(DefaultBodyLimit::max(max_upload)),
         )
         // drive — the "Dateien" domain (folder tree + content-addressed blobs)
         .route("/api/drive/list", get(drive::list))
@@ -110,7 +146,7 @@ async fn main() {
         .route("/api/drive/blob/{hash}/{name}", get(drive::blob))
         .route(
             "/api/drive/upload",
-            post(drive::upload).layer(DefaultBodyLimit::max(4 * 1024 * 1024 * 1024)),
+            post(drive::upload).layer(DefaultBodyLimit::max(max_upload)),
         )
         .route("/api/drive/folders", post(drive::folder_create))
         .route("/api/drive/folders/{id}/rename", post(drive::folder_rename))
@@ -121,12 +157,57 @@ async fn main() {
         .route("/api/drive/restore", post(drive::restore))
         .route("/api/drive/delete", post(drive::delete))
         .route("/api/drive/trash/empty", post(drive::trash_empty))
-        .with_state(app);
+        .with_state(app.clone())
+        .layer(middleware::from_fn_with_state(app, require_token));
 
-    let addr = "0.0.0.0:8788";
+    // ATLAS_PHOTOS_BIND: listen address (default 0.0.0.0:8788). Without
+    // ATLAS_PHOTOS_TOKEN there is NO auth — expose only on a trusted network
+    // (tailnet) or bind 127.0.0.1 behind an authenticating reverse proxy.
+    let addr = std::env::var("ATLAS_PHOTOS_BIND").unwrap_or_else(|_| "0.0.0.0:8788".into());
     println!("atlas-photos on {addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, router).await.unwrap();
+}
+
+// ------------------------------------------------------------------- auth ---
+
+/// Constant-time byte comparison so the token can't be guessed via timing.
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// If ATLAS_PHOTOS_TOKEN is set, require "Authorization: Bearer <token>" or
+/// ?token=<token> (URL-safe tokens only) on every route except /health.
+/// Unset token = fully open (documented tailnet-only mode).
+async fn require_token(State(app): State<App>, req: Request, next: Next) -> Response {
+    let Some(expected) = app.token.as_deref() else {
+        return next.run(req).await;
+    };
+    if req.uri().path() == "/health" {
+        return next.run(req).await;
+    }
+    let header_ok = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|t| ct_eq(t.trim().as_bytes(), expected.as_bytes()))
+        .unwrap_or(false);
+    let query_ok = header_ok
+        || req
+            .uri()
+            .query()
+            .map(|q| {
+                q.split('&')
+                    .filter_map(|kv| kv.strip_prefix("token="))
+                    .any(|t| ct_eq(t.as_bytes(), expected.as_bytes()))
+            })
+            .unwrap_or(false);
+    if header_ok || query_ok {
+        next.run(req).await
+    } else {
+        (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
+    }
 }
 
 // ---------------------------------------------------------------- queries ---
@@ -320,20 +401,24 @@ pub(crate) fn like_escape(s: &str) -> String {
 }
 
 
-/// POST to the local Qwen3-VL-Embedding text-embedding sidecar (embed-api,
-/// 127.0.0.1:8093). Any failure — sidecar down, timeout, bad JSON — degrades to
-/// None and the search silently falls back to structured-only results.
+/// POST to the local Qwen3-VL-Embedding text-embedding sidecar (embed-api).
+/// ATLAS_EMBED_API_ADDR: sidecar host:port (default 127.0.0.1:8093, matching
+/// embed_api.py's EMBED_API_PORT). Any failure — sidecar down, timeout, bad
+/// JSON — degrades to None and the search falls back to structured-only results.
 async fn text_embedding(q: &str) -> Option<Vec<f32>> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let addr =
+        std::env::var("ATLAS_EMBED_API_ADDR").unwrap_or_else(|_| "127.0.0.1:8093".into());
     let body = serde_json::json!({ "text": q }).to_string();
     let req = format!(
-        "POST /embed HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\
+        "POST /embed HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+        addr,
         body.len(),
         body
     );
     let fut = async {
-        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", 8093)).await.ok()?;
+        let mut s = tokio::net::TcpStream::connect(addr.as_str()).await.ok()?;
         s.write_all(req.as_bytes()).await.ok()?;
         let mut buf = Vec::new();
         s.read_to_end(&mut buf).await.ok()?;
@@ -656,7 +741,13 @@ async fn purge(app: &App, ids: &Vec<String>) -> Result<u64, Api> {
     for r in &rows {
         let id: String = r.get(0);
         let orig: String = r.get(1);
-        let _ = tokio::fs::remove_file(&orig).await;
+        // defense in depth: only ever delete files inside the photos root
+        match confine(&app.photos_dir, std::path::Path::new(&orig)).await {
+            Some(p) => {
+                let _ = tokio::fs::remove_file(&p).await;
+            }
+            None => eprintln!("purge: skipping missing or outside-root path: {orig}"),
+        }
         let _ = tokio::fs::remove_file(thumbs.join(format!("{id}.512.webp"))).await;
         let _ = tokio::fs::remove_file(thumbs.join(format!("{id}.2048.webp"))).await;
     }
@@ -700,6 +791,28 @@ async fn exists(State(app): State<App>, Json(b): Json<Hashes>) -> Result<Json<se
 }
 
 const VIDEO_EXTS: &[&str] = &["mp4", "mov", "m4v", "3gp", "avi", "mkv", "webm", "mts"];
+const IMAGE_EXTS: &[&str] =
+    &["jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp", "tif", "tiff", "dng", "avif"];
+
+/// Extension actually stored on disk for uploads: lowercase alnum, <= 5 chars
+/// AND on the known media whitelist — anything else becomes "bin" so a client
+/// can't plant script-capable files (.html/.svg) that ServeFile would later
+/// serve with an active Content-Type.
+fn safe_ext(name: &str) -> &'static str {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        for w in IMAGE_EXTS.iter().chain(VIDEO_EXTS) {
+            if *w == ext {
+                return w;
+            }
+        }
+    }
+    "bin"
+}
 
 /// Raw-body upload. The asset id is the SHA256 of the exact received bytes,
 /// computed HERE by the server — never taken from the client. This is what
@@ -744,15 +857,12 @@ async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resu
         .unwrap_or_else(|| "0000/00".into());
     let dir = app.photos_dir.join("originals").join(sub);
     tokio::fs::create_dir_all(&dir).await?;
-    let dest = dir.join(format!("{id}_{name}"));
+    // stored name is fully server-controlled: content id + whitelisted extension
+    let ext = safe_ext(&name);
+    let dest = dir.join(format!("{id}.{ext}"));
     tokio::fs::write(&dest, &body).await?;
 
-    let ext = std::path::Path::new(&name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let kind = if VIDEO_EXTS.contains(&ext.as_str()) { "video" } else { "photo" };
+    let kind = if VIDEO_EXTS.contains(&ext) { "video" } else { "photo" };
     let dest_str = dest.to_string_lossy().to_string();
     let size = body.len() as i64;
 
@@ -937,6 +1047,14 @@ async fn face_crop(State(app): State<App>, Path(id): Path<i64>, headers: HeaderM
     serve_immutable(path, headers).await
 }
 
+/// Canonicalize `p` and require it to live under `root` (which is also
+/// canonicalized) — symlinks or DB-tampered orig_path values can't escape.
+async fn confine(root: &std::path::Path, p: &std::path::Path) -> Option<PathBuf> {
+    let canon = tokio::fs::canonicalize(p).await.ok()?;
+    let root = tokio::fs::canonicalize(root).await.ok()?;
+    canon.starts_with(&root).then_some(canon)
+}
+
 async fn asset_path(app: &App, id: &str) -> Option<PathBuf> {
     if !safe_id(id) {
         return None;
@@ -946,7 +1064,8 @@ async fn asset_path(app: &App, id: &str) -> Option<PathBuf> {
         .query_opt("SELECT orig_path FROM assets WHERE id = $1", &[&id])
         .await
         .ok()??;
-    Some(PathBuf::from(row.get::<_, String>(0)))
+    // serve only files that really live inside the photos root
+    confine(&app.photos_dir, std::path::Path::new(&row.get::<_, String>(0))).await
 }
 
 async fn original(State(app): State<App>, Path(id): Path<String>, headers: HeaderMap) -> Response {
@@ -978,11 +1097,12 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 
 // -------------------------------------------------------------- vecmap ---
 
-/// Experimental: a UMAP projection of every Qwen3-VL embedding, rendered as a
+/// EXPERIMENTAL: a UMAP projection of every Qwen3-VL embedding, rendered as a
 /// zoomable WebGL mosaic of the real thumbnails. The bundle (map.html,
-/// layout.json, tiles/atlas_*.webp) is generated offline into
-/// {photos_dir}/vecmap — regenerating it is just overwriting those files, so
-/// the cache window is deliberately short.
+/// layout.json, tiles/atlas_*.webp) is generated by an external tool that is
+/// NOT part of this repo and placed into {photos_dir}/vecmap — without a
+/// bundle these routes simply 404. Regenerating is just overwriting those
+/// files, so the cache window is deliberately short.
 async fn map_index(State(app): State<App>, headers: HeaderMap) -> Response {
     serve_map(app.photos_dir.join("vecmap").join("map.html"), headers).await
 }
@@ -1009,7 +1129,8 @@ async fn serve_map(path: PathBuf, headers: HeaderMap) -> Response {
 }
 
 /// ServeFile handles Range requests (AVPlayer) + content types; we add the
-/// immutable cache header — content-addressed URLs never change.
+/// immutable cache header — content-addressed URLs never change — plus
+/// nosniff so browsers can't second-guess the served media type.
 async fn serve_immutable(path: PathBuf, headers: HeaderMap) -> Response {
     let mut req = axum::http::Request::new(axum::body::Body::empty());
     *req.headers_mut() = headers;
@@ -1019,6 +1140,8 @@ async fn serve_immutable(path: PathBuf, headers: HeaderMap) -> Response {
                 header::CACHE_CONTROL,
                 HeaderValue::from_static("public, max-age=31536000, immutable"),
             );
+            resp.headers_mut()
+                .insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
             resp.into_response()
         }
         Err(_) => StatusCode::NOT_FOUND.into_response(),
@@ -1037,6 +1160,8 @@ impl<E: std::fmt::Display> From<E> for Api {
 
 impl IntoResponse for Api {
     fn into_response(self) -> Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, self.0).into_response()
+        // log the detail server-side; never leak paths/SQL/pool errors to clients
+        eprintln!("api error: {}", self.0);
+        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
     }
 }

@@ -5,7 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=luka
+# Set this to the user that owns the photo library (PHOTOS_DIR/DRIVE_DIR)
+User=atlas
+# Configuration (all optional, see server/src/main.rs), e.g.:
+#   Environment=PHOTOS_DIR=/srv/atlas/photos
+#   Environment=DRIVE_DIR=/srv/atlas/drive
+#   Environment=ATLAS_PHOTOS_BIND=0.0.0.0:8788
+#   Environment=ATLAS_PHOTOS_TOKEN=change-me
+# or keep secrets out of the unit file:
+#   EnvironmentFile=/etc/atlas-photos.env
 ExecStart=/usr/local/bin/atlas-photos
 Restart=always
 RestartSec=2

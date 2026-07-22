@@ -22,7 +22,11 @@ import db  # noqa: F401  (thread-local conns are passed in by the worker)
 import jobqueue as jobq
 
 pillow_heif.register_heif_opener()
-Image.MAX_IMAGE_PIXELS = None
+# Decompression-bomb guard: thumb jobs process untrusted upload bytes. High
+# explicit ceiling instead of Pillow's default (a few KB of crafted PNG would
+# otherwise expand to tens of GB of pixels and OOM-loop the worker).
+# ATLAS_MAX_IMAGE_PIXELS: max decoded pixels per image (default 500 MP).
+Image.MAX_IMAGE_PIXELS = int(os.environ.get("ATLAS_MAX_IMAGE_PIXELS", 500_000_000))
 
 PHOTOS_DIR = os.environ.get("PHOTOS_DIR", os.path.expanduser("~/photos"))
 THUMBS = os.path.join(PHOTOS_DIR, "thumbs")
@@ -31,8 +35,8 @@ SUBPROCESS_TIMEOUT = 120
 
 
 def resolve_path(orig_path):
-    """assets.orig_path is a host path (/home/atlas/photos/...); inside the
-    containers the library is mounted at $PHOTOS_DIR (/photos). Remap."""
+    """assets.orig_path is a host path (e.g. /home/atlas/photos/...); inside
+    the containers the library is mounted at $PHOTOS_DIR (/photos). Remap."""
     if os.path.exists(orig_path):
         return orig_path
     marker = "/photos/"

@@ -11,38 +11,9 @@ Protocol (see pipeline contract):
             => power loss mid-job self-heals at the next worker start
 
 All connections are autocommit; every call here is one small transaction.
-
-NOTE ON THE MODULE NAME: this file shadows the stdlib `queue` module whenever
-the pipeline directory is first on sys.path (i.e. `python worker_cpu.py`).
-Library code — concurrent.futures, multiprocessing — does `import queue` and
-would land here, so we load the real stdlib module below and re-export its
-public names, making this module a strict superset of stdlib queue.
 """
-import importlib.util
-import os
-import sys
-import sysconfig
 import threading
 from collections import namedtuple
-
-# ------------------------------------------------ stdlib-queue re-export ----
-
-
-def _load_stdlib_queue():
-    path = os.path.join(sysconfig.get_paths()["stdlib"], "queue.py")
-    spec = importlib.util.spec_from_file_location("_pipeline_stdlib_queue", path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["_pipeline_stdlib_queue"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-try:
-    _stdlib_queue = _load_stdlib_queue()
-    for _name in getattr(_stdlib_queue, "__all__", ()):
-        globals()[_name] = getattr(_stdlib_queue, _name)
-except Exception:  # pragma: no cover — pipeline code itself never needs it
-    pass
 
 import db
 

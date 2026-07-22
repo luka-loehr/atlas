@@ -15,9 +15,13 @@ import sys
 MODELS = os.environ.get("MODELS_DIR", "/models")
 os.environ.setdefault("HF_HOME", os.path.join(MODELS, "hf"))
 
-HF_REPOS = [
-    "Qwen/Qwen3-VL-Embedding-2B",
-    "Qwen/Qwen2.5-VL-3B-Instruct-AWQ",
+# ATLAS_EMBED_REVISION: git revision of the embedding repo (its scripts/ code
+# is executed by the workers — pin a commit sha to freeze the supply chain).
+EMBED_REVISION = os.environ.get("ATLAS_EMBED_REVISION", "main")
+
+HF_REPOS = [  # (repo, revision) — None = default branch
+    ("Qwen/Qwen3-VL-Embedding-2B", EMBED_REVISION),
+    ("Qwen/Qwen2.5-VL-3B-Instruct-AWQ", None),
 ]
 INSIGHT_ROOT = os.path.join(MODELS, "insightface")
 
@@ -36,16 +40,17 @@ def gb(n):
     return f"{n / 2**30:.2f} GB"
 
 
-def fetch_hf(repo):
+def fetch_hf(repo, revision=None):
     from huggingface_hub import snapshot_download
+    kw = {"revision": revision} if revision else {}
     try:  # complete local snapshot -> raises if anything is missing
-        path = snapshot_download(repo, local_files_only=True)
+        path = snapshot_download(repo, local_files_only=True, **kw)
         print(f"  {repo}: present ({gb(dir_size(path))})", flush=True)
         return
     except Exception:
         pass
     print(f"  {repo}: downloading ...", flush=True)
-    path = snapshot_download(repo)
+    path = snapshot_download(repo, **kw)
     print(f"  {repo}: done ({gb(dir_size(path))})", flush=True)
 
 
@@ -64,8 +69,8 @@ def main():
     os.makedirs(os.environ["HF_HOME"], exist_ok=True)
     os.makedirs(INSIGHT_ROOT, exist_ok=True)
     print(f"models -> {MODELS} (HF_HOME={os.environ['HF_HOME']})", flush=True)
-    for repo in HF_REPOS:
-        fetch_hf(repo)
+    for repo, revision in HF_REPOS:
+        fetch_hf(repo, revision)
     fetch_buffalo()
     print(f"total under {MODELS}: {gb(dir_size(MODELS))}", flush=True)
 

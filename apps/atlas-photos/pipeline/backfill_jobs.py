@@ -13,20 +13,29 @@ import os
 
 import psycopg
 
+# PHOTOS_DIR: photo library root (default ~/photos)
 PHOTOS = os.environ.get("PHOTOS_DIR", os.path.expanduser("~/photos"))
 THUMBS = os.path.join(PHOTOS, "thumbs")
-ENV_FILE = "/secrets/.env" if os.path.exists("/secrets/.env") else \
-    os.path.expanduser("~/atlas/backend/docker/.env")
 
 
 def db():
-    pw = ""
-    with open(ENV_FILE) as f:
-        for line in f:
-            if line.startswith("POSTGRES_PASSWORD="):
-                pw = line.split("=", 1)[1].strip()
-    return psycopg.connect(host="127.0.0.1", dbname="atlas", user="atlas",
-                           password=pw, autocommit=True)
+    # POSTGRES_PASSWORD directly, or parsed from $PG_ENV_FILE (default:
+    # /secrets/.env in-container, else the backend compose secrets file)
+    pw = os.environ.get("POSTGRES_PASSWORD", "")
+    if not pw:
+        env_file = os.environ.get("PG_ENV_FILE") or (
+            "/secrets/.env" if os.path.exists("/secrets/.env")
+            else os.path.expanduser("~/atlas/backend/docker/.env"))
+        with open(env_file) as f:
+            for line in f:
+                if line.startswith("POSTGRES_PASSWORD="):
+                    pw = line.split("=", 1)[1].strip()
+    return psycopg.connect(
+        host=os.environ.get("PGHOST", "127.0.0.1"),
+        port=int(os.environ.get("PGPORT", "5432")),
+        dbname=os.environ.get("PGDATABASE", "atlas"),
+        user=os.environ.get("PGUSER", "atlas"),
+        password=pw, autocommit=True)
 
 
 def main():

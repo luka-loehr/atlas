@@ -1,12 +1,18 @@
 # atlas-photos pipeline — ops runbook
 
-Two always-on workers on **atlas** that drain the `ingest_jobs` queue in Postgres
-(container `atlas-postgres`, `127.0.0.1:5432`, db/user `atlas`):
+Three always-on services on the homelab box, two of which drain the
+`ingest_jobs` queue in Postgres (container `atlas-postgres`, `127.0.0.1:5432`,
+db/user `atlas`):
 
 | Service        | Jobs                                  | Image base              |
 |----------------|---------------------------------------|-------------------------|
 | `pipeline-cpu` | thumb, meta, geocode, event_scan      | python:3.12-slim        |
 | `pipeline-gpu` | embed (Qwen3-VL-Embedding-2B), faces (InsightFace), caption→tags (vLLM Qwen2.5-VL-3B-AWQ) | vllm/vllm-openai:latest |
+| `embed-api`    | (no queue) text-embedding sidecar for semantic search, loopback `127.0.0.1:8093` | vllm/vllm-openai:latest (CPU-only) |
+
+Host paths (photo library, model cache, Postgres secrets file, uid/gid) are
+configured via a `.env` next to `docker-compose.yml` — copy `.env.example`
+to `.env` and adjust before the first start.
 
 The pipeline **source is mounted** into the containers at `/app` (read-only), not
 baked into the images. Deploying new code:
@@ -35,15 +41,16 @@ Expectations:
 - `vllm/vllm-openai:latest` pull is **large** (~10 GB download, ~20 GB on disk);
   the CPU image is ~1 GB. One-time cost.
 - On its **first start the GPU container downloads ~6 GB of models**
-  (Qwen3-VL-Embedding-2B, buffalo_l, Qwen2.5-VL-3B-AWQ) into `/home/atlas/models`
-  before the worker loop begins — watch `docker logs -f pipeline-gpu`.
+  (Qwen3-VL-Embedding-2B, buffalo_l, Qwen2.5-VL-3B-AWQ) into the
+  `ATLAS_MODELS_DIR` host mount (default `/srv/atlas/models`) before the worker
+  loop begins — watch `docker logs -f pipeline-gpu`.
   Subsequent starts skip this (idempotent check).
-- Requires migration 003 to be applied (queue columns, faces.embedding,
-  persons.centroid, tags, caption column).
+- Requires the `backend/schema` migrations 001–007 to be applied (queue
+  columns, faces/persons/tags, exif, qwen embeddings, drive tables).
 
 ## Autostart — "power button is all"
 
-Both services use `restart: unless-stopped` and the Docker daemon is enabled at
+All services use `restart: unless-stopped` and the Docker daemon is enabled at
 boot (`systemctl is-enabled docker`). Power the box on → Docker starts → both
 workers start → the reaper self-heals any jobs that were mid-flight at power
 loss. There is nothing else to start, ever. (`unless-stopped` also means an

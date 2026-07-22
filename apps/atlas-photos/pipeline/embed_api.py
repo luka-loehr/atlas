@@ -19,6 +19,11 @@ import numpy as np
 import torch
 
 MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
+# ATLAS_EMBED_REVISION: git revision of the model repo — its bundled scripts/
+# code is imported and executed below, so pin a commit sha to freeze the
+# supply chain (default "main").
+EMBED_REVISION = os.environ.get("ATLAS_EMBED_REVISION", "main")
+# EMBED_API_PORT: loopback listen port (default 8093)
 PORT = int(os.environ.get("EMBED_API_PORT", "8093"))
 
 # most cores for snappy queries; leave a few for postgres + the GPU pipeline's
@@ -34,7 +39,7 @@ _infer_lock = threading.Lock()
 def load():
     global _embedder
     from huggingface_hub import snapshot_download
-    mp = snapshot_download(MODEL_ID)
+    mp = snapshot_download(MODEL_ID, revision=EMBED_REVISION)
     sys.path.insert(0, os.path.join(mp, "scripts"))
     from qwen3_vl_embedding import Qwen3VLEmbedder
     _embedder = Qwen3VLEmbedder(model_name_or_path=mp, torch_dtype=torch.float32)

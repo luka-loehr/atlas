@@ -8,9 +8,12 @@
 # are skipped). Runs forever; start via screen/systemd:
 #   screen -dmS ingestwatch bash ~/atlas/apps/atlas-photos/ingest/ingest_watcher.sh
 set -u
-DIR="$HOME/takeout/photos"
-ING="$HOME/atlas/apps/atlas-photos/ingest/ingest_takeout.py"
-LOG="$HOME/ingest_watcher.log"
+# ATLAS_TAKEOUT_DIR: where the takeout zips arrive (default $HOME/takeout/photos)
+DIR="${ATLAS_TAKEOUT_DIR:-$HOME/takeout/photos}"
+# ingester lives next to this script — no repo-location assumption
+ING="$(cd "$(dirname "$0")" && pwd)/ingest_takeout.py"
+# ATLAS_INGEST_LOG: watcher log file (default $HOME/ingest_watcher.log)
+LOG="${ATLAS_INGEST_LOG:-$HOME/ingest_watcher.log}"
 
 echo "$(date -Is) watcher up" >> "$LOG"
 while true; do
