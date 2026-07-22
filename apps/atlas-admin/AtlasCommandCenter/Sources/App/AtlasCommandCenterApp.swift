@@ -8,7 +8,8 @@ struct AtlasCommandCenterApp: App {
 }
 
 struct RootView: View {
-    @AppStorage("atlas.host") private var host = "atlas.your-tailnet.ts.net:8787"
+    // Agent host ("host:port"); empty until configured in Settings on first launch.
+    @AppStorage("atlas.host") private var host = ""
     @AppStorage("atlas.token") private var token = ""
     @State private var showSettings = false
     @State private var tab = Int(ProcessInfo.processInfo.environment["ATLAS_TAB"] ?? "0") ?? 0
@@ -28,8 +29,9 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
         .sheet(isPresented: $showSettings) {
-            SettingsView(host: $host, token: $token) {}
+            SettingsView(host: $host, token: $token)
         }
+        .onAppear { if host.isEmpty { showSettings = true } }
     }
 }
 

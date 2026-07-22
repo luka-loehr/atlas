@@ -22,13 +22,12 @@ Lightshow control lives in its own app now: [`../atlas-lightshow`](../atlas-ligh
 - **Aktivität** — GitHub-style contribution heatmap of atlas' awake hours
   (reconstructed from the systemd journal) or monorepo commits, plus streak,
   online hours, boots and commits of the last 30 days.
-- **Docker** — running containers with state/image/ports/log inspection.
 
 ## Run it
 
 ```bash
-# 1. the agent must be running on atlas (once; it's a systemd service):
-atlas agent
+# 1. the agent must be running on the server (systemd service, see ../../agent):
+systemctl status atlas-agent
 
 # 2. generate the Xcode project + open it:
 cd AtlasCommandCenter
@@ -39,7 +38,7 @@ open AtlasCommandCenter.xcodeproj
 
 Pick your iPhone as the run destination, set your signing team (the target is
 `com.lukaloehr.AtlasCommandCenter`), and run. In-app **⋯ → Einstellungen** holds
-the agent host (default `atlas.your-tailnet.ts.net:8787`) and an optional token.
+the agent host (e.g. `atlas.your-tailnet.ts.net:8787`) and an optional token.
 
 ## How it talks to atlas
 
@@ -66,7 +65,7 @@ AtlasCommandCenter/
     Views/               Theme + GlassCard, RingGauge, StatChip, UsageBar,
                          StatusHero, LoadChart (Swift Charts), ContainersCard,
                          DashboardView, VPNScreen (shield hero + tiles),
-                         ActivityScreen (contribution heatmap), DockerScreen,
+                         ActivityScreen (contribution heatmap),
                          TerminalScreen, SettingsView
 ```
 

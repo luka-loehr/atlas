@@ -1,17 +1,5 @@
 import Foundation
 
-// Detail / list payloads for the v2 endpoints.
-
-struct ContainerDetail: Codable, Sendable {
-    let name: String
-    let state: String
-    let image: String
-    let started: String
-    let restarts: Int
-    let ports: String
-    let logs: String
-}
-
 /// Talks to atlas-agent over the tailnet.
 struct AtlasClient: Sendable {
     var host: String          // e.g. "atlas.your-tailnet.ts.net:8787"
@@ -47,14 +35,6 @@ struct AtlasClient: Sendable {
 
     // metrics ----------------------------------------------------------------
     func fetch() async throws -> Metrics { try await get("/api/metrics", Metrics.self) }
-
-    // docker -----------------------------------------------------------------
-    func containers() async throws -> [Metrics.Container] {
-        try await get("/api/docker", [Metrics.Container].self)
-    }
-    func inspect(_ name: String) async throws -> ContainerDetail {
-        try await get("/api/docker/\(name)", ContainerDetail.self)
-    }
 
     // exit node / activity -----------------------------------------------------
     func vpn() async throws -> VPNStatus { try await get("/api/vpn", VPNStatus.self) }

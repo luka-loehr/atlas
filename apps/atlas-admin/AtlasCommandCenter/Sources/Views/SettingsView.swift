@@ -3,7 +3,6 @@ import SwiftUI
 struct SettingsView: View {
     @Binding var host: String
     @Binding var token: String
-    var onDone: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -40,7 +39,6 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fertig") {
-                        onDone()
                         dismiss()
                     }
                 }
