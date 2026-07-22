@@ -2,7 +2,7 @@
 name = "atlas-cli"
 version = "0.1.0"
 edition = "2024"
-description = "Control Luka's atlas homelab server: connect, boot, shutdown, restart"
+description = "Control the atlas homelab server: connect, boot, shutdown, restart"
 
 [[bin]]
 name = "atlas"

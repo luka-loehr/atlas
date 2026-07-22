@@ -21,15 +21,32 @@ cargo install --path cli     # installs `atlas`
 | `atlas agent [logs\|status\|stop\|restart]` | manage `atlas-agent.service` |
 | `atlas <anything else>` | forwarded verbatim to `ssh atlas` |
 
+## Configuration
+
+All connection settings are environment variables with generic defaults. Set
+them in your shell, or in `~/.config/atlas/env` (plain `KEY=VALUE` lines, `#`
+comments; real environment variables take precedence):
+
+| variable | default | meaning |
+|---|---|---|
+| `ATLAS_SSH_HOST` | `atlas` | ssh/rsync host (alias from `~/.ssh/config`) |
+| `ATLAS_LAN_ADDR` | `192.168.1.100:22` | LAN ssh route, `host:port` (empty = skip) |
+| `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip) |
+| `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN |
+| `ATLAS_WOL_BROADCAST` | `192.168.1.255:9` | broadcast address for the magic packet |
+| `ATLAS_AGENT_URL` | tailnet host + `:8787` | metrics agent `host:port` |
+
 ## How boot/status work
 
-Two routes are probed in order — **LAN** (`192.168.1.100:22`) first, then the
-**tailnet** — so you always learn *how* the box is reachable, not just whether.
+Two routes are probed in order — **LAN** (`ATLAS_LAN_ADDR`, e.g.
+`192.168.1.100:22`) first, then the **tailnet** (`ATLAS_TAILNET_ADDR`) — so you
+always learn *how* the box is reachable, not just whether.
 
 Wake-on-LAN only works from inside the LAN: the magic packet for MAC
-`aa:bb:cc:dd:ee:ff` goes to the broadcast address `192.168.1.255:9`. From
-outside, wake atlas via MyFRITZ instead, then use the CLI as usual over the
-tailnet.
+`ATLAS_WOL_MAC` (e.g. `aa:bb:cc:dd:ee:ff`) goes to the broadcast address
+`ATLAS_WOL_BROADCAST` (e.g. `192.168.1.255:9`). From outside, wake atlas via
+your router's remote wake feature (e.g. MyFRITZ) instead, then use the CLI as
+usual over the tailnet.
 
 `boot`/`shutdown`/`restart` are **synchronous** — they poll until the box has
 actually reached the new state, so you can chain them in scripts
@@ -42,7 +59,7 @@ project directory:
 
 ```toml
 name      = "my-app"        # required
-image     = "atlas-node"    # required — a builder image (node|lambda|flutter)
+image     = "node"          # required — a builder image key (node|lambda|flutter)
 dir       = "."             # source dir to sync
 build     = "npm run build" # build command inside the container
 dev       = "npm run dev"   # dev command
