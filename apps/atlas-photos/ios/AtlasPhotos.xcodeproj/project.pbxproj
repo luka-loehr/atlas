@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0CCB43BACFFC2458A4176887 /* DeviceSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA05117D4A44B6CDB5B97E7 /* DeviceSync.swift */; };
 		104F16511F000CA1A14F81F5 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB064C3E6924DDBE4B780911 /* ShareSheet.swift */; };
+		111E1F7AA42A65A64FFA402C /* DriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 328610BC6A8AB095D1FA04F7 /* DriveClient.swift */; };
 		14235C96F8EFBC89FEC17F27 /* Persons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C42D7919149BA4822AE7BA /* Persons.swift */; };
 		1C7CA176C17D55217C913CC2 /* PhotoPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9CB16304AEA5C7381C4897 /* PhotoPager.swift */; };
 		213D252DA6F4E06BAB1981AE /* PersonsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EAFE77072DF828736AC623E /* PersonsScreen.swift */; };
@@ -22,6 +23,7 @@
 		8F305E880415843985637ABC /* InfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5A115D1BB28EB1D9E87C67 /* InfoSheet.swift */; };
 		9A8354D2C2565F5B50BDB15F /* SelectableCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58F26C8FB835E5B96E0759C /* SelectableCell.swift */; };
 		9C49519587F7B2615F0F68DA /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E361A1829E694D7B7B01E0 /* Library.swift */; };
+		9E6942EC9758D04052A33EAC /* DriveScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 395FCE60DBE7F5932F760741 /* DriveScreen.swift */; };
 		A1F09DCABE82EFBC3626B0F6 /* AccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */; };
 		ADEA9A0F31C4DE74E2DE34EE /* PhotoMutations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AFE9267E419A4AC857969B /* PhotoMutations.swift */; };
 		B90FD73F77ACE9DFAFA60477 /* Biometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */; };
@@ -38,7 +40,9 @@
 		081AA19363B0F7F61289A83A /* PhotoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoClient.swift; sourceTree = "<group>"; };
 		0FA05117D4A44B6CDB5B97E7 /* DeviceSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSync.swift; sourceTree = "<group>"; };
 		2139E5DC68A86791748F2BC1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		328610BC6A8AB095D1FA04F7 /* DriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveClient.swift; sourceTree = "<group>"; };
 		390F3C4DE9B5FEB12796C427 /* PhotoInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInfo.swift; sourceTree = "<group>"; };
+		395FCE60DBE7F5932F760741 /* DriveScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScreen.swift; sourceTree = "<group>"; };
 		3C5A115D1BB28EB1D9E87C67 /* InfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoSheet.swift; sourceTree = "<group>"; };
 		480126F4F898D37E8C785DFE /* SyncProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProgressView.swift; sourceTree = "<group>"; };
 		58FA23A68B97FFE3860830C7 /* ViewerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerScreen.swift; sourceTree = "<group>"; };
@@ -104,6 +108,7 @@
 			children = (
 				AEE66DD575BDB3D6642F3FA6 /* AccountSheet.swift */,
 				5E271001EEACFDC1613F9099 /* AlbumsScreen.swift */,
+				395FCE60DBE7F5932F760741 /* DriveScreen.swift */,
 				3C5A115D1BB28EB1D9E87C67 /* InfoSheet.swift */,
 				5EAFE77072DF828736AC623E /* PersonsScreen.swift */,
 				9A9CB16304AEA5C7381C4897 /* PhotoPager.swift */,
@@ -124,6 +129,7 @@
 			children = (
 				F4BA119A6C9BBE9C74FDB980 /* Biometric.swift */,
 				0FA05117D4A44B6CDB5B97E7 /* DeviceSync.swift */,
+				328610BC6A8AB095D1FA04F7 /* DriveClient.swift */,
 				E0E361A1829E694D7B7B01E0 /* Library.swift */,
 				79C42D7919149BA4822AE7BA /* Persons.swift */,
 				081AA19363B0F7F61289A83A /* PhotoClient.swift */,
@@ -211,6 +217,8 @@
 				85AFB539705431284204B332 /* AtlasPhotosApp.swift in Sources */,
 				B90FD73F77ACE9DFAFA60477 /* Biometric.swift in Sources */,
 				0CCB43BACFFC2458A4176887 /* DeviceSync.swift in Sources */,
+				111E1F7AA42A65A64FFA402C /* DriveClient.swift in Sources */,
+				9E6942EC9758D04052A33EAC /* DriveScreen.swift in Sources */,
 				8F305E880415843985637ABC /* InfoSheet.swift in Sources */,
 				9C49519587F7B2615F0F68DA /* Library.swift in Sources */,
 				14235C96F8EFBC89FEC17F27 /* Persons.swift in Sources */,

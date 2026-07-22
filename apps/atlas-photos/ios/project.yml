@@ -23,7 +23,7 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: Fotos
+        CFBundleDisplayName: Storage
         CFBundleVersion: "27"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:

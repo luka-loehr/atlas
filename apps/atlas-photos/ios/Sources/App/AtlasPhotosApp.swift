@@ -80,6 +80,9 @@ struct RootView: View {
             Tab("Alben", systemImage: "rectangle.stack") {
                 AlbumsScreen(library: library)
             }
+            Tab("Dateien", systemImage: "folder") {
+                DriveScreen(library: library)
+            }
             Tab(role: .search) {
                 SearchScreen(library: library)
             }
