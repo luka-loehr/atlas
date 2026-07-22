@@ -7,7 +7,8 @@
 //! Ads-blocked counts come from a local AdGuard Home, if one is running.
 
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -17,7 +18,14 @@ use crate::metrics::json_str;
 const SAMPLE_S: u64 = 30;
 /// bytes per sample interval that count as "someone is using the tunnel"
 const ACTIVE_BYTES: u64 = 100_000;
-const ADGUARD_URL: &str = "http://127.0.0.1:3053";
+
+fn adguard_url() -> String {
+    // ATLAS_ADGUARD_URL: base URL of the local AdGuard Home admin API
+    std::env::var("ATLAS_ADGUARD_URL")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| "http://127.0.0.1:3000".into())
+}
 
 #[derive(Clone, Copy, Default)]
 struct State {
@@ -35,7 +43,8 @@ static STATE: Mutex<State> = Mutex::new(State {
 });
 
 fn state_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into());
+    // systemd sets $HOME via User=; the fallback only matters for ad-hoc runs
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
     format!("{home}/.local/share/atlas-agent/vpn.json")
 }
 
@@ -169,20 +178,27 @@ pub fn start_sampler() {
 /// on an admin user — the agent reads `ATLAS_ADGUARD_AUTH=user:pass` from
 /// its env file for basic auth.
 fn adguard() -> String {
-    let mut args: Vec<String> = vec!["-s".into(), "-m".into(), "3".into()];
-    if let Ok(auth) = std::env::var("ATLAS_ADGUARD_AUTH")
-        && !auth.is_empty()
-    {
-        args.push("-u".into());
-        args.push(auth);
+    let auth = std::env::var("ATLAS_ADGUARD_AUTH").ok().filter(|a| !a.is_empty());
+    let mut cmd = Command::new("curl");
+    cmd.args(["-s", "-m", "3"]);
+    if auth.is_some() {
+        // the credential goes to curl via stdin (--config -), never argv —
+        // argv is visible to every local user in /proc
+        cmd.args(["--config", "-"]).stdin(Stdio::piped());
     }
-    args.push(format!("{ADGUARD_URL}/control/stats"));
-    let out = Command::new("curl")
-        .args(&args)
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default();
+    cmd.arg(format!("{}/control/stats", adguard_url()))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let out = (|| {
+        let mut child = cmd.spawn().ok()?;
+        if let (Some(auth), Some(mut stdin)) = (auth, child.stdin.take()) {
+            let quoted = auth.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = writeln!(stdin, "user = \"{quoted}\"");
+        } // stdin drops here -> EOF for curl
+        let o = child.wait_with_output().ok()?;
+        Some(String::from_utf8_lossy(&o.stdout).into_owned())
+    })()
+    .unwrap_or_default();
     if !out.contains("num_dns_queries") {
         return r#"{"ok":false}"#.into();
     }

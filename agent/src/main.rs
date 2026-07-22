@@ -1,5 +1,5 @@
 //! atlas-agent — metrics + a real terminal + docker/lightshow/fog control for
-//! the Atlas Command Center iOS app. Binds the tailnet (0.0.0.0:8787).
+//! the Atlas Command Center iOS app.
 //!
 //!   GET  /health                 -> {"ok":true}
 //!   GET  /api/metrics            -> machine snapshot
@@ -16,11 +16,13 @@
 //!   POST /api/lights/off         -> manual frame off / blackout
 //!   GET  /api/vpn                -> exit-node stats (tailscale, AdGuard, accumulators)
 //!   GET  /api/activity           -> per-day online minutes/boots/commits (heatmap)
-//!   POST /api/power/{shutdown,restart}  (require token)
+//!   POST /api/power/{shutdown,restart}
 //!
 //! Auth: if ATLAS_AGENT_TOKEN is set, every request needs
-//! `Authorization: Bearer <token>` (WS may pass ?token=…). Power/actions that
-//! change state always need the token when one is configured.
+//! `Authorization: Bearer <token>` (WS may pass ?token=…). Without a token,
+//! read-only GETs are served, but state-changing routes — the PTY terminal
+//! and everything non-GET — are refused unless ATLAS_AGENT_OPEN=1 explicitly
+//! opts into trusting the network (tailnet + firewall) instead.
 
 mod actions;
 mod activity;
@@ -33,29 +35,53 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 use std::thread;
+use std::time::Duration;
+
+/// DoS guards for the hand-rolled parser: no request/header line may exceed
+/// MAX_LINE bytes and a request may not carry more than MAX_HEADERS headers.
+const MAX_LINE: usize = 8 * 1024;
+const MAX_HEADERS: usize = 64;
 
 fn main() {
+    // ATLAS_AGENT_PORT: listen port (default 8787)
     let port: u16 = std::env::var("ATLAS_AGENT_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(8787);
+    // ATLAS_AGENT_TOKEN: bearer token; when set, required on every request
     let token = std::env::var("ATLAS_AGENT_TOKEN").ok().filter(|t| !t.is_empty());
+    // ATLAS_AGENT_OPEN=1: explicitly allow state-changing routes without a
+    // token, for deployments where the tailnet/firewall is the only boundary
+    let open = std::env::var("ATLAS_AGENT_OPEN").is_ok_and(|v| v == "1");
+    // ATLAS_AGENT_BIND: full listen address (e.g. "127.0.0.1:8787" or a
+    // tailscale IP), overrides ATLAS_AGENT_PORT. Rely on the tailnet and a
+    // firewall for reachability — never port-forward this service.
+    let bind = std::env::var("ATLAS_AGENT_BIND")
+        .ok()
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| format!("0.0.0.0:{port}"));
 
-    let listener = TcpListener::bind(("0.0.0.0", port)).unwrap_or_else(|e| {
-        eprintln!("atlas-agent: cannot bind :{port}: {e}");
+    let listener = TcpListener::bind(bind.as_str()).unwrap_or_else(|e| {
+        eprintln!("atlas-agent: cannot bind {bind}: {e}");
         std::process::exit(1);
     });
     vpn::start_sampler();
-    stream::start_sampler();   // 10-min Metrics-History ab Boot
+    stream::start_sampler(); // 10-min metrics history from boot
     println!(
-        "atlas-agent {} on :{port} (auth: {})",
+        "atlas-agent {} on {bind} (auth: {})",
         env!("CARGO_PKG_VERSION"),
-        if token.is_some() { "token" } else { "open/tailnet" }
+        if token.is_some() {
+            "token"
+        } else if open {
+            "OPEN — no token, state changes allowed (ATLAS_AGENT_OPEN=1)"
+        } else {
+            "no token — read-only, state-changing routes refused"
+        }
     );
 
     for stream in listener.incoming().flatten() {
         let token = token.clone();
-        thread::spawn(move || handle(stream, token.as_deref()));
+        thread::spawn(move || handle(stream, token.as_deref(), open));
     }
 }
 
@@ -68,7 +94,10 @@ struct Req {
     body: String,
 }
 
-fn handle(mut stream: TcpStream, token: Option<&str>) {
+fn handle(mut stream: TcpStream, token: Option<&str>, open: bool) {
+    // slow or stalled clients get dropped instead of holding a thread forever
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
     let Some(req) = parse_request(&mut stream) else { return };
 
     // token gate (header bearer, or ?token= for the WebSocket)
@@ -79,13 +108,22 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
         .map(str::trim)
         .map(str::to_string)
         .or_else(|| query_param(&req.query, "token"));
-    let authed = matches!((token, provided.as_deref()), (Some(t), Some(p)) if t == p);
+    let authed = matches!((token, provided.as_deref()), (Some(t), Some(p)) if ct_eq(t, p));
     if token.is_some() && !authed {
         return respond(&mut stream, 401, r#"{"error":"unauthorized"}"#);
     }
-    // when no token is configured, tailnet isolation is the boundary; still
-    // require an explicit token for anything that changes machine state.
-    let can_act = token.is_none() || authed;
+    // State-changing surface: the PTY terminal and everything non-GET.
+    // Without a configured token these fail closed; ATLAS_AGENT_OPEN=1 is the
+    // explicit opt-in for tailnet-trust open mode.
+    let mutating = req.method != "GET" || req.path == "/term";
+    let can_act = authed || (token.is_none() && open);
+    if mutating && !can_act {
+        return respond(
+            &mut stream,
+            403,
+            r#"{"error":"this route changes state: set ATLAS_AGENT_TOKEN (or ATLAS_AGENT_OPEN=1 to explicitly trust the network instead)"}"#,
+        );
+    }
 
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/health") => respond(&mut stream, 200, r#"{"ok":true}"#),
@@ -93,9 +131,11 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
             respond(&mut stream, 200, &metrics::collect())
         }
         ("GET", "/term") if req.ws_key.is_some() => {
+            clear_timeouts(&stream); // long-lived WebSocket
             terminal::serve(stream, &req.ws_key.unwrap());
         }
         ("GET", "/ws/metrics") if req.ws_key.is_some() => {
+            clear_timeouts(&stream); // long-lived WebSocket
             crate::stream::handle_ws(stream, &req.ws_key.unwrap());
         }
         ("GET", "/api/docker") => respond(&mut stream, 200, &actions::containers()),
@@ -118,20 +158,20 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
                 None => respond(&mut stream, 404, r#"{"error":"no thumb"}"#),
             }
         }
-        ("POST", "/api/shows/create") if can_act => {
+        ("POST", "/api/shows/create") => {
             respond(&mut stream, 200, &actions::show_create(req.body.trim()));
         }
-        ("POST", "/api/shows/start") if can_act => {
+        ("POST", "/api/shows/start") => {
             respond(&mut stream, 200, &actions::show_start(req.body.trim()));
         }
-        ("POST", "/api/shows/stop") if can_act => {
+        ("POST", "/api/shows/stop") => {
             respond(&mut stream, 200, &actions::show_stop());
         }
-        ("POST", "/api/bridge/stop") if can_act => {
+        ("POST", "/api/bridge/stop") => {
             respond(&mut stream, 200, &actions::bridge_stop());
         }
         ("GET", "/api/calibrate") => respond(&mut stream, 200, &actions::calibrate_get()),
-        ("POST", "/api/calibrate/save") if can_act => {
+        ("POST", "/api/calibrate/save") => {
             respond(&mut stream, 200, &actions::calibrate_save(&req.body));
         }
         ("GET", p) if p.starts_with("/api/shows/audio/") => {
@@ -141,33 +181,56 @@ fn handle(mut stream: TcpStream, token: Option<&str>) {
                 None => respond(&mut stream, 404, r#"{"error":"no audio"}"#),
             }
         }
-        ("POST", "/api/fog") if can_act => {
+        ("POST", "/api/fog") => {
             let ms: u64 = req.body.trim().parse().unwrap_or(1200);
             respond(&mut stream, 200, &actions::fog(ms));
         }
-        ("POST", "/api/fog/stop") if can_act => {
+        ("POST", "/api/fog/stop") => {
             respond(&mut stream, 200, &actions::fog_stop());
         }
         ("GET", "/api/lights") => respond(&mut stream, 200, &actions::lights_get()),
-        ("POST", "/api/lights/set") if can_act => {
+        ("POST", "/api/lights/set") => {
             respond(&mut stream, 200, &actions::lights_set(&req.body));
         }
-        ("POST", "/api/lights/off") if can_act => {
+        ("POST", "/api/lights/off") => {
             respond(&mut stream, 200, &actions::lights_off());
         }
         ("GET", "/api/vpn") => respond(&mut stream, 200, &vpn::vpn()),
         ("GET", "/api/activity") => respond(&mut stream, 200, &activity::activity()),
-        ("POST", "/api/power/shutdown") if can_act => power(&mut stream, "poweroff"),
-        ("POST", "/api/power/restart") if can_act => power(&mut stream, "reboot"),
-        ("POST", _) => respond(&mut stream, 403, r#"{"error":"a token is required for this action"}"#),
+        ("POST", "/api/power/shutdown") => power(&mut stream, "poweroff"),
+        ("POST", "/api/power/restart") => power(&mut stream, "reboot"),
         _ => respond(&mut stream, 404, r#"{"error":"not found"}"#),
     }
 }
 
+/// Constant-time equality (XOR-fold): the comparison time does not depend on
+/// where the strings first differ, so the bearer token cannot be probed
+/// byte-by-byte via response timing.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+/// The parse-phase socket timeouts would kill a long-lived WebSocket.
+fn clear_timeouts(stream: &TcpStream) {
+    let _ = stream.set_read_timeout(None);
+    let _ = stream.set_write_timeout(None);
+}
+
+/// One line, capped at MAX_LINE bytes — a line that never ends kills the
+/// connection instead of growing a String without bound.
+fn read_line_capped(reader: &mut BufReader<TcpStream>) -> Option<String> {
+    let mut line = String::new();
+    let n = reader.by_ref().take(MAX_LINE as u64).read_line(&mut line).ok()?;
+    if n == MAX_LINE && !line.ends_with('\n') {
+        return None; // over-long line
+    }
+    Some(line)
+}
+
 fn parse_request(stream: &mut TcpStream) -> Option<Req> {
     let mut reader = BufReader::new(stream.try_clone().ok()?);
-    let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
+    let line = read_line_capped(&mut reader)?;
     let mut parts = line.split_whitespace();
     let method = parts.next()?.to_string();
     let target = parts.next().unwrap_or("/");
@@ -176,10 +239,15 @@ fn parse_request(stream: &mut TcpStream) -> Option<Req> {
     let mut auth = None;
     let mut ws_key = None;
     let mut content_len = 0usize;
+    let mut headers = 0usize;
     loop {
-        let mut h = String::new();
-        if reader.read_line(&mut h).ok()? == 0 || h == "\r\n" || h == "\n" {
+        let h = read_line_capped(&mut reader)?;
+        if h.is_empty() || h == "\r\n" || h == "\n" {
             break;
+        }
+        headers += 1;
+        if headers > MAX_HEADERS {
+            return None;
         }
         let Some((name, val)) = h.split_once(':') else { continue };
         match name.trim().to_ascii_lowercase().as_str() {
@@ -243,7 +311,7 @@ fn serve_file(stream: &mut TcpStream, path: &std::path::Path) {
     let _ = stream.flush();
 }
 
-pub fn respond(stream: &mut TcpStream, code: u16, body: &str) {
+fn respond(stream: &mut TcpStream, code: u16, body: &str) {
     let reason = match code {
         200 => "OK",
         401 => "Unauthorized",

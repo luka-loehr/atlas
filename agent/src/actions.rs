@@ -7,17 +7,25 @@ use std::process::Command;
 use crate::metrics::json_str;
 
 fn home() -> String {
-    std::env::var("HOME").unwrap_or_else(|_| "/home/atlas".into())
+    // systemd sets $HOME via User=; the fallback only matters for ad-hoc runs
+    std::env::var("HOME").unwrap_or_else(|_| "/root".into())
 }
 
 fn lightshow_dir() -> String {
-    format!("{}/atlas/lightshows", home())   // lives in the monorepo now
+    // ATLAS_LIGHTSHOWS_DIR: where the lightshows/ subsystem lives
+    // (default: the monorepo checkout at $HOME/atlas)
+    std::env::var("ATLAS_LIGHTSHOWS_DIR")
+        .ok()
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| format!("{}/atlas/lightshows", home()))
 }
 
-/// Names we let reach docker / the filesystem — no shell metachars, no traversal.
+/// Names we let reach docker / the filesystem — no shell metachars, no
+/// traversal, no leading '-' (would be parsed as an option by docker/pkill).
 fn safe(name: &str) -> bool {
     !name.is_empty()
         && name.len() < 128
+        && !name.starts_with('-')
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
@@ -251,7 +259,7 @@ pub fn bridge_stop() -> String {
     r#"{"ok":true,"stopped":true,"bridge":false}"#.into()
 }
 
-/// Force laser (22) + strobe (25) plugs off directly on the Hue bridge.
+/// Force the effect plugs (laser/strobe) off directly on the Hue bridge.
 fn plugs_off_rest() {
     let creds = fs::read_to_string(format!("{}/bridge/credentials.json", lightshow_dir()))
         .unwrap_or_default();
@@ -259,7 +267,10 @@ fn plugs_off_rest() {
     else {
         return;
     };
-    for id in ["22", "25"] {
+    // ATLAS_HUE_PLUG_IDS: comma-separated Hue light ids of the plugs to force
+    // off as a fail-safe (default "22,25": laser + strobe on the original rig)
+    let ids = std::env::var("ATLAS_HUE_PLUG_IDS").unwrap_or_else(|_| "22,25".into());
+    for id in ids.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         let _ = Command::new("curl")
             .args([
                 "-s", "-m", "5", "-X", "PUT", "-d", r#"{"on":false}"#,
@@ -550,14 +561,18 @@ pub fn create_status() -> String {
 }
 
 /// Newest downloaded thumbnail (during create) — downloads/<title>.jpg.
+/// The path comes from a log line in world-writable /tmp, so it is only
+/// served after canonicalizing (resolves symlinks) and checking that it
+/// really lives inside the lightshow media root.
 pub fn create_thumb() -> Option<std::path::PathBuf> {
     let log = fs::read_to_string(MAKESHOW_LOG).unwrap_or_default();
     let p = log
         .lines()
         .rev()
         .find_map(|l| l.trim().strip_prefix("THUMB:"))?;
-    let path = std::path::PathBuf::from(p);
-    path.exists().then_some(path)
+    let root = std::path::Path::new(&lightshow_dir()).canonicalize().ok()?;
+    let path = std::path::Path::new(p.trim()).canonicalize().ok()?;
+    path.starts_with(&root).then_some(path)
 }
 
 /// Save the camera-measured audio latency — play.py applies it to every
