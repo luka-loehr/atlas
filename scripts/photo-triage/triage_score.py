@@ -37,4 +37,4 @@ if __name__ == "__main__":
         out = dict(r for r in pool.imap_unordered(score, ids, chunksize=64))
     missing = sum(1 for v in out.values() if v is None)
     json.dump(out, open(sys.argv[2], "w"))
-    print(f"{len(out)} gescort, {missing} ohne Thumb/Fehler")
+    print(f"{len(out)} bewertet, {missing} ohne Thumb/Fehler")

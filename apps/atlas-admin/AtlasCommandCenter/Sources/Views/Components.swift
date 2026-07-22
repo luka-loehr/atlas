@@ -126,6 +126,7 @@ struct UsageBar: View {
     }
 }
 
+/// An uppercase, letter-spaced section heading above a card group.
 struct SectionLabel: View {
     var text: String
     var body: some View {
