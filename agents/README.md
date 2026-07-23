@@ -4,6 +4,16 @@ Long-running AI agents that live on atlas. Each agent gets a section here;
 the agent's actual home (code, state, secrets) lives outside the repo on the
 atlas box. No iOS app yet — this is the server-side platform.
 
+## paperclip
+
+Open-source "autonomous companies" platform (paperclip.ing), installed
+2026-07-23. Runs as system unit `paperclip` (`npx -y paperclipai run --bind
+tailnet`), home `~/.paperclip` (embedded Postgres on :54329). UI on the
+tailnet: `http://100.75.184.57:3100`. CLI: `npx paperclipai <cmd>`.
+
+Also on atlas: the native OpenAI **Codex CLI** (`codex`, installed via the
+chatgpt.com install script; auth with `codex login`).
+
 ## hermes
 
 Luka's personal agent, migrated 2026-07-23 from the Mac (launchd) to atlas —
