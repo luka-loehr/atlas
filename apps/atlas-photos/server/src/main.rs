@@ -906,7 +906,7 @@ async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resu
         &[&id],
     )
     .await?;
-    for job in ["embed", "faces", "caption"] {
+    for job in ["embed", "faces"] {
         c.execute(
             "INSERT INTO ingest_jobs (kind, owner_type, owner_id)
              VALUES ($1, 'asset', $2) ON CONFLICT DO NOTHING",
