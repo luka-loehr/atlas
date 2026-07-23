@@ -29,7 +29,6 @@ entirely during the migration (bloat; session was already logged out) —
   (v0.18.2 → v0.19.0 on migration day).
 - **Reauth a provider**: `hermes auth add <provider> --type oauth
   --no-browser` (e.g. `openai-codex`), then open the printed URL anywhere.
-- **Known gap**: Proton Mail ran through Proton Mail Bridge on the Mac
-  (`EMAIL_*_HOST=127.0.0.1` in `~/.hermes/.env`) — needs a headless bridge
-  on atlas before the email platform reconnects. School mail (zimbra,
-  remote IMAP) is unaffected.
+- **Email platform removed** (2026-07-23, Luka's call): it depended on a
+  Proton Mail Bridge that only existed on the Mac. `EMAIL_*` vars stripped
+  from `~/.hermes/.env` — Telegram is the sole platform.
