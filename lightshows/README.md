@@ -202,6 +202,12 @@ File-based configuration:
   username, DTLS `clientKey`, Entertainment group id.
 - `calibration.json` (gitignored) — `{"audio_latency_ms": N}`; when present,
   overrides the latency baked into every show's meta (see calibration).
+
+> On atlas all three are **symlinks**; the real files live in `/etc/atlas`
+> and `/var/lib/atlas` so that `git clean -fdx` in the checkout deletes a
+> link rather than the credentials the running `lightshow-bridge.service`
+> loads at startup. Mapping and rationale: [docs/SETUP.md section 9](../docs/SETUP.md).
+> Edit the file through the symlink as usual — reads and writes both follow it.
 - Constants in code: `ATLAS`/`ATLAS_DIR` in `makeshow.py` (SSH alias +
   remote path), `LIGHT_ORDER`/`LASER_V1`/`STROBEPLUG_V1`/`FOG_PORT` in
   `bridge/hue_stream.py`, `~/.local/bin/claude` + `claude-sonnet-5` in

@@ -458,7 +458,8 @@ DTLS 1.2 + `PSK-AES128-GCM-SHA256`, and optionally `pyserial` for fog.
    ```
 4. Copy `bridge/credentials.example.json` to `bridge/credentials.json`
    (gitignored) and fill in `host` (bridge IP), `username`, `clientKey`,
-   `group`.
+   `group`. On atlas this path is a symlink to `/etc/atlas/` — see
+   [section 9](#9-secrets-and-mutable-state-live-outside-the-checkout).
 5. Adapt the rig constants at the top of `bridge/hue_stream.py`:
    `LIGHT_ORDER` (six Hue v1 light ids in DMX channel order), `LASER_V1` /
    `STROBEPLUG_V1` (smart-plug ids, if used), `FOG_PORT` (default
@@ -496,6 +497,44 @@ SSH constants are covered in the
   their warm-up times, the agent force-stops them after shows.
 - **Preview without hardware:** `scripts/export_fseq.py` renders any show
   for the xLights 3D layout in `lightshows/xlights/`.
+
+## 9. Secrets and mutable state live outside the checkout
+
+Several files a running service needs are gitignored, so they are invisible
+to `git status` and **`git clean -fdx` in the checkout would delete them** —
+with no copy anywhere else. To stop that, the real files live outside the
+working tree and the paths inside it are symlinks; cleaning the tree then
+removes a link, not the credential.
+
+| Path in the checkout (symlink) | Real file | Mode |
+|---|---|---|
+| `lightshows/bridge/credentials.json` | `/etc/atlas/lightshow-hue-credentials.json` | `0600 luka:luka` |
+| `backend/docker/.env` | `/etc/atlas/backend-postgres.env` | `0600 luka:luka` |
+| `apps/atlas-photos/pipeline/.env` | `/etc/atlas/photos-pipeline.env` | `0600 luka:luka` |
+| `lightshows/artnet_host.local` | `/etc/atlas/lightshow-artnet-host` | `0644 luka:luka` |
+| `lightshows/calibration.json` | `/var/lib/atlas/lightshow-calibration.json` | `0644 luka:luka` |
+
+`/etc/atlas` holds configuration and secrets; `/var/lib/atlas` holds state a
+service rewrites at runtime (`calibration.json` is written by `atlas-agent`'s
+`POST /api/calibrate/save`, which writes *through* the symlink).
+
+**These files are owned by `luka`, not `root`.** This differs from
+`/etc/atlas-agent.env` and `/etc/atlas-bridge.env`, which are
+root-owned `0600` — those are systemd `EnvironmentFile=` directives that
+*systemd* reads as root before dropping privileges. The files above are
+opened by the service process itself, and both `lightshow-bridge` and
+`atlas-agent` run as `User=luka`, so root-owned `0600` would make them
+unreadable and the bridge would crash on import.
+
+Adding another one: copy it into the store with the owner/mode above, verify
+with `cmp`, then replace the original with `ln -s`. Do not commit the
+symlink — the target path is machine-specific, so these stay gitignored.
+
+Still unprotected: `lightshows/shows/` holds ~48 M of gitignored media
+(`*.mp3`/`*.jpg`/`*.wav`) beside tracked `*.show.json` files of the same
+basename, and `makeshow.py` writes new media straight into it — so symlinking
+the current files would silently rot on the next show. It is backed up to
+`~/backups/atlas-reconcile-ISSUE-44/lightshow-shows-media.tar.gz` instead.
 
 ## Bring-up checklist
 

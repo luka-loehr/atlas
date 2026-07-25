@@ -1,3 +1,7 @@
+# On atlas, credentials.json and calibration.json are SYMLINKS into
+# /etc/atlas and /var/lib/atlas — the real files live outside the checkout so
+# `git clean -fdx` deletes a link, not a running service's credentials.
+# Mapping: docs/SETUP.md section 9.
 credentials.json
 bridge.log
 __pycache__/
