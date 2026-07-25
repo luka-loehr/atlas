@@ -420,6 +420,19 @@ pub(crate) fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
+/// Escape POSIX-regex metacharacters so a user search term is matched literally.
+/// Used to build the word-anchored tag pattern below.
+pub(crate) fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if "\\^$.[]|()*+?{}-".contains(ch) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 
 /// POST to the local Qwen3-VL-Embedding text-embedding sidecar (embed-api).
 /// ATLAS_EMBED_API_ADDR: sidecar host:port (default 127.0.0.1:8093, matching
@@ -471,7 +484,12 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
         return Ok(Json(serde_json::json!({ "items": [], "persons": [] })));
     }
     let like = format!("%{}%", like_escape(&term));
-    let tag_prefix = format!("{}%", like_escape(&term));
+    // Tags are mostly multi-word phrases ("black cat", "yellow kayak"), so a
+    // prefix anchor would only ever hit the first word and silently drop most
+    // of them. Match at a WORD boundary instead (`\m` = start-of-word): "cat"
+    // hits "black cat"/"cats"/"calico cat" but not "authentication", which is
+    // what a bare substring match would have dragged in.
+    let tag_word = format!("\\m{}", regex_escape(&term));
     let cc = countries::country_code(&term);
 
     // 1) matching persons (chips + their photos rank first)
@@ -514,7 +532,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                        AND (p.name ILIKE $1 OR p.admin1 ILIKE $1
                             OR ($4::text IS NOT NULL AND p.cc = $4))
                    UNION
-                     SELECT t.asset_id, 2 FROM tags t WHERE t.tag ILIKE $2
+                     SELECT t.asset_id, 2 FROM tags t WHERE t.tag ~* $2
                    UNION
                      SELECT a2.id, 3
                      FROM assets a2
@@ -530,7 +548,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                  ORDER BY min(h.prio), assets.taken_at DESC NULLS LAST
                  LIMIT 600"
             ),
-            &[&like, &tag_prefix, &person_ids, &cc, &term],
+            &[&like, &tag_word, &person_ids, &cc, &term],
         )
         .await?;
     let mut items: Vec<Asset> = rows.iter().map(asset_from).collect();
