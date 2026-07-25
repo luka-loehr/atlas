@@ -326,15 +326,24 @@ class FaceStage:
 
 # ---------------------------------------------------------------- caption ---
 
-# No concrete example values in the prompt: with the old dog-on-the-beach
-# example JSON the 3B model echoed it verbatim for >half the library
-# (ISSUE-10) — placeholders only, plus an echo guard in parse_caption_json.
+# Two hard-won constraints, both from ISSUE-10 backfill measurements:
+#
+# 1. No concrete example values. The old dog-on-the-beach example JSON came
+#    back verbatim for >half the library, so the shape uses placeholders only
+#    (plus an echo guard in parse_caption_json).
+# 2. Prompt and caption are English, NOT German. Asking a German prompt for a
+#    German caption plus "englische" tags does not keep the languages apart in
+#    a 3B model: it put a German tag on 56% of assets (`junge` outranked `boy`
+#    5:1) and produced unparseable output for 15% of them. Tag search is a
+#    literal `tag ILIKE` prefix match (server/src/main.rs), so a split-language
+#    vocabulary silently loses hits. Measured over 40 photos sampled across the
+#    library, English prompt vs German: German tags 2.5% vs 56% of assets,
+#    unparseable 0/40 vs 6/40.
 CAPTION_PROMPT = (
-    "Beschreibe dieses Foto. Antworte NUR mit einem JSON-Objekt in exakt "
-    "dieser Form:\n"
+    "Describe this photo. Reply with ONLY a JSON object in exactly this form:\n"
     '{"caption": "...", "tags": ["...", "..."]}\n'
-    "caption: genau EIN deutscher Satz über DIESES Foto. "
-    "tags: 5-12 englische lowercase Stichwörter zu DIESEM Foto.")
+    "caption: exactly ONE English sentence about THIS photo. "
+    "tags: 5-12 English lowercase keywords about THIS photo.")
 
 # instruction echoes the small model sometimes parrots back as a "tag"
 TAG_JUNK = ("keyword", "lowercase", "english", "5-12", "stichwort", "tags")
@@ -344,7 +353,7 @@ EXAMPLE_TAGS = frozenset(("dog", "beach", "waves", "running", "summer"))
 
 
 class CaptionStage:
-    """Qwen2.5-VL-3B-AWQ via offline vLLM -> tags only. The German caption is
+    """Qwen2.5-VL-3B-AWQ via offline vLLM -> tags only. The caption is
     generated for JSON validation (a model that produces a coherent caption
     yields far better tags) but deliberately discarded, not stored."""
     KIND = "caption"
