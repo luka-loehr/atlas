@@ -17,8 +17,10 @@ import json
 import os
 import re
 
-import numpy as np
-from PIL import Image
+# numpy/PIL are imported inside the embed+faces methods that use them, per the
+# module contract above: a broken dep in one stage must not kill the others,
+# and it keeps the pure-stdlib helpers (parse_caption_json) importable for
+# tests without the GPU image's dependency stack.
 
 MODELS = os.environ.get("MODELS_DIR", "/models")
 os.environ.setdefault("HF_HOME", os.path.join(MODELS, "hf"))  # before hf libs load
@@ -217,6 +219,8 @@ class FaceStage:
         return results
 
     def _process_asset(self, conn, aid):
+        import numpy as np
+        from PIL import Image
         p = thumb(aid, 2048, 512)
         if not p:
             raise FileNotFoundError(RETRY + "no thumb yet")
@@ -279,6 +283,7 @@ class FaceStage:
 
     def _save_crop(self, img, bbox, face_id):
         """Square avatar crop (25% margin around the bbox) -> faces/<id>.webp."""
+        from PIL import Image
         try:
             w, h = img.size
             x1, y1, x2, y2 = bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h
@@ -298,6 +303,7 @@ class FaceStage:
     def _assign_person(self, cur, emb):
         """Nearest centroid by cosine; join if sim > 0.55 (running-mean centroid
         update), else create a new person. Returns (person_id, confidence)."""
+        import numpy as np
         lit = vec_lit(emb)
         cur.execute(
             """SELECT id, face_count, centroid::text,
@@ -371,7 +377,11 @@ class CaptionStage:
                        gpu_memory_utilization=0.80, max_model_len=4096,
                        max_num_seqs=8, enforce_eager=True,
                        limit_mm_per_prompt={"image": 1})
-        self.params = SamplingParams(temperature=0.2, max_tokens=256)
+        # 256 truncated a long caption often enough to matter (no closing brace
+        # -> the whole tag set had to be salvaged or lost); one sentence plus 12
+        # tags fits in ~120, so 512 is headroom, not a cost — generation stops
+        # at the EOS token, not at max_tokens.
+        self.params = SamplingParams(temperature=0.2, max_tokens=512)
 
     def _messages(self, data_uri, strict=False):
         text = CAPTION_PROMPT + (" Return ONLY the JSON, nothing else." if strict else "")
@@ -437,21 +447,64 @@ class CaptionStage:
         free_cuda()
 
 
-def parse_caption_json(text):
-    """Robust repair: strip code fences, cut to outermost {...}, validate.
-    Returns (caption, tags) or None."""
-    t = re.sub(r"```(?:json)?", "", text).strip()
-    a, b = t.find("{"), t.rfind("}")
-    if a == -1 or b <= a:
+def json_objects(t):
+    """Yield every balanced {...} span in t, outermost-first, left to right.
+
+    String-aware: braces and escaped quotes inside JSON strings don't move the
+    depth (a caption may legitimately contain "{"). Replaces an earlier
+    find("{")/rfind("}") slice, which produced invalid JSON whenever anything
+    brace-ish followed the object — trailing prose ("the format {a} was used")
+    or a second fenced block both made rfind overshoot the real closer.
+    """
+    depth = start = 0
+    in_str = esc = False
+    for i, c in enumerate(t):
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif c == "}" and depth:
+            depth -= 1
+            if depth == 0:
+                yield t[start:i + 1]
+
+
+def salvage_caption_json(t):
+    """Last resort for output truncated mid-object (max_tokens): pull the
+    caption string and whatever tag strings are already complete straight out
+    of the text. The model emits caption before tags, so a truncation that got
+    far enough to lose the closing brace still has a usable prefix.
+    Returns a dict shaped like the parsed object, or None."""
+    STR = r'"((?:[^"\\]|\\.)*)"'
+    m = re.search(r'"caption"\s*:\s*' + STR, t)
+    if not m:
         return None
-    try:
-        d = json.loads(t[a:b + 1])
+    rest = t[m.end():]
+    tags = []
+    a = re.search(r'"tags"\s*:\s*\[', rest)
+    if a:
+        # stop at the array's closer if it exists, else take the whole tail
+        span = rest[a.end():]
+        end = span.find("]")
+        tags = re.findall(STR, span if end == -1 else span[:end])
+    try:  # let json decode the escapes rather than hand-rolling it
+        return {"caption": json.loads('"' + m.group(1) + '"'),
+                "tags": [json.loads('"' + x + '"') for x in tags]}
     except ValueError:
         return None
-    caption = str(d.get("caption", "")).strip()
-    if not caption:
-        return None
-    raw = d.get("tags", [])
+
+
+def clean_tags(raw):
+    """Normalise + drop junk from the model's tags array. Order preserved."""
     tags = []
     if isinstance(raw, list):
         for x in raw:
@@ -463,6 +516,31 @@ def parse_caption_json(text):
             if any(j in x for j in TAG_JUNK):
                 continue
             tags.append(x)
+    return tags
+
+
+def parse_caption_json(text):
+    """Robust repair: strip code fences, take the FIRST balanced {...} that
+    decodes to a usable object, else salvage a truncated one.
+    Returns (caption, tags) or None."""
+    t = re.sub(r"```(?:json)?", "", text).strip()
+    d = None
+    for span in json_objects(t):
+        try:
+            cand = json.loads(span)
+        except ValueError:
+            continue  # e.g. a "{JSON}" aside in prose before the real object
+        if isinstance(cand, dict) and ("caption" in cand or "tags" in cand):
+            d = cand
+            break
+    if d is None:
+        d = salvage_caption_json(t)
+    if d is None:
+        return None
+    caption = str(d.get("caption", "")).strip()
+    if not caption:
+        return None
+    tags = clean_tags(d.get("tags", []))
     if not tags or set(tags) == EXAMPLE_TAGS:
         return None  # placeholder/example echo -> strict retry, then fail
     return caption[:500], tags[:12]
