@@ -17,6 +17,10 @@ from pathlib import Path
 
 # ATLAS_PHOTOS_URL: Basis-URL des atlas-photos-Servers (Thumbs + Mutations-API).
 ATLAS = os.environ.get("ATLAS_PHOTOS_URL", "http://atlas.your-tailnet.ts.net:8788")
+# ATLAS_PHOTOS_TOKEN: derselbe Token wie auf dem Server. Lesen (Thumbs, /api/trash)
+# geht im Tailnet-Modus auch ohne; Trashen/Restore NICHT — der Server lehnt jede
+# Mutation ohne Token ab. Ohne Token startet die UI also read-only.
+TOKEN = os.environ.get("ATLAS_PHOTOS_TOKEN", "").strip()
 PORT = 8890
 HERE = Path(__file__).resolve().parent
 STATE = HERE / "decided.json"
@@ -37,10 +41,15 @@ def save_state(d):
 
 
 def atlas(path, body=None):
+    headers = {}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    if TOKEN:
+        headers["Authorization"] = f"Bearer {TOKEN}"
     req = urllib.request.Request(
         ATLAS + path,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={"Content-Type": "application/json"} if body is not None else {})
+        headers=headers)
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read())
 
@@ -120,5 +129,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(HERE)
+    if not TOKEN:
+        print("WARNUNG: ATLAS_PHOTOS_TOKEN nicht gesetzt — Trashen/Restore wird "
+              "der Server mit 401 ablehnen (Anschauen geht).")
     print(f"Aussortieren: http://localhost:{PORT}")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

@@ -67,6 +67,7 @@ straight from `GET /api/assets/{id}/thumb/{512|2048}`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `ATLAS_PHOTOS_URL` | `http://atlas.your-tailnet.ts.net:8788` | base URL of the atlas-photos server (`serve.py`) |
+| `ATLAS_PHOTOS_TOKEN` | *(unset)* | bearer token for the photos server — **required to trash/restore** (`serve.py`) |
 | `ATLAS_TRIAGE_OUT` | `~/triage/sem.json` | output path of `triage_sem.py` |
 
 Fixed assumptions: `triage_sem.py` expects the embed API on
@@ -79,8 +80,17 @@ via `docker exec`). See [docs/SETUP.md](../../docs/SETUP.md) for the stack.
 - Mutating requests require the `X-Triage` header and, if the browser sends
   an `Origin`, a localhost origin — a minimal CSRF guard for the loopback
   server.
-- `serve.py` does not send a bearer token, so the photos server must run in
-  tailnet-only mode (no `ATLAS_PHOTOS_TOKEN`).
+- The photos server refuses every mutation that does not carry its bearer
+  token, whatever `ATLAS_PHOTOS_OPEN` says. Export the same token here:
+
+  ```bash
+  ATLAS_PHOTOS_TOKEN=... python3 serve.py
+  ```
+
+  Without it the UI still loads and shows candidates — reads are open in
+  tailnet mode — but Backspace/undo come back as `502 HTTP Error 401`.
+- The browser only ever issues reads (thumbnails), so the token stays in
+  `serve.py`'s environment and is never handed to the page.
 - Everything in this directory is browsable through `serve.py` (it extends
   `SimpleHTTPRequestHandler`), including `decided.json` — harmless while
   loopback-only, but don't park secrets here.
