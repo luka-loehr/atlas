@@ -564,6 +564,22 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
     //    size (~27k × 2048-dim) the exact scan is a few tens of ms, utterly
     //    dwarfed by the 1-3 s CPU query embedding, so an HNSW index would buy
     //    nothing but a recall gap. The ranking you see is bit-exact.
+    //
+    //    Before you touch the 150: it is a silent switch, and it is coupled to
+    //    how well the tag stage above matches. Anything that improves tag recall
+    //    pushes more queries over the threshold and turns this stage OFF for
+    //    them, with no visible symptom. Checked 2026-07-25 against exactly that
+    //    — the word-boundary tag match (`tag ~* '\mterm'`) that replaced the old
+    //    `tag ILIKE 'term%'` prefix match. Over the whole tag vocabulary, 104 of
+    //    the 8,978 terms that used to reach this stage no longer do: 1.2%, and
+    //    they are generic words where several hundred structured hits are
+    //    already plenty ("set" 112 -> 1483 hits, "setting" 73 -> 1289, "screen"
+    //    140 -> 666, "hair" 112 -> 626, "flower" 146 -> 405). Deliberately left
+    //    alone: the cutoff exists to avoid spending the 1-3 s query embedding
+    //    where it buys nothing, and 1.2% of generic terms is not worth it.
+    //    Re-run the measurement if tag matching changes again — method is on
+    //    ISSUE-26, and an independent re-derivation on the same day landed within
+    //    a couple of terms of the numbers above.
     if items.len() < 150 {
         if let Some(vec) = text_embedding(&term).await {
             let vstr = format!(
