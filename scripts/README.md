@@ -9,6 +9,7 @@ as a 3D embedding map. `photo-triage/` and `vecmap/` talk to the running
 
 | Path | What it is |
 |---|---|
+| [`healthcheck/`](healthcheck/) | One-shot box health check (cargo builds, agent :8787, docker stack, Postgres) — runs on boot/resume/on demand, results in `~/atlas-health/status.json` |
 | [`photo-triage/`](photo-triage/) | Keyboard-driven web UI to review delete candidates (screenshots, blurry, black frames, documents) |
 | [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud at `/map` |
 | `takeout-transfer.sh` | Watches the client's `~/Downloads` and moves finished Takeout zip parts to the server |

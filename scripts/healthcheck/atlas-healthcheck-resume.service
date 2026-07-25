@@ -1,0 +1,16 @@
+[Unit]
+Description=Atlas health check after resume from suspend
+# WantedBy sleep targets + After them = standard resume hook: the job is
+# enqueued when the box suspends and executes once resume completes.
+After=suspend.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+User=luka
+Environment=ATLAS_HEALTH_RETRIES=12
+ExecStart=/home/luka/atlas/scripts/healthcheck/atlas-healthcheck.sh
+TimeoutStartSec=20min
+Nice=10
+
+[Install]
+WantedBy=suspend.target hybrid-sleep.target suspend-then-hibernate.target
