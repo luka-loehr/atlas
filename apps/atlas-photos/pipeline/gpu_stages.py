@@ -16,6 +16,7 @@ import gc
 import json
 import os
 import re
+from collections import namedtuple
 
 # numpy/PIL are imported inside the embed+faces methods that use them, per the
 # module contract above: a broken dep in one stage must not kill the others,
@@ -357,6 +358,20 @@ TAG_JUNK = ("keyword", "lowercase", "english", "5-12", "stichwort", "tags")
 # the old prompt's example tag set — reject if it ever comes back verbatim
 EXAMPLE_TAGS = frozenset(("dog", "beach", "waves", "running", "summer"))
 
+# tags.source values this stage writes. A caption whose JSON arrived truncated
+# is salvaged (see salvage_caption_json) but its tag list is a prefix of what
+# the model meant to emit, so it is stored under a distinct source. That marker
+# is the only thing that survives into the DB — without it a 6-of-12 tag list
+# is byte-identical to a complete one and can never be found again to re-tag.
+#   SELECT DISTINCT asset_id FROM tags WHERE source = 'qwen2.5-vl:partial';
+TAG_SOURCE = "qwen2.5-vl"
+TAG_SOURCE_PARTIAL = TAG_SOURCE + ":partial"
+
+# What parse_caption_json returns. Indexable like the (caption, tags) tuple it
+# replaces, so [0]/[1] keep working; `partial` says whether it came from the
+# salvage path rather than a clean decode.
+Caption = namedtuple("Caption", "caption tags partial")
+
 
 class CaptionStage:
     """Qwen2.5-VL-3B-AWQ via offline vLLM -> tags only. The caption is
@@ -421,15 +436,32 @@ class CaptionStage:
             if parsed is None:
                 results.append((jid, f"caption JSON unparseable: {text[:120]!r}"))
                 continue
-            _caption, tags = parsed   # caption verworfen — nur Tags werden gespeichert
+            # caption verworfen — nur Tags werden gespeichert
+            tags = parsed.tags
+            source = TAG_SOURCE_PARTIAL if parsed.partial else TAG_SOURCE
+            if parsed.partial:
+                print(f"[caption] {aid}: model output truncated, salvaged "
+                      f"{len(tags)} tag(s) from an unclosed object — storing "
+                      f"source={source}", flush=True)
             try:
                 with conn.transaction():
                     cur = conn.cursor()
+                    # This stage owns every qwen2.5-vl* row for the asset, and
+                    # the PK is (asset_id, tag, source) — so ON CONFLICT alone
+                    # no longer makes a re-run idempotent once two sources
+                    # exist: a later complete parse would sit alongside the
+                    # partial rows instead of replacing them, double-listing
+                    # shared tags and leaving the :partial marker set forever
+                    # on an asset that has since been fixed. Clear first.
+                    cur.execute(
+                        """DELETE FROM tags
+                           WHERE asset_id = %s AND source IN (%s, %s)""",
+                        (aid, TAG_SOURCE, TAG_SOURCE_PARTIAL))
                     for t in tags:
                         cur.execute(
                             """INSERT INTO tags (asset_id, tag, source)
-                               VALUES (%s, %s, 'qwen2.5-vl')
-                               ON CONFLICT DO NOTHING""", (aid, t))
+                               VALUES (%s, %s, %s)
+                               ON CONFLICT DO NOTHING""", (aid, t, source))
                 results.append((jid, None))
             except Exception as e:
                 results.append((jid, f"db: {type(e).__name__}: {e}"))
@@ -522,7 +554,12 @@ def clean_tags(raw):
 def parse_caption_json(text):
     """Robust repair: strip code fences, take the FIRST balanced {...} that
     decodes to a usable object, else salvage a truncated one.
-    Returns (caption, tags) or None."""
+    Returns a Caption(caption, tags, partial) or None.
+
+    `partial` is True only for the salvage path: the object never closed, so
+    the tag list is however much of it survived the truncation, not the whole
+    of what the model meant to say. Callers must record that distinction —
+    see TAG_SOURCE_PARTIAL."""
     t = re.sub(r"```(?:json)?", "", text).strip()
     d = None
     for span in json_objects(t):
@@ -533,6 +570,7 @@ def parse_caption_json(text):
         if isinstance(cand, dict) and ("caption" in cand or "tags" in cand):
             d = cand
             break
+    partial = d is None
     if d is None:
         d = salvage_caption_json(t)
     if d is None:
@@ -543,4 +581,4 @@ def parse_caption_json(text):
     tags = clean_tags(d.get("tags", []))
     if not tags or set(tags) == EXAMPLE_TAGS:
         return None  # placeholder/example echo -> strict retry, then fail
-    return caption[:500], tags[:12]
+    return Caption(caption[:500], tags[:12], partial)
