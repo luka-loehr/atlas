@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Make the tailnet's DNS follow atlas' power state.
+#
+#   up    → global nameserver = AdGuard on atlas   (every device filters)
+#   down  → global nameserver = <none>             (every device uses its own DNS)
+#
+# Why: a Tailscale global nameserver is pushed to every device unconditionally,
+# so pointing it at an on-demand box makes the whole tailnet lose DNS whenever
+# that box sleeps. Instead of asking the clients to fail over (they can't —
+# Tailscale queries all global nameservers in parallel and takes the fastest
+# answer, which would let the fallback resolver win races and leak ads), atlas
+# publishes itself as the resolver only while it is actually running.
+#
+# Driven by atlas-tailnet-dns.service: ExecStart=up at boot, ExecStop=down on
+# shutdown. Credentials live in /etc/atlas-tailnet-dns.env (root, 0600).
+
+set -euo pipefail
+
+ENV_FILE=${ATLAS_TAILNET_DNS_ENV:-/etc/atlas-tailnet-dns.env}
+API=https://api.tailscale.com/api/v2/tailnet/-/dns/nameservers
+
+if [ -r "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"          # TS_API_KEY, ADGUARD_IP
+fi
+: "${ADGUARD_IP:?ADGUARD_IP missing (see $ENV_FILE) — tailnet IP of this box}"
+
+# Credentials: an OAuth client (preferred — never expires) or a plain API
+# access token (expires; 90 days max, and the tailnet then silently stops
+# following atlas). With OAuth we swap client id/secret for a short-lived
+# access token on each run.
+bearer() {
+    if [ -n "${TS_CLIENT_ID:-}" ] && [ -n "${TS_CLIENT_SECRET:-}" ]; then
+        curl -fsS --max-time 10 \
+            -d "client_id=${TS_CLIENT_ID}" -d "client_secret=${TS_CLIENT_SECRET}" \
+            https://api.tailscale.com/api/v2/oauth/token | jq -r .access_token
+    else
+        printf '%s' "${TS_API_KEY:?neither TS_CLIENT_ID/TS_CLIENT_SECRET nor TS_API_KEY set (see '"$ENV_FILE"')}"
+    fi
+}
+
+# AdGuard answering on the tailnet address — checked BEFORE we publish atlas as
+# the tailnet resolver, so devices are never pointed at a resolver that is still
+# starting. Docker restarts the container on boot, so this can lag the unit.
+adguard_ready() {
+    local answer
+    answer=$(dig +short +time=2 +tries=1 "@${ADGUARD_IP}" cloudflare.com A 2>/dev/null) || return 1
+    [ -n "$answer" ]
+}
+
+# The API call itself needs working internet; at boot that can lag the unit too.
+post() {
+    local body=$1 attempt token
+    token=$(bearer) || return 1
+    for attempt in 1 2 3 4 5; do
+        if curl -fsS --max-time 10 -u "${token}:" \
+                -H 'Content-Type: application/json' -d "$body" "$API" >/dev/null; then
+            return 0
+        fi
+        sleep $((attempt * 2))
+    done
+    return 1
+}
+
+case "${1:-}" in
+up)
+    for _ in $(seq 1 60); do
+        adguard_ready && break
+        sleep 1
+    done
+    if ! adguard_ready; then
+        echo "AdGuard not answering on ${ADGUARD_IP}:53 — leaving tailnet DNS alone" >&2
+        exit 1
+    fi
+    post "{\"dns\":[\"${ADGUARD_IP}\"]}"
+    echo "tailnet DNS → AdGuard (${ADGUARD_IP})"
+    ;;
+down)
+    post '{"dns":[]}'
+    echo "tailnet DNS → cleared (devices use their own resolvers)"
+    ;;
+status)
+    curl -fsS --max-time 10 -u "$(bearer):" "$API"
+    echo
+    ;;
+*)
+    echo "usage: ${0##*/} up|down|status" >&2
+    exit 2
+    ;;
+esac
