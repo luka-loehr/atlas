@@ -326,16 +326,21 @@ class FaceStage:
 
 # ---------------------------------------------------------------- caption ---
 
+# No concrete example values in the prompt: with the old dog-on-the-beach
+# example JSON the 3B model echoed it verbatim for >half the library
+# (ISSUE-10) — placeholders only, plus an echo guard in parse_caption_json.
 CAPTION_PROMPT = (
     "Beschreibe dieses Foto. Antworte NUR mit einem JSON-Objekt in exakt "
-    "dieser Form (Werte ersetzen!):\n"
-    '{"caption": "Ein Hund rennt am Strand durch die Wellen.", '
-    '"tags": ["dog", "beach", "waves", "running", "summer"]}\n'
+    "dieser Form:\n"
+    '{"caption": "...", "tags": ["...", "..."]}\n'
     "caption: genau EIN deutscher Satz über DIESES Foto. "
     "tags: 5-12 englische lowercase Stichwörter zu DIESEM Foto.")
 
 # instruction echoes the small model sometimes parrots back as a "tag"
 TAG_JUNK = ("keyword", "lowercase", "english", "5-12", "stichwort", "tags")
+
+# the old prompt's example tag set — reject if it ever comes back verbatim
+EXAMPLE_TAGS = frozenset(("dog", "beach", "waves", "running", "summer"))
 
 
 class CaptionStage:
@@ -444,7 +449,11 @@ def parse_caption_json(text):
             x = str(x).strip().lower()
             if not x or x in tags or len(x) > 40:
                 continue
+            if not re.search(r"[a-z0-9äöüß]", x):  # "..." placeholder echoes
+                continue
             if any(j in x for j in TAG_JUNK):
                 continue
             tags.append(x)
+    if not tags or set(tags) == EXAMPLE_TAGS:
+        return None  # placeholder/example echo -> strict retry, then fail
     return caption[:500], tags[:12]
