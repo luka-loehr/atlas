@@ -37,7 +37,13 @@ sudo cp atlas-tailnet-dns.service /etc/systemd/system/
 
 sudo install -m600 /dev/null /etc/atlas-tailnet-dns.env
 sudo tee /etc/atlas-tailnet-dns.env >/dev/null <<'EOF'
-TS_API_KEY=tskey-api-...      # Tailscale API access token
+# Preferred: an OAuth client (Tailscale admin → Settings → OAuth clients,
+# scope "dns" with write). OAuth clients do not expire.
+TS_CLIENT_ID=...
+TS_CLIENT_SECRET=tskey-client-...
+# Alternative: a plain API access token — note these DO expire (90 days max),
+# after which the tailnet silently stops following atlas.
+# TS_API_KEY=tskey-api-...
 ADGUARD_IP=100.x.y.z          # this box's tailnet IP, where AdGuard listens
 EOF
 
@@ -58,9 +64,13 @@ boot. Check the current published value any time with
   access can lag the unit at boot.
 - **Credentials stay out of git.** The token lives only in
   `/etc/atlas-tailnet-dns.env` (root, `0600`).
-- **Token expiry.** Tailscale API access tokens expire (90 days by default);
-  when one lapses the flip silently stops. An OAuth client credential does not
-  expire and is the better long-term choice.
+- **Prefer OAuth over an API token.** Access tokens expire (90 days max, and
+  the admin console offers far shorter ones); when one lapses `down` fails at
+  shutdown and the tailnet is left pointing at a box that is powering off —
+  exactly the failure this script exists to prevent. OAuth client credentials
+  do not expire; the script exchanges them for a short-lived access token per
+  run. Neither can be created through the API — both come from the admin
+  console.
 - **Ungraceful power loss** (yanked cord, kernel panic) skips `ExecStop`, so the
   nameserver stays pointed at a box that is gone until it next boots. A normal
   `shutdown`/`reboot` is fully covered.

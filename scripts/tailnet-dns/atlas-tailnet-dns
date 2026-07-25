@@ -23,8 +23,21 @@ if [ -r "$ENV_FILE" ]; then
     # shellcheck disable=SC1090
     . "$ENV_FILE"          # TS_API_KEY, ADGUARD_IP
 fi
-: "${TS_API_KEY:?TS_API_KEY missing (see $ENV_FILE)}"
 : "${ADGUARD_IP:?ADGUARD_IP missing (see $ENV_FILE) — tailnet IP of this box}"
+
+# Credentials: an OAuth client (preferred — never expires) or a plain API
+# access token (expires; 90 days max, and the tailnet then silently stops
+# following atlas). With OAuth we swap client id/secret for a short-lived
+# access token on each run.
+bearer() {
+    if [ -n "${TS_CLIENT_ID:-}" ] && [ -n "${TS_CLIENT_SECRET:-}" ]; then
+        curl -fsS --max-time 10 \
+            -d "client_id=${TS_CLIENT_ID}" -d "client_secret=${TS_CLIENT_SECRET}" \
+            https://api.tailscale.com/api/v2/oauth/token | jq -r .access_token
+    else
+        printf '%s' "${TS_API_KEY:?neither TS_CLIENT_ID/TS_CLIENT_SECRET nor TS_API_KEY set (see '"$ENV_FILE"')}"
+    fi
+}
 
 # AdGuard answering on the tailnet address — checked BEFORE we publish atlas as
 # the tailnet resolver, so devices are never pointed at a resolver that is still
@@ -37,9 +50,10 @@ adguard_ready() {
 
 # The API call itself needs working internet; at boot that can lag the unit too.
 post() {
-    local body=$1 attempt
+    local body=$1 attempt token
+    token=$(bearer) || return 1
     for attempt in 1 2 3 4 5; do
-        if curl -fsS --max-time 10 -u "${TS_API_KEY}:" \
+        if curl -fsS --max-time 10 -u "${token}:" \
                 -H 'Content-Type: application/json' -d "$body" "$API" >/dev/null; then
             return 0
         fi
@@ -66,7 +80,7 @@ down)
     echo "tailnet DNS → cleared (devices use their own resolvers)"
     ;;
 status)
-    curl -fsS --max-time 10 -u "${TS_API_KEY}:" "$API"
+    curl -fsS --max-time 10 -u "$(bearer):" "$API"
     echo
     ;;
 *)
