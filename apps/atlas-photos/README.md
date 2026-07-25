@@ -115,7 +115,8 @@ password.
 | `PHOTOS_DIR` | `$HOME/photos` | photo library root (`originals/`, `thumbs/`, `faces/`, `vecmap/`) |
 | `DRIVE_DIR` | `$HOME/drive` | drive blob root (`blobs/`) |
 | `ATLAS_PHOTOS_BIND` | `0.0.0.0:8788` | listen address |
-| `ATLAS_PHOTOS_TOKEN` | unset | bearer token; when set, every route except `/health` requires `Authorization: Bearer <token>` or `?token=` |
+| `ATLAS_PHOTOS_TOKEN` | unset | bearer token, sent as `Authorization: Bearer <token>` or `?token=`. **Every mutation requires it**; reads require it too unless `ATLAS_PHOTOS_OPEN=1` |
+| `ATLAS_PHOTOS_OPEN` | unset | `1` = reads (GET/HEAD) need no token, for a trusted network. Never authorizes a mutation |
 | `ATLAS_PHOTOS_MAX_UPLOAD` | `512` | upload body cap in MiB (bodies are buffered in RAM) |
 | `ATLAS_EMBED_API_ADDR` | `127.0.0.1:8093` | text-embedding sidecar (see pipeline); failures degrade search to structured-only |
 | `ATLAS_DRIVE_EXTRACTOR` | `$HOME/atlas/apps/atlas-photos/ingest/extract_drive_text.py` | script run (fire-and-forget) after each drive upload |
@@ -123,11 +124,19 @@ password.
 | `POSTGRES_PASSWORD` | unset | DB password; if empty, parsed from `PG_ENV_FILE` |
 | `PG_ENV_FILE` | `$HOME/atlas/backend/docker/.env` | file containing a `POSTGRES_PASSWORD=` line |
 
-**Security note:** without `ATLAS_PHOTOS_TOKEN` the API is fully
-unauthenticated. That is only acceptable on a private, trusted network (e.g. a
-tailnet); otherwise set a token or bind `127.0.0.1` behind an authenticating
-reverse proxy. Permanent deletes (`/api/mutate/delete`, `/api/trash/empty`,
-drive folder delete) remove files from disk.
+**Security note:** mutations fail closed. `/api/mutate/*`, `/api/trash/empty`,
+`/api/upload` and the whole drive write surface require `ATLAS_PHOTOS_TOKEN`,
+and no environment variable relaxes that — with no token configured they are
+refused outright (`403`), because there would be nothing to tell an authorized
+client apart from anyone else who can reach the port. This matters: permanent
+deletes (`/api/mutate/delete`, `/api/trash/empty`, drive folder delete) remove
+files from disk.
+
+Reads are the part you choose. `ATLAS_PHOTOS_OPEN=1` serves the timeline,
+thumbs, originals and search to anything that can reach the listen address —
+fine on a tailnet, not fine on `0.0.0.0` with an untrusted LAN attached. Leave
+it unset to require the token for reads as well, or narrow `ATLAS_PHOTOS_BIND`
+to the tailnet address / `127.0.0.1` behind `tailscale serve`.
 
 ## iOS app
 

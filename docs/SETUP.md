@@ -206,9 +206,11 @@ Where the tokens fit:
   are refused. `ATLAS_AGENT_OPEN=1` is the explicit opt-in to run token-less
   and trust the tailnet + firewall instead. Prefer the token: it protects
   a root-adjacent shell.
-- **`ATLAS_PHOTOS_TOKEN`** (photo server): without it the entire photo/drive
-  API — including permanent deletes — is unauthenticated. Acceptable only on
-  a trusted network; set it.
+- **`ATLAS_PHOTOS_TOKEN`** (photo server): the only thing that authorizes a
+  mutation. Without it every write — favorite, trash, permanent delete, empty
+  trash, upload, all drive writes — is refused, and `ATLAS_PHOTOS_OPEN=1` does
+  not change that (it only opens *reads* on a trusted network). Set it, and
+  put it in the iOS app under Einstellungen → Token.
 
 Generate tokens with `openssl rand -hex 32`. Optionally add a host firewall
 that drops LAN traffic to 8787/8788 and allows it on the `tailscale0`

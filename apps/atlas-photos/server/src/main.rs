@@ -38,9 +38,10 @@ pub(crate) struct App {
     pub(crate) pool: Pool,
     photos_dir: PathBuf,
     pub(crate) drive_dir: PathBuf,
-    /// ATLAS_PHOTOS_TOKEN — when set, every route (except /health) requires it.
+    /// ATLAS_PHOTOS_TOKEN — the only thing that can authorize a mutation.
     token: Option<String>,
-    /// ATLAS_PHOTOS_OPEN=1 — tokenless mode also allows mutations (tailnet trust).
+    /// ATLAS_PHOTOS_OPEN=1 — reads need no token (trusted network). Never
+    /// authorizes a mutation; see `require_token`.
     open_mode: bool,
 }
 
@@ -81,21 +82,23 @@ async fn main() {
         .create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)
         .expect("pg pool");
 
-    // ATLAS_PHOTOS_TOKEN: optional bearer token. When set, ALL routes except
-    // /health require "Authorization: Bearer <token>" or a ?token=<token>
-    // query parameter (for direct media URLs). Unset = open access — only
-    // acceptable on a private, trusted network (e.g. a tailnet).
+    // ATLAS_PHOTOS_TOKEN: bearer token, presented as "Authorization: Bearer
+    // <token>" or as a ?token=<token> query parameter (for direct media URLs
+    // that AVPlayer/<img> can't attach headers to). This is the ONLY thing
+    // that authorizes a mutation — see `require_token`.
     let token = std::env::var("ATLAS_PHOTOS_TOKEN").ok().filter(|t| !t.is_empty());
-    // ATLAS_PHOTOS_OPEN=1: without a token, mutating routes (non-GET) are
-    // refused unless this explicit tailnet-trust opt-in is set — same
-    // fail-closed posture as atlas-agent.
+    // ATLAS_PHOTOS_OPEN=1: reads (GET/HEAD) need no token. This is a
+    // read-only trusted-network opt-in and deliberately has NO effect on
+    // mutations — it used to grant them, which meant anyone who could reach
+    // the port could empty the trash.
     let open_mode = std::env::var("ATLAS_PHOTOS_OPEN").map(|v| v == "1").unwrap_or(false);
-    if token.is_none() {
-        if open_mode {
-            println!("WARNING: ATLAS_PHOTOS_TOKEN not set, ATLAS_PHOTOS_OPEN=1 — API fully open (tailnet-only mode)");
-        } else {
-            println!("NOTE: no ATLAS_PHOTOS_TOKEN — reads are open, mutations refused (set a token or ATLAS_PHOTOS_OPEN=1)");
-        }
+    match (&token, open_mode) {
+        (Some(_), true) => println!("auth: reads open (ATLAS_PHOTOS_OPEN=1), mutations require the token"),
+        (Some(_), false) => println!("auth: token required for every route except /health"),
+        (None, _) => println!(
+            "WARNING: no ATLAS_PHOTOS_TOKEN — reads are open and EVERY mutation is refused; \
+             set a token to re-enable trash/delete/upload"
+        ),
     }
 
     // ATLAS_PHOTOS_MAX_UPLOAD: upload body cap in MiB (default 512). Upload
@@ -170,9 +173,12 @@ async fn main() {
         .with_state(app.clone())
         .layer(middleware::from_fn_with_state(app, require_token));
 
-    // ATLAS_PHOTOS_BIND: listen address (default 0.0.0.0:8788). Without
-    // ATLAS_PHOTOS_TOKEN there is NO auth — expose only on a trusted network
-    // (tailnet) or bind 127.0.0.1 behind an authenticating reverse proxy.
+    // ATLAS_PHOTOS_BIND: listen address (default 0.0.0.0:8788). Mutations are
+    // token-gated regardless, but reads are open under ATLAS_PHOTOS_OPEN=1 —
+    // so the bind address is what decides who can read the library. 0.0.0.0
+    // means every attached network, including the home LAN; narrow it to the
+    // tailnet address or 127.0.0.1 (behind `tailscale serve`) if that is not
+    // what you want.
     let addr = std::env::var("ATLAS_PHOTOS_BIND").unwrap_or_else(|_| "0.0.0.0:8788".into());
     println!("atlas-photos on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
@@ -186,26 +192,10 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// If ATLAS_PHOTOS_TOKEN is set, require "Authorization: Bearer <token>" or
-/// ?token=<token> (URL-safe tokens only) on every route except /health.
-/// Unset token = fully open (documented tailnet-only mode).
-async fn require_token(State(app): State<App>, req: Request, next: Next) -> Response {
-    let Some(expected) = app.token.as_deref() else {
-        // no token configured: reads pass; mutations need the explicit
-        // ATLAS_PHOTOS_OPEN=1 opt-in (fail closed, like atlas-agent)
-        let read_only = matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD);
-        if read_only || app.open_mode {
-            return next.run(req).await;
-        }
-        return (
-            StatusCode::FORBIDDEN,
-            "mutations need ATLAS_PHOTOS_TOKEN (or ATLAS_PHOTOS_OPEN=1 on a trusted network)",
-        )
-            .into_response();
-    };
-    if req.uri().path() == "/health" {
-        return next.run(req).await;
-    }
+/// Does this request present the expected token, as "Authorization: Bearer
+/// <token>" or as ?token=<token> (URL-safe tokens only — the value is compared
+/// raw, never percent-decoded)?
+fn presents_token(req: &Request, expected: &str) -> bool {
     let header_ok = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -213,7 +203,7 @@ async fn require_token(State(app): State<App>, req: Request, next: Next) -> Resp
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(|t| ct_eq(t.trim().as_bytes(), expected.as_bytes()))
         .unwrap_or(false);
-    let query_ok = header_ok
+    header_ok
         || req
             .uri()
             .query()
@@ -222,11 +212,101 @@ async fn require_token(State(app): State<App>, req: Request, next: Next) -> Resp
                     .filter_map(|kv| kv.strip_prefix("token="))
                     .any(|t| ct_eq(t.as_bytes(), expected.as_bytes()))
             })
-            .unwrap_or(false);
-    if header_ok || query_ok {
-        next.run(req).await
-    } else {
-        (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
+            .unwrap_or(false)
+}
+
+/// The whole auth policy, in one place:
+///
+///   /health                 always open — a liveness probe, returns no data.
+///   mutations (non-GET)     ALWAYS require ATLAS_PHOTOS_TOKEN. Nothing turns
+///                           this off: with no token configured there is no
+///                           way to tell an authorized client from anyone else
+///                           who can reach the port, so they fail closed.
+///   reads (GET/HEAD)        pass with a valid token, or tokenless when the
+///                           network is declared trusted (ATLAS_PHOTOS_OPEN=1,
+///                           or no token configured at all).
+///
+/// Every destructive route in the table — /api/mutate/*, /api/trash/empty,
+/// /api/drive/{delete,restore,trash,move,upload}, the folder/file rename and
+/// delete routes, /api/upload — is a POST, so "non-GET" covers the terminal
+/// surfaces. Keep it that way: a destructive GET would be reachable under
+/// ATLAS_PHOTOS_OPEN=1.
+async fn require_token(State(app): State<App>, req: Request, next: Next) -> Response {
+    if req.uri().path() == "/health" {
+        return next.run(req).await;
+    }
+    let read_only = matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD);
+    let presented = app.token.as_deref().is_some_and(|t| presents_token(&req, t));
+    match decide(app.token.is_some(), app.open_mode, read_only, presented) {
+        None => next.run(req).await,
+        Some(refusal) => refusal.into_response(),
+    }
+}
+
+/// The policy above as a pure function, so the fail-closed property is
+/// testable without a database. `None` = let it through.
+fn decide(
+    has_token: bool,
+    open_mode: bool,
+    read_only: bool,
+    presented: bool,
+) -> Option<(StatusCode, &'static str)> {
+    if presented {
+        return None;
+    }
+    if read_only && (open_mode || !has_token) {
+        return None;
+    }
+    if !read_only && !has_token {
+        return Some((
+            StatusCode::FORBIDDEN,
+            "mutations are disabled: this server has no ATLAS_PHOTOS_TOKEN configured",
+        ));
+    }
+    Some((StatusCode::UNAUTHORIZED, "unauthorized"))
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::{decide, StatusCode};
+
+    /// The one invariant that matters: no combination of configuration lets an
+    /// unauthenticated mutation through. ATLAS_PHOTOS_OPEN=1 used to.
+    #[test]
+    fn no_config_lets_an_unauthenticated_mutation_through() {
+        for has_token in [false, true] {
+            for open_mode in [false, true] {
+                let got = decide(has_token, open_mode, false, false);
+                assert!(
+                    got.is_some(),
+                    "mutation passed with has_token={has_token} open_mode={open_mode}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_valid_token_authorizes_mutations_and_reads() {
+        for read_only in [false, true] {
+            assert!(decide(true, false, read_only, true).is_none());
+            assert!(decide(true, true, read_only, true).is_none());
+        }
+    }
+
+    #[test]
+    fn reads_stay_open_on_a_trusted_network() {
+        // open_mode, or no token configured at all: tokenless reads pass
+        assert!(decide(true, true, true, false).is_none());
+        assert!(decide(false, false, true, false).is_none());
+        // token configured and reads not declared open: 401
+        assert_eq!(decide(true, false, true, false).unwrap().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn a_tokenless_server_says_why_it_refuses() {
+        let (code, msg) = decide(false, true, false, false).unwrap();
+        assert_eq!(code, StatusCode::FORBIDDEN);
+        assert!(msg.contains("ATLAS_PHOTOS_TOKEN"));
     }
 }
 
