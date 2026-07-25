@@ -1,3 +1,7 @@
+# On atlas, backend/docker/.env, apps/atlas-photos/pipeline/.env and
+# lightshows/artnet_host.local are SYMLINKS into /etc/atlas — the real files
+# live outside the checkout so `git clean -fdx` cannot delete them.
+# Mapping: docs/SETUP.md section 9.
 target/
 backend/docker/.env
 build-sim/
