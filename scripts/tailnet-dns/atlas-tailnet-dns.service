@@ -1,0 +1,18 @@
+[Unit]
+Description=Tailnet DNS follows atlas (AdGuard while up, local DNS while down)
+# Ordered after the network and docker so AdGuard can be reachable at ExecStart;
+# the same ordering makes ExecStop run BEFORE they go away on shutdown.
+After=network-online.target tailscaled.service docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/atlas-tailnet-dns up
+ExecStop=/usr/local/bin/atlas-tailnet-dns down
+TimeoutStartSec=180
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

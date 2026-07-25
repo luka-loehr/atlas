@@ -29,7 +29,7 @@ Art-Net. No cloud, no subscriptions — your hardware, your tailnet, your data.
 | [`apps/atlas-photos/`](apps/atlas-photos/) | iOS app **Storage**: self-hosted Google Photos + Drive — Rust/axum server, SwiftUI client, GPU AI pipeline (faces, semantic photo *and* video search) |
 | [`lightshows/`](lightshows/) | Show production: GPU song analysis, dark-gap compiler, AI composer, Art-Net→Hue bridge, fog hardware |
 | [`builder/`](builder/) | Pinned Docker build images (Rust→Graviton, Node/Next.js, Flutter) |
-| [`scripts/`](scripts/) | Operational tools: Takeout transfer, photo triage UI, embedding-space maps |
+| [`scripts/`](scripts/) | Operational tools: Takeout transfer, photo triage UI, embedding-space maps, [tailnet DNS failover](scripts/tailnet-dns/) |
 
 ## Highlights
 
