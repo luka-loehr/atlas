@@ -1,0 +1,22 @@
+# Art-Net -> Hue lightshow bridge (bridge/hue_stream.py).
+# Idles on UDP :6454 until a show starts streaming, takes over the Hue
+# entertainment group for the duration, releases it after 180 s of silence.
+# Install: sudo cp lightshow-bridge.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now lightshow-bridge
+[Unit]
+Description=Art-Net to Hue lightshow bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=luka
+WorkingDirectory=/home/luka/atlas/lightshows/bridge
+ExecStart=/usr/bin/python3 -u /home/luka/atlas/lightshows/bridge/hue_stream.py
+# optional: ARTNET_BIND / ARTNET_IDLE_TIMEOUT (file may be absent)
+EnvironmentFile=-/etc/lightshow-bridge.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
