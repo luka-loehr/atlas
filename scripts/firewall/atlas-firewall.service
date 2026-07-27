@@ -1,0 +1,23 @@
+[Unit]
+Description=Atlas host firewall (confine 8787/8788 to loopback + tailnet)
+Documentation=file:///home/luka/atlas/scripts/firewall/README.md
+# Load before anything brings an interface up, so there is no window in which
+# the services answer the LAN. DefaultDependencies=no keeps this out of the
+# ordering cycle that basic.target would otherwise impose.
+DefaultDependencies=no
+After=sysinit.target
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/etc/atlas/firewall.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/atlas/firewall.nft
+ExecReload=/usr/sbin/nft -f /etc/atlas/firewall.nft
+# Only ever removes this table; tailscale's and docker's chains are untouched.
+ExecStop=-/usr/sbin/nft delete table inet atlas-fw
+
+[Install]
+WantedBy=multi-user.target

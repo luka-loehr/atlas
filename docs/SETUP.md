@@ -194,8 +194,8 @@ to the Tailscale IP.
 |---|---|---|---|
 | 22/tcp | sshd | all | SSH keys |
 | 5432/tcp | Postgres | `127.0.0.1` only | password (loopback only — remote dev via SSH tunnel) |
-| 8787/tcp | atlas-agent | `0.0.0.0` (configurable) | `ATLAS_AGENT_TOKEN` |
-| 8788/tcp | atlas-photos server | `0.0.0.0` (configurable) | `ATLAS_PHOTOS_TOKEN` |
+| 8787/tcp | atlas-agent | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_AGENT_TOKEN` |
+| 8788/tcp | atlas-photos server | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_PHOTOS_TOKEN` |
 | 8093/tcp | embed-api sidecar | `127.0.0.1` only | none (loopback only) |
 | 6454/udp | Art-Net (bridge host) | all | none — LAN only |
 
@@ -212,9 +212,28 @@ Where the tokens fit:
   not change that (it only opens *reads* on a trusted network). Set it, and
   put it in the iOS app under Einstellungen → Token.
 
-Generate tokens with `openssl rand -hex 32`. Optionally add a host firewall
-that drops LAN traffic to 8787/8788 and allows it on the `tailscale0`
-interface — then the tailnet is the only way in even from your own LAN.
+Generate tokens with `openssl rand -hex 32`.
+
+Tokens are not the whole story, because `ATLAS_PHOTOS_OPEN=1` deliberately
+leaves **reads** unauthenticated for the iOS apps. That is safe only if the LAN
+cannot reach the port, so the host firewall is not optional:
+
+```bash
+scripts/firewall/install.sh
+```
+
+It drops tcp/8787 and tcp/8788 on every interface except `lo` and
+`tailscale0`, for IPv4 and IPv6 alike, and reloads at boot from
+`atlas-firewall.service`. Details and the reasoning for the separate nftables
+table are in `scripts/firewall/README.md`. Verify with:
+
+```bash
+sudo nft -a list table inet atlas-fw     # per-rule counters show what got dropped
+```
+
+Both services bind `0.0.0.0`, not `[::]`, so only IPv4 was ever reachable —
+but the rules are `inet`, so changing a bind to `[::]` later cannot quietly
+reopen the LAN.
 
 ## 4. Mac: the `atlas` CLI
 
