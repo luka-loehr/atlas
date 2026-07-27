@@ -95,10 +95,17 @@ tools/            artnet_test.py, fog_trigger.py, beat_cal.py, make_calibration.
 xlights/          xLights 3D room layout for visual previews
 ```
 
-Audio is not part of the repo: `*.mp3`/`*.wav`/`*.jpg` under `shows/` are
-gitignored. `meta.song_file` in a show resolves relative to the `.show.json`
-file; supply your own audio there (the reference show expects the track at
-`../music.mp3`, i.e. `lightshows/music.mp3`).
+Audio is not part of the repo. It lives in the **media root** —
+`ATLAS_LIGHTSHOW_MEDIA_DIR`, default `/var/lib/atlas/lightshow-media` — which
+is deliberately outside the checkout, so `git clean -fdx` cannot delete it.
+`shows/` holds only the tracked `.show.json` / `.summary.md`.
+
+`meta.song_file` is a bare basename resolved against the media root (an
+absolute path is used as-is). Supply your own audio by dropping it in there
+under the show's name: the reference show `party-rock` expects `music.mp3`.
+Readers still fall back to `shows/` for legacy files, but nothing writes
+there — `makeshow.py` copies new audio and covers straight to the media root.
+See `docs/SETUP.md` section 9.
 
 ## Setup
 
@@ -219,7 +226,7 @@ File-based configuration:
 {
  "version": 1,
  "meta": {
-   "song_file": "music.mp3",        // relative to the sequence file
+   "song_file": "music.mp3",        // basename, resolved in the media root
    "title": "...", "bpm": 130.0, "anchor_ms": 59700.0, "duration_ms": 260400,
    "audio_latency_ms": 300,         // playback-device calibration
    "laser_lead_ms": 3900, "strobe_lead_ms": 6500,

@@ -3,7 +3,7 @@
 {
   "version": 1,
   "meta": {
-    "song_file": "music.mp3",          // relative to the sequence file
+    "song_file": "music.mp3",          // resolved against the media root
     "title": "Party Rock Anthem",
     "bpm": 130.0, "anchor_ms": 59700.0,
     "duration_ms": 260400,
@@ -62,11 +62,26 @@ def validate(seq, path="<seq>"):
             if not a < b:
                 raise ValueError(f"{path}: device {dev} empty window {a}..{b}")
 
+def media_dir():
+    """Where show media (audio + covers) lives. The default is deliberately
+    OUTSIDE the checkout: shows/ is a tracked directory, so media sitting in it
+    is one `git clean -fdx` from deletion. Writers must use this and only this;
+    readers keep a shows/ fallback for legacy and hand-dropped files."""
+    # ATLAS_LIGHTSHOW_MEDIA_DIR: override the media root (e.g. a NAS mount)
+    d = os.environ.get("ATLAS_LIGHTSHOW_MEDIA_DIR", "").strip()
+    return os.path.abspath(d or "/var/lib/atlas/lightshow-media")
+
 def song_path(seq, seq_path):
-    """Resolve meta.song_file relative to the sequence file location."""
+    """Resolve meta.song_file: absolute as-is, else the media root, else
+    (legacy) next to the sequence file."""
     sf = seq["meta"].get("song_file")
     if not sf:
         return None
     if os.path.isabs(sf):
         return sf
+    root = media_dir()
+    cand = os.path.normpath(os.path.join(root, sf))
+    # a song_file of "../x.mp3" must not escape the media root
+    if cand.startswith(root + os.sep) and os.path.exists(cand):
+        return cand
     return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(seq_path)), sf))

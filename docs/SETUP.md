@@ -549,11 +549,39 @@ Adding another one: copy it into the store with the owner/mode above, verify
 with `cmp`, then replace the original with `ln -s`. Do not commit the
 symlink — the target path is machine-specific, so these stay gitignored.
 
-Still unprotected: `lightshows/shows/` holds ~48 M of gitignored media
-(`*.mp3`/`*.jpg`/`*.wav`) beside tracked `*.show.json` files of the same
-basename, and `makeshow.py` writes new media straight into it — so symlinking
-the current files would silently rot on the next show. It is backed up to
-`~/backups/atlas-reconcile-ISSUE-44/lightshow-shows-media.tar.gz` instead.
+### Show media: a media root, not a symlink
+
+`lightshows/shows/` used to hold ~48 M of gitignored media (`*.mp3`/`*.jpg`/
+`*.wav`) beside tracked `*.show.json` files of the same basename, so
+`git clean -fdx` took all of it. A symlink could not fix that one: the
+directory is *mixed*, so linking it whole would drag the tracked JSON out of
+the tree, and per-file links would rot because `makeshow.py` copies media in
+on every new show.
+
+Instead there is a **media root**, `ATLAS_LIGHTSHOW_MEDIA_DIR`, defaulting to
+`/var/lib/atlas/lightshow-media` (`0755 luka:luka`). The default points
+outside the checkout unconditionally — that is the point, so that a shell
+without the variable set still writes somewhere safe.
+
+| | media root | `shows/` |
+|---|---|---|
+| audio + covers | written and read here | read only, legacy fallback |
+| `.show.json`, `.summary.md` | never | written here, tracked |
+
+Writers (`makeshow.py`, `tools/make_calibration.py`) use the media root and
+have **no** fallback, so new media can never land back in the checkout.
+Readers (`lslib/sequence.py:song_path`, the agent's `audio_file()` and
+`show_thumb()`) probe the media root first and then `shows/`, so legacy and
+hand-dropped files still play. `meta.song_file` stays a bare basename;
+absolute paths are honoured as-is.
+
+`makeshow.py` can drive the GPU host over ssh (`LIGHTSHOW_REMOTE_DIR`), but
+only `analyze/` is used there — the song is copied in, analysed, and deleted.
+Media is written on whichever machine runs `makeshow.py`, into that machine's
+own media root; the GPU host needs no media root and nothing is synced back.
+
+The pre-move copy is kept at
+`~/backups/atlas-reconcile-ISSUE-44/lightshow-shows-media.tar.gz`.
 
 ## Bring-up checklist
 

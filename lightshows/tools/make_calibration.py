@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the calibration assets: shows/calibration.wav (click track) +
+"""Generate the calibration assets: <media root>/calibration.wav (click track) +
 shows/calibration.show.json (white full-room flash exactly on every click).
 
 The app plays the audio on the phone (like any show), the lights flash via
@@ -9,10 +9,15 @@ import json
 import math
 import os
 import struct
+import sys
 import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SHOWS = os.path.join(ROOT, "shows")
+sys.path.insert(0, ROOT)
+from lslib import sequence
+
+SHOWS = os.path.join(ROOT, "shows")            # tracked: the .show.json
+MEDIA = sequence.media_dir()                   # the .wav, outside the checkout
 
 SR = 44100
 CLICKS_S = [1 + 2 * i for i in range(10)]      # 1,3,5,...,19s
@@ -23,6 +28,7 @@ FLASH_MS = 120
 
 def main():
     os.makedirs(SHOWS, exist_ok=True)
+    os.makedirs(MEDIA, exist_ok=True)
 
     # --- click track: 1 kHz bursts with a fast decay, silence elsewhere
     n = SR * DUR_S
@@ -32,7 +38,7 @@ def main():
         for i in range(int(SR * CLICK_MS / 1000)):
             env = math.exp(-i / (SR * 0.004))
             samples[start + i] = 0.9 * env * math.sin(2 * math.pi * 1000 * i / SR)
-    wav_path = os.path.join(SHOWS, "calibration.wav")
+    wav_path = os.path.join(MEDIA, "calibration.wav")
     with wave.open(wav_path, "w") as w:
         w.setnchannels(1)
         w.setsampwidth(2)

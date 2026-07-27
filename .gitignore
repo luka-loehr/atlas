@@ -11,9 +11,19 @@ apps/atlas-photos/ios/build/
 __pycache__/
 .DS_Store
 *.pyc
+# Show media lives in ATLAS_LIGHTSHOW_MEDIA_DIR (default /var/lib/atlas/
+# lightshow-media), outside the checkout. Nothing writes here any more; these
+# patterns only cover hand-dropped legacy files that the readers still fall
+# back to. Every extension audio_file() probes is listed, so such a file is
+# ignored rather than merely untracked — plain `git clean -fd` cannot take it.
 lightshows/shows/*.mp3
 lightshows/shows/*.jpg
 lightshows/shows/*.wav
+lightshows/shows/*.m4a
+lightshows/shows/*.opus
+lightshows/shows/*.webm
+lightshows/shows/*.aac
+lightshows/shows/*.flac
 .env
 *.local
 scripts/atlas-faces/
