@@ -1,0 +1,17 @@
+[Unit]
+Description=Guard against atlas root filling up
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=luka
+Nice=10
+IOSchedulingClass=idle
+# The emergency hand-off runs cargo-reaper.service, which can take minutes on a
+# 40 G reap. Without this the unit would be killed mid-reclaim.
+TimeoutStartSec=30min
+ExecStart=/home/luka/atlas/scripts/disk-guard/disk-guard.sh
+# A non-zero exit means critical-or-worse; SuccessExitStatus keeps systemd from
+# marking the unit failed for a condition the script reported correctly.
+SuccessExitStatus=0 1

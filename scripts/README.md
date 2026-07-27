@@ -13,6 +13,7 @@ as a 3D embedding map. `photo-triage/` and `vecmap/` talk to the running
 | [`firewall/`](firewall/) | Host firewall confining atlas-agent :8787 and atlas-photos :8788 to loopback and the tailnet — nftables rules plus the unit that reloads them at boot |
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres/`, plus a restore drill |
 | [`cargo-reaper/`](cargo-reaper/) | Daily sweep that deletes cargo `target/` dirs from finished issue worktrees, skipping any tree an agent is still building in |
+| [`disk-guard/`](disk-guard/) | Five-minute check that root is not filling up — 85/90/95% thresholds, a burn-rate trend trigger, an 80 G floor below which builds refuse to start, alerts via `report-to-hermes` |
 | [`photo-triage/`](photo-triage/) | Keyboard-driven web UI to review delete candidates (screenshots, blurry, black frames, documents) |
 | [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud at `/map` |
 | `takeout-transfer.sh` | Watches the client's `~/Downloads` and moves finished Takeout zip parts to the server |
