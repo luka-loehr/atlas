@@ -24,7 +24,10 @@
 set -uo pipefail
 
 MOUNT="${DISK_GUARD_MOUNT:-/}"
-STATE_DIR="${DISK_GUARD_STATE_DIR:-$HOME/atlas-health}"
+# HOME may be unset in a CI step or a systemd unit without User=. Under `set -u`
+# that aborted the script with exit 1 — indistinguishable from a real refusal,
+# which is the one failure mode a called gate must not have.
+STATE_DIR="${DISK_GUARD_STATE_DIR:-${HOME:-/var/tmp}/atlas-health}"
 STATE="$STATE_DIR/disk-guard.state"
 JSON="$STATE_DIR/disk.json"
 
