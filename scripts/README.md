@@ -16,6 +16,44 @@ as a 3D embedding map. `photo-triage/` and `vecmap/` talk to the running
 | [`photo-triage/`](photo-triage/) | Keyboard-driven web UI to review delete candidates (screenshots, blurry, black frames, documents) |
 | [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud at `/map` |
 | `takeout-transfer.sh` | Watches the client's `~/Downloads` and moves finished Takeout zip parts to the server |
+| `cargo-dev-profile.sh` | One-shot: sets `debug = "line-tables-only"` for dev/test builds machine-wide, refusing to land while any build or agent run is live |
+
+## cargo-dev-profile.sh
+
+Writes `[profile.dev]`/`[profile.test]` `debug = "line-tables-only"` into
+`~/.cargo/config.toml`, so every Rust tree on the box — including per-issue
+worktrees checked out later — drops the type and variable DWARF while keeping
+file/line backtraces. It goes in the cargo config rather than a manifest
+because dairo has several per-issue worktrees live at once and a manifest
+change would surface as an unrelated diff in all of them.
+
+Measured on this box (serde/serde\_json probe, 2026-07-27): DWARF 5.74 MB →
+4.39 MB, linked binary 6.34 MB → 4.98 MB, **~21 % smaller**, and a panic still
+reports `at ./src/main.rs:9:13`. Expect more on a first-party-heavy crate like
+`dairo-api` and less on a thin one — but not the "more than half" figure that
+gets quoted for this setting.
+
+Two things make the timing matter, which is why this is a guarded script and
+not a one-line edit:
+
+- Profile settings are part of cargo's fingerprint, so the first build in
+  **every** tree afterwards is a full cold rebuild. Landing it while agents are
+  mid-run hands each of them a surprise cold build.
+- Cargo has no garbage collector. It builds the new artifacts *alongside* the
+  old ones under new hashes rather than replacing them — `dairo-backend`'s
+  `target/` already carries four distinct `libserde` builds for this reason. So
+  `target/` grows before it shrinks. Clear the dead trees first.
+
+```bash
+./cargo-dev-profile.sh                  # status / dry run — safe any time
+./cargo-dev-profile.sh --apply --reap   # reap dead target/ trees, then land
+```
+
+It exits non-zero with `HOLD` if any `cargo`/`rustc` process or any other
+`/tmp/atlas-run-*` scratch dir exists (its own run is excluded), so it
+is safe to retry from a timer or a heartbeat until a window opens. `--force`
+overrides the guard; `--reap` shells out to [`cargo-reaper/`](cargo-reaper/)
+first. Re-running after a successful apply is a no-op.
 
 ## takeout-transfer.sh
 
