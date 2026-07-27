@@ -21,7 +21,7 @@ def cue(t0, t1, fx, **p):
 SEQ = {
     "version": 1,
     "meta": {
-        "song_file": "../music.mp3",
+        "song_file": "music.mp3",
         "title": "Party Rock Anthem (v6 dark-gap, hand-designed)",
         "bpm": 130.0, "anchor_ms": 59700.0, "duration_ms": 260400,
         "audio_latency_ms": 300, "laser_lead_ms": 3900, "strobe_lead_ms": 6500,

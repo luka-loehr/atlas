@@ -25,10 +25,14 @@ from lslib.compiler import compile_show
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ATLAS = "atlas"
-# LIGHTSHOW_REMOTE_DIR: lightshows checkout on the GPU host (analysis venv lives in analyze/)
+# LIGHTSHOW_REMOTE_DIR: lightshows checkout on the GPU host (analysis venv lives in analyze/).
+# Only analyze/ is used there — the song is scp'd in, analysed, and deleted again.
+# Media is written on whichever machine runs makeshow.py, into that machine's
+# media root; the GPU host needs no media root and nothing is synced back.
 ATLAS_DIR = os.environ.get("LIGHTSHOW_REMOTE_DIR", "~/atlas/lightshows")
 CACHE = os.path.join(ROOT, "analysis_cache")
-SHOWS = os.path.join(ROOT, "shows")
+SHOWS = os.path.join(ROOT, "shows")            # tracked: .show.json + .summary.md
+MEDIA = sequence.media_dir()                   # untracked audio + covers, outside the checkout
 
 
 def run(cmd, **kw):
@@ -172,12 +176,14 @@ def main():
                   f"gemessen {f:.2f} (kein ganzzahliges Verhaeltnis) — nutze {f:.2f}")
 
     os.makedirs(SHOWS, exist_ok=True)
-    # keep a copy of the song (and its thumbnail) next to the shows
-    local_song = os.path.join(SHOWS, f"{name}{os.path.splitext(song)[1]}")
+    # the song and its cover go to the media root, NOT into the checkout;
+    # only the .show.json / .summary.md below stay in shows/, where git wants them
+    os.makedirs(MEDIA, exist_ok=True)
+    local_song = os.path.join(MEDIA, f"{name}{os.path.splitext(song)[1]}")
     if not os.path.exists(local_song):
         shutil.copy(song, local_song)
     src_thumb = os.path.splitext(song)[0] + ".jpg"
-    dst_thumb = os.path.join(SHOWS, f"{name}.jpg")
+    dst_thumb = os.path.join(MEDIA, f"{name}.jpg")
     if os.path.exists(src_thumb) and os.path.abspath(src_thumb) != os.path.abspath(dst_thumb):
         shutil.copy(src_thumb, dst_thumb)
 
@@ -204,9 +210,10 @@ def main():
 
 
 def git_autopush(name, title):
-    """Commit + push the new show (json + audio + thumb + analysis). Non-fatal.
-    Opt-in: downloaded audio/thumbnails may not be redistributable, so nothing
-    is committed unless explicitly enabled."""
+    """Commit + push the new show (json + summary + analysis). Non-fatal.
+    Opt-in: nothing is committed unless explicitly enabled. Audio and covers
+    live in the media root now, so the shows/ glob below only ever matches
+    tracked files — which is what we want, they may not be redistributable."""
     # ATLAS_AUTOPUSH: set to "1" to auto-commit+push each newly compiled show
     if os.environ.get("ATLAS_AUTOPUSH") != "1":
         return

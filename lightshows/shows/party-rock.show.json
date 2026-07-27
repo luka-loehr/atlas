@@ -1,7 +1,7 @@
 {
  "version": 1,
  "meta": {
-  "song_file": "../music.mp3",
+  "song_file": "music.mp3",
   "title": "Party Rock Anthem (v6 dark-gap, hand-designed)",
   "bpm": 130.0,
   "anchor_ms": 59700.0,

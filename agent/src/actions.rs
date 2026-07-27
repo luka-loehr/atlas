@@ -20,6 +20,17 @@ fn lightshow_dir() -> String {
         .unwrap_or_else(|| format!("{}/atlas/lightshows", home()))
 }
 
+/// Where show media (audio + covers) lives. Defaults OUTSIDE the checkout:
+/// `shows/` is tracked, so media kept there dies to a `git clean -fdx`.
+/// Readers below probe this first and fall back to `shows/` for legacy files.
+fn lightshow_media_dir() -> String {
+    // ATLAS_LIGHTSHOW_MEDIA_DIR: override the media root (e.g. a NAS mount)
+    std::env::var("ATLAS_LIGHTSHOW_MEDIA_DIR")
+        .ok()
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| "/var/lib/atlas/lightshow-media".into())
+}
+
 /// Names we let reach docker / the filesystem — no shell metachars, no
 /// traversal, no leading '-' (would be parsed as an option by docker/pkill).
 fn safe(name: &str) -> bool {
@@ -596,28 +607,39 @@ pub fn calibrate_get() -> String {
     fs::read_to_string(path).unwrap_or_else(|_| r#"{"audio_latency_ms":null}"#.into())
 }
 
-/// A show's cover: shows/<name>.jpg, if present.
+/// The two roots a reader probes, in order: the media root, then the legacy
+/// `shows/` directory. `safe(name)` is what keeps these HTTP-reachable paths
+/// from being traversed out of, so it stays on the front of both callers.
+fn media_roots() -> [String; 2] {
+    [
+        lightshow_media_dir(),
+        format!("{}/shows", lightshow_dir()),
+    ]
+}
+
+/// A show's cover: <name>.jpg under the media root, else legacy shows/.
 pub fn show_thumb(name: &str) -> Option<std::path::PathBuf> {
     if !safe(name) {
         return None;
     }
-    let p = std::path::PathBuf::from(format!("{}/shows/{name}.jpg", lightshow_dir()));
-    p.exists().then_some(p)
+    media_roots()
+        .iter()
+        .map(|base| std::path::PathBuf::from(format!("{base}/{name}.jpg")))
+        .find(|p| p.exists())
 }
 
-/// Absolute path to a show's audio file (shows/<name>.<audio-ext>), if present.
+/// Absolute path to a show's audio file (<name>.<audio-ext>) under the media
+/// root, else legacy shows/.
 pub fn audio_file(name: &str) -> Option<std::path::PathBuf> {
     if !safe(name) {
         return None;
     }
-    let base = format!("{}/shows", lightshow_dir());
-    for ext in ["mp3", "m4a", "opus", "webm", "wav", "aac", "flac"] {
-        let p = std::path::PathBuf::from(format!("{base}/{name}.{ext}"));
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
+    media_roots().iter().find_map(|base| {
+        ["mp3", "m4a", "opus", "webm", "wav", "aac", "flac"]
+            .iter()
+            .map(|ext| std::path::PathBuf::from(format!("{base}/{name}.{ext}")))
+            .find(|p| p.exists())
+    })
 }
 
 // ---- tiny JSON field pickers (avoid a serde dep for a couple of fields) ----
