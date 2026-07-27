@@ -1,0 +1,15 @@
+[Unit]
+Description=Check atlas root disk headroom every five minutes
+
+[Timer]
+# Five minutes is chosen against the measured worst case: at the 1.8 G/min burn
+# seen on 2026-07-27, one interval costs ~9 G, so the 80 G floor is still eight
+# checks deep. It also gives the burn-rate estimate a window long enough to be
+# meaningful and short enough to catch a build storm.
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=false
+
+[Install]
+WantedBy=timers.target
