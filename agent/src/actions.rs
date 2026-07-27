@@ -628,13 +628,46 @@ pub fn show_thumb(name: &str) -> Option<std::path::PathBuf> {
         .find(|p| p.exists())
 }
 
-/// Absolute path to a show's audio file (<name>.<audio-ext>) under the media
-/// root, else legacy shows/.
+/// Resolve a relative `meta.song_file` against `root`, or None if it would
+/// leave it. `.show.json` is written by makeshow.py and edited by hand, so
+/// `song_file` is a second filesystem input on an HTTP-reachable path that
+/// `safe()` never sees. Deliberately stricter than `sequence.song_path()`:
+/// absolute paths are refused rather than honoured, and we canonicalize
+/// instead of normalizing so a symlink pointing out of the (hand-populated)
+/// media root is caught too. `starts_with` compares whole components, so a
+/// sibling root like `lightshow-media-old` cannot pass as a prefix.
+fn resolve_under_root(root: &str, rel: &str) -> Option<std::path::PathBuf> {
+    if rel.is_empty() || std::path::Path::new(rel).is_absolute() {
+        return None;
+    }
+    let root = fs::canonicalize(root).ok()?;
+    let cand = fs::canonicalize(root.join(rel)).ok()?;
+    (cand.starts_with(&root) && cand.is_file()).then_some(cand)
+}
+
+/// Absolute path to a show's audio file: whatever `meta.song_file` in
+/// `<name>.show.json` names (the source of truth play.py uses), else the
+/// legacy guess of <name>.<audio-ext>. Both are looked for under the media
+/// root first, then legacy shows/.
 pub fn audio_file(name: &str) -> Option<std::path::PathBuf> {
     if !safe(name) {
         return None;
     }
-    media_roots().iter().find_map(|base| {
+    let roots = media_roots();
+
+    // The name probe below is only a guess — it matches for most shows but not
+    // e.g. party-rock, a variant show whose song_file is music.mp3. A song_file
+    // that is absent, unreadable or fails the guard falls through to it; a path
+    // that failed the guard is never served as-is.
+    let declared = fs::read_to_string(format!("{}/shows/{name}.show.json", lightshow_dir()))
+        .ok()
+        .and_then(|text| extract_str(&text, "song_file"))
+        .and_then(|song| roots.iter().find_map(|base| resolve_under_root(base, &song)));
+    if let Some(p) = declared {
+        return Some(p);
+    }
+
+    roots.iter().find_map(|base| {
         ["mp3", "m4a", "opus", "webm", "wav", "aac", "flac"]
             .iter()
             .map(|ext| std::path::PathBuf::from(format!("{base}/{name}.{ext}")))
