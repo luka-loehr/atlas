@@ -12,6 +12,7 @@ as a 3D embedding map. `photo-triage/` and `vecmap/` talk to the running
 | [`healthcheck/`](healthcheck/) | One-shot box health check (cargo builds, agent :8787, docker stack, Postgres) — runs on boot/resume/on demand, results in `~/atlas-health/status.json` |
 | [`firewall/`](firewall/) | Host firewall confining atlas-agent :8787 and atlas-photos :8788 to loopback and the tailnet — nftables rules plus the unit that reloads them at boot |
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres/`, plus a restore drill |
+| [`cargo-reaper/`](cargo-reaper/) | Daily sweep that deletes cargo `target/` dirs from finished issue worktrees, skipping any tree an agent is still building in |
 | [`photo-triage/`](photo-triage/) | Keyboard-driven web UI to review delete candidates (screenshots, blurry, black frames, documents) |
 | [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud at `/map` |
 | `takeout-transfer.sh` | Watches the client's `~/Downloads` and moves finished Takeout zip parts to the server |
