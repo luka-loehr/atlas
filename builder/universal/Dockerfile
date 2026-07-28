@@ -53,8 +53,14 @@ COPY --from=node:22-bookworm-slim /usr/local/include/node /usr/local/include/nod
 
 # corepack turns on pnpm/yarn on demand, so a repo's packageManager field is
 # honoured without this image pinning a version that fights it.
-RUN corepack enable \
- && node --version && npm --version
+#
+# The node image's /usr/local/bin/yarn is a symlink into /opt/yarn-*, which is
+# outside the paths copied above, so it arrives dangling — and `corepack
+# enable` realpath()s every shim it is about to replace and dies on it. Drop
+# the stale links first; corepack writes its own yarn shim a line later.
+RUN rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+ && corepack enable \
+ && node --version && npm --version && yarn --version
 
 # Bun, from the official release archive. Its own installer wants a login
 # shell and writes to $HOME, which is wrong for an image built as root and run
