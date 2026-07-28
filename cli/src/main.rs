@@ -134,6 +134,7 @@ fn main() {
         Some("build") => build(&args[1..]),
         Some("dev") => dev(&args[1..]),
         Some("agent") => agent(&args[1..]),
+        Some("secrets") => secrets(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
         // anything else: run it on atlas (`atlas htop`, `atlas nvidia-smi`, ...)
         Some(_) => ssh(&args),
@@ -153,6 +154,8 @@ fn help() {
          atlas dev          run its dev server on atlas + public tunnel URL\n  \
          atlas dev stop     stop the dev server + tunnel\n  \
          atlas dev logs     follow the dev-server logs\n  \
+         atlas secrets push env-file for this project (never synced, 0600 on atlas)\n  \
+         atlas secrets list/rm  show which projects have one / drop it\n  \
          atlas agent        build+install the metrics agent (for the iOS app)\n  \
          atlas agent logs   follow the agent logs   ·   agent status/stop\n  \
          atlas <cmd ...>    run a command on atlas (e.g. atlas nvidia-smi)"
@@ -298,6 +301,11 @@ fn status() {
 // ---- remote build & dev ---------------------------------------------------
 
 const REMOTE_BASE: &str = "atlas-builds"; // relative to atlas' $HOME
+// Secrets live OUTSIDE the synced build tree: anything under REMOTE_BASE is a
+// mirror of the Mac and gets rewritten by every rsync, so a file kept there
+// would be either clobbered or silently stale. 0600 in a 0700 dir, injected as
+// environment variables at run time rather than lying around as a file.
+const SECRETS_BASE: &str = "atlas-secrets";
 
 struct BuildCfg {
     root: PathBuf,          // dir holding .atlas-build.toml == rsync root
@@ -397,6 +405,9 @@ impl BuildCfg {
     }
     fn remote_dir(&self) -> String {
         format!("{REMOTE_BASE}/{}", self.name)
+    }
+    fn secrets_file(&self) -> String {
+        format!("{SECRETS_BASE}/{}.env", self.name)
     }
 }
 
@@ -567,11 +578,136 @@ fn ensure_image(spec: &ImageSpec) {
     }
 }
 
+// ---- secrets --------------------------------------------------------------
+
+/// `atlas secrets push [file] | list | rm`
+///
+/// Secrets are deliberately kept out of the synced tree. Everything under
+/// ~/atlas-builds is an rsync mirror of the Mac, so a secret parked there is
+/// rewritten by every sync (or, being excluded from it, goes silently stale)
+/// and lingers on disk for as long as the project does. The store is a 0600
+/// file in a 0700 directory outside that tree, handed to the container as
+/// environment variables at run time instead of lying around as a file.
+fn secrets(sub: &[String]) {
+    match sub.first().map(String::as_str) {
+        Some("push") | Some("set") => secrets_push(sub.get(1).map(String::as_str)),
+        Some("list") | Some("ls") => secrets_list(),
+        Some("rm") | Some("remove") => secrets_rm(),
+        _ => {
+            println!(
+                "atlas secrets push [datei]  Datei (Standard: .env.local, sonst .env) nach atlas, 0600\n\
+                 atlas secrets list          welche Projekte eine haben (nie der Inhalt)\n\
+                 atlas secrets rm            die dieses Projekts löschen"
+            );
+        }
+    }
+}
+
+/// Upload an env file for the current project. Streamed over ssh stdin so the
+/// contents never land in a shell argument (argv is world-readable in /proc)
+/// and never touch an intermediate file on the way.
+fn secrets_push(arg: Option<&str>) {
+    let cfg = load_config();
+    let local = match arg {
+        Some(p) => cfg.root.join(p),
+        None => match [".env.local", ".env"].iter().map(|f| cfg.root.join(f)).find(|p| p.is_file()) {
+            Some(p) => p,
+            None => {
+                eprintln!("{RED}keine .env.local oder .env gefunden{RESET} (oder Pfad angeben)");
+                exit(1);
+            }
+        },
+    };
+    let Ok(handle) = fs::File::open(&local) else {
+        eprintln!("{RED}kann {} nicht lesen{RESET}", local.display());
+        exit(1);
+    };
+    ensure_up();
+    let target = cfg.secrets_file();
+    // umask before the redirect: the file is never even briefly group/world
+    // readable between creation and chmod.
+    let remote = format!(
+        "umask 077 && mkdir -p \"$HOME/{SECRETS_BASE}\" && chmod 700 \"$HOME/{SECRETS_BASE}\" \
+         && cat > \"$HOME/{target}\" && chmod 600 \"$HOME/{target}\""
+    );
+    let ok = Command::new("ssh")
+        .args([ssh_host(), &remote])
+        .stdin(handle)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        eprintln!("{RED}secrets push fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    println!("{GREEN}✓ {} → atlas:~/{}{RESET} {DIM}(0600){RESET}", local.display(), target);
+    println!("{DIM}  wird bei jedem atlas build/dev als Umgebungsvariablen injiziert{RESET}");
+}
+
+fn secrets_list() {
+    ensure_up();
+    let out = ssh_capture(&format!(
+        "cd \"$HOME/{SECRETS_BASE}\" 2>/dev/null && stat -c '%n  %s B  %y' *.env 2>/dev/null | cut -c1-60"
+    ));
+    if out.trim().is_empty() {
+        println!("{DIM}keine secrets hinterlegt{RESET}");
+        return;
+    }
+    print!("{out}");
+}
+
+fn secrets_rm() {
+    let cfg = load_config();
+    ensure_up();
+    let target = cfg.secrets_file();
+    if !ssh_ok(&format!("rm -f \"$HOME/{target}\"")) {
+        eprintln!("{RED}secrets rm fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    println!("{GREEN}✓ secrets für {} gelöscht{RESET}", cfg.name);
+}
+
+/// Shell prologue that sets $envf to a --env-file flag when this project has a
+/// secrets file, and to nothing when it does not. Evaluated on atlas inside
+/// the same command as `docker run`, so it costs no extra round trip and
+/// cannot race with a push.
+fn env_file_prologue(cfg: &BuildCfg) -> String {
+    format!(
+        "sec=\"$HOME/{}\"; envf=\"\"; [ -f \"$sec\" ] && envf=\"--env-file $sec\"; ",
+        cfg.secrets_file()
+    )
+}
+
+/// Warn when the project has a local env file but nothing in the store — the
+/// build would otherwise run without the variables it expects and fail in a
+/// way that looks like a code problem.
+fn warn_if_secrets_unpushed(cfg: &BuildCfg) {
+    let has_local = [".env.local", ".env"].iter().any(|f| cfg.root.join(f).is_file());
+    if !has_local {
+        return;
+    }
+    if ssh_ok(&format!("test -f \"$HOME/{}\"", cfg.secrets_file())) {
+        return;
+    }
+    println!(
+        "{DIM}Hinweis: .env liegt lokal, aber nicht auf atlas — env-Dateien werden nicht \
+         mitsynchronisiert.\n  atlas secrets push{RESET}"
+    );
+}
+
 /// rsync the project tree to atlas (outputs/caches stay on their own sides).
 fn sync_to_atlas(cfg: &BuildCfg) {
     let ok = run_inherit(Command::new("ssh").args([
         ssh_host(),
-        &format!("mkdir -p {} {REMOTE_BASE}/.cache-{}", cfg.remote_dir(), cfg.image),
+        // 0700 on the base: the tree below holds whole checkouts of private
+        // repos and was 0775/0755 on a box where any process could read it.
+        // The project dir itself is handled by rsync's --chmod below, because
+        // -a would otherwise re-apply the Mac's 0755 on every sync.
+        &format!(
+            "mkdir -p {d} {REMOTE_BASE}/.cache-{i} && chmod 700 \"$HOME/{REMOTE_BASE}\"",
+            d = cfg.remote_dir(),
+            i = cfg.image
+        ),
     ]));
     if !ok {
         eprintln!("{RED}mkdir auf atlas fehlgeschlagen{RESET}");
@@ -581,6 +717,23 @@ fn sync_to_atlas(cfg: &BuildCfg) {
     let ok = run_inherit(Command::new("rsync").args([
         "-az",
         "--delete",
+        // Strip group/other off everything that lands on atlas while leaving
+        // the owner bits (and therefore the execute bit on scripts) alone.
+        // Done here rather than as a chmod because -a re-applies the source's
+        // permissions on every sync, undoing anything set out of band.
+        "--chmod=Dgo=,Fgo=",
+        // Secrets do not travel with the source. The two sample files are the
+        // exception: they carry no values and repos do read them. Include
+        // rules must precede the exclude they carve out of — rsync takes the
+        // first rule that matches.
+        "--include",
+        ".env.example",
+        "--include",
+        ".env.sample",
+        "--exclude",
+        ".env",
+        "--exclude",
+        ".env.*",
         "--exclude",
         ".git",
         "--exclude",
@@ -598,6 +751,13 @@ fn sync_to_atlas(cfg: &BuildCfg) {
         eprintln!("{RED}rsync -> atlas fehlgeschlagen{RESET}");
         exit(1);
     }
+    // --chmod above only reaches files rsync actually transferred, so a tree
+    // that synced before this existed keeps its old 0755. Walk it once to
+    // catch up; the guard makes every later sync a single stat.
+    ssh_ok(&format!(
+        "d=\"$HOME/{d}\"; [ \"$(stat -c %a \"$d\")\" = 700 ] || chmod -R go= \"$d\"",
+        d = cfg.remote_dir()
+    ));
 }
 
 fn build(extra: &[String]) {
@@ -609,6 +769,7 @@ fn build(extra: &[String]) {
     ensure_up();
     let spec = cfg.spec(false);
     ensure_image(&spec);
+    warn_if_secrets_unpushed(&cfg);
     sync_to_atlas(&cfg);
 
     let mut buildcmd = cfg.build.clone();
@@ -621,13 +782,14 @@ fn build(extra: &[String]) {
     // rsync and the artifact pull don't trip over root-owned files. `; rc=$?`
     // keeps the build's exit code even though the chown always runs.
     let remote = format!(
-        "docker run --rm \
+        "{prologue}docker run --rm $envf \
          -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
          -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
          -e GRADLE_USER_HOME=/cache/gradle \
          -v \"$HOME/{dir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
          -w {wd} {tag} sh -c {cmd}; rc=$?; \
          sudo chown -R $(id -u):$(id -g) \"$HOME/{dir}\" >/dev/null 2>&1; exit $rc",
+        prologue = env_file_prologue(&cfg),
         dir = cfg.remote_dir(),
         base = REMOTE_BASE,
         img = cfg.image,
@@ -719,6 +881,7 @@ fn dev_start(cfg: &BuildCfg) {
     ensure_up();
     let spec = cfg.spec(true);
     ensure_image(&spec);
+    warn_if_secrets_unpushed(cfg);
     sync_to_atlas(cfg);
     let (dev, tunnel) = dev_names(cfg);
 
@@ -733,10 +896,11 @@ fn dev_start(cfg: &BuildCfg) {
     // either fails or silently produces a second, wrong dependency tree.
     let devcmd = format!("{} && {}", cfg.install_cmd(), cfg.dev);
     let run_dev = format!(
-        "docker run -d --name {dev} --network host --restart unless-stopped \
+        "{prologue}docker run -d --name {dev} --network host --restart unless-stopped $envf \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
          -v \"$HOME/{rdir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
          -w {wd} {tag} sh -c {cmd} >/dev/null",
+        prologue = env_file_prologue(cfg),
         port = cfg.port,
         rdir = cfg.remote_dir(),
         base = REMOTE_BASE,

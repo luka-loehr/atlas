@@ -53,6 +53,33 @@ build command in the matching image with a per-image cache volume
 the project (`bun.lock*` → bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` →
 yarn, otherwise npm) unless the config sets `install` explicitly.
 
+## Secrets
+
+Env files are **not** synced. `.env` and `.env.*` are excluded from the
+rsync (`.env.example`/`.env.sample` still travel — they hold no values),
+because the build tree is a mirror: anything left there is rewritten by
+the next sync, or goes silently stale, and sits on disk for as long as the
+project does.
+
+Instead each project gets one file on the server, outside the synced tree:
+
+```
+atlas secrets push [file]   # default .env.local, else .env — 0600 in a 0700 dir
+atlas secrets list          # which projects have one, never the contents
+atlas secrets rm            # drop this project's
+```
+
+`atlas build` and `atlas dev` pass it to the container with `--env-file`,
+so the values arrive as environment variables rather than as a file on
+disk. The upload is streamed over ssh stdin, so the contents never appear
+in a command line (argv is world-readable in `/proc`) and never land in an
+intermediate file. If a project has a local env file but nothing in the
+store, the CLI says so instead of running a build that would fail on
+missing variables.
+
+The synced tree itself is `0700`, and rsync strips group/other off
+everything it transfers — it holds full checkouts of private repos.
+
 ## Configuration — `.atlas-build.toml`
 
 A flat `key = "value"` file at the project root of whatever you build:
