@@ -8,18 +8,29 @@ Postgres tools needed on the host.
 |---|---|
 | `backup.sh` | pg_dump (custom format, zstd) + globals dump to `/srv/backups/atlas-postgres`, archive verified with `pg_restore -l`, then retention |
 | `restore-drill.sh` | restores the newest dump into scratch DB `atlas_restore_drill`, compares exact per-table row counts against live, checks embedding dims, drops the scratch DB (`--keep` to inspect) |
+| `atlas-pg-backup.service` | oneshot wrapper around `backup.sh` (`User=luka`, idle IO, 30 min timeout) |
+| `atlas-pg-backup.timer` | nightly at 03:30 ± 10 min, `Persistent=true` |
+| `install.sh` | copies both units to `/etc/systemd/system`, enables the timer |
 
 ## Schedule
 
-systemd **user** timer (linger is enabled for `luka`, so it runs without a
-login session): `~/.config/systemd/user/atlas-pg-backup.{service,timer}`,
-nightly at 03:30 with `Persistent=true` — a missed run (box powered off)
-fires on next boot.
-
 ```bash
-systemctl --user list-timers atlas-pg-backup.timer   # next run
-journalctl --user -u atlas-pg-backup.service         # history
+./install.sh                                  # install + enable
+systemctl list-timers atlas-pg-backup.timer   # next run
+journalctl -u atlas-pg-backup.service -n 50   # history
 ```
+
+Nightly at 03:30 with a 10 min randomised delay. `Persistent=true` matters
+here: atlas is powered off whenever it is not needed, so the fixed nightly
+time is missed regularly and the dump is caught up shortly after the next
+boot instead of being skipped.
+
+The unit runs `backup.sh` straight out of the checkout, so re-run `install.sh`
+after a pull that moves it.
+
+An older systemd **user** copy of the same pair used to live in
+`~/.config/systemd/user/`; with both installed the dump ran twice a night.
+`install.sh` disables and removes it.
 
 ## Retention
 

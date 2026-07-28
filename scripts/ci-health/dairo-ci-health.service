@@ -1,0 +1,14 @@
+[Unit]
+Description=dairo-backend CI health check (daily recorder)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=luka
+Group=luka
+# atlas boots with the self-hosted runners still registering; a check fired the
+# instant the timer catches up would report them offline and log a false red.
+# This is a recorder, not an alarm — three minutes of latency costs nothing.
+ExecStartPre=/bin/sleep 180
+ExecStart=/bin/bash -c '{ echo "===== $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; /home/luka/.local/bin/dairo-ci-health 2>&1; echo "exit=$?"; } >> /home/luka/dairo-ci-health.log 2>&1'

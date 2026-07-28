@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 sudo install -d -m755 /etc/atlas
-sudo install -m644 atlas-firewall.nft /etc/atlas/firewall.nft
+sudo install -m644 firewall.nft /etc/atlas/firewall.nft
 sudo nft -c -f /etc/atlas/firewall.nft          # refuse to install a ruleset that will not parse
 sudo cp atlas-firewall.service /etc/systemd/system/
 sudo systemctl daemon-reload

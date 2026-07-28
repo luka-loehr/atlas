@@ -1,22 +1,61 @@
 # scripts — operational tools
 
-Small tools around the photo stack that don't belong to a service: a
-one-shot transfer watcher for Google Takeout archives, a web UI for
-triaging junk photos, and a pipeline that renders the whole photo library
-as a 3D embedding map. `photo-triage/` and `vecmap/` talk to the running
-[atlas-photos](../apps/atlas-photos/) stack; machine-level setup lives in
-[docs/SETUP.md](../docs/SETUP.md).
+Everything that keeps the box itself alive and honest, plus a few tools around
+the photo stack that don't belong to any one service. Machine-level setup lives
+in [docs/SETUP.md](../docs/SETUP.md).
+
+Two shapes in here, and the difference is the naming convention:
+
+- **A directory per component that systemd runs.** It contains the executable,
+  its `atlas-*.service`/`.timer` units, an `install.sh` that copies them to
+  `/etc/systemd/system` and enables them, and a `README.md`. Unit names carry
+  the `atlas-` prefix because systemd is a global namespace; files inside the
+  directory don't, because the directory already names them.
+- **A loose `*.sh` at the top level** for one-shots you run by hand — no unit,
+  no install step.
+
+Units run the scripts straight out of `~/atlas`, so re-run the relevant
+`install.sh` after a pull that moves or renames one.
 
 | Path | What it is |
 |---|---|
-| [`healthcheck/`](healthcheck/) | One-shot box health check (cargo builds, agent :8787, docker stack, Postgres) — runs on boot/resume/on demand, results in `~/atlas-health/status.json` |
-| [`firewall/`](firewall/) | Host firewall confining atlas-agent :8787 and atlas-photos :8788 to loopback and the tailnet — nftables rules plus the unit that reloads them at boot |
-| [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres/`, plus a restore drill |
-| [`disk-guard/`](disk-guard/) | Five-minute check that root is not filling up — 85/90/95% thresholds, a burn-rate trend trigger, an 80 G floor below which builds refuse to start, alerts to the journal |
-| [`photo-triage/`](photo-triage/) | Keyboard-driven web UI to review delete candidates (screenshots, blurry, black frames, documents) |
-| [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud at `/map` |
-| `takeout-transfer.sh` | Watches the client's `~/Downloads` and moves finished Takeout zip parts to the server |
-| `cargo-dev-profile.sh` | One-shot: sets `debug = "line-tables-only"` for dev/test builds machine-wide, refusing to land while any build is live |
+| [`healthcheck/`](healthcheck/) | One-shot box health check (`api`/`cli` cargo builds, atlas-api :8787, atlas-photos :8788, docker stack, Postgres) — on boot, on resume, on demand; result in `~/atlas-health/status.json` |
+| [`firewall/`](firewall/) | nftables table confining atlas-api :8787 and atlas-photos :8788 to loopback + tailnet, and the unit that loads it before the network comes up |
+| [`disk-guard/`](disk-guard/) | Five-minute check that root is not filling up — 85/90/95 % thresholds, a burn-rate trend trigger, an 80 G floor below which builds refuse to start, alerts to the journal |
+| [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres` with retention, plus a restore drill that verifies row counts |
+| [`tailnet-dns/`](tailnet-dns/) | Publishes AdGuard as the tailnet's DNS while atlas is up and withdraws it at shutdown, so a sleeping box never blackholes the tailnet's DNS |
+| [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-api can report CPU power |
+| [`ci-health/`](ci-health/) | Daily recorder for the self-hosted GitHub Actions runners on this box (units only — the checker lives outside this repo) |
+| [`photo-triage/`](photo-triage/) | Keyboard-driven local web UI to review delete candidates (screenshots, blurry, black frames, documents), plus the two scoring scripts that find them |
+| [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud, served at `/map` by atlas-photos |
+| `takeout-transfer.sh` | Mac-side: watches `~/Downloads` and moves finished Google Takeout zip parts to the server |
+| `cargo-dev-profile.sh` | Mac/server one-shot: sets `debug = "line-tables-only"` for dev/test builds machine-wide, refusing to land while any build is live |
+
+`photo-triage/` and `vecmap/` are the only entries that need the
+[atlas-photos](../apps/atlas-photos/) stack running; everything else is about
+the machine.
+
+## Units at a glance
+
+| Unit | Schedule | Installed by |
+|---|---|---|
+| `atlas-healthcheck.service` | boot | [`healthcheck/install.sh`](healthcheck/install.sh) |
+| `atlas-healthcheck-resume.service` | resume from suspend | ″ |
+| `atlas-firewall.service` | boot, before the network | [`firewall/install.sh`](firewall/install.sh) |
+| `atlas-disk-guard.timer` | every 5 min | [`disk-guard/install.sh`](disk-guard/install.sh) |
+| `atlas-pg-backup.timer` | nightly 03:30 ± 10 min, `Persistent` | [`pg-backup/install.sh`](pg-backup/install.sh) |
+| `atlas-tailnet-dns.service` | boot + shutdown (`ExecStop` is the point) | [`tailnet-dns/install.sh`](tailnet-dns/install.sh) |
+| `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
+| `dairo-ci-health.timer` | daily 12:05 UTC, `Persistent` | [`ci-health/install.sh`](ci-health/install.sh) |
+
+Both calendar timers set `Persistent=true` for the same reason: atlas is
+powered off whenever it is not needed, and a plain calendar schedule silently
+drops every run that falls into a powered-off window. `atlas-disk-guard.timer`
+is the exception on purpose — it is a monotonic every-5-minutes timer, and a
+catch-up run of a "how full is the disk right now" check is worthless.
+
+The API server's own unit is not here — it ships with the service, in
+[`api/`](../api/), and is installed by `atlas api`.
 
 ## cargo-dev-profile.sh
 
@@ -29,9 +68,9 @@ checkout of the repo.
 
 Measured on this box (serde/serde\_json probe, 2026-07-27): DWARF 5.74 MB →
 4.39 MB, linked binary 6.34 MB → 4.98 MB, **~21 % smaller**, and a panic still
-reports `at ./src/main.rs:9:13`. Expect more on a first-party-heavy crate like
-`dairo-api` and less on a thin one — but not the "more than half" figure that
-gets quoted for this setting.
+reports `at ./src/main.rs:9:13`. Expect more on a first-party-heavy crate and
+less on a thin one — but not the "more than half" figure that gets quoted for
+this setting.
 
 Two things make the timing matter, which is why this is a guarded script and
 not a one-line edit:
@@ -40,8 +79,8 @@ not a one-line edit:
   **every** tree afterwards is a full cold rebuild. Landing it while a build
   is mid-run hands it a surprise cold rebuild.
 - Cargo has no garbage collector. It builds the new artifacts *alongside* the
-  old ones under new hashes rather than replacing them — `dairo-backend`'s
-  `target/` already carries four distinct `libserde` builds for this reason. So
+  old ones under new hashes rather than replacing them — a single `target/` on
+  this box already carries four distinct `libserde` builds for this reason. So
   `target/` grows before it shrinks. Clear the dead trees first.
 
 ```bash

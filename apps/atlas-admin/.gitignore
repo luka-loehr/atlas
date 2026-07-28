@@ -1,8 +1,0 @@
-# Xcode / build artifacts
-build/
-build-device/
-DerivedData/
-xcuserdata/
-*.xcuserstate
-.DS_Store
-build-sim/

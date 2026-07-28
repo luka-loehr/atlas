@@ -20,8 +20,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lslib import sequence
-from lslib.compiler import compile_show
+from engine import sequence
+from engine.compiler import compile_show
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ATLAS = "atlas"
@@ -30,7 +30,7 @@ ATLAS = "atlas"
 # Media is written on whichever machine runs makeshow.py, into that machine's
 # media root; the GPU host needs no media root and nothing is synced back.
 ATLAS_DIR = os.environ.get("LIGHTSHOW_REMOTE_DIR", "~/atlas/lightshows")
-CACHE = os.path.join(ROOT, "analysis_cache")
+CACHE = os.path.join(ROOT, "analyses")
 SHOWS = os.path.join(ROOT, "shows")            # tracked: .show.json + .summary.md
 MEDIA = sequence.media_dir()                   # untracked audio + covers, outside the checkout
 
@@ -58,7 +58,7 @@ def download_audio(url):
         sys.exit("yt-dlp + ffmpeg noetig:  brew install yt-dlp ffmpeg")
     dl = os.path.join(ROOT, "downloads")
     os.makedirs(dl, exist_ok=True)
-    print(f"PHASE:download", flush=True)
+    print("PHASE:download", flush=True)
     print(f"download: {url}", flush=True)
     proc = subprocess.Popen(
         ["yt-dlp", "--no-playlist", "-x", "--audio-format", "mp3",
@@ -223,7 +223,7 @@ def git_autopush(name, title):
     if g("rev-parse", "--git-dir").returncode != 0:
         return
     print("PHASE:commit", flush=True)
-    g("add", f"shows/{name}.show.json", f"analysis_cache/{name}.analysis.json")
+    g("add", f"shows/{name}.show.json", f"analyses/{name}.analysis.json")
     g("add", *(p for p in [os.path.join("shows", f)
                            for f in os.listdir(SHOWS) if f.startswith(name + ".")]
                if os.path.exists(os.path.join(ROOT, p))))

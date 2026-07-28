@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Frozen legacy show engine v5 "EXTREME MODE" — the golden-test oracle.
+"""Frozen legacy show engine v6 "dark-gap" — the golden-test oracle.
 
 tests/golden.py loads this module and compares its render(t) frame-by-frame
-against the modular lslib Player. The render() half must stay FROZEN; the
+against the modular engine Player. The render() half must stay FROZEN; the
 old standalone Art-Net playback engine was removed (superseded by
-lslib/player.py + play.py).
+engine/player.py + play.py).
 
+How it got here:
+
+v6 = dark-gap: in intense effects ALL fixtures go ON together and OFF
+together — true black between pulses. One lamp filling another's gap keeps
+the room lit and kills the low-FPS strobe feeling.
 v5 = EXTREME: hardware strobe on EVERY drop (6.5s pre-power, windows merged
 where a re-strike is physically impossible), ~2.3x more fog, triple white
 kick flashes on drop 1, full-room 255 white slams on every beat in drops.
@@ -16,7 +21,7 @@ high-energy sections lifted 0.30-0.42 -> 0.80-0.90, builds actually build,
 v3 = full MIR rebuild (two librosa agents + own kick-lattice verification):
   - TRUE tempo 130.00 BPM. Beat lattice anchored on the measured drop-1
     groove kick at 59.700s hits every other drop <25ms (118.30 / 158.92 /
-    196.28 / 229.06). The old xLights beat track (136 BPM, irregular) is gone.
+    196.28 / 229.06). The old imported beat track (136 BPM, irregular) is gone.
   - All section boundaries moved to measured musical events.
   - Drop 3 (158.92) is the TRACK PEAK (max RMS + max sub-bass) right after
     the only clean silence -> hardware strobe solo (the money cue).

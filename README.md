@@ -3,16 +3,17 @@
 # Atlas — a self-hosted homelab platform
 
 [![Rust](https://img.shields.io/badge/Rust-server%20%26%20CLI-DEA584?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org)
-[![Swift](https://img.shields.io/badge/SwiftUI-3%20iOS%20apps-F05138?style=flat&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/)
+[![Swift](https://img.shields.io/badge/SwiftUI-4%20iOS%20apps-F05138?style=flat&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/)
 [![Python](https://img.shields.io/badge/Python-AI%20pipeline-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org)
 [![Postgres](https://img.shields.io/badge/Postgres%2017-pgvector-4169E1?style=flat&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
 **Atlas** is everything that runs on or controls a single headless home server:
-a Wake-on-LAN Rust CLI for the Mac, a lightweight server agent with a real
+a Wake-on-LAN Rust CLI for the Mac, a lightweight control-plane API with a real
 terminal in your pocket, a self-built Google Photos + Drive replacement with
-local AI search, and a music-synced light-show system driving Philips Hue over
-Art-Net. No cloud, no subscriptions — your hardware, your tailnet, your data.
+local AI search, a music-synced light-show system driving Philips Hue over
+Art-Net, and a platform for the long-running AI agents that work on the box.
+No cloud, no subscriptions — your hardware, your tailnet, your data.
 
 ---
 
@@ -20,16 +21,20 @@ Art-Net. No cloud, no subscriptions — your hardware, your tailnet, your data.
 
 | Directory | What it is |
 |---|---|
-| [`cli/`](cli/) | Rust CLI for the Mac: `atlas` \| `boot` (Wake-on-LAN) \| `shutdown` \| `status` \| `build` \| `dev` \| any remote command |
-| [`agent/`](agent/) | `atlas-agent` — dependency-free Rust server (port 8787): metrics, WebSocket PTY terminal, Docker overview, power control, light-show & fog control |
+| [`cli/`](cli/) | Rust CLI for the Mac: `atlas` \| `boot` (Wake-on-LAN) \| `shutdown` \| `restart` \| `status` \| `build` \| `dev` \| `secrets` \| `api` \| any remote command |
+| [`api/`](api/) | `atlas-api` — Rust control-plane server (port 8787): metrics, WebSocket PTY terminal, Docker overview, power control, light-show & fog control |
 | [`backend/`](backend/) | The data foundation: Postgres 17 + pgvector in Docker — media library, knowledge graph, embeddings, resumable ingest queue |
 | [`infra/`](infra/) | Machine-level services that are not part of an app: [AdGuard Home](infra/adguard/), the tailnet's DNS resolver |
-| [`apps/atlas-admin/`](apps/atlas-admin/) | iOS app **Atlas** (SwiftUI): dashboard, real terminal, Docker, VPN/exit-node stats, activity heatmap |
-| [`apps/atlas-lightshow/`](apps/atlas-lightshow/) | iOS app **Lightshow**: play shows, AI show creation, manual per-light control, hold-to-fog |
-| [`apps/atlas-photos/`](apps/atlas-photos/) | iOS app **Storage**: self-hosted Google Photos + Drive — Rust/axum server, SwiftUI client, GPU AI pipeline (faces, semantic photo *and* video search) |
+| [`apps/atlas-admin/`](apps/atlas-admin/) | iOS app **Atlas Admin** (SwiftUI): dashboard, real terminal, Docker, VPN/exit-node stats, activity heatmap |
+| [`apps/atlas-lightshow/`](apps/atlas-lightshow/) | iOS app **Atlas Lightshow**: play shows, AI show creation, manual per-light control, hold-to-fog |
+| [`apps/atlas-photos/`](apps/atlas-photos/) | iOS app **Atlas Photos**: self-hosted Google Photos + Drive — Rust/axum server, SwiftUI client, GPU AI pipeline (faces, semantic photo *and* video search) |
+| [`apps/atlas-agents/`](apps/atlas-agents/) | iOS app **Atlas Agents**: the AI agent company on your phone — board, live fleet, asks, home-screen widget and Live Activity |
+| [`agents/`](agents/) | The AI agent platform that runs on the server: the Paperclip SSE bridge, the operator CLIs and the agent onboarding docs |
 | [`lightshows/`](lightshows/) | Show production: GPU song analysis, dark-gap compiler, AI composer, Art-Net→Hue bridge, fog hardware |
-| [`builder/`](builder/) | Pinned Docker build images (Rust→Graviton, Node/Next.js, Flutter) |
-| [`scripts/`](scripts/) | Operational tools: Takeout transfer, photo triage UI, embedding-space maps, [tailnet DNS failover](scripts/tailnet-dns/) |
+| [`builder/`](builder/) | The remote build images `atlas build` / `atlas dev` run in: one [universal Dockerfile](builder/universal/Dockerfile) with three targets (`build`, `dev`, `mobile`), base-pinned |
+| [`scripts/`](scripts/) | Everything that keeps the box alive: [health check](scripts/healthcheck/), [firewall](scripts/firewall/), [disk guard](scripts/disk-guard/), [Postgres backups](scripts/pg-backup/), [tailnet DNS failover](scripts/tailnet-dns/), [power oneshots](scripts/power/), plus Takeout transfer, photo triage UI and embedding-space maps |
+| [`docs/`](docs/) | [SETUP.md](docs/SETUP.md) — the from-scratch machine-level guide everything else builds on |
+| [`.github/`](.github/) | Repo assets (the banner above) |
 
 ## Highlights
 
@@ -40,11 +45,15 @@ Art-Net. No cloud, no subscriptions — your hardware, your tailnet, your data.
   your disk, thumbnails, EXIF, faces, and 2048-d embeddings for semantic
   search over photos *and* videos. The iOS app does albums, favorites, backup,
   and natural-language search.
-- **A terminal in your pocket** — the admin app speaks to the agent's
+- **A terminal in your pocket** — the admin app speaks to the API server's
   WebSocket PTY: a real shell on the server, from the couch.
 - **Light shows from a song file** — analysis extracts beats, energy and
   structure; the compiler builds a choreography; the bridge streams it to Hue
   lamps over Art-Net, beat-accurate, with fog.
+- **Agents on the box, live on your phone** — a company of long-running AI
+  agents works on the server; the bridge diffs their board and pushes only the
+  changes over SSE, so the Atlas Agents app, its widget and its Live Activity
+  stay current without polling from the phone.
 - **Tailnet-first security** — nothing is port-forwarded. Services are
   reachable only inside your private Tailscale network, with optional bearer
   tokens on top ([security model](docs/SETUP.md#security-model)).
@@ -57,7 +66,7 @@ cargo install --path cli
 mkdir -p ~/.config/atlas && $EDITOR ~/.config/atlas/env   # see docs/SETUP.md
 
 atlas boot        # wake the server (Wake-on-LAN)
-atlas agent       # build + install the metrics/terminal agent
+atlas api         # build + install the control-plane API
 atlas status      # LAN / tailnet reachability
 
 # Server: the database
@@ -69,11 +78,15 @@ CUDA, models, iOS builds: **[docs/SETUP.md](docs/SETUP.md)**
 
 Per-area docs:
 [cli](cli/README.md) ·
-[agent](agent/README.md) ·
+[api](api/README.md) ·
 [backend](backend/README.md) ·
+[infra/adguard](infra/adguard/README.md) ·
+[builder](builder/README.md) ·
 [atlas-admin](apps/atlas-admin/README.md) ·
 [atlas-lightshow](apps/atlas-lightshow/README.md) ·
 [atlas-photos](apps/atlas-photos/README.md) ·
+[atlas-agents](apps/atlas-agents/README.md) ·
+[agents](agents/README.md) ·
 [lightshows](lightshows/README.md) ·
 [scripts](scripts/README.md)
 
@@ -81,17 +94,19 @@ Per-area docs:
 
 ```
  Mac ──ssh/WoL──▶ ┌──────────────── server ────────────────┐
- (cli)            │ atlas-agent :8787   photos server :8788│
+ (cli)            │ atlas-api   :8787   photos server :8788│
                   │ Postgres 17 + pgvector (Docker)        │
  iPhone ─tailnet─▶│ GPU pipeline (faces, embeddings)       │
- (3 SwiftUI apps) │ Art-Net→Hue bridge :6454 ──▶ 💡 lights │
+ (4 SwiftUI apps) │ agents: paperclip :3100  bridge :3111  │
+                  │ Art-Net→Hue bridge :6454 ──▶ 💡 lights │
                   └────────────────────────────────────────┘
 ```
 
 Everything meets on your private tailnet; the server sleeps until woken.
 
-> **Note:** docs are English; the CLI output and the three iOS app UIs are
-> German (the author's daily drivers). Contributions translating them are welcome.
+> **Note:** docs are English; the CLI output and the Atlas Admin, Atlas Photos
+> and Atlas Lightshow UIs are German (the author's daily drivers). Atlas Agents
+> is English. Contributions translating them are welcome.
 
 ## License
 

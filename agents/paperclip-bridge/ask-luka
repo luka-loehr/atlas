@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""ask-luka — ask Luka one clear question and block until he answers.
+
+Use this ONLY for decisions that are genuinely his: spending money, choosing
+between real alternatives, or anything you cannot verify yourself. You have
+full access to this machine — never ask for permission to do ordinary work.
+
+    ask-luka "Buy a 4 TB SATA SSD for backups?" \
+        --detail "Root disk is at 75%. 527G of photos have no second copy." \
+        --option "Yes, order it" --option "Not now" \
+        --issue LUK-9
+
+Prints Luka's answer to stdout and exits 0. Exits 2 if it times out — treat
+that as "no answer yet", leave the work in a safe state and move on.
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+BRIDGE = os.environ.get("BRIDGE_URL", "")
+TOKEN = os.environ.get("BRIDGE_TOKEN") or os.environ.get("PAPERCLIP_TOKEN") or ""
+
+if not TOKEN:
+    for path in ("/etc/paperclip-bridge.env", os.path.expanduser("~/.paperclip/atlas-automation.key")):
+        try:
+            with open(path) as fh:
+                text = fh.read()
+            if path.endswith(".key"):
+                TOKEN = text.strip()
+            else:
+                for line in text.splitlines():
+                    if line.startswith("PAPERCLIP_TOKEN="):
+                        TOKEN = line.split("=", 1)[1].strip()
+            if TOKEN:
+                break
+        except OSError:
+            continue
+
+
+def call(path: str, payload=None, method="GET"):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        BRIDGE + path, data=data, method=method,
+        headers={"Authorization": "Bearer " + TOKEN, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.load(resp)
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Ask Luka a question and wait for the answer.")
+    p.add_argument("headline", help="The question, in one plain sentence.")
+    p.add_argument("--detail", help="Context he needs to decide: what you measured, the trade-off.")
+    p.add_argument("--option", action="append", default=[],
+                   help="A suggested answer. Repeatable. He can always type his own.")
+    p.add_argument("--yes-no", action="store_true", help="Shorthand for --option Yes --option No.")
+    p.add_argument("--issue", help="Related issue identifier, e.g. LUK-9.")
+    p.add_argument("--agent", default=os.environ.get("PAPERCLIP_AGENT_NAME", "Agent"))
+    p.add_argument("--urgency", choices=["normal", "high"], default="normal")
+    p.add_argument("--timeout", type=int, default=86400, help="Seconds to wait (default 24h).")
+    p.add_argument("--no-wait", action="store_true", help="Register the question and exit immediately.")
+    args = p.parse_args()
+
+    if not BRIDGE:
+        print("ask-luka: BRIDGE_URL is not set (see /etc/paperclip-bridge.env)",
+              file=sys.stderr)
+        return 3
+
+    options = list(args.option)
+    if args.yes_no and not options:
+        options = [{"label": "Yes", "value": "Yes", "kind": "affirm"},
+                   {"label": "No", "value": "No", "kind": "reject"}]
+
+    try:
+        ask = call("/asks", {
+            "agent": args.agent,
+            "headline": args.headline,
+            "detail": args.detail,
+            "options": options,
+            "issue": args.issue,
+            "urgency": args.urgency,
+        }, method="POST")
+    except urllib.error.URLError as exc:
+        print(f"ask-luka: cannot reach the bridge at {BRIDGE}: {exc}", file=sys.stderr)
+        return 3
+
+    if args.no_wait:
+        print(ask["id"])
+        return 0
+
+    deadline = time.time() + args.timeout
+    delay = 2
+    while time.time() < deadline:
+        time.sleep(delay)
+        delay = min(delay * 1.5, 30)  # back off; he is not staring at his phone
+        try:
+            current = call(f"/asks/{ask['id']}")
+        except urllib.error.URLError:
+            continue
+        if current["status"] == "answered":
+            print(current["answer"])
+            return 0
+        if current["status"] == "cancelled":
+            print("cancelled", file=sys.stderr)
+            return 2
+
+    print("timeout", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

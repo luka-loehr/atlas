@@ -29,12 +29,10 @@ global nameserver.
 
 ## Install
 
-On the box running AdGuard:
+On the box running AdGuard, write the credentials first — `install.sh` refuses
+to arm the unit without them:
 
 ```bash
-sudo install -m755 atlas-tailnet-dns /usr/local/bin/atlas-tailnet-dns
-sudo cp atlas-tailnet-dns.service /etc/systemd/system/
-
 sudo install -m600 /dev/null /etc/atlas-tailnet-dns.env
 sudo tee /etc/atlas-tailnet-dns.env >/dev/null <<'EOF'
 # Preferred: an OAuth client (Tailscale admin → Settings → OAuth clients,
@@ -47,14 +45,20 @@ TS_CLIENT_SECRET=tskey-client-...
 ADGUARD_IP=100.x.y.z          # this box's tailnet IP, where AdGuard listens
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now atlas-tailnet-dns
+./install.sh
 ```
 
-`systemctl enable` is what arms the shutdown half: systemd runs `ExecStop`
-(→ clear) when the unit stops during shutdown, and `ExecStart` (→ AdGuard) at
-boot. Check the current published value any time with
-`sudo atlas-tailnet-dns status`.
+`install.sh` copies `tailnet-dns.sh` to `/usr/local/bin/atlas-tailnet-dns`,
+installs `atlas-tailnet-dns.service` and enables it. `systemctl enable` is what
+arms the shutdown half: systemd runs `ExecStop` (→ clear) when the unit stops
+during shutdown, and `ExecStart` (→ AdGuard) at boot. Check the current
+published value any time with `sudo atlas-tailnet-dns status`.
+
+| File | What it is |
+|---|---|
+| `tailnet-dns.sh` | the script, installed as `/usr/local/bin/atlas-tailnet-dns` (`up` \| `down` \| `status`) |
+| `atlas-tailnet-dns.service` | oneshot with `RemainAfterExit`: `up` at boot, `down` at shutdown |
+| `install.sh` | installs the script + unit, enables the unit |
 
 ## Notes
 

@@ -3,8 +3,8 @@
 `atlas` is a single-binary Rust CLI (std only, zero dependencies) that controls
 the atlas homelab server from a workstation. It wraps SSH for everyday access,
 handles power management via Wake-on-LAN, offloads project builds and dev
-servers to the server's Docker engine, and installs the companion metrics
-[agent](../agent).
+servers to the server's Docker engine, and installs the companion control-plane
+server [api](../api).
 
 Everything goes over `ssh` and `rsync`. The binary is Unix-only — a bare
 `atlas` replaces its own process with `ssh`, so you get a real interactive
@@ -24,8 +24,10 @@ session, not a wrapper.
 | `atlas dev` | start the project's dev server on the server, published on the tailnet |
 | `atlas dev --public` (`--tunnel`) | expose it through a public cloudflared quick tunnel instead |
 | `atlas dev url` / `dev logs` / `dev stop` | print whichever URL is live / follow the dev-server logs / stop server, tunnel and serve config |
-| `atlas agent` | build + install the metrics agent on the server (systemd service) |
-| `atlas agent logs\|status\|stop\|restart` | manage the `atlas-agent` service |
+| `atlas secrets push [file]` | upload this project's env file to the server (never synced, `0600`) |
+| `atlas secrets list` / `secrets rm` | which projects have one (never the contents) / drop this project's |
+| `atlas api` | build + install the control-plane API server (systemd service) |
+| `atlas api logs\|status\|stop\|restart` | manage the `atlas-api` service |
 | `atlas help` | usage |
 
 `boot`, `shutdown` and `restart` are synchronous — they poll until the machine
@@ -67,7 +69,7 @@ profiles and the repo.
 | `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip) |
 | `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until you set the real one) |
 | `ATLAS_WOL_BROADCAST` | `192.168.1.255:9` | broadcast `addr:port` for the magic packet |
-| `ATLAS_AGENT_URL` | tailnet host + `:8787` | metrics agent `host:port`, printed after `atlas agent` |
+| `ATLAS_API_URL` | tailnet host + `:8787` | API server `host:port`, printed after `atlas api` |
 
 ## Remote builds (`atlas build`)
 
@@ -78,20 +80,26 @@ quoted or bare values, `#` comments.
 
 ```toml
 name      = "my-app"         # required — remote dir + container names (A-Za-z0-9._-)
-image     = "node"           # required — builder key: node | lambda | flutter
+image     = "universal"      # required — builder key: universal | mobile
 dir       = "."              # subdir (relative to this file) the build runs in
 build     = "npm run build"  # build command (required for `atlas build`)
 dev       = "npm run dev"    # dev-server command (required for `atlas dev`)
+install   = "npm ci"         # dependency install for `atlas dev` (default: detect from the lockfile)
 port      = 3000             # port the dev server listens on (default 3000)
 artifacts = "dist"           # whitespace-separated paths to copy back (required for `atlas build`)
 ```
 
+Both keys resolve to targets of the single [`builder/universal`](../builder)
+Dockerfile, so they share layers: `universal` → `atlas-universal-builder` for
+`build` and `atlas-universal-dev` (the one with `cloudflared` in it) for `dev`,
+`mobile` → `atlas-universal-mobile` for both. Any other value is rejected.
+
 `atlas build` then:
 
 1. wakes the server if it is asleep;
-2. ensures the Docker image `atlas-<image>-builder` exists on the server — if
-   missing, it is built from [`builder/<image>`](../builder) in the server's
-   `~/atlas` checkout (after a `git pull --ff-only`);
+2. ensures the builder image exists on the server — if missing, it is built
+   from [`builder/universal`](../builder) in the server's `~/atlas` checkout
+   (after a `git pull --ff-only`);
 3. rsyncs the project to `~/atlas-builds/<name>` on the server, excluding
    `.git`, `target`, `node_modules`, `.next`, `build`;
 4. runs the build command in the container — as root, with a per-image cache
@@ -116,7 +124,7 @@ By default the dev server is published **on the tailnet only**, via
 `tailscale serve` on the server:
 
 ```
-https://<tailnet host>:<port>      # e.g. https://atlas.tail1aba20.ts.net:20841
+https://<tailnet host>:<port>      # e.g. https://atlas.your-tailnet.ts.net:20841
 ```
 
 The host comes from `ATLAS_TAILNET_ADDR`; the port is derived from the project
@@ -148,27 +156,56 @@ regardless of mode. Containers use `--restart unless-stopped` and the serve
 config is persistent host state — both survive reboots until `atlas dev stop`,
 which removes the containers *and* turns the serve port off.
 
-## Metrics agent (`atlas agent`)
+## Project secrets (`atlas secrets`)
 
-Bare `atlas agent` installs or updates the [agent](../agent) on the server: it
-runs `git fetch` + `git reset --hard origin/main` in the server's `~/atlas`
-checkout (this discards any local changes there), builds `agent/` with the
-server's Rust toolchain, installs the binary to `/usr/local/bin/atlas-agent`,
-and enables + restarts the `atlas-agent` systemd service. Afterwards the
-metrics endpoint is `http://<ATLAS_AGENT_URL>/api/metrics` (port 8787 by
-default).
+Env files are deliberately excluded from the build sync (`.env`, `.env.*`;
+`.env.example` and `.env.sample` are the two exceptions). Everything under
+`~/atlas-builds` is an rsync mirror of the workstation, so a secret parked
+there would be rewritten by every sync — or, being excluded from it, go
+silently stale.
 
-`agent logs` follows `journalctl -u atlas-agent`; `agent status`, `stop` and
-`restart` map to the corresponding `systemctl` calls.
+`atlas secrets push [file]` streams the file (default `.env.local`, else
+`.env`) over ssh **stdin** — the contents never appear in a shell argument
+(`/proc/*/cmdline` is world-readable) and never touch an intermediate file. It
+lands as `~/atlas-secrets/<name>.env`, mode `0600` in a `0700` directory,
+outside the synced tree. `atlas build` and `atlas dev` then pass it to
+`docker run --env-file` at run time, so the values are environment variables in
+the container rather than a file on disk. If a project has a local env file but
+nothing in the store, both commands say so before starting.
+
+`atlas secrets list` prints name, size and mtime — never the contents.
+`atlas secrets rm` drops the current project's file.
+
+## Control-plane API (`atlas api`)
+
+Bare `atlas api` installs or updates the [api](../api) server on the machine:
+it runs `git fetch` + `git reset --hard origin/main` in the server's `~/atlas`
+checkout (this discards any local changes there), builds `api/` with the
+server's Rust toolchain, installs the binary to `/usr/local/bin/atlas-api`,
+installs `atlas-api.service`, and enables + restarts it. Afterwards the metrics
+endpoint is `http://<ATLAS_API_URL>/api/metrics` (port 8787 by default).
+
+The predecessor `atlas-agent` unit is disabled and removed as part of the same
+run, but only *after* the new binary and unit are in place — a build that fails
+on the server must not leave the box with no control plane, since this is the
+same SSH path that manages its power. An existing `/etc/atlas-agent.env` is
+moved to `/etc/atlas-api.env` in the same step and its `ATLAS_AGENT_*`
+variables are rewritten to `ATLAS_API_*`; without that the server would come up
+token-less and read-only, which fails silently.
+
+`api logs` follows `journalctl -u atlas-api`. `api stop` and `api restart` map
+to the corresponding `sudo systemctl` calls and exit non-zero if the call
+failed. `api status` prints the first 12 lines of `systemctl status` and does
+not treat an inactive unit as an error — that is an answer, not a failure.
 
 ## Server prerequisites
 
 - a systemd Linux with sshd on port 22 and Wake-on-LAN enabled — see
   [docs/SETUP.md](../docs/SETUP.md)
 - this repository cloned at `~/atlas` with a reachable git remote
-  (`build`/`dev` build images from it; `agent` resets it to `origin/main`)
+  (`build`/`dev` build images from it; `api` resets it to `origin/main`)
 - Docker Engine, with the SSH user in the `docker` group
 - `rsync`
-- passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `cp`
-  and `chown`
-- a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas agent`)
+- passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `cp`,
+  `mv`, `rm` and `chown`, plus `tailscale serve` for `atlas dev`
+- a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas api`)

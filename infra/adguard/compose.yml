@@ -30,6 +30,6 @@ services:
       - "${ATLAS_TAILNET_IP:-100.x.y.z}:53:53/udp"
       # Admin UI on loopback only. Reach it over the ssh tunnel:
       #   ssh -L 3053:127.0.0.1:3053 atlas   ->  http://127.0.0.1:3053
-      # atlas-agent also reads it from here (ATLAS_ADGUARD_URL in
-      # /etc/atlas-agent.env) to report blocked-query stats.
+      # atlas-api also reads it from here (ATLAS_ADGUARD_URL in
+      # /etc/atlas-api.env) to report blocked-query stats.
       - "127.0.0.1:3053:3000/tcp"

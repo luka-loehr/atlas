@@ -1,0 +1,14 @@
+[Unit]
+Description=Nightly pg_dump of the atlas database
+# Requires, not just After: the dump runs entirely through `docker exec`, so
+# without the daemon there is nothing to dump and the run should not start.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=luka
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min
+ExecStart=/home/luka/atlas/scripts/pg-backup/backup.sh

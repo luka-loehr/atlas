@@ -1,0 +1,86 @@
+name: AtlasAgents
+options:
+  bundleIdPrefix: com.lukaloehr
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    GENERATE_INFOPLIST_FILE: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Device installs need a signed build. Simulator builds ignore this, so the
+    # `-destination 'platform=iOS Simulator'` flow keeps working unchanged.
+    DEVELOPMENT_TEAM: M8M22924DJ
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  AtlasAgents:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes:
+          - Shared/Secrets.example.swift
+    dependencies:
+      - target: AtlasAgentsWidgets
+        embed: true
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Atlas Agents
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Talk to your lead agent instead of typing.
+        NSSpeechRecognitionUsageDescription: Turns what you say into a message for your lead agent.
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.lukaloehr.AtlasAgents.refresh
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.AtlasAgents
+        CODE_SIGNING_ALLOWED: YES
+
+  AtlasAgentsWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Sources/Shared
+        excludes:
+          - Secrets.example.swift
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Atlas Agents Widgets
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.AtlasAgents.Widgets
+        CODE_SIGNING_ALLOWED: YES
+        SKIP_INSTALL: YES

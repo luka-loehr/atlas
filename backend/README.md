@@ -1,9 +1,9 @@
 # backend — one Postgres for everything
 
 The shared data layer of the atlas monorepo: a single Postgres 17 + pgvector
-instance (Docker image `pgvector/pgvector:pg17`). It stores the media
-library, a personal knowledge graph, vector embeddings, a resumable work
-queue, and a content-addressed file drive.
+instance (Docker image `pgvector/pgvector:pg17`, pinned by tag *and* digest).
+It stores the media library, a personal knowledge graph, vector embeddings, a
+resumable work queue, and a content-addressed file drive.
 
 This directory contains only the container definition (`docker/`) and the SQL
 schema (`schema/`). The consumers — the Rust photo server, the Python ingest
@@ -79,11 +79,21 @@ docker exec atlas-postgres psql -U atlas -d atlas -c 'TABLE schema_migrations;'
 # expect versions 1 through 7
 ```
 
-Every migration is idempotent (safe to re-run) and inserts its own version
-into `schema_migrations`; nothing reads that table — it is bookkeeping, not a
-runner. A fresh install must apply all seven files in numeric order. The
-chain contains some churn (`003` creates objects that `005` drops again);
-that is expected and harmless.
+Each migration inserts its own version into `schema_migrations`; nothing reads
+that table — it is bookkeeping, not a runner. A fresh install must apply all
+seven files in numeric order. The chain contains some churn (`003` creates
+objects that `005` drops again); that is expected and harmless.
+
+Every statement is guarded (`IF EXISTS` / `IF NOT EXISTS` / `ON CONFLICT`)
+with exactly one exception: `005`'s
+`ALTER TABLE embeddings ALTER COLUMN vec TYPE vector(2048)`. Against an empty
+`embeddings` table — which is what a fresh install has when it gets there —
+that is a re-run-safe no-op. Against a table that still holds 768-dimension
+SigLIP vectors it fails outright, by design: pgvector will not silently
+reinterpret them. Dropping those rows is the migration step, and it has to be
+a decision, not a side effect. So the chain is idempotent on a fresh install
+and on a box already at v5+, but not on a half-migrated one with old vectors
+still in place.
 
 ## Configuration
 
@@ -93,10 +103,12 @@ that is expected and harmless.
 |---|---|---|
 | `POSTGRES_PASSWORD` | *(none — required)* | Password for the `atlas` database role. Compose refuses to start without it. Generate one: `openssl rand -base64 24` |
 
-Fixed in `docker/compose.yml`: database `atlas`, user `atlas`, container name
-`atlas-postgres`, port `5432` bound to `127.0.0.1` only, named Docker volume
-`pgdata`, `shm_size: 1g`, healthcheck via `pg_isready`, restart
-`unless-stopped`.
+Fixed in `docker/compose.yml`: compose project name `atlas-backend` (set
+explicitly — otherwise compose would derive it from the `docker/` directory),
+database `atlas`, user `atlas`, container name `atlas-postgres`, port `5432`
+bound to `127.0.0.1` only, named Docker volume `pgdata` — which the project
+name makes `atlas-backend_pgdata` on disk — `shm_size: 1g`, healthcheck via
+`pg_isready`, restart `unless-stopped`.
 
 ## Consumers
 
@@ -116,7 +128,7 @@ security and no per-service role separation.
   is not TLS-encrypted. Do not publish the port. For remote development,
   tunnel over SSH: `ssh your-server -L 5432:localhost:5432`, then connect to
   `localhost:5432`.
-- **Persistence:** data lives in the `pgdata` Docker volume and survives
+- **Persistence:** data lives in the `atlas-backend_pgdata` Docker volume and survives
   restarts and reboots. No backup mechanism is included; if the data matters
   to you, schedule something like
   `docker exec atlas-postgres pg_dump -U atlas atlas | gzip > atlas.sql.gz`.

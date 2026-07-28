@@ -341,7 +341,7 @@ private struct ViewerPage: View {
 
     var body: some View {
         if asset.isVideo {
-            VideoPlayerView(url: library.client.streamURL(asset.id),
+            VideoPlayer(url: library.client.streamURL(asset.id),
                             poster: library.client.thumbURL(asset.id, 512),
                             chrome: chrome, bottomInset: bottomInset, onTap: onTap)
         } else {
@@ -477,7 +477,7 @@ private struct ZoomableScrollView: UIViewRepresentable {
 /// viewer chrome exactly like on photos; play/pause + scrubber are our own
 /// Liquid-Glass controls and appear/disappear WITH the chrome (so share/trash,
 /// the filmstrip and the video controls always hide together).
-private struct VideoPlayerView: View {
+private struct VideoPlayer: View {
     let url: URL?
     var poster: URL?
     var chrome: Bool

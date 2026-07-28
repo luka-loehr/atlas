@@ -97,7 +97,6 @@ class EmbedStage:
         mp = snapshot_download(self.MODEL_ID, revision=EMBED_REVISION)
         _sys.path.insert(0, _os.path.join(mp, "scripts"))
         from qwen3_vl_embedding import Qwen3VLEmbedder
-        self.torch = torch
         # bf16 is the precision Qwen ships and was trained in — faithful to the
         # published model (fp32 wouldn't improve on the checkpoint and won't fit
         # in 8 GB). Images keep their full 2048px thumb resolution below.

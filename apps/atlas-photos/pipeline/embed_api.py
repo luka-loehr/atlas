@@ -5,7 +5,8 @@ GET  /health                 ->  {"ok": true}
 
 The query MUST use the same model the images were embedded with (same joint
 space). Runs CPU-only next to the pipeline (compose service `embed-api`) — a
-2B VL model on CPU is ~1-3 s per query, the price for query/image space parity.
+2B VL model on CPU measures ~0.2-1.2 s per query, the price for query/image
+space parity.
 Bound to 127.0.0.1: only the Rust photo server on the same host may call it.
 """
 

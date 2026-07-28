@@ -1,4 +1,4 @@
-# atlas-healthcheck
+# healthcheck — is the box actually healthy after boot?
 
 One-shot health check for the atlas box: proves the Rust components still
 compile and the core services are actually up. No timer, no polling — it runs
@@ -9,9 +9,9 @@ the sleep-when-idle box awake.
 
 | Check | How |
 |---|---|
-| `build-agent` | `cargo check --locked` in `~/atlas/agent` |
+| `build-api` | `cargo check --locked` in `~/atlas/api` |
 | `build-cli` | `cargo check --locked` in `~/atlas/cli` |
-| `agent-http` | `GET 127.0.0.1:8787/api/metrics` → 200 (or 401 when `ATLAS_AGENT_TOKEN` auth is on — server up either way) |
+| `api-http` | `GET 127.0.0.1:8787/api/metrics` → 200 (or 401 when `ATLAS_API_TOKEN` auth is on — server up either way) |
 | `photos-http` | `GET 127.0.0.1:8788/api/albums` → 200/401 |
 | `docker-stack` | `atlas-postgres` running+healthy, `atlas-pipeline-{pipeline-gpu,pipeline-cpu,embed-api}-1` running |
 | `postgres` | `pg_isready` + `SELECT 1` as user `atlas`, db `atlas`, inside the container |
@@ -19,6 +19,11 @@ the sleep-when-idle box awake.
 Service checks retry (default 12 × 10 s under systemd, 3 × 10 s interactive —
 override with `ATLAS_HEALTH_RETRIES` / `ATLAS_HEALTH_RETRY_SLEEP`) because
 containers need a moment after boot/resume. Build checks run once.
+
+Check ids are written verbatim into `~/atlas-health/status.json` and
+`history.log`, so lines written before the `agent/` → `api/` rename still read
+`build-agent` / `agent-http`. That is history, not a compatibility alias —
+nothing reads the old ids.
 
 ## Where to see results
 
@@ -35,14 +40,17 @@ containers need a moment after boot/resume. Build checks run once.
 ```sh
 ~/atlas/scripts/healthcheck/install.sh        # install + enable both units
 sudo systemctl start atlas-healthcheck        # run now via systemd
-~/atlas/scripts/healthcheck/atlas-healthcheck.sh   # or run directly
+~/atlas/scripts/healthcheck/healthcheck.sh    # or run directly
 ```
 
 Exit code 0 = all green, 1 = at least one check failed.
 
+The units run the script straight out of the checkout, so re-run `install.sh`
+after a pull that renames or moves it.
+
 ## Files
 
-- `atlas-healthcheck.sh` — the check itself
+- `healthcheck.sh` — the check itself
 - `atlas-healthcheck.service` — runs on boot (`WantedBy=multi-user.target`)
 - `atlas-healthcheck-resume.service` — runs after resume (standard systemd
   resume hook: `WantedBy` + `After` the sleep targets)

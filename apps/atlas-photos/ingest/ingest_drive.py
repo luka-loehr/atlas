@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Google-Takeout Drive -> atlas drive (the Storage app's "Dateien" tab).
+"""Google-Takeout Drive -> atlas drive (Atlas Photos' "Dateien" tab).
 
 Reads files DIRECTLY from the takeout zip(s) (no unpacking), hashes each with
 SHA256 (the canonical content id, same function as the server upload path),

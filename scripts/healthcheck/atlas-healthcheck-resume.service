@@ -8,7 +8,7 @@ After=suspend.target hybrid-sleep.target suspend-then-hibernate.target
 Type=oneshot
 User=luka
 Environment=ATLAS_HEALTH_RETRIES=12
-ExecStart=/home/luka/atlas/scripts/healthcheck/atlas-healthcheck.sh
+ExecStart=/home/luka/atlas/scripts/healthcheck/healthcheck.sh
 TimeoutStartSec=20min
 Nice=10
 

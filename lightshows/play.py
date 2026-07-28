@@ -8,8 +8,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lslib import sequence
-from lslib.player import Player
+from engine import sequence
+from engine.player import Player
 
 
 def main():

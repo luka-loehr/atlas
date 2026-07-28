@@ -1,16 +1,42 @@
-# On atlas, backend/docker/.env, apps/atlas-photos/pipeline/.env and
-# lightshows/artnet_host.local are SYMLINKS into /etc/atlas — the real files
-# live outside the checkout so `git clean -fdx` cannot delete them.
-# Mapping: docs/SETUP.md section 9.
+# Build output. `target/` is unanchored so it covers every Rust crate
+# (api/, cli/, apps/atlas-photos/server/). `build-sim/` and `build-device/`
+# are the -derivedDataPath values the iOS build commands in the app READMEs
+# use; `DerivedData/` is what Xcode writes when it picks the path itself.
 target/
-backend/docker/.env
+build/
 build-sim/
 build-device/
+DerivedData/
+
+# Xcode per-user state. Never shareable, and xcuserdata/ additionally pins
+# scheme names, so a stale copy resurrects a renamed scheme as a ghost.
 xcuserdata/
-apps/atlas-photos/ios/build/
+*.xcuserstate
+
+# Python bytecode.
 __pycache__/
-.DS_Store
 *.pyc
+
+# macOS.
+.DS_Store
+
+# Secrets compiled into an iOS app. Every app keeps its real values in a
+# Secrets.swift beside a tracked Secrets.example.swift;
+# apps/atlas-agents/ios/Sources/Shared/Secrets.swift holds the live Paperclip
+# board API key. Deliberately unanchored: this is the repo-wide backstop, so
+# no directory rename can ever expose one. Secrets.example.swift has a
+# different basename and stays tracked.
+Secrets.swift
+
+# Machine configuration and credentials. On atlas, backend/docker/.env,
+# apps/atlas-photos/pipeline/.env and lightshows/artnet_host.local are
+# SYMLINKS into /etc/atlas — the real files live outside the checkout, so
+# `git clean -fdx` removes a link, not a running service's credentials.
+# Mapping: docs/SETUP.md section 9. The Hue credentials and the calibration
+# state are covered one level down, in lightshows/.gitignore.
+.env
+*.local
+
 # Show media lives in ATLAS_LIGHTSHOW_MEDIA_DIR (default /var/lib/atlas/
 # lightshow-media), outside the checkout. Nothing writes here any more; these
 # patterns only cover hand-dropped legacy files that the readers still fall
@@ -24,6 +50,9 @@ lightshows/shows/*.opus
 lightshows/shows/*.webm
 lightshows/shows/*.aac
 lightshows/shows/*.flac
-.env
-*.local
+
+# A Mac-side web UI for naming face clusters through the atlas-photos API.
+# Held back from the public repo by the publish audit, not generated — this
+# rule is the only thing keeping it untracked. Publishing it is a decision,
+# not a cleanup.
 scripts/atlas-faces/

@@ -23,7 +23,7 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: Storage
+        CFBundleDisplayName: Atlas Photos
         CFBundleVersion: "27"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:

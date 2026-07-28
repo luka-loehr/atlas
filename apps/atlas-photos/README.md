@@ -2,7 +2,7 @@
 
 A self-hosted replacement for Google Photos and Google Drive: a Rust API
 server, a Dockerized AI indexing pipeline and a SwiftUI iPhone app (shipped
-under the display name "Storage"). Originals live on the server's disk;
+under the display name "Atlas Photos"). Originals live on the server's disk;
 Postgres (see [`backend/`](../../backend/README.md)) holds metadata, albums,
 faces/persons, tags, places, events and 2048-dim multimodal embeddings for
 semantic search.
@@ -17,7 +17,7 @@ immutable.
 |---|---|
 | `server/` | axum HTTP server: timeline, albums, search, persons, state mutations, upload, drive (default port 8788) |
 | `pipeline/` | CPU/GPU workers + text-embedding sidecar that index the library — see [pipeline/README.md](pipeline/README.md) |
-| `ingest/` | Python scripts: Google Takeout import (photos + drive), drive text extraction, recovery tools |
+| `ingest/` | Google Takeout import (photos + drive), drive text extraction, thumbnail recovery — see [Ingest](#ingest) |
 | `ios/` | SwiftUI app, tabs "Fotos", "Alben", "Dateien" and search |
 
 Machine-level setup (Ubuntu, NVIDIA driver, Docker, Tailscale) is covered in
@@ -86,7 +86,8 @@ What it does:
 | `POST /api/exists` | `{hashes:[…]}` → `{have:[…]}` (client-side dedup) |
 | `POST /api/upload` | raw body; headers `X-Filename`, `X-Taken-At` (unix s), optional `X-Content-Hash` integrity check |
 | `GET /map`, `/map/*` | experimental UMAP mosaic; 404 unless a generated bundle sits in `$PHOTOS_DIR/vecmap` |
-| `GET /api/drive/list?folder=`, `/recent`, `/search?q=`, `/stats` | folder browsing and search |
+| `GET /api/drive/list?folder=`, `/search?q=` | folder browsing and search |
+| `GET /api/drive/recent`, `/api/drive/stats` | newest files across all folders; drive totals. Served, but no shipped client calls them — they exist for ad-hoc use |
 | `GET /api/drive/blob/{hash}/{name}` | immutable, Range-capable download; script-capable types are forced to `attachment` |
 | `POST /api/drive/upload` | raw body; headers `X-Filename` (percent-encoded), `X-Folder-Id`, optional `X-Content-Hash`, `X-Modified-At` |
 | `POST /api/drive/folders`, `…/{id}/rename`, `…/{id}/delete` | folder ops; delete is a permanent subtree delete + blob GC |
@@ -159,11 +160,34 @@ automatically — foreground quick-sync on app activation plus a
 An ATS exception allows plain HTTP to `*.ts.net` hosts (in-tailnet traffic is
 already encrypted by WireGuard).
 
+### Naming
+
+Same convention as the other Atlas apps: `*Screen` is a full-surface
+destination that owns its own `NavigationStack` — a tab root, a pushed
+destination or a sheet-presented one. `*Sheet` is a modal auxiliary
+(`AccountSheet`, `InfoSheet`, `ShareSheet`). Everything else is a component
+with a plain descriptive name (`PhotoPager`, `SelectionToolbar`,
+`SelectableThumb`). The `View` suffix means one thing only: a type whose job is
+to wrap UIKit (`PlayerLayerView`, `ZoomableScrollView`), plus the app shell's
+`RootView`.
+
 ## Ingest
 
-One-shot Python scripts, run on the server (they need `psycopg`, `Pillow`,
-`pillow-heif`; `ffmpeg`/`ffprobe` for video thumbs; `pdftotext` for PDF text).
-They share the Postgres settings and `PG_ENV_FILE` convention above.
+Host-side tooling, run on the server. Most of it is one-shot, but not all:
+`ingest_watcher.sh` is a bash loop meant to run as a daemon, and
+`extract_drive_text.py` is additionally spawned per upload by the Rust server
+(`ATLAS_DRIVE_EXTRACTOR`) rather than being invoked by hand. They share the
+Postgres settings and `PG_ENV_FILE` convention above.
+
+Install the Python dependencies first:
+
+```bash
+pip install -r apps/atlas-photos/ingest/requirements.txt
+```
+
+That covers `psycopg`, `Pillow` and `pillow-heif`. The rest are system
+binaries, not pip packages: `ffmpeg`/`ffprobe` for video poster frames and
+`pdftotext` (poppler-utils) for PDF text.
 
 | Script | Purpose |
 |---|---|
@@ -171,8 +195,8 @@ They share the Postgres settings and `PG_ENV_FILE` convention above.
 | `ingest_watcher.sh` | loops over `$ATLAS_TAKEOUT_DIR` (default `$HOME/takeout/photos`), validates each zip, ingests sequentially, writes a `.ingested` marker and deletes the zip on success |
 | `ingest_drive.py *.zip` | Takeout Drive: streams entries into `blobs/<sha256>` and mirrors the folder tree into `drive_folders`/`drive_files`. Idempotent. |
 | `extract_drive_text.py` | fills `drive_files.text` for content search (plain text, PDF, docx/pptx/xlsx). Modes: no args = backfill NULLs, `--all`, `--file-id N` (used by the upload hook) |
-| `make_thumbs.py [--all]` | manual recovery only: regenerate thumbs without the pipeline; bypasses the job queue, so stop the workers first |
-| `../pipeline/backfill_jobs.py` | enqueue pipeline jobs for every existing asset (safe to re-run) |
+| `make_thumbs.py [--all]` | manual recovery only: **does the thumbnailing itself** and deletes the processed thumb job rows, bypassing the queue protocol — run it with the pipeline workers **stopped**. `--all` force-regenerates every asset. This is the tool for when the pipeline is the thing that is broken |
+| `../pipeline/backfill_jobs.py` | the opposite direction: only *enqueues* rows in `ingest_jobs` (`ON CONFLICT DO NOTHING`, safe to re-run) for the workers to pick up, so the pipeline must be **running**. Covers every stage, not just thumbs, but has no force path |
 
 Ingest-specific knobs: `ATLAS_INGEST_WORKERS` (process pool, default: all
 cores), `ATLAS_MAX_IMAGE_PIXELS` (decompression-bomb ceiling, default 500 MP),

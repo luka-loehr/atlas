@@ -39,15 +39,24 @@ Container Toolkit — see [docs/SETUP.md](../../../docs/SETUP.md).
   joins, otherwise a new person), square avatar crops to
   `$PHOTOS_DIR/faces/<face_id>.webp`.
 - **caption** — Qwen2.5-VL-3B-Instruct-AWQ via offline vLLM produces a JSON
-  caption+tags object per photo; only the 5–12 lowercase English tags are
-  stored (`tags`, `source='qwen2.5-vl'`), the caption is validation-only and
-  discarded.
+  caption+tags object per photo; only the tags are stored (`tags`,
+  `source='qwen2.5-vl'`), the caption is validation-only and discarded. The
+  prompt asks for 5–12 lowercase English keywords, but nothing enforces a
+  lower bound: junk/duplicate/placeholder tags are dropped and the list is
+  capped at 12, so a photo can end up with fewer than five. If the model's
+  JSON arrived truncated and had to be salvaged, the surviving tags are
+  stored under `source='qwen2.5-vl:partial'` instead — a second, DB-visible
+  value, so consumers must match `LIKE 'qwen2.5-vl%'` rather than `=`.
+
+`parse_caption_json` and its helpers are pure stdlib and covered by
+`test_parse_caption.py` (22 cases, `python3 -m unittest test_parse_caption` —
+no GPU, no database, no model download).
 
 The `embed-api` sidecar (`embed_api.py`) answers
 `POST /embed {"text": "..."}` with a 2048-float L2-normalized vector from the
-same embedding model, CPU-only (~1–3 s per query) — the Rust server calls it
-to embed search queries into the image/video vector space. `GET /health` for
-liveness.
+same embedding model, CPU-only (~0.2–1.2 s per query measured) — the Rust
+server calls it to embed search queries into the image/video vector space.
+`GET /health` for liveness.
 
 ## Build & run
 
@@ -87,8 +96,15 @@ automatically (see crash safety). Note that `unless-stopped` also means an
 explicit `docker compose stop` survives reboots.
 
 **Backfill:** to enqueue jobs for assets that predate the pipeline, run
-`python3 backfill_jobs.py` on the host (set `PHOTOS_DIR` to the library root;
-safe to run repeatedly).
+`python3 backfill_jobs.py` on the host (safe to run repeatedly). It only
+*inserts queue rows* — the workers have to be **running** for anything to
+happen. It talks to Postgres directly, so the host needs `psycopg` installed
+plus either `POSTGRES_PASSWORD` in the environment or a `PG_ENV_FILE` pointing
+at a file with a `POSTGRES_PASSWORD=` line (default `~/atlas/backend/docker/.env`),
+and `PHOTOS_DIR` set to the library root so the missing-thumb scan sees the
+right disk. For thumbnails specifically with the workers **stopped**, use
+[`../ingest/make_thumbs.py`](../ingest/make_thumbs.py) instead — it does the
+encoding itself and can force-regenerate with `--all`.
 
 ## Configuration
 

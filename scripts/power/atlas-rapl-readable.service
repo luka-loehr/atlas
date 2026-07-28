@@ -1,0 +1,14 @@
+[Unit]
+Description=Make the Intel RAPL energy counters readable for atlas-api
+After=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Both files are needed: metrics.rs reads energy_uj for the delta and
+# max_energy_range_uj to detect counter wrap. `|| true` keeps a non-Intel or
+# RAPL-less kernel from failing the unit — atlas-api reports cpu_w as null.
+ExecStart=/bin/sh -c "chmod a+r /sys/class/powercap/intel-rapl:0/energy_uj /sys/class/powercap/intel-rapl:0/max_energy_range_uj 2>/dev/null || true"
+
+[Install]
+WantedBy=multi-user.target

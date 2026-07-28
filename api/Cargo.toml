@@ -1,0 +1,17 @@
+[package]
+name = "atlas-api"
+version = "0.2.0"
+edition = "2024"
+description = "Metrics, terminal, docker and lightshow control API for the Atlas Admin and Atlas Lightshow iOS apps"
+
+[[bin]]
+name = "atlas-api"
+path = "src/main.rs"
+
+[dependencies]
+tungstenite = "0.21"       # WebSocket framing for the /term PTY bridge
+portable-pty = "0.8"       # real PTY so bash/htop/vim work in the app terminal
+
+[profile.release]
+lto = true
+strip = true

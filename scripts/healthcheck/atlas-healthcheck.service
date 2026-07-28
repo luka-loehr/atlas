@@ -1,13 +1,13 @@
 [Unit]
 Description=Atlas health check on boot (builds green, services up)
 Wants=network-online.target
-After=network-online.target docker.service atlas-agent.service atlas-photos.service
+After=network-online.target docker.service atlas-api.service atlas-photos.service
 
 [Service]
 Type=oneshot
 User=luka
 Environment=ATLAS_HEALTH_RETRIES=12
-ExecStart=/home/luka/atlas/scripts/healthcheck/atlas-healthcheck.sh
+ExecStart=/home/luka/atlas/scripts/healthcheck/healthcheck.sh
 TimeoutStartSec=20min
 Nice=10
 

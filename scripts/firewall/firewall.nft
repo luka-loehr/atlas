@@ -1,0 +1,52 @@
+#!/usr/sbin/nft -f
+#
+# atlas host firewall — confine the private HTTP services to loopback + tailnet.
+#
+#   8787  atlas-api     (metrics, Docker control, power, PTY terminal)
+#   8788  atlas-photos  (timeline, search, originals, drive)
+#
+# Both listeners bind 0.0.0.0/[::], so without this every device on the home
+# LAN can read them. The reads are deliberately unauthenticated
+# (ATLAS_PHOTOS_OPEN=1) because the iOS apps rely on that, so the network layer
+# is what has to say no.
+#
+# Why its own table, and not /etc/nftables.conf:
+#   `ip filter` and `ip6 filter` are managed by iptables-nft on behalf of
+#   tailscale and docker ("do not touch!" per `nft list ruleset`), and the
+#   stock /etc/nftables.conf opens with `flush ruleset`, which would wipe both
+#   at boot. Every base chain registered on a hook runs, and a drop in any one
+#   of them is final — so this table needs no cooperation from the others and
+#   survives `tailscale up` and `systemctl restart docker` recreating theirs.
+#
+# Scope is deliberately narrow: only tcp/8787 and tcp/8788 are matched at all.
+# Nothing else on this host changes behaviour. The chain policy stays `accept`
+# so a syntax slip cannot lock the box out.
+
+# Idempotent reload: create-if-absent, then delete, then define.
+table inet atlas-fw
+delete table inet atlas-fw
+
+table inet atlas-fw {
+	set private_ports {
+		type inet_service
+		comment "host-private HTTP services"
+		elements = { 8787, 8788 }
+	}
+
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+
+		# lo covers 127.0.0.1, atlas' own LAN and tailnet addresses when it
+		# talks to itself (`ip route get 192.168.1.100` -> dev lo), the
+		# healthcheck probes, and `tailscale serve` proxying to 127.0.0.1:8788.
+		tcp dport @private_ports iifname "lo" counter accept
+
+		# The tailnet proper: iPhone and MacBook arrive here after WireGuard
+		# decapsulation, over both IPv4 (100.64.0.0/10) and IPv6 (fd7a:115c::/48).
+		tcp dport @private_ports iifname "tailscale0" counter accept
+
+		# Everything else: enp4s0 (home LAN, and a globally routable IPv6 /64),
+		# the docker bridges, and any interface that appears later.
+		tcp dport @private_ports counter drop
+	}
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the atlas Postgres backup nightly
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=10min
+# atlas is powered off whenever it is not needed, so a fixed nightly time is
+# missed regularly. Persistent=true runs the skipped dump shortly after the
+# next boot instead of dropping it.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

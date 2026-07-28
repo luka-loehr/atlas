@@ -15,7 +15,7 @@ lattice to the whole song; every cue sits on that grid. Device physics
 ```
 song.mp3 / URL ──► GPU host: Beat This! + librosa ──► analysis.json (cached)
                                                           │
-                              lslib/compiler (v6 rules)   ▼
+                              engine/compiler (v6 rules)   ▼
 play.py ◄──── shows/<name>.show.json ◄─────────────── makeshow.py
    │
    ▼ Art-Net (UDP :6454, universe 0, 21 ch, 25 fps)
@@ -44,7 +44,7 @@ filling another's gap keeps the room lit and kills the low-FPS strobe effect.
 | high (chorus) | `gated_pulse` + white slams, occasional 8th bursts |
 | quiet / breakdown | heartbeat, dim textures |
 
-`lslib/effects.py` implements 20 registered effects; `lslib/compiler.py`
+`engine/effects.py` implements 20 registered effects; `engine/compiler.py`
 encodes the rules and the device constraint solver: strobe **6.5 s** / laser
 **3.9 s** warm-up (pre-powered via window leads, windows merged where a
 re-strike is physically impossible), fog only in lit phases — the disco globe
@@ -74,7 +74,7 @@ independent 25 fps clocks.
 ## Repository layout
 
 ```
-lslib/            the production system (stdlib only)
+engine/           the production system (stdlib only)
   rig.py          channel map, Art-Net target, color helpers
   lattice.py      beat math (bpm + anchor -> phase/index/envelope)
   effects.py      20 modular effects (gated_pulse, stutter_pulse, upulse, roll, ...)
@@ -88,12 +88,18 @@ play.py           CLI: play a .show.json
 bridge/           hue_stream.py (bridge host): Art-Net -> Hue DTLS + devices
 hardware/         fog.ino — Arduino heartbeat fog trigger, fail-safe auto-off
 shows/            compiled shows (party-rock.show.json = hand-designed reference)
-analysis_cache/   cached per-song analyses
-scripts/          export_fseq.py (xLights preview), port_party_rock.py
+analyses/         one measured analysis per song, keyed by show slug (tracked)
+scripts/          port_party_rock.py — regenerates the reference show JSON
 tests/            golden.py + reference_show_v6.py (frame-parity proof)
 tools/            artnet_test.py, fog_trigger.py, beat_cal.py, make_calibration.py
-xlights/          xLights 3D room layout for visual previews
 ```
+
+`analyses/` is tracked on purpose and is not scratch: re-deriving one file
+needs the original audio *and* a CUDA host, so these are the only surviving
+copy of each measurement. `makeshow.py` short-circuits on a present analysis
+rather than re-running the GPU stage. It writes `shows/<slug>.show.json` and
+`analyses/<slug>.analysis.json` from the same slug, so the two filenames must
+always match or the short-circuit stops finding them.
 
 Audio is not part of the repo. It lives in the **media root** —
 `ATLAS_LIGHTSHOW_MEDIA_DIR`, default `/var/lib/atlas/lightshow-media` — which
@@ -112,14 +118,16 @@ See `docs/SETUP.md` section 9.
 OS-level setup of the GPU/bridge machine (Ubuntu, CUDA, Docker, SSH/Wake-on-LAN)
 is covered in [docs/SETUP.md](../docs/SETUP.md). Subsystem-specific steps:
 
-1. **Deploy the repo on the GPU/bridge host.** `makeshow.py` hardcodes the
-   SSH alias `atlas` and the remote path `~/projects/lightshow`
-   (constants `ATLAS` / `ATLAS_DIR` at the top of the file) — create a
-   matching `~/.ssh/config` alias or edit the constants.
-2. **Analysis venv on the GPU host** at `analyze/.venv`. There is no
-   requirements file; it needs `beat_this` (with CUDA-enabled PyTorch),
-   `librosa` and `numpy`. The Beat This! checkpoint `final0` is fetched by
-   the library on first use.
+1. **Deploy the repo on the GPU/bridge host.** `makeshow.py` hardcodes one
+   thing: the SSH alias `atlas` (constant `ATLAS` at the top of the file) —
+   create a matching `~/.ssh/config` alias or edit the constant. The remote
+   checkout path is configurable: `LIGHTSHOW_REMOTE_DIR`, default
+   `~/atlas/lightshows`. Only `analyze/` is used there — the song is scp'd
+   in, analysed and deleted again; nothing is synced back but the JSON.
+2. **Analysis venv on the GPU host** at `analyze/.venv`, from
+   `analyze/requirements.txt` (`numpy`, `librosa`, `beat_this` — install
+   CUDA-enabled PyTorch first). The Beat This! checkpoint `final0` is
+   fetched by the library on first use.
 3. **Hue pairing.** Copy `bridge/credentials.example.json` to
    `bridge/credentials.json` (gitignored) and fill in: the bridge IP, a
    whitelist username created with `generateclientkey:true` (the response
@@ -137,7 +145,7 @@ is covered in [docs/SETUP.md](../docs/SETUP.md). Subsystem-specific steps:
    1500 ms without refresh; `'0'` = off) makes fog fail-safe if the bridge
    dies mid-show.
 6. **Control machine:** Python 3 only for compiling and playing
-   (`lslib` is stdlib-only). URL ingestion needs `yt-dlp` + `ffmpeg`.
+   (`engine` is stdlib-only). URL ingestion needs `yt-dlp` + `ffmpeg`.
    Audio playback uses `afplay` (macOS) from show start and `ffplay` for
    seeks — on Linux, seek playback works, full playback needs `--no-audio`
    or `afplay`-equivalent tweaks.
@@ -197,9 +205,13 @@ post-processing). A German prose summary is written to
 | Variable | Default | Purpose |
 |---|---|---|
 | `ATLAS_ARTNET_HOST` | `artnet_host.local` file, else `192.168.1.100` | Host running `bridge/hue_stream.py`; Art-Net UDP target of player and tools |
+| `ATLAS_LIGHTSHOW_MEDIA_DIR` | `/var/lib/atlas/lightshow-media` | Media root: where audio and covers are read and written (outside the checkout) |
+| `LIGHTSHOW_REMOTE_DIR` | `~/atlas/lightshows` | `makeshow.py`: the checkout path on the GPU host it scp/ssh's the analysis into |
 | `ATLAS_AUTOPUSH` | unset (off) | `1` = auto `git commit` + `push` each newly compiled show (off by default: downloaded audio/thumbnails may not be redistributable) |
 | `GEMINI_API_KEY` | unset | Gemini API key for `--ai` (takes precedence over the key file) |
 | `ATLAS_GEMINI_KEY_FILE` | `~/.config/atlas-ai/gemini.key` | Fallback key-file path for `--ai` |
+| `ARTNET_BIND` | `0.0.0.0` | `bridge/hue_stream.py`: interface the Art-Net listener binds |
+| `ARTNET_IDLE_TIMEOUT` | `180` | `bridge/hue_stream.py`: seconds without a frame before it releases the group and returns to IDLE |
 
 File-based configuration:
 
@@ -215,8 +227,8 @@ File-based configuration:
 > link rather than the credentials the running `lightshow-bridge.service`
 > loads at startup. Mapping and rationale: [docs/SETUP.md section 9](../docs/SETUP.md).
 > Edit the file through the symlink as usual — reads and writes both follow it.
-- Constants in code: `ATLAS`/`ATLAS_DIR` in `makeshow.py` (SSH alias +
-  remote path), `LIGHT_ORDER`/`LASER_V1`/`STROBEPLUG_V1`/`FOG_PORT` in
+- Constants in code: `ATLAS` in `makeshow.py` (the SSH alias),
+  `LIGHT_ORDER`/`LASER_V1`/`STROBEPLUG_V1`/`FOG_PORT` in
   `bridge/hue_stream.py`, `~/.local/bin/claude` + `claude-sonnet-5` in
   `ai/ai_show.py`.
 
@@ -230,7 +242,10 @@ File-based configuration:
    "title": "...", "bpm": 130.0, "anchor_ms": 59700.0, "duration_ms": 260400,
    "audio_latency_ms": 300,         // playback-device calibration
    "laser_lead_ms": 3900, "strobe_lead_ms": 6500,
-   "preroll_fog_ms": 20000
+   "preroll_fog_ms": 20000,
+   "calibration": true              // optional: this show MEASURES latency,
+                                    // so play.py runs it raw and ignores
+                                    // lightshows/calibration.json
  },
  "cues":    [{"t0": 0, "t1": 5000, "fx": "solid", "p": {"color": "white"}}],
  "accents": [[75840, 0.85]],        // single-frame white max-blend overlays
@@ -242,15 +257,17 @@ Cues must be sorted and non-overlapping; gaps mean true black. Device
 windows are visibility times — the player pre-powers laser/strobe by their
 warm-up leads automatically.
 
-## Calibration, tests, preview
+## Calibration and tests
 
 **Latency calibration.** Every show carries `audio_latency_ms` (default
 300). Two ways to measure your own value:
 
 - Camera flow: `python3 tools/make_calibration.py` regenerates
-  `shows/calibration.show.json` + `shows/calibration.wav` (1 kHz clicks,
-  white flash on each click). Play it, measure flash-vs-click offset (the
-  companion iOS app does this with the phone camera) and write the result to
+  `shows/calibration.show.json` (tracked) plus `calibration.wav` in the
+  **media root** (1 kHz clicks, white flash on each click) — the `.wav` is
+  not in the repo, so run this once before using the calibration show. Play
+  it, measure the flash-vs-click offset (the companion iOS app does this
+  with the phone camera) and write the result to
   `lightshows/calibration.json` — it then overrides every show except ones
   flagged `meta.calibration`.
 - Ear flow: `python3 tools/beat_cal.py 300 [secs]` flashes the shelves on a
@@ -279,16 +296,8 @@ python3 tools/artnet_test.py [secs]     # 10 s rainbow chase by default
 python3 tools/fog_trigger.py 800        # fog burst; only while hue_stream.py is NOT running
 ```
 
-**xLights preview.** Every show can be watched in 3D without hardware:
-
-```bash
-python3 scripts/export_fseq.py shows/<name>.show.json   # -> shows/<name>.fseq
-```
-
-Open the layout from `xlights/` in xLights, create a musical sequence with
-the song, then *Sequence Settings → Data Layers →* import the `.fseq`
-(21 channels, universe 0, 25 fps). Point the Art-Net controller IP in the
-xLights setup at your bridge host to drive the real lights from xLights.
+There is no offline 3D preview. A show is verified by rendering it
+(`tests/golden.py`, pure `render()`) or by playing it against the bridge.
 
 ## Operational notes
 

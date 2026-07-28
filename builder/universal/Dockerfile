@@ -16,9 +16,9 @@
 # in a few gigabytes, so the languages every repo actually uses stay cheap and
 # the mobile stack is only materialised when a project asks for it.
 #
-# Pinning policy matches the images this replaces: base images are pinned to a
-# major (node:22, rust:1) and track their channel, so a rebuild moves to
-# current patch releases. Rebuild deliberately, not on a schedule.
+# Pinning policy: base images are pinned to a major (debian:bookworm-slim,
+# node:22, golang:1) or a channel (rust stable, flutter:stable), so a rebuild
+# moves to current patch releases. Rebuild deliberately, not on a schedule.
 
 # ---------------------------------------------------------------------------
 # build — the universal toolchain

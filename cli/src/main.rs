@@ -5,6 +5,10 @@
 //!   atlas shutdown     powers the box off, waits until it is down
 //!   atlas restart      reboot, waits for the box to come back
 //!   atlas status       is it up? which route (LAN / tailnet)?
+//!   atlas build        build this project on atlas in a builder container
+//!   atlas dev          run this project's dev server on atlas
+//!   atlas secrets      push/list/drop this project's env file on atlas
+//!   atlas api          build + install atlas-api (the control-plane server)
 //!   atlas <cmd ...>    run any command on atlas (forwarded to ssh)
 
 use std::collections::HashMap;
@@ -41,7 +45,7 @@ struct Config {
     wol_broadcast: String, // ATLAS_WOL_BROADCAST — WoL broadcast addr:port
     lan_addr: String,      // ATLAS_LAN_ADDR — LAN ssh route host:port ("" = skip)
     tailnet_addr: String,  // ATLAS_TAILNET_ADDR — tailnet ssh route host:port ("" = skip)
-    agent_url: String,     // ATLAS_AGENT_URL — atlas-api host:port
+    api_url: String,       // ATLAS_API_URL — atlas-api host:port
 }
 
 fn config() -> &'static Config {
@@ -54,7 +58,7 @@ fn ssh_host() -> &'static str {
     &config().ssh_host
 }
 
-/// The host part of ATLAS_TAILNET_ADDR ("atlas.tail1aba20.ts.net:22" → the
+/// The host part of ATLAS_TAILNET_ADDR ("<host>.<tailnet>.ts.net:22" → the
 /// name without the ssh port), or None when the route is switched off or the
 /// value is still the shipped placeholder. `atlas dev` builds its URL from
 /// this, so a machine that never configured the tailnet gets the tunnel.
@@ -81,9 +85,9 @@ impl Config {
             exit(1);
         };
         let tailnet_addr = get("ATLAS_TAILNET_ADDR", DEFAULT_TAILNET_ADDR);
-        // ATLAS_AGENT_URL defaults to the tailnet host with the API's port 8787
+        // ATLAS_API_URL defaults to the tailnet host with the API's port 8787
         let tailnet_host = host_of(&tailnet_addr);
-        let agent_default =
+        let api_default =
             if tailnet_host.is_empty() { String::new() } else { format!("{tailnet_host}:8787") };
         Config {
             ssh_host: get("ATLAS_SSH_HOST", "atlas"),
@@ -91,7 +95,7 @@ impl Config {
             wol_mac_is_default: mac_str == DEFAULT_WOL_MAC,
             wol_broadcast: get("ATLAS_WOL_BROADCAST", "192.168.1.255:9"),
             lan_addr: get("ATLAS_LAN_ADDR", "192.168.1.100:22"),
-            agent_url: get("ATLAS_AGENT_URL", &agent_default),
+            api_url: get("ATLAS_API_URL", &api_default),
             tailnet_addr,
         }
     }
@@ -330,7 +334,7 @@ const SECRETS_BASE: &str = "atlas-secrets";
 struct BuildCfg {
     root: PathBuf,          // dir holding .atlas-build.toml == rsync root
     name: String,           // remote build dir name
-    image: String,          // builder key: universal | mobile | node | lambda | flutter
+    image: String,          // builder key: universal | mobile
     dir: String,            // subdir (relative to root) the build runs in
     build: String,          // build command (for `atlas build`)
     dev: String,            // dev-server command (for `atlas dev`)
@@ -341,55 +345,46 @@ struct BuildCfg {
 
 /// What `docker build` needs to produce one image, and what to run it as.
 ///
-/// The universal Dockerfile emits several targets from one file so they share
-/// layers; the older single-language builders have no targets at all. Both
-/// shapes resolve through here so the callers only ever deal with a tag.
+/// The universal Dockerfile emits every image as a target of one file so they
+/// share layers; this is the one place that maps a config key onto a tag.
 struct ImageSpec {
-    tag: String,            // docker tag to run
-    context: String,        // build context, relative to the atlas checkout
-    target: Option<String>, // multi-stage target, if the context has any
+    tag: String,     // docker tag to run
+    context: String, // build context, relative to the atlas checkout
+    target: String,  // multi-stage target inside that context
 }
 
 impl ImageSpec {
     /// The `docker build` invocation that produces this image.
     fn build_cmd(&self) -> String {
-        match &self.target {
-            Some(t) => format!("docker build --target {t} -t {} {}", self.tag, self.context),
-            None => format!("docker build -t {} {}", self.tag, self.context),
-        }
+        format!("docker build --target {} -t {} {}", self.target, self.tag, self.context)
     }
 }
+
+/// Every builder key `.atlas-build.toml` accepts, in the order they are shown
+/// to the user. Both resolve to targets of the one universal Dockerfile.
+const IMAGE_KEYS: [&str; 2] = ["universal", "mobile"];
 
 /// Resolve a config `image` key into the image that should run it.
 ///
 /// `dev` picks the variant with cloudflared in it — the build target
 /// deliberately has no tunnel binary, so a build container cannot open one.
-/// Keys other than the universal ones map to the old one-directory-per-image
-/// builders unchanged, so configs written against those keep working.
+/// The key is checked against IMAGE_KEYS by load_config, so anything reaching
+/// here is known.
 fn image_spec(key: &str, dev: bool) -> ImageSpec {
-    match key {
-        "universal" | "mobile" => {
-            // mobile carries the Flutter/Android SDK and is the same image for
-            // build and dev: it is expensive enough that splitting it again to
-            // add a tunnel binary would not pay for itself.
-            let target = if key == "mobile" {
-                "mobile"
-            } else if dev {
-                "dev"
-            } else {
-                "build"
-            };
-            ImageSpec {
-                tag: format!("atlas-universal-{}", if target == "build" { "builder" } else { target }),
-                context: "builder/universal".into(),
-                target: Some(target.into()),
-            }
-        }
-        _ => ImageSpec {
-            tag: format!("atlas-{key}-builder"),
-            context: format!("builder/{key}"),
-            target: None,
-        },
+    // mobile carries the Flutter/Android SDK and is the same image for build
+    // and dev: it is expensive enough that splitting it again to add a tunnel
+    // binary would not pay for itself.
+    let target = if key == "mobile" {
+        "mobile"
+    } else if dev {
+        "dev"
+    } else {
+        "build"
+    };
+    ImageSpec {
+        tag: format!("atlas-universal-{}", if target == "build" { "builder" } else { target }),
+        context: "builder/universal".into(),
+        target: target.into(),
     }
 }
 
@@ -487,13 +482,21 @@ fn load_config() -> BuildCfg {
         exit(1);
     }
     // name/image/dir/artifacts end up inside remote shell commands and rsync
-    // paths — enforce a safe charset instead of trusting the config file
+    // paths — enforce a safe charset (image: a closed allowlist) instead of
+    // trusting the config file
     if !valid_name(&c.name) {
         eprintln!("{RED}.atlas-build.toml: ungültiger name{RESET} (erlaubt: A-Za-z0-9._-)");
         exit(1);
     }
-    if !valid_name(&c.image) {
-        eprintln!("{RED}.atlas-build.toml: ungültiges image{RESET} (erlaubt: A-Za-z0-9._-)");
+    // There is exactly one builder context, so an unknown key has nothing to
+    // resolve to — catch it here rather than letting docker report a missing
+    // build context after the machine has already been woken.
+    if !IMAGE_KEYS.contains(&c.image.as_str()) {
+        eprintln!(
+            "{RED}.atlas-build.toml: unbekanntes image '{}'{RESET} (erlaubt: {})",
+            c.image,
+            IMAGE_KEYS.join(" | ")
+        );
         exit(1);
     }
     if c.dir != "." && !valid_rel_path(&c.dir) {
@@ -514,10 +517,10 @@ fn load_config() -> BuildCfg {
 fn parse_toml_value(raw: &str) -> String {
     let raw = raw.trim();
     for q in ['"', '\''] {
-        if let Some(rest) = raw.strip_prefix(q) {
-            if let Some(end) = rest.find(q) {
-                return rest[..end].to_string();
-            }
+        if let Some(rest) = raw.strip_prefix(q)
+            && let Some(end) = rest.find(q)
+        {
+            return rest[..end].to_string();
         }
     }
     let end = raw.find('#').unwrap_or(raw.len());
@@ -1108,25 +1111,41 @@ fn api(sub: &[String]) {
             eprintln!("ssh: {err}");
             exit(1);
         }
+        // `systemctl status` exits non-zero for an inactive unit, which is an
+        // answer, not a failure — the other two really did not do their job.
         Some("status") => {
             run_inherit(Command::new("ssh").args([
                 ssh_host(),
                 "systemctl status atlas-api --no-pager | head -12",
             ]));
         }
-        Some("stop") => {
-            run_inherit(Command::new("ssh").args([ssh_host(), "sudo systemctl stop atlas-api"]));
-            println!("{GREEN}atlas-api gestoppt{RESET}");
-        }
-        Some("restart") => {
-            run_inherit(Command::new("ssh").args([ssh_host(), "sudo systemctl restart atlas-api"]));
-            println!("{GREEN}atlas-api neu gestartet{RESET}");
-        }
+        Some("stop") => systemctl("stop", "atlas-api gestoppt"),
+        Some("restart") => systemctl("restart", "atlas-api neu gestartet"),
         _ => api_install(),
     }
 }
 
+/// `sudo systemctl <verb> atlas-api`, reporting what actually happened —
+/// printing success on a failed ssh call is worse than no output at all.
+fn systemctl(verb: &str, done: &str) {
+    let ok = run_inherit(
+        Command::new("ssh").args([ssh_host(), &format!("sudo systemctl {verb} atlas-api")]),
+    );
+    if !ok {
+        eprintln!("{RED}systemctl {verb} atlas-api fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    println!("{GREEN}{done}{RESET}");
+}
+
 /// Pull the repo on atlas, build the API server, install + enable the systemd unit.
+///
+/// The predecessor unit is torn down *after* the new binary and unit are in
+/// place, never before: a release build that fails on the server would
+/// otherwise leave the box with no control plane at all, over the same SSH
+/// path that manages its power. The teardown itself is not optional — the old
+/// unit binds the same port, so leaving it enabled makes atlas-api exit on
+/// bind at the next reboot.
 fn api_install() {
     ensure_up();
     println!("{DIM}baue + installiere atlas-api auf atlas ...{RESET}");
@@ -1135,6 +1154,10 @@ fn api_install() {
          . ~/.cargo/env && cargo build --release --quiet && \
          sudo install -m755 target/release/atlas-api /usr/local/bin/atlas-api && \
          sudo cp atlas-api.service /etc/systemd/system/atlas-api.service && \
+         sudo sh -c '[ -f /etc/atlas-agent.env ] && mv /etc/atlas-agent.env /etc/atlas-api.env || true' && \
+         sudo sh -c '[ -f /etc/atlas-api.env ] && sed -i s/^ATLAS_AGENT_/ATLAS_API_/ /etc/atlas-api.env || true' && \
+         { sudo systemctl disable --now atlas-agent >/dev/null 2>&1 || true; } && \
+         sudo rm -f /usr/local/bin/atlas-agent /etc/systemd/system/atlas-agent.service && \
          sudo systemctl daemon-reload && sudo systemctl enable --quiet atlas-api && \
          sudo systemctl restart atlas-api && \
          sleep 1 && systemctl is-active atlas-api";
@@ -1142,7 +1165,7 @@ fn api_install() {
         eprintln!("{RED}Installation der API fehlgeschlagen{RESET}");
         exit(1);
     }
-    let host = config().agent_url.as_str();
+    let host = config().api_url.as_str();
     println!("{GREEN}✓ atlas-api läuft{RESET}  {DIM}(systemd, Autostart an){RESET}");
     if !host.is_empty() {
         println!("  {DIM}Metrics:{RESET} http://{host}/api/metrics");

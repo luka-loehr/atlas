@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""paperclip-task — Hermes' handle on the Luka Labs company.
+
+Hermes is the CEO. Luka talks only to Hermes; Hermes decides what is worth
+delegating and hands it to the company as a task. The Chief of staff picks it
+up, does or delegates the work, and closes it with a result. Hermes checks
+back, and tells Luka.
+
+    paperclip-task create "Set up verified backups on the second disk" \
+        --detail "borg repo, pg dumps off-NVMe, restore drill" --priority high
+    paperclip-task list                 # everything still open
+    paperclip-task inbox                # finished since you last looked
+    paperclip-task result LUK-9         # outcome + the document, in full
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+API = os.environ.get("PAPERCLIP_API", "")
+COMPANY = os.environ.get("PAPERCLIP_COMPANY", "")
+SEEN = os.path.expanduser("~/.hermes/paperclip-seen.json")
+
+TOKEN = os.environ.get("PAPERCLIP_TOKEN", "")
+if not TOKEN:
+    try:
+        TOKEN = open(os.path.expanduser("~/.paperclip/atlas-automation.key")).read().strip()
+    except OSError:
+        pass
+
+
+def api(path: str, payload=None, method="GET"):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        API + path, data=data, method=method,
+        headers={"Authorization": "Bearer " + TOKEN, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def issues():
+    return api(f"/api/companies/{COMPANY}/issues")
+
+
+def find(identifier: str):
+    for i in issues():
+        if (i.get("identifier") or "").upper() == identifier.upper():
+            return i
+    return None
+
+
+def lead_id():
+    for a in api(f"/api/companies/{COMPANY}/agents"):
+        if a.get("role") == "ceo":
+            return a["id"]
+    return None
+
+
+def load_seen() -> set:
+    try:
+        return set(json.load(open(SEEN)))
+    except Exception:
+        return set()
+
+
+def save_seen(ids: set) -> None:
+    os.makedirs(os.path.dirname(SEEN), exist_ok=True)
+    json.dump(sorted(ids), open(SEEN, "w"))
+
+
+def cmd_create(args) -> int:
+    body = {
+        "title": args.title,
+        "status": "todo",
+        "priority": args.priority,
+    }
+    if args.detail:
+        body["description"] = args.detail
+    lead = lead_id()
+    if lead:
+        body["assigneeAgentId"] = lead
+    issue = api(f"/api/companies/{COMPANY}/issues", body, method="POST")
+    ident = issue.get("identifier") or issue.get("id")
+    print(ident)
+    # wake the lead so it starts now rather than on its next cycle
+    if lead:
+        try:
+            api(f"/api/agents/{lead}/heartbeat/invoke", {}, method="POST")
+        except Exception:
+            pass
+    return 0
+
+
+def cmd_list(args) -> int:
+    rows = [i for i in issues() if i["status"] not in ("done", "cancelled")]
+    if not rows:
+        print("nothing open")
+        return 0
+    for i in sorted(rows, key=lambda x: x.get("identifier") or ""):
+        print(f"{i.get('identifier','?'):8} {i['status']:12} {i['title'][:70]}")
+    return 0
+
+
+def cmd_inbox(args) -> int:
+    """Finished work Hermes hasn't reported to Luka yet."""
+    seen = load_seen()
+    done = [i for i in issues() if i["status"] in ("done", "in_review")]
+    fresh = [i for i in done if i["id"] not in seen]
+    if not fresh:
+        print("nothing new")
+        return 0
+    for i in fresh:
+        print(f"== {i.get('identifier','?')} ({i['status']}): {i['title']}")
+        for doc in api(f"/api/issues/{i['id']}/documents"):
+            print(f"   document: {doc.get('title') or doc.get('key')}")
+        for c in api(f"/api/issues/{i['id']}/comments")[-2:]:
+            body = (c.get("body") or "").strip().replace("\n", " ")
+            print(f"   note: {body[:300]}")
+    if not args.peek:
+        save_seen(seen | {i["id"] for i in fresh})
+    return 0
+
+
+def cmd_result(args) -> int:
+    issue = find(args.identifier)
+    if not issue:
+        print(f"no such task: {args.identifier}", file=sys.stderr)
+        return 1
+    print(f"{issue.get('identifier')}: {issue['title']}")
+    print(f"status: {issue['status']}")
+    if issue.get("description"):
+        print(f"\nbrief:\n{issue['description']}")
+    for doc in api(f"/api/issues/{issue['id']}/documents"):
+        print(f"\n--- {doc.get('title') or doc.get('key')} ---")
+        print(doc.get("body", ""))
+    comments = api(f"/api/issues/{issue['id']}/comments")
+    if comments:
+        print("\n--- notes ---")
+        for c in comments:
+            print(f"* {(c.get('body') or '').strip()}")
+    return 0
+
+
+def cmd_comment(args) -> int:
+    issue = find(args.identifier)
+    if not issue:
+        print(f"no such task: {args.identifier}", file=sys.stderr)
+        return 1
+    api(f"/api/issues/{issue['id']}/comments", {"body": " ".join(args.text)}, method="POST")
+    lead = lead_id()
+    if lead:
+        try:
+            api(f"/api/agents/{lead}/heartbeat/invoke", {}, method="POST")
+        except Exception:
+            pass
+    return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Delegate work to the Luka Labs company.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    c = sub.add_parser("create", help="Hand a task to the company.")
+    c.add_argument("title")
+    c.add_argument("--detail", help="Context, constraints, what done looks like.")
+    c.add_argument("--priority", default="medium", choices=["low", "medium", "high", "urgent"])
+    c.set_defaults(fn=cmd_create)
+
+    l = sub.add_parser("list", help="Everything still open.")
+    l.set_defaults(fn=cmd_list)
+
+    i = sub.add_parser("inbox", help="Finished since you last looked.")
+    i.add_argument("--peek", action="store_true", help="Don't mark as seen.")
+    i.set_defaults(fn=cmd_inbox)
+
+    r = sub.add_parser("result", help="Full outcome of one task.")
+    r.add_argument("identifier")
+    r.set_defaults(fn=cmd_result)
+
+    m = sub.add_parser("comment", help="Send the company a follow-up on a task.")
+    m.add_argument("identifier")
+    m.add_argument("text", nargs="+")
+    m.set_defaults(fn=cmd_comment)
+
+    args = p.parse_args()
+    if not API or not COMPANY:
+        print("paperclip-task: PAPERCLIP_API and PAPERCLIP_COMPANY must be set "
+              "(see /etc/paperclip-bridge.env)", file=sys.stderr)
+        return 3
+    try:
+        return args.fn(args)
+    except urllib.error.URLError as exc:
+        print(f"paperclip-task: cannot reach Paperclip at {API}: {exc}", file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())

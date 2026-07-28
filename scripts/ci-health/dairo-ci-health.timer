@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily dairo-backend CI health check
+
+[Timer]
+OnCalendar=*-*-* 12:05:00 UTC
+# atlas is not a 24/7 host. A plain cron silently skips every check that falls
+# in a powered-off window — which is exactly the "nobody noticed" failure this
+# watch exists to prevent. Persistent=true runs the missed check shortly after
+# the next boot instead of dropping it.
+Persistent=true
+Unit=dairo-ci-health.service
+
+[Install]
+WantedBy=timers.target

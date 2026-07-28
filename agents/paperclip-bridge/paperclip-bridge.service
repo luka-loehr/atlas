@@ -1,0 +1,15 @@
+[Unit]
+Description=Paperclip event bridge (SSE for the Agents app)
+After=network-online.target paperclip.service
+Wants=network-online.target
+
+[Service]
+User=luka
+WorkingDirectory=/home/luka
+EnvironmentFile=/etc/paperclip-bridge.env
+ExecStart=/usr/bin/python3 /home/luka/atlas/agents/paperclip-bridge/bridge.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

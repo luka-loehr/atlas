@@ -3,23 +3,12 @@
 # `git clean -fdx` deletes a link, not a running service's credentials.
 # Mapping: docs/SETUP.md section 9.
 credentials.json
-bridge.log
 __pycache__/
 *.pyc
 
-# xLights runtime junk
-Backup/
-*.xbkp
-*.fseq
-*.iseq
-*.eseq
-xlights.log
-*.xcache
-cache/
-xlights_keybindings.xml
-colorcurves/
-palettes/
-valuecurves/
+# Local runtime state: audio anywhere under lightshows/ (analyze/ scratch,
+# tools/music.mp3), the GPU analysis venv, yt-dlp output, and the measured
+# latency file play.py reads (a symlink into /var/lib/atlas on atlas).
 *.mp3
 .venv/
 downloads/

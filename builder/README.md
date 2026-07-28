@@ -1,16 +1,18 @@
 # builder — remote build images
 
-Dockerfiles for the images that [`atlas build` and `atlas dev`](../cli/)
-run on the server. The CLI builds them lazily: on first use it runs
+One Dockerfile, three targets — the images that
+[`atlas build` and `atlas dev`](../cli/) run on the server. The CLI builds
+them lazily: on first use it runs
 `ssh <host> "cd ~/atlas && git pull --quiet --ff-only && docker build
 [--target <target>] -t <tag> builder/<context>"`, then reuses the image.
 Manual rebuild is the same `docker build` on the server.
 
 ## Images
 
-`universal` is the one to use. It carries every toolchain these repos
-build with, so a project that mixes two languages — a pnpm workspace next
-to a Rust worker — has an image that covers it.
+There are two keys, and `universal` is the default. It carries every
+toolchain these repos build with, so a project that mixes two languages — a
+pnpm workspace next to a Rust worker — has an image that covers it. Reach
+for `mobile` only when the build actually needs Flutter or Android.
 
 | Key | Image tag | Target | Contents |
 |---|---|---|---|
@@ -18,8 +20,8 @@ to a Rust worker — has an image that covers it.
 | `universal` (dev) | `atlas-universal-dev` | `dev` | the above **+ cloudflared**, used automatically by `atlas dev` |
 | `mobile` | `atlas-universal-mobile` | `mobile` | the above **+ Flutter SDK + Android SDK** (licenses pre-accepted) |
 
-All three come from one [`universal/Dockerfile`](universal/Dockerfile) and
-share layers, so holding all of them costs roughly what holding the
+All three are targets of [`universal/Dockerfile`](universal/Dockerfile) and
+share their layers, so holding all of them costs roughly what holding the
 largest one does.
 
 `mobile` is a separate target rather than part of `build` because the
@@ -28,13 +30,6 @@ atlas has one 950 G volume that was 75% full when this was written, with
 [disk-guard](../scripts/disk-guard/) warning at 85% — so the languages
 every repo uses stay cheap, and the mobile stack is only materialised when
 a project actually asks for it.
-
-### Superseded
-
-`lambda`, `node` and `flutter` still resolve to their own one-directory
-images so existing configs keep working, but new configs should use
-`universal` / `mobile`. Once nothing references them, the images can be
-dropped from the server with `docker image rm`.
 
 ## How a build runs
 
@@ -96,7 +91,7 @@ A flat `key = "value"` file at the project root of whatever you build:
 | Key | Required | Meaning |
 |---|---|---|
 | `name` | yes | remote build dir (`~/atlas-builds/<name>`) and container name suffix |
-| `image` | yes | builder key: `universal` \| `mobile` (or the superseded `lambda` \| `node` \| `flutter`) |
+| `image` | yes | builder key: `universal` \| `mobile` — nothing else resolves |
 | `dir` | no (default `.`) | subdirectory the build/dev command runs in |
 | `build` | for `atlas build` | build command run inside the container |
 | `artifacts` | for `atlas build` | space-separated directory paths (relative to the project root) copied back after the build |
@@ -109,10 +104,12 @@ A flat `key = "value"` file at the project root of whatever you build:
 - Builds run as root inside the container; afterwards the CLI runs
   `sudo chown -R` on the build tree, so the server-side user needs
   passwordless sudo (see [docs/SETUP.md](../docs/SETUP.md)).
-- The images are base-pinned, not fully pinned: `node:22`, `rust:1`,
-  `golang:1` and `flutter:stable` track their channels, and Bun and
-  cloudflared are fetched at image-build time. Rebuilding moves an image
-  to current versions; do it deliberately.
+- The image is base-pinned, not fully pinned: `debian:bookworm-slim`,
+  `node:22`, `golang:1`, the Rust `stable` channel and
+  `ghcr.io/cirruslabs/flutter:stable` all track their channel, and
+  cloudflared is fetched from `releases/latest` at image-build time (Bun is
+  the one exception — `ARG BUN_VERSION` pins it exactly). Rebuilding moves
+  the image to current versions; do it deliberately.
 - `git config --system --add safe.directory '*'` is set in the image
   because builds run as root over a tree owned by the ssh user, and
   anything that shells out to git would otherwise refuse to run.

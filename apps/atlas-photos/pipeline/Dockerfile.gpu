@@ -2,7 +2,7 @@
 # Handles: embed (Qwen3-VL-Embedding-2B), faces (InsightFace buffalo_l), caption (vLLM Qwen2.5-VL-3B-AWQ)
 #
 # Base image ships torch + vllm + CUDA runtime — do NOT pip-install torch/vllm on top.
-# NOTE: pipeline source is NOT baked into this image. docker-compose mounts
+# NOTE: pipeline source is NOT baked into this image. docker compose mounts
 # the pipeline directory at /app; entrypoint_gpu.sh lives there too.
 # Rebuild only when dependencies change.
 
@@ -21,8 +21,7 @@ RUN python3 -m pip install --no-cache-dir \
         insightface \
         onnxruntime-gpu \
         "psycopg[binary]" \
-        pillow \
-        pillow-heif
+        pillow
 
 # Qwen3-VL-Embedding-2B (embed stage + embed-api sidecar): the model repo's
 # scripts/qwen3_vl_embedding.py helper needs qwen-vl-utils for its chat-template
