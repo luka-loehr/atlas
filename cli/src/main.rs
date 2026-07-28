@@ -41,7 +41,7 @@ struct Config {
     wol_broadcast: String, // ATLAS_WOL_BROADCAST — WoL broadcast addr:port
     lan_addr: String,      // ATLAS_LAN_ADDR — LAN ssh route host:port ("" = skip)
     tailnet_addr: String,  // ATLAS_TAILNET_ADDR — tailnet ssh route host:port ("" = skip)
-    agent_url: String,     // ATLAS_AGENT_URL — metrics agent host:port
+    agent_url: String,     // ATLAS_AGENT_URL — atlas-api host:port
 }
 
 fn config() -> &'static Config {
@@ -81,7 +81,7 @@ impl Config {
             exit(1);
         };
         let tailnet_addr = get("ATLAS_TAILNET_ADDR", DEFAULT_TAILNET_ADDR);
-        // ATLAS_AGENT_URL defaults to the tailnet host with the agent's port 8787
+        // ATLAS_AGENT_URL defaults to the tailnet host with the API's port 8787
         let tailnet_host = host_of(&tailnet_addr);
         let agent_default =
             if tailnet_host.is_empty() { String::new() } else { format!("{tailnet_host}:8787") };
@@ -151,7 +151,7 @@ fn main() {
         Some("status") => status(),
         Some("build") => build(&args[1..]),
         Some("dev") => dev(&args[1..]),
-        Some("agent") => agent(&args[1..]),
+        Some("api") => api(&args[1..]),
         Some("secrets") => secrets(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
         // anything else: run it on atlas (`atlas htop`, `atlas nvidia-smi`, ...)
@@ -176,8 +176,8 @@ fn help() {
          atlas dev logs     follow the dev-server logs\n  \
          atlas secrets push env-file for this project (never synced, 0600 on atlas)\n  \
          atlas secrets list/rm  show which projects have one / drop it\n  \
-         atlas agent        build+install the metrics agent (for the iOS app)\n  \
-         atlas agent logs   follow the agent logs   ·   agent status/stop\n  \
+         atlas api          build+install the control-plane API (for the iOS apps)\n  \
+         atlas api logs     follow the API logs   ·   api status/stop/restart\n  \
          atlas <cmd ...>    run a command on atlas (e.g. atlas nvidia-smi)"
     );
 }
@@ -772,10 +772,19 @@ fn sync_to_atlas(cfg: &BuildCfg) {
         exit(1);
     }
     // --chmod above only reaches files rsync actually transferred, so a tree
-    // that synced before this existed keeps its old 0755. Walk it once to
-    // catch up; the guard makes every later sync a single stat.
+    // that synced before this existed keeps its old 0755. Catch those up here.
+    //
+    // Scoped to files WE own and error-swallowing on purpose: `atlas dev` runs
+    // its container as root and never chowns back (unlike a build), so it
+    // leaves root-owned output under .next that this user can neither chmod nor
+    // needs to — it is generated, not the private source we are hiding. A bare
+    // `chmod -R` choked on exactly that ("Permission denied" on .next/dev). The
+    // `find -user` only walks our own files, so it is idempotent and cheap to
+    // repeat every sync.
     ssh_ok(&format!(
-        "d=\"$HOME/{d}\"; [ \"$(stat -c %a \"$d\")\" = 700 ] || chmod -R go= \"$d\"",
+        "d=\"$HOME/{d}\"; chmod 700 \"$d\" 2>/dev/null; \
+         find \"$d\" -user \"$(id -un)\" \\( -type d -o -type f \\) \
+         -exec chmod go= {{}} + 2>/dev/null; true",
         d = cfg.remote_dir()
     ));
 }
@@ -882,7 +891,7 @@ fn dev_names(cfg: &BuildCfg) -> (String, String) {
 ///
 /// The band avoids collisions in both directions: 443 on atlas is taken by
 /// another service, ports below 20000 are where the box's own services sit
-/// (8788 photos, 8787 metrics agent), and Linux hands out 32768+ as ephemeral
+/// (8788 photos, 8787 atlas-api), and Linux hands out 32768+ as ephemeral
 /// source ports.
 fn tailnet_port(name: &str) -> u16 {
     // FNV-1a, four lines and no dependency. Deliberately not std's hasher:
@@ -1088,13 +1097,13 @@ fn dev_expose_tunnel(cfg: &BuildCfg, spec: &ImageSpec) {
     println!("{DIM}  Start eine andere.{RESET}");
 }
 
-// ---- atlas agent: metrics server for the iOS app --------------------------
+// ---- atlas api: control-plane server for the iOS apps ---------------------
 
-fn agent(sub: &[String]) {
+fn api(sub: &[String]) {
     match sub.first().map(String::as_str) {
         Some("logs") => {
             let err = Command::new("ssh")
-                .args(["-t", ssh_host(), "journalctl -u atlas-agent -f -n 40"])
+                .args(["-t", ssh_host(), "journalctl -u atlas-api -f -n 40"])
                 .exec();
             eprintln!("ssh: {err}");
             exit(1);
@@ -1102,39 +1111,39 @@ fn agent(sub: &[String]) {
         Some("status") => {
             run_inherit(Command::new("ssh").args([
                 ssh_host(),
-                "systemctl status atlas-agent --no-pager | head -12",
+                "systemctl status atlas-api --no-pager | head -12",
             ]));
         }
         Some("stop") => {
-            run_inherit(Command::new("ssh").args([ssh_host(), "sudo systemctl stop atlas-agent"]));
-            println!("{GREEN}agent gestoppt{RESET}");
+            run_inherit(Command::new("ssh").args([ssh_host(), "sudo systemctl stop atlas-api"]));
+            println!("{GREEN}atlas-api gestoppt{RESET}");
         }
         Some("restart") => {
-            run_inherit(Command::new("ssh").args([ssh_host(), "sudo systemctl restart atlas-agent"]));
-            println!("{GREEN}agent neu gestartet{RESET}");
+            run_inherit(Command::new("ssh").args([ssh_host(), "sudo systemctl restart atlas-api"]));
+            println!("{GREEN}atlas-api neu gestartet{RESET}");
         }
-        _ => agent_install(),
+        _ => api_install(),
     }
 }
 
-/// Pull the repo on atlas, build the agent, install + enable the systemd service.
-fn agent_install() {
+/// Pull the repo on atlas, build the API server, install + enable the systemd unit.
+fn api_install() {
     ensure_up();
-    println!("{DIM}baue + installiere atlas-agent auf atlas ...{RESET}");
+    println!("{DIM}baue + installiere atlas-api auf atlas ...{RESET}");
     let script = "set -e; cd ~/atlas && git fetch --quiet origin && \
-         git reset --hard --quiet origin/main && cd agent && \
+         git reset --hard --quiet origin/main && cd api && \
          . ~/.cargo/env && cargo build --release --quiet && \
-         sudo install -m755 target/release/atlas-agent /usr/local/bin/atlas-agent && \
-         sudo cp atlas-agent.service /etc/systemd/system/atlas-agent.service && \
-         sudo systemctl daemon-reload && sudo systemctl enable --quiet atlas-agent && \
-         sudo systemctl restart atlas-agent && \
-         sleep 1 && systemctl is-active atlas-agent";
+         sudo install -m755 target/release/atlas-api /usr/local/bin/atlas-api && \
+         sudo cp atlas-api.service /etc/systemd/system/atlas-api.service && \
+         sudo systemctl daemon-reload && sudo systemctl enable --quiet atlas-api && \
+         sudo systemctl restart atlas-api && \
+         sleep 1 && systemctl is-active atlas-api";
     if !run_inherit(Command::new("ssh").args([ssh_host(), script])) {
-        eprintln!("{RED}Agent-Installation fehlgeschlagen{RESET}");
+        eprintln!("{RED}Installation der API fehlgeschlagen{RESET}");
         exit(1);
     }
     let host = config().agent_url.as_str();
-    println!("{GREEN}✓ atlas-agent läuft{RESET}  {DIM}(systemd, Autostart an){RESET}");
+    println!("{GREEN}✓ atlas-api läuft{RESET}  {DIM}(systemd, Autostart an){RESET}");
     if !host.is_empty() {
         println!("  {DIM}Metrics:{RESET} http://{host}/api/metrics");
         println!("  {DIM}In der App als Host eintragen:{RESET} {host}");
