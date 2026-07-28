@@ -1,0 +1,18 @@
+[Unit]
+Description=Enable Wake-on-LAN on the atlas NIC
+# The netplan `wakeonlan: true` key is the primary switch; this unit re-asserts
+# it after boot because a driver reset or a resume can drop the NIC back to
+# wake mode `d`, and `atlas boot` from the Mac is the only way back in.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# ExecStop repeats ExecStart on purpose: the setting must survive the shutdown
+# that is about to happen, which is exactly when it is needed.
+ExecStart=/usr/sbin/ethtool -s enp4s0 wol g
+ExecStop=/usr/sbin/ethtool -s enp4s0 wol g
+
+[Install]
+WantedBy=multi-user.target

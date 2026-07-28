@@ -22,11 +22,9 @@ struct ShareBundle: Identifiable {
 /// ```
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [URL]
-    var applicationActivities: [UIActivity]? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items,
-                                 applicationActivities: applicationActivities)
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
 
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}

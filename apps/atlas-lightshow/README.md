@@ -2,7 +2,7 @@
 
 A standalone SwiftUI iPhone app (iOS 26, Liquid Glass) that remote-controls
 the Atlas lightshow rig over a Tailscale tailnet. It talks exclusively to
-[atlas-agent](../../agent/) via plain HTTP; the agent drives the
+[atlas-api](../../api/) via plain HTTP; the API server drives the
 [Art-Net → Hue bridge](../../lightshows/bridge/) that owns the physical
 fixtures, the fog Arduino and the laser/strobe smart plugs.
 
@@ -27,7 +27,7 @@ camera and store server-side.
   20 minutes.
 - **Manual light board** ("Lichter" tab) — six RGB fixtures with tap-toggle
   and color picker, laser and strobe plug toggles, all-on/all-off. The board
-  is pushed as a full 21-channel DMX frame (debounced 100 ms) that the agent
+  is pushed as a full 21-channel DMX frame (debounced 100 ms) that the server
   holds and heartbeats to the bridge — no show required.
 - **Fog** — hold-to-fog with a fail-safe protocol: while pressed, the app
   requests a short 1.5 s fog window every 0.5 s instead of one long window.
@@ -48,7 +48,7 @@ The UI is German-language, portrait-only and dark-only.
 
 All requests go to `http://<host>/...` with an optional
 `Authorization: Bearer <token>` header and an 8 s timeout
-(`Sources/Model/AtlasClient.swift`; verified against `agent/src/main.rs`):
+(`Sources/Model/AtlasClient.swift`; verified against `api/src/main.rs`):
 
 | Endpoint | Purpose |
 |---|---|
@@ -79,7 +79,7 @@ Xcode project is committed, so XcodeGen is only needed after editing
 `project.yml`:
 
 ```bash
-cd apps/atlas-lightshow/AtlasLightshow
+cd apps/atlas-lightshow/ios
 open AtlasLightshow.xcodeproj
 
 # only after changing project.yml:
@@ -98,8 +98,8 @@ The committed project sets `CODE_SIGNING_ALLOWED=NO` and contains no team:
 There are no tests and no CI; this is an Xcode-only target.
 
 On first launch the app opens the Settings sheet automatically (no host is
-configured). Enter the agent host, e.g. `atlas.your-tailnet.ts.net:8787`,
-and a token if the agent runs with `ATLAS_AGENT_TOKEN`. The iPhone must be
+configured). Enter the API host, e.g. `atlas.your-tailnet.ts.net:8787`,
+and a token if the server runs with `ATLAS_API_TOKEN`. The iPhone must be
 on the same tailnet as the server (Tailscale app installed and joined).
 
 ## Configuration
@@ -108,8 +108,8 @@ In-app settings (persisted via `@AppStorage` in `UserDefaults`):
 
 | Key | Default | Purpose |
 |---|---|---|
-| `atlas.host` | empty (Settings opens on first launch) | `host:port` of atlas-agent, e.g. `atlas.your-tailnet.ts.net:8787` |
-| `atlas.token` | empty | Bearer token; only needed when the agent sets `ATLAS_AGENT_TOKEN` |
+| `atlas.host` | empty (Settings opens on first launch) | `host:port` of atlas-api, e.g. `atlas.your-tailnet.ts.net:8787` |
+| `atlas.token` | empty | Bearer token; only needed when the server sets `ATLAS_API_TOKEN` |
 
 Xcode scheme environment variables (demo/screenshot hooks, optional):
 
@@ -119,15 +119,20 @@ Xcode scheme environment variables (demo/screenshot hooks, optional):
 | `ATLAS_DEMO_SHOW` | unset | auto-open the named show's player after the list loads |
 
 Server-side configuration (ports, tokens, hardware) belongs to
-[atlas-agent](../../agent/) and the [lightshows](../../lightshows/) rig;
+[atlas-api](../../api/) and the [lightshows](../../lightshows/) rig;
 machine-level setup (Ubuntu, Tailscale, CUDA, Docker) is covered in
 [docs/SETUP.md](../../docs/SETUP.md).
 
 ## Operational notes
 
 - **Calibration prerequisites**: a show named `calibration` must exist on
-  the server — the repo ships it (`lightshows/shows/calibration.show.json`
-  + `calibration.wav`). `CalibrationView` hardcodes its click schedule
+  the server. The repo ships only the cue sheet
+  (`lightshows/shows/calibration.show.json`); the matching click track
+  `calibration.wav` is **not** tracked (`.gitignore`) — generate it on the
+  server with `python3 lightshows/tools/make_calibration.py`, which writes
+  the `.wav` into the media root (`ATLAS_LIGHTSHOW_MEDIA_DIR`, default
+  `/var/lib/atlas/lightshow-media`) and rewrites the `.show.json`. A fresh
+  clone cannot calibrate until that has run. `CalibrationScreen` hardcodes its click schedule
   (10 clicks at t = 1, 3, …, 19 s), so the show and the app must stay in
   sync. At least 4 of 10 flashes must be matched for a result; the saved
   value lands in `lightshows/calibration.json` and overrides each
@@ -139,14 +144,14 @@ machine-level setup (Ubuntu, Tailscale, CUDA, Docker) is covered in
   as a status row.
 - **Token storage**: the token lives in `UserDefaults`, not the Keychain,
   and is sent as a Bearer header over cleartext HTTP. That is acceptable
-  inside a tailnet, but do not expose the agent beyond it.
+  inside a tailnet, but do not expose the API server beyond it.
 - **Physical hardware**: anyone on the tailnet (with the token, if set) can
   trigger fog, strobe and laser. Keep the fog fail-safe protocol intact.
 
 ## Layout
 
 ```
-AtlasLightshow/
+ios/
   project.yml              XcodeGen spec (edit this, then regenerate)
   AtlasLightshow.xcodeproj Generated project (committed)
   Sources/
@@ -157,12 +162,21 @@ AtlasLightshow/
       LightsModel.swift    manual board state, 21-channel frame, debounced push
       ShowAudio.swift      audio download/playback, FFT bands, latency anchor
     Views/
-      ShowsScreen.swift    show list, bridge badge, create/calibration entry
-      ShowPlayerView.swift player, EdgeGlow, FogHoldButton
-      VisualizerView.swift SceneKit ring visualizer
-      CreateShowSheet.swift YouTube pipeline UI
-      CalibrationView.swift flash detection + offset math
-      LightsScreen.swift   lamp grid, effect cards, fog
-      SettingsView.swift   host + token form
-      Theme.swift          colors, background, GlassCard
+      ShowsScreen.swift       show list, bridge badge, create/calibration entry
+      ShowPlayerScreen.swift  player, EdgeGlow, FogHoldButton
+      VisualizerView.swift    SceneKit ring visualizer
+      CreateShowSheet.swift   YouTube pipeline UI
+      CalibrationScreen.swift flash detection + offset math
+      LightsScreen.swift      lamp grid, effect cards, fog
+      SettingsScreen.swift    host + token form
+      Theme.swift             colors, background, GlassCard
 ```
+
+### Naming
+
+Same convention as the other Atlas apps: `*Screen` is a full-surface
+destination that owns its own `NavigationStack` — a tab root, a pushed
+destination, a full-screen cover or the settings sheet. `*Sheet` is a modal
+auxiliary. Everything else is a component with a plain descriptive name. The
+`View` suffix means one thing only: a type whose job is to wrap UIKit
+(`VisualizerView` is a `UIViewRepresentable`), plus the app shell's `RootView`.

@@ -1,4 +1,4 @@
--- atlas backend — schema v6: the drive domain ("Dateien" in the Storage app).
+-- atlas backend — schema v6: the drive domain ("Dateien" in Atlas Photos).
 -- Same philosophy as assets: content-addressed blobs (SHA-256), dedupe by
 -- construction. Blobs live at ~/drive/blobs/<hash>; rows reference them by
 -- hash, so the same bytes under two names/folders are stored once. Blob

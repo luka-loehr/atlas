@@ -1,7 +1,7 @@
 # atlas-photos pipeline — CPU worker image
 # Handles: thumb, meta, geocode, event_scan
 #
-# NOTE: pipeline source is NOT baked into this image. docker-compose mounts
+# NOTE: pipeline source is NOT baked into this image. docker compose mounts
 # the pipeline directory at /app, so `git pull && docker compose restart`
 # picks up new code without a rebuild. Rebuild only when dependencies change.
 

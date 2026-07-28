@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""report-to-hermes — hand a finished task (or a question) up to the CEO.
+
+Luka never hears from this company directly. Hermes does, and Hermes decides
+what reaches him. This posts your report to Hermes' webhook, which wakes it
+immediately — no waiting for a scheduled check-in.
+
+    report-to-hermes LUK-12 --status done \
+        --report "Borg repo live on the second disk, 527 G photos backed up,
+                  restore drill passed on a 2 GB sample. Nightly at 03:30."
+
+Use it when you close a task, when you are blocked on a decision only Luka can
+make, or when something broke that he would want to know about today. Write it
+for a person: outcome first, plain sentences, the numbers that prove it.
+"""
+
+import argparse
+import hashlib
+import hmac
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+URL = os.environ.get("HERMES_WEBHOOK_URL", "")
+SECRET_FILE = os.path.expanduser("~/.paperclip/hermes-webhook.secret")
+SECRET = os.environ.get("HERMES_WEBHOOK_SECRET", "")
+if not SECRET:
+    try:
+        SECRET = open(SECRET_FILE).read().strip()
+    except OSError:
+        pass
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Report up to Hermes.")
+    p.add_argument("task", help="Task identifier, e.g. LUK-12.")
+    p.add_argument("--report", required=True, help="What happened, in plain sentences.")
+    p.add_argument("--status", default="done",
+                   choices=["done", "in_review", "blocked", "question", "failed"])
+    p.add_argument("--agent", default=os.environ.get("PAPERCLIP_AGENT_NAME", "Luka Labs"))
+    args = p.parse_args()
+
+    if not URL:
+        print("report-to-hermes: HERMES_WEBHOOK_URL is not set "
+              "(see /etc/paperclip-bridge.env)", file=sys.stderr)
+        return 3
+
+    payload = {
+        "task": args.task,
+        "status": args.status,
+        "agent": args.agent,
+        "report": args.report,
+        "ts": int(time.time()),
+    }
+    body = json.dumps(payload).encode()
+
+    headers = {"Content-Type": "application/json"}
+    if SECRET:
+        # V2: timestamp is signed alongside the body so a captured POST can't be replayed.
+        ts = str(int(time.time()))
+        mac = hmac.new(SECRET.encode(), f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
+        headers["X-Webhook-Timestamp"] = ts
+        headers["X-Webhook-Signature-V2"] = mac  # bare hex, no "sha256=" prefix
+
+    try:
+        req = urllib.request.Request(URL, data=body, method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            resp.read()
+        return 0
+    except urllib.error.HTTPError as exc:
+        print(f"report-to-hermes: {exc.code} {exc.read().decode()[:200]}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as exc:
+        # Hermes still finds the work on its scheduled sweep — don't fail the task.
+        print(f"report-to-hermes: Hermes unreachable ({exc}); it will pick this up on "
+              f"its next check-in.", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

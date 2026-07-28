@@ -17,9 +17,9 @@ IP), `aa:bb:cc:dd:ee:ff` (server NIC MAC), `atlas` (server username, home
 | Component | Required for | Notes |
 |---|---|---|
 | x86 server | everything | Any always-available box; idle power is irrelevant because the platform is designed to sleep (Wake-on-LAN). Ethernet strongly recommended — WoL over Wi-Fi is unreliable to nonexistent. |
-| NVIDIA GPU in the server | photo AI pipeline (`pipeline-gpu`: embeddings, faces, tags) and light-show song analysis | Everything else — Postgres, photo server, agent, CPU pipeline, show playback — runs fine without one. ≥ 8 GB VRAM recommended for the vLLM caption stage. |
+| NVIDIA GPU in the server | photo AI pipeline (`pipeline-gpu`: embeddings, faces, tags) and light-show song analysis | Everything else — Postgres, photo server, the API server, CPU pipeline, show playback — runs fine without one. ≥ 8 GB VRAM recommended for the vLLM caption stage. |
 | Mac | the `atlas` CLI, building the iOS apps | The CLI is Unix-only; any Linux workstation works for the CLI, but the iOS apps need Xcode. |
-| iPhone (optional) | the three SwiftUI apps (admin, photos, lightshow) | iOS 26; a free or paid Apple Developer team for device signing. |
+| iPhone (optional) | the four SwiftUI apps (admin, photos, lightshow, agents) | iOS 26; a free or paid Apple Developer team for device signing. |
 | Philips Hue (optional) | light shows | Hue Bridge v2, six color-capable lights in an Entertainment area; optionally two smart plugs (laser/strobe), an Arduino Uno + fog machine. |
 
 ## 2. Server preparation (Ubuntu Server)
@@ -31,7 +31,7 @@ and enable OpenSSH.
 ### SSH
 
 Copy your key and confirm non-interactive login works — the CLI, rsync and
-`atlas agent` all depend on it:
+`atlas api` all depend on it:
 
 ```bash
 ssh-copy-id atlas@192.168.1.100
@@ -119,21 +119,21 @@ practice the driver is enough there too).
 ### Rust toolchain, repo clone, sudoers
 
 ```bash
-# Rust (agent needs >= 1.88: edition 2024)
+# Rust (the API server needs >= 1.88: edition 2024)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # the repo — several defaults assume this exact path
 git clone https://github.com/your-fork/atlas.git ~/atlas
 ```
 
-The clone at `~/atlas` matters: `atlas agent` resets it to `origin/main` and
+The clone at `~/atlas` matters: `atlas api` resets it to `origin/main` and
 builds from it, `atlas build` builds its Docker builder images from it, and
 the photo server/ingest default `PG_ENV_FILE` points into it.
 
-Passwordless sudo: the agent's power endpoints and `atlas shutdown/restart`
-need exactly `poweroff` and `reboot`; `atlas agent` additionally uses
-`systemctl`, `install` and `cp` non-interactively, and `atlas build` uses
-`chown`. Minimal power-only rule:
+Passwordless sudo: the API server's power endpoints and `atlas
+shutdown/restart` need exactly `poweroff` and `reboot`; `atlas api`
+additionally uses `systemctl`, `install`, `cp`, `mv` and `rm`
+non-interactively, and `atlas build` uses `chown`. Minimal power-only rule:
 
 ```
 # /etc/sudoers.d/atlas  (visudo -f)
@@ -163,7 +163,7 @@ tailscale status
 ```
 
 - **Mac:** Tailscale from the App Store or `brew install --cask tailscale`.
-- **iPhone:** Tailscale from the App Store — required for all three iOS apps
+- **iPhone:** Tailscale from the App Store — required for all four iOS apps
   when you are not on the home LAN.
 
 Enable **MagicDNS** in the Tailscale admin console so
@@ -194,18 +194,26 @@ to the Tailscale IP.
 |---|---|---|---|
 | 22/tcp | sshd | all | SSH keys |
 | 5432/tcp | Postgres | `127.0.0.1` only | password (loopback only — remote dev via SSH tunnel) |
-| 8787/tcp | atlas-agent | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_AGENT_TOKEN` |
+| 8787/tcp | atlas-api | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_API_TOKEN` |
 | 8788/tcp | atlas-photos server | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_PHOTOS_TOKEN` |
 | 8093/tcp | embed-api sidecar | `127.0.0.1` only | none (loopback only) |
 | 6454/udp | Art-Net (bridge host) | all | none — LAN only |
+| 53/tcp+udp | AdGuard Home | the tailnet address only (`ATLAS_TAILNET_IP`) — **not** in the firewall table | none — tailnet only |
+| 3053/tcp | AdGuard admin UI | `127.0.0.1` only (reach it via `ssh -L 3053:127.0.0.1:3053 atlas`) | AdGuard's own login |
+| 3100/tcp | paperclip | the tailnet address only (`--bind tailnet`) — **not** in the firewall table | board API key |
+| 3111/tcp | paperclip-bridge | `BRIDGE_BIND`, default `127.0.0.1` — **not** in the firewall table | the same board API key |
+
+The last four rows are confined by their own bind address, not by nftables:
+`scripts/firewall/firewall.nft` matches exactly `{ 8787, 8788 }`. If you move
+any of them onto `0.0.0.0`, nothing stops the LAN from reaching them.
 
 Where the tokens fit:
 
-- **`ATLAS_AGENT_TOKEN`** (agent): without it the agent fails closed —
-  read-only GETs work, but the PTY terminal and every state-changing route
-  are refused. `ATLAS_AGENT_OPEN=1` is the explicit opt-in to run token-less
-  and trust the tailnet + firewall instead. Prefer the token: it protects
-  a root-adjacent shell.
+- **`ATLAS_API_TOKEN`** (atlas-api): without it the API server fails closed —
+  read-only GETs work, but the PTY terminal and every state-changing route are
+  refused. `ATLAS_API_OPEN=1` is the explicit opt-in to run token-less and
+  trust the tailnet + firewall instead. Prefer the token: it protects a
+  root-adjacent shell.
 - **`ATLAS_PHOTOS_TOKEN`** (photo server): the only thing that authorizes a
   mutation. Without it every write — favorite, trash, permanent delete, empty
   trash, upload, all drive writes — is refused, and `ATLAS_PHOTOS_OPEN=1` does
@@ -258,8 +266,8 @@ ATLAS_TAILNET_ADDR=atlas.your-tailnet.ts.net:22
 # Wake-on-LAN: the server NIC's MAC + LAN broadcast address
 ATLAS_WOL_MAC=aa:bb:cc:dd:ee:ff
 ATLAS_WOL_BROADCAST=192.168.1.255:9
-# metrics agent (defaults to the tailnet host + :8787)
-ATLAS_AGENT_URL=atlas.your-tailnet.ts.net:8787
+# atlas-api host:port (defaults to the tailnet host + :8787).
+ATLAS_API_URL=atlas.your-tailnet.ts.net:8787
 EOF
 ```
 
@@ -389,22 +397,27 @@ sudo systemctl enable --now atlas-photos
 curl -s http://127.0.0.1:8788/health         # ok
 ```
 
-### 6.3 iOS app ("Storage")
+### 6.3 iOS app ("Atlas Photos")
 
 On the Mac:
 
 ```bash
 cd ~/atlas/apps/atlas-photos/ios
-# project.yml carries the author's bundle prefix + team — set your own first
-$EDITOR project.yml           # bundleIdPrefix + DEVELOPMENT_TEAM
+# project.yml carries the author's bundle id — set your own first
+$EDITOR project.yml           # bundleIdPrefix + PRODUCT_BUNDLE_IDENTIFIER
 brew install xcodegen && xcodegen generate
-open AtlasPhotos.xcodeproj
+open AtlasPhotos.xcodeproj    # no shared scheme is committed; Xcode autocreates one
 ```
 
 Select your iPhone and build/run (Xcode 26, iOS 26 target). The server host
 is configured inside the app — `atlas.your-tailnet.ts.net:8788` plus the
 bearer token; nothing is compiled in. An ATS exception allows plain HTTP to
 `*.ts.net` hosts (WireGuard already encrypts in-tailnet traffic).
+
+**Schemes, once for all four apps:** no app commits a shared `.xcscheme` and
+no `project.yml` declares a `scheme:`, so every `xcodebuild -scheme <Name>`
+in these docs and in the app READMEs relies on Xcode autocreating the scheme
+the first time the project is opened or built.
 
 ### 6.4 First ingest (Google Takeout)
 
@@ -429,51 +442,128 @@ pipeline jobs; the workers drain the queue whenever the box is awake.
 `ingest_drive.py` does the same for a Takeout **Drive** export, and
 `pipeline/backfill_jobs.py` re-enqueues jobs for existing assets.
 
-## 7. Agent + admin/lightshow apps
+## 7. The API server, the agent platform, and their iOS apps
 
-### 7.1 Agent
+### 7.1 atlas-api
 
-From the Mac, one command builds and installs the agent on the server as a
-systemd service (uses the `~/atlas` clone):
+From the Mac, one command builds and installs the control-plane server on the
+box as a systemd service (it uses the `~/atlas` clone):
 
 ```bash
-atlas agent
+atlas api
 ```
 
-(Manual equivalent: `cargo build --release` in `~/atlas/agent`, install the
-binary to `/usr/local/bin/atlas-agent`, copy `atlas-agent.service` — adjust
-`User=` — then `systemctl enable --now atlas-agent`. See
-[agent/README.md](../agent/README.md).)
+Upgrading a box that ran the predecessor service (`atlas-agent`): both the env
+file and the variables inside it are renamed, because no commit can rewrite a
+file under `/etc` and the failure is silent — the server comes up token-less
+and read-only.
+
+```bash
+sudo mv /etc/atlas-agent.env /etc/atlas-api.env       # only on such a host
+sudo sed -i 's/^ATLAS_AGENT_/ATLAS_API_/' /etc/atlas-api.env
+```
+
+`atlas api` does exactly this and then disables and removes the old unit and
+binary, but only *after* the new build has installed successfully. Running the
+two lines by hand first is harmless and makes the state obvious.
+
+Manual equivalent: `cargo build --release` in `~/atlas/api`, install the binary
+to `/usr/local/bin/atlas-api`, copy `atlas-api.service` — adjust `User=` — then
+`systemctl enable --now atlas-api`. See [api/README.md](../api/README.md).
 
 Token setup on the server:
 
 ```bash
-echo "ATLAS_AGENT_TOKEN=$(openssl rand -hex 32)" | sudo tee /etc/atlas-agent.env
-sudo chmod 600 /etc/atlas-agent.env
-sudo systemctl restart atlas-agent
+echo "ATLAS_API_TOKEN=$(openssl rand -hex 32)" | sudo tee /etc/atlas-api.env
+sudo chmod 600 /etc/atlas-api.env
+sudo systemctl restart atlas-api
 curl -s http://127.0.0.1:8787/health          # {"ok":true}
 ```
 
-The unit loads `/etc/atlas-agent.env` if present. Alternative:
-`ATLAS_AGENT_OPEN=1` (tailnet-trust mode, no token) — see the security
-model in section 3. The agent also serves the light-show control routes; if
-your lightshows checkout is not at `~/atlas/lightshows`, set
-`ATLAS_LIGHTSHOWS_DIR`.
+The unit loads `/etc/atlas-api.env` if present. Alternative:
+`ATLAS_API_OPEN=1` (tailnet-trust mode, no token) — see the security model
+in section 3. atlas-api also serves the light-show control routes; if your
+lightshows checkout is not at `~/atlas/lightshows`, set
+`ATLAS_LIGHTSHOWS_DIR`. The full variable table is in
+[api/README.md](../api/README.md#configuration).
 
-### 7.2 iOS apps (admin "Atlas", "Lightshow")
+Day-to-day: `atlas api logs` (follow the journal), `atlas api status`,
+`atlas api stop`, `atlas api restart`.
 
-Both projects are committed with signing disabled:
+### 7.2 iOS apps ("Atlas Admin", "Atlas Lightshow")
+
+Both projects are committed with signing disabled
+(`CODE_SIGNING_ALLOWED: NO`), so they build for the simulator out of the box:
 
 ```bash
-open ~/atlas/apps/atlas-admin/AtlasCommandCenter/AtlasCommandCenter.xcodeproj
-open ~/atlas/apps/atlas-lightshow/AtlasLightshow/AtlasLightshow.xcodeproj
+open ~/atlas/apps/atlas-admin/ios/AtlasAdmin.xcodeproj
+open ~/atlas/apps/atlas-lightshow/ios/AtlasLightshow.xcodeproj
 ```
 
+Both are generated by XcodeGen from the `project.yml` next to them; re-run
+`xcodegen generate` in that directory after changing it.
+
 For a device build: target → Signing & Capabilities → enable signing, pick
-your team, and change the bundle identifier for your fork (`xcodegen
-generate` resets these — they are Xcode-local changes). In each app's
-settings, point it at the agent: host `atlas.your-tailnet.ts.net:8787` and
-the `ATLAS_AGENT_TOKEN` value. The iPhone must be on the tailnet.
+your team, and change the bundle identifier for your fork. Do it in
+`project.yml`, not in Xcode — `xcodegen generate` overwrites the project file
+and would discard an Xcode-local change. In each app's settings, point it at
+the API server: host `atlas.your-tailnet.ts.net:8787` and the
+`ATLAS_API_TOKEN` value. The iPhone must be on the tailnet.
+
+### 7.3 Agent platform (optional)
+
+Two services back the Atlas Agents app:
+
+- **paperclip** — the agent company itself. Not in this repo: it is installed
+  from npm (`npx -y paperclipai run --bind tailnet`), keeps its state in
+  `~/.paperclip`, and serves its UI and board API on the tailnet at `:3100`.
+- **paperclip-bridge** — the stdlib-only Python service that *is* in this repo.
+  It polls that board on the box, diffs the result, and pushes only the changes
+  to the app over SSE on `:3111`, so the phone never polls.
+
+Bring the bridge up on the server:
+
+```bash
+sudo cp ~/atlas/agents/paperclip-bridge/paperclip-bridge.env.example \
+        /etc/paperclip-bridge.env
+sudo chmod 600 /etc/paperclip-bridge.env
+sudo $EDITOR /etc/paperclip-bridge.env     # every setting is documented in it
+
+sudo cp ~/atlas/agents/paperclip-bridge/paperclip-bridge.service /etc/systemd/system/
+sudo $EDITOR /etc/systemd/system/paperclip-bridge.service   # User=, ExecStart path
+sudo systemctl daemon-reload && sudo systemctl enable --now paperclip-bridge
+curl -s http://127.0.0.1:3111/health
+```
+
+`bridge.py` refuses to start unless `PAPERCLIP_TOKEN`, `PAPERCLIP_COMPANY` and
+`PAPERCLIP_API` are set, and `BRIDGE_BIND` defaults to `127.0.0.1` — set it to
+the tailnet address for the phone to reach it. Roles, CLIs and the known gaps:
+[agents/README.md](../agents/README.md).
+
+### 7.4 iOS app ("Atlas Agents")
+
+This one is different from its three siblings: it signs for the device
+(`CODE_SIGNING_ALLOWED: YES`) and its `project.yml` therefore carries a
+`DEVELOPMENT_TEAM`. Automatic signing with no team fails outright, so a forker
+must substitute their own Apple Team ID there — a Team ID is a public
+identifier, not a secret.
+
+It also needs a secrets file that is deliberately never committed; a fresh
+clone does not compile without it:
+
+```bash
+cd ~/atlas/apps/atlas-agents/ios
+cp Sources/Shared/Secrets.example.swift Sources/Shared/Secrets.swift
+$EDITOR Sources/Shared/Secrets.swift   # board API host + key
+$EDITOR project.yml                    # DEVELOPMENT_TEAM + bundle ids
+brew install xcodegen && xcodegen generate
+open AtlasAgents.xcodeproj
+```
+
+`Secrets.swift` is matched by the repo-wide rule in the root `.gitignore`, so
+it cannot be committed by accident from any app directory. The app talks to
+`paperclip-bridge` on `:3111` and to paperclip on `:3100` — bring those up
+first, see [agents/README.md](../agents/README.md).
 
 ## 8. Light shows
 
@@ -510,7 +600,7 @@ DTLS 1.2 + `PSK-AES128-GCM-SHA256`, and optionally `pyserial` for fog.
 
 ### 8.2 Point the player at the bridge
 
-On whatever machine plays shows (Mac or the agent host), set
+On whatever machine plays shows (Mac or the server), set
 `ATLAS_ARTNET_HOST` or write the bridge host's IP as a single line into
 `lightshows/artnet_host.local` (gitignored).
 
@@ -524,11 +614,13 @@ python3 -u bridge/hue_stream.py
 python3 play.py shows/party-rock.show.json     # hand-designed reference show
 ```
 
-Audio files are not in the repo — put your own MP3 where the show's
-`meta.song_file` expects it (the reference show: `lightshows/music.mp3`).
-Producing shows from new songs (`makeshow.py`, YouTube ingestion, the GPU
-analysis venv at `analyze/.venv`, AI mode) and the `ATLAS`/`ATLAS_DIR`
-SSH constants are covered in the
+Audio files are not in the repo. A show's `meta.song_file` is a bare basename
+that is resolved against the media root `ATLAS_LIGHTSHOW_MEDIA_DIR` (default
+`/var/lib/atlas/lightshow-media`) first, then against `shows/` as a legacy
+fallback — see [section 9](#show-media-a-media-root-not-a-symlink). The
+reference show wants `music.mp3` there. Producing shows from new songs
+(`makeshow.py`, YouTube ingestion, the GPU analysis venv at `analyze/.venv`,
+AI mode), the `atlas` SSH alias and `LIGHTSHOW_REMOTE_DIR` are covered in the
 [lightshows setup](../lightshows/README.md#setup).
 
 ### 8.4 Optional hardware
@@ -537,9 +629,7 @@ SSH constants are covered in the
   fog machine's RF remote. The serial heartbeat auto-stops fog within 1.5 s
   if the bridge dies — fail-safe by design.
 - **Laser / strobe:** plain devices on Hue smart plugs; the compiler solves
-  their warm-up times, the agent force-stops them after shows.
-- **Preview without hardware:** `scripts/export_fseq.py` renders any show
-  for the xLights 3D layout in `lightshows/xlights/`.
+  their warm-up times, and atlas-api force-stops them after every show.
 
 ## 9. Secrets and mutable state live outside the checkout
 
@@ -558,16 +648,16 @@ removes a link, not the credential.
 | `lightshows/calibration.json` | `/var/lib/atlas/lightshow-calibration.json` | `0644 luka:luka` |
 
 `/etc/atlas` holds configuration and secrets; `/var/lib/atlas` holds state a
-service rewrites at runtime (`calibration.json` is written by `atlas-agent`'s
+service rewrites at runtime (`calibration.json` is written by atlas-api's
 `POST /api/calibrate/save`, which writes *through* the symlink).
 
-**These files are owned by `luka`, not `root`.** This differs from
-`/etc/atlas-agent.env`, which is
-root-owned `0600` — that is a systemd `EnvironmentFile=` directive that
-*systemd* reads as root before dropping privileges. The files above are
-opened by the service process itself, and both `lightshow-bridge` and
-`atlas-agent` run as `User=luka`, so root-owned `0600` would make them
-unreadable and the bridge would crash on import.
+**These files are owned by the service account, not by `root`.** This differs
+from `/etc/atlas-api.env` and `/etc/paperclip-bridge.env`, which are root-owned
+`0600` — those are systemd `EnvironmentFile=` directives that *systemd* reads
+as root before dropping privileges. The files above are opened by the service
+process itself, and `lightshow-bridge`, `atlas-api` and `paperclip-bridge` all
+run as an unprivileged `User=`, so root-owned `0600` would make them unreadable
+and the bridge would crash on import.
 
 Adding another one: copy it into the store with the owner/mode above, verify
 with `cmp`, then replace the original with `ln -s`. Do not commit the
@@ -594,7 +684,7 @@ without the variable set still writes somewhere safe.
 
 Writers (`makeshow.py`, `tools/make_calibration.py`) use the media root and
 have **no** fallback, so new media can never land back in the checkout.
-Readers (`lslib/sequence.py:song_path`, the agent's `audio_file()` and
+Readers (`engine/sequence.py:song_path`, atlas-api's `audio_file()` and
 `show_thumb()`) probe the media root first and then `shows/`, so legacy and
 hand-dropped files still play. `meta.song_file` stays a bare basename;
 absolute paths are honoured as-is.
@@ -603,9 +693,6 @@ absolute paths are honoured as-is.
 only `analyze/` is used there — the song is copied in, analysed, and deleted.
 Media is written on whichever machine runs `makeshow.py`, into that machine's
 own media root; the GPU host needs no media root and nothing is synced back.
-
-The pre-move copy is kept at
-`~/backups/atlas-reconcile-20260727/lightshow-shows-media.tar.gz`.
 
 ## Bring-up checklist
 
@@ -618,6 +705,9 @@ The pre-move copy is kept at
 [ ] pipeline containers up, models downloaded, queue draining
 [ ] curl http://atlas.your-tailnet.ts.net:8788/health from the Mac
 [ ] curl http://atlas.your-tailnet.ts.net:8787/health from the Mac
+[ ] systemctl is-active atlas-api atlas-photos   (both active)
+[ ] scripts/firewall/install.sh has run; nft list table inet atlas-fw shows rules
 [ ] iOS apps reach their hosts over the tailnet with tokens set
+[ ] agent platform only: curl http://127.0.0.1:3111/health on the server
 [ ] nothing is port-forwarded on the router
 ```

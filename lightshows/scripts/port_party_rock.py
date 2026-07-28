@@ -8,7 +8,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from lslib import sequence
+from engine import sequence
 
 BEAT = 60000.0 / 130.0
 BAR = 4 * BEAT

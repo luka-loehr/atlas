@@ -22,6 +22,11 @@ reachable from the internet is an amplification weapon, and this box sits
 behind a router whose port forwarding is one checkbox away from making that
 true. The tailnet is the boundary.
 
+That boundary is the publish address and nothing else:
+[atlas-firewall](../../scripts/firewall/) matches only tcp/8787 and tcp/8788,
+so port 53 is not covered by an nftables rule. Bind it wrong and it is open —
+there is no second line of defence here.
+
 The admin UI has no TLS and holds the filter configuration, so it stays on
 loopback. Reach it through an ssh tunnel:
 
@@ -29,9 +34,9 @@ loopback. Reach it through an ssh tunnel:
 ssh -L 3053:127.0.0.1:3053 atlas    # then open http://127.0.0.1:3053
 ```
 
-`atlas-agent` reads the same UI endpoint to report blocked-query counts to the
+`atlas-api` reads the same UI endpoint to report blocked-query counts to the
 iOS app — see `ATLAS_ADGUARD_URL` / `ATLAS_ADGUARD_AUTH` in
-`/etc/atlas-agent.env`. If the admin password changes, that file changes too.
+`/etc/atlas-api.env`. If the admin password changes, that file changes too.
 
 ## Config lives on the host, not in git
 

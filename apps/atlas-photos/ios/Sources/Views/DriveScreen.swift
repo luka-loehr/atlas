@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Dateien tab (drive)
 
-/// Der Google-Drive-Teil der Storage-App: Ordnerbaum + Dateien vom atlas
+/// Der Google-Drive-Teil der Atlas-Photos-App: Ordnerbaum + Dateien vom atlas
 /// (content-addressed Blobs). Root trägt Suche + Papierkorb; jede Ebene kann
 /// hochladen, anlegen, umbenennen, verschieben, löschen.
 struct DriveScreen: View {
@@ -587,7 +587,7 @@ struct DriveMovePicker: View {
 
 // MARK: - Icons
 
-func driveIcon(for name: String) -> (symbol: String, color: Color) {
+private func driveIcon(for name: String) -> (symbol: String, color: Color) {
     let ext = (name as NSString).pathExtension.lowercased()
     switch ext {
     case "pdf": return ("doc.richtext.fill", .red)

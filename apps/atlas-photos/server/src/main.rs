@@ -6,12 +6,12 @@
 //!   GET /api/timeline/summary            [{month:"2024-07", count}]
 //!   GET /api/timeline?before=&limit=     newest-first cursor pages
 //!   GET /api/albums                      [{id, title, count, cover}]
-//!   GET /api/albums/:id/assets
+//!   GET /api/albums/{id}/assets
 //!   GET /api/search?q=                   persons + places + tags + filename +
 //!                                        year, with Qwen3-VL semantic fill-in
-//!   GET /api/assets/:id/thumb/512|2048   WebP, Cache-Control: immutable
-//!   GET /api/assets/:id/original
-//!   GET /api/assets/:id/stream           Range streaming (AVPlayer)
+//!   GET /api/assets/{id}/thumb/{512|2048} WebP, Cache-Control: immutable
+//!   GET /api/assets/{id}/original
+//!   GET /api/assets/{id}/stream          Range streaming (AVPlayer)
 
 mod countries;
 mod drive;
@@ -469,7 +469,7 @@ async fn album_assets(State(app): State<App>, Path(id): Path<i64>) -> Result<Jso
     Ok(Json(serde_json::json!({ "items": items })))
 }
 
-/// GitHub-style Aktivitäts-Heatmap: Foto-Anzahl pro Tag, letzte ~53 Wochen.
+/// GitHub-style activity heatmap: photo count per day for the last ~53 weeks.
 async fn heatmap(State(app): State<App>) -> Result<Json<serde_json::Value>, Api> {
     let c = app.pool.get().await?;
     let rows = c
@@ -955,8 +955,10 @@ fn safe_ext(name: &str) -> &'static str {
 /// one id (ON CONFLICT DO NOTHING). The optional X-Content-Hash header is only
 /// an integrity check (reject on mismatch). Headers: X-Content-Hash (optional
 /// SHA256 for verification), X-Filename (original name), X-Taken-At (unix
-/// seconds, optional). Stores bytes at originals/YYYY/MM/<id>_<name>, enqueues a
-/// 'thumb' ingest job, source='iphone'. Known content -> {"exists":true}.
+/// seconds, optional). Stores bytes at originals/YYYY/MM/<id>.<ext> (extension
+/// whitelisted by `safe_ext`, never the client's name) and enqueues four ingest
+/// jobs — thumb (priority 10), meta (20), embed and faces (default) —
+/// source='iphone'. Known content -> {"exists":true}.
 async fn upload(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Result<Response, Api> {
     let id = sha256_hex(&body);
     // Optional integrity check: if the client sent a hash, it must match ours.

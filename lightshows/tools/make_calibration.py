@@ -14,7 +14,7 @@ import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from lslib import sequence
+from engine import sequence
 
 SHOWS = os.path.join(ROOT, "shows")            # tracked: the .show.json
 MEDIA = sequence.media_dir()                   # the .wav, outside the checkout

@@ -21,16 +21,6 @@ struct SettingsScreen: View {
     @State private var confirmTrash = false
     @State private var thumbCache = ThumbCache()
 
-    init(library: Library,
-         onSyncNow: @escaping () -> Void = {},
-         onCleanupDevice: @escaping () -> Void = {},
-         onEmptyTrash: @escaping () -> Void = {}) {
-        self.library = library
-        self.onSyncNow = onSyncNow
-        self.onCleanupDevice = onCleanupDevice
-        self.onEmptyTrash = onEmptyTrash
-    }
-
     var body: some View {
         NavigationStack {
             Form {

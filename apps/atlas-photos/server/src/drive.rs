@@ -1,4 +1,4 @@
-//! Drive — the "Dateien" domain of the Storage app. Folder tree + content-
+//! Drive — the "Dateien" domain of Atlas Photos. Folder tree + content-
 //! addressed blobs (SHA-256, like assets). Blobs live at {drive_dir}/blobs/
 //! <hash>; identical bytes are stored once and removal is refcounted against
 //! the drive_files rows.

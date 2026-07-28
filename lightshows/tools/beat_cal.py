@@ -16,7 +16,7 @@ import os, socket, struct, subprocess, sys, time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE))
-from lslib.rig import ARTNET_TARGET   # env ATLAS_ARTNET_HOST / artnet_host.local
+from engine.rig import ARTNET_TARGET   # env ATLAS_ARTNET_HOST / artnet_host.local
 
 MP3 = os.path.join(BASE, "music.mp3")
 FPS = 25

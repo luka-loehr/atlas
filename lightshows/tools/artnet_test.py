@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sends a 10s rainbow chase as Art-Net DMX to localhost:6454 (simulates xLights)."""
+"""Sends a 10s rainbow chase as Art-Net DMX to localhost:6454 (simulates a player)."""
 import colorsys, socket, struct, sys, time
 
 DURATION = float(sys.argv[1]) if len(sys.argv) > 1 else 10.0

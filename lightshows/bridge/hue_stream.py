@@ -20,7 +20,7 @@ DMX channel map (1-based):
   16-18  R,G,B  light 23  Regal Rechts
   19            fog: value >= 128 -> fog on (heartbeat to Arduino)
 """
-import json, os, signal, socket, ssl, struct, subprocess, sys, threading, time, urllib.request
+import json, os, signal, socket, ssl, struct, subprocess, threading, time, urllib.request
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 CRED = json.load(open(os.path.join(BASE, "credentials.json")))

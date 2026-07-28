@@ -4,7 +4,7 @@ Confines the two private HTTP services to loopback and the tailnet:
 
 | Port | Service | What is exposed without this |
 |---|---|---|
-| 8787 | `atlas-agent` | metrics, Docker overview, power control (writes are token-gated) |
+| 8787 | `atlas-api` | metrics, Docker overview, power control (writes are token-gated) |
 | 8788 | `atlas-photos` | the whole 24k-photo library — timeline, search, originals, drive |
 
 Both listeners bind `0.0.0.0`/`[::]`, and `atlas-photos` runs with
@@ -27,7 +27,7 @@ the day a bind changes to `[::]` the LAN does not silently regain access.
 ./install.sh
 ```
 
-Copies `atlas-firewall.nft` to `/etc/atlas/firewall.nft`, syntax-checks it,
+Copies `firewall.nft` to `/etc/atlas/firewall.nft`, syntax-checks it,
 installs and enables `atlas-firewall.service`. Re-run it after editing the
 ruleset — the file is idempotent, so re-loading replaces the table rather than
 stacking rules.

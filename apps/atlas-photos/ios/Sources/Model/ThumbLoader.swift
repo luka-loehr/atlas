@@ -290,8 +290,6 @@ final class ThumbCache {
     var storedCount = 0
     var storedBytes: Int64 = 0
 
-    var enabled: Bool { ThumbLoader.shared.persistentEnabled }
-
     init() { refresh() }
 
     func refresh() {

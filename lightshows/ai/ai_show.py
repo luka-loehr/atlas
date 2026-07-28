@@ -25,7 +25,7 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from lslib import sequence  # noqa: E402
+from engine import sequence  # noqa: E402
 
 # Gemini API key: GEMINI_API_KEY env var wins; otherwise read from the file at
 # ATLAS_GEMINI_KEY_FILE (default ~/.config/atlas-ai/gemini.key).

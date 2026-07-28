@@ -7,8 +7,8 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
-from lslib import sequence
-from lslib.player import Player
+from engine import sequence
+from engine.player import Player
 
 def main():
     spec = importlib.util.spec_from_file_location(

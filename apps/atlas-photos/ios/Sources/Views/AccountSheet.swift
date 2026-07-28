@@ -46,7 +46,7 @@ struct AccountSheet: View {
                 heat = Dictionary(days.map { ($0.d, $0.n) }, uniquingKeysWith: { a, _ in a })
             }
         }
-        .sheet(isPresented: $showSync) { if let sync { SyncProgressView(sync: sync) } }
+        .sheet(isPresented: $showSync) { if let sync { SyncProgressScreen(sync: sync) } }
     }
 
     private var settingsLink: some View {

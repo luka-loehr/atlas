@@ -1,0 +1,24 @@
+[Unit]
+Description=Atlas API server
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The account the API server runs as — adjust to your deployment. It needs the
+# `docker` group for /api/docker, and passwordless sudo for exactly
+# `poweroff` and `reboot` if the power endpoints should work.
+User=atlas
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/local/bin/atlas-api
+# Optional env file (may be absent): ATLAS_API_TOKEN (bearer token —
+# strongly recommended), ATLAS_API_BIND / ATLAS_API_PORT, and the other
+# ATLAS_* overrides (see the README). Without a token the server refuses all
+# state-changing routes unless ATLAS_API_OPEN=1 explicitly opts into
+# trusting the tailnet/firewall instead.
+EnvironmentFile=-/etc/atlas-api.env
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
