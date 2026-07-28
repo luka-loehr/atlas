@@ -21,8 +21,9 @@ session, not a wrapper.
 | `atlas restart` (`reboot`) | `sudo reboot`, wait for the box to go down and come back |
 | `atlas status` | up/down, plus which route answered (LAN or tailnet) |
 | `atlas build [args...]` | build the current project on the server in a builder image; extra args are appended to the build command |
-| `atlas dev` | start the project's dev server on the server behind a public tunnel |
-| `atlas dev url` / `dev logs` / `dev stop` | print the tunnel URL / follow the dev-server logs / stop server + tunnel |
+| `atlas dev` | start the project's dev server on the server, published on the tailnet |
+| `atlas dev --public` (`--tunnel`) | expose it through a public cloudflared quick tunnel instead |
+| `atlas dev url` / `dev logs` / `dev stop` | print whichever URL is live / follow the dev-server logs / stop server, tunnel and serve config |
 | `atlas agent` | build + install the metrics agent on the server (systemd service) |
 | `atlas agent logs\|status\|stop\|restart` | manage the `atlas-agent` service |
 | `atlas help` | usage |
@@ -81,7 +82,7 @@ image     = "node"           # required — builder key: node | lambda | flutter
 dir       = "."              # subdir (relative to this file) the build runs in
 build     = "npm run build"  # build command (required for `atlas build`)
 dev       = "npm run dev"    # dev-server command (required for `atlas dev`)
-port      = 3000             # dev-server port to tunnel (default 3000)
+port      = 3000             # port the dev server listens on (default 3000)
 artifacts = "dist"           # whitespace-separated paths to copy back (required for `atlas build`)
 ```
 
@@ -107,27 +108,45 @@ alphanumeric for `name`/`image`); paths must be relative (no leading `/` or
 
 ## Remote dev servers (`atlas dev`)
 
-`atlas dev` syncs the project like `build`, then starts two detached
-containers on the server:
+`atlas dev` syncs the project like `build`, then starts `atlas-dev-<name>`:
+the install step for the project's lockfile followed by `<dev>`, with
+`--network host`, `HOST=0.0.0.0` and `PORT=<port>`.
 
-- `atlas-dev-<name>` — runs `npm install && <dev>` with `--network host`,
-  `HOST=0.0.0.0` and `PORT=<port>`. The `npm install` prefix is unconditional,
-  so dev mode currently assumes a Node project.
-- `atlas-tunnel-<name>` — a `cloudflared` quick tunnel (no Cloudflare account
-  needed) exposing `http://localhost:<port>`. The `cloudflared` binary comes
-  from the project's builder image, and only the `node` image ships it —
-  another reason dev mode is Node-only today.
+By default the dev server is published **on the tailnet only**, via
+`tailscale serve` on the server:
 
-The CLI polls the tunnel logs for up to 60 s and prints the public
-`https://….trycloudflare.com` URL. Re-running `atlas dev` re-syncs and
-restarts both containers; the synced source lives at `~/atlas-builds/<name>`
-on the server if you want to edit it in place (a later re-sync overwrites
-those edits).
+```
+https://<tailnet host>:<port>      # e.g. https://atlas.tail1aba20.ts.net:20841
+```
 
-Security note: the quick-tunnel URL is public and unauthenticated — anyone who
-has it reaches your dev server — and `--network host` also opens the dev port
-on every server interface. Both containers use `--restart unless-stopped` and
-survive reboots until you run `atlas dev stop`.
+The host comes from `ATLAS_TAILNET_ADDR`; the port is derived from the project
+`name` (FNV-1a, band 20000–20999), so it is the same on every restart and two
+projects do not collide. That matters for everything that has to know the URL
+up front — OAuth redirect URIs, webhook targets, Next.js `allowedDevOrigins`.
+It is a port and not a path prefix because frameworks emit absolute asset URLs
+(`/_next/static/…`) that a prefix would break. `tailscaled` runs on the host,
+not in the container, so the CLI sets this over SSH with `sudo tailscale serve`
+(passwordless sudo, same as the post-build `chown`). No wait loop is needed:
+the URL is computed, not discovered — it answers 502 until the dev server is
+actually up (`atlas dev logs`).
+
+`atlas dev --public` (or `--tunnel`) skips that and starts a second container,
+`atlas-tunnel-<name>`, running a `cloudflared` quick tunnel (no Cloudflare
+account needed) against `http://localhost:<port>`. The CLI polls its logs for
+up to 60 s and prints the `https://….trycloudflare.com` URL. That URL is
+public, unauthenticated and random again on every start — hence opt-in. If
+`ATLAS_TAILNET_ADDR` is unset or still the placeholder, `atlas dev` says so and
+falls back to the tunnel.
+
+Re-running `atlas dev` re-syncs and restarts everything, including the serve
+config, so switching between the two modes is just the flag. The synced source
+lives at `~/atlas-builds/<name>` on the server if you want to edit it in place
+(a later re-sync overwrites those edits).
+
+Security note: `--network host` opens the dev port on every server interface
+regardless of mode. Containers use `--restart unless-stopped` and the serve
+config is persistent host state — both survive reboots until `atlas dev stop`,
+which removes the containers *and* turns the serve port off.
 
 ## Metrics agent (`atlas agent`)
 

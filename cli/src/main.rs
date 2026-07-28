@@ -26,6 +26,10 @@ const RESET: &str = "\x1b[0m";
 
 /// Placeholder MAC — set ATLAS_WOL_MAC to your server's real MAC for `boot`.
 const DEFAULT_WOL_MAC: &str = "aa:bb:cc:dd:ee:ff";
+/// Placeholder tailnet address — set ATLAS_TAILNET_ADDR to the real
+/// `<host>.<tailnet>.ts.net:22`. Without it the tailnet ssh route is skipped
+/// and `atlas dev` has no host to publish its URL on.
+const DEFAULT_TAILNET_ADDR: &str = "atlas.your-tailnet.ts.net:22";
 
 /// Runtime configuration. Every value resolves from, in order: a real
 /// environment variable, the optional file `~/.config/atlas/env` (plain
@@ -50,6 +54,20 @@ fn ssh_host() -> &'static str {
     &config().ssh_host
 }
 
+/// The host part of ATLAS_TAILNET_ADDR ("atlas.tail1aba20.ts.net:22" → the
+/// name without the ssh port), or None when the route is switched off or the
+/// value is still the shipped placeholder. `atlas dev` builds its URL from
+/// this, so a machine that never configured the tailnet gets the tunnel.
+fn tailnet_host() -> Option<&'static str> {
+    let host = host_of(&config().tailnet_addr);
+    if host.is_empty() || host == host_of(DEFAULT_TAILNET_ADDR) { None } else { Some(host) }
+}
+
+/// "host:port" → "host" (a bare "host" is returned unchanged).
+fn host_of(addr: &str) -> &str {
+    addr.rsplit_once(':').map_or(addr, |(h, _)| h)
+}
+
 impl Config {
     fn load() -> Config {
         let file = env_file_vars();
@@ -62,9 +80,9 @@ impl Config {
             eprintln!("{RED}ATLAS_WOL_MAC ungültig:{RESET} {mac_str} (Format: aa:bb:cc:dd:ee:ff)");
             exit(1);
         };
-        let tailnet_addr = get("ATLAS_TAILNET_ADDR", "atlas.your-tailnet.ts.net:22");
+        let tailnet_addr = get("ATLAS_TAILNET_ADDR", DEFAULT_TAILNET_ADDR);
         // ATLAS_AGENT_URL defaults to the tailnet host with the agent's port 8787
-        let tailnet_host = tailnet_addr.rsplit_once(':').map_or(tailnet_addr.as_str(), |(h, _)| h);
+        let tailnet_host = host_of(&tailnet_addr);
         let agent_default =
             if tailnet_host.is_empty() { String::new() } else { format!("{tailnet_host}:8787") };
         Config {
@@ -151,8 +169,10 @@ fn help() {
          atlas restart      reboot, wait until back\n  \
          atlas status       up/down + route (LAN/tailnet)\n  \
          atlas build        build this project on atlas (needs .atlas-build.toml)\n  \
-         atlas dev          run its dev server on atlas + public tunnel URL\n  \
-         atlas dev stop     stop the dev server + tunnel\n  \
+         atlas dev          run its dev server on atlas, reachable on the tailnet\n  \
+         atlas dev --public expose it publicly instead (cloudflared, random URL)\n  \
+         atlas dev url      print the URL of the running dev server\n  \
+         atlas dev stop     stop the dev server + tunnel + serve config\n  \
          atlas dev logs     follow the dev-server logs\n  \
          atlas secrets push env-file for this project (never synced, 0600 on atlas)\n  \
          atlas secrets list/rm  show which projects have one / drop it\n  \
@@ -832,15 +852,19 @@ fn build(extra: &[String]) {
     }
 }
 
-// ---- atlas dev: run a dev server on atlas behind a public tunnel ----------
+// ---- atlas dev: run a dev server on atlas, on the tailnet by default ------
 
 fn dev(sub: &[String]) {
     let cfg = load_config();
     match sub.first().map(String::as_str) {
         Some("stop") => dev_stop(&cfg),
-        Some("url") => println!("{}", dev_url(&cfg).unwrap_or_else(|| "(kein Tunnel aktiv)".into())),
+        Some("url") => {
+            println!("{}", dev_url(&cfg).unwrap_or_else(|| "(kein dev-Server aktiv)".into()))
+        }
         Some("logs") => dev_logs(&cfg),
-        _ => dev_start(&cfg),
+        // `--tunnel` is the old mental model ("gib mir den Tunnel"), `--public`
+        // says what actually changes: the dev server leaves the tailnet.
+        _ => dev_start(&cfg, sub.iter().any(|a| a == "--public" || a == "--tunnel")),
     }
 }
 
@@ -848,8 +872,51 @@ fn dev_names(cfg: &BuildCfg) -> (String, String) {
     (format!("atlas-dev-{}", cfg.name), format!("atlas-tunnel-{}", cfg.name))
 }
 
-/// Scrape the public URL out of the tunnel container's logs.
+/// The HTTPS port `tailscale serve` publishes this project's dev server on.
+///
+/// Derived from the project name so it survives restarts — that is the whole
+/// point of the tailnet path: OAuth redirects, webhooks and Next.js'
+/// allowedDevOrigins are configured once instead of after every start. Port
+/// and not a path prefix (`/dairo-frontend/`) because frameworks emit absolute
+/// asset URLs like `/_next/static/...`, which a prefix silently breaks.
+///
+/// The band avoids collisions in both directions: 443 on atlas is taken by
+/// another service, ports below 20000 are where the box's own services sit
+/// (8788 photos, 8787 metrics agent), and Linux hands out 32768+ as ephemeral
+/// source ports.
+fn tailnet_port(name: &str) -> u16 {
+    // FNV-1a, four lines and no dependency. Deliberately not std's hasher:
+    // that one is free to change its output between Rust releases, which would
+    // silently move every project's URL on the next `cargo install`.
+    let mut h: u32 = 0x811c_9dc5;
+    for b in name.as_bytes() {
+        h = (h ^ u32::from(*b)).wrapping_mul(0x0100_0193);
+    }
+    20000 + (h % 1000) as u16
+}
+
+/// Whichever URL currently serves this project: the tailnet one when its serve
+/// config is up, otherwise the tunnel's.
 fn dev_url(cfg: &BuildCfg) -> Option<String> {
+    tailnet_url(cfg).or_else(|| tunnel_url(cfg))
+}
+
+/// The tailnet URL, but only if `tailscale serve` is really publishing it —
+/// `atlas dev url` must not print an address that answers nothing.
+fn tailnet_url(cfg: &BuildCfg) -> Option<String> {
+    let host = tailnet_host()?;
+    let port = tailnet_port(&cfg.name);
+    // `serve status` is readable without sudo and prints one `https://host:port`
+    // line per published port; anchor the match so the proxy target lines
+    // ("|-- / proxy http://127.0.0.1:3000") cannot match a port by accident.
+    let up = ssh_capture(&format!(
+        "tailscale serve status 2>/dev/null | grep -qE '^https://[^ ]+:{port}([ /]|$)' && echo up"
+    ));
+    (up.trim() == "up").then(|| format!("https://{host}:{port}"))
+}
+
+/// Scrape the public URL out of the tunnel container's logs.
+fn tunnel_url(cfg: &BuildCfg) -> Option<String> {
     let (_, tunnel) = dev_names(cfg);
     let out = ssh_capture(&format!(
         "docker logs {tunnel} 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | head -1"
@@ -858,9 +925,22 @@ fn dev_url(cfg: &BuildCfg) -> Option<String> {
     if url.is_empty() { None } else { Some(url.to_string()) }
 }
 
+/// Drop this project's serve config. Unlike the containers, it is host state:
+/// tailscaled persists it and re-publishes the port after a reboot, so leaving
+/// it behind would advertise a dead port forever. `off` on a port that has no
+/// handler exits 1 — expected, hence the discarded status.
+fn tailnet_serve_off(cfg: &BuildCfg) {
+    if tailnet_host().is_none() {
+        return;
+    }
+    let port = tailnet_port(&cfg.name);
+    ssh_ok(&format!("sudo tailscale serve --https={port} off >/dev/null 2>&1"));
+}
+
 fn dev_stop(cfg: &BuildCfg) {
     let (dev, tunnel) = dev_names(cfg);
     ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
+    tailnet_serve_off(cfg);
     println!("{GREEN}dev gestoppt{RESET} ({})", cfg.name);
 }
 
@@ -873,7 +953,7 @@ fn dev_logs(cfg: &BuildCfg) -> ! {
     exit(1);
 }
 
-fn dev_start(cfg: &BuildCfg) {
+fn dev_start(cfg: &BuildCfg, public: bool) {
     if cfg.dev.is_empty() {
         eprintln!("{RED}.atlas-build.toml hat kein dev = ...{RESET}");
         exit(1);
@@ -885,8 +965,19 @@ fn dev_start(cfg: &BuildCfg) {
     sync_to_atlas(cfg);
     let (dev, tunnel) = dev_names(cfg);
 
-    // fresh start
+    // Without a tailnet host there is nothing to publish on, so the public
+    // tunnel is the only way out — say why rather than failing.
+    let tailnet = if public { None } else { tailnet_host() };
+    if !public && tailnet.is_none() {
+        println!(
+            "{DIM}ATLAS_TAILNET_ADDR ist nicht gesetzt oder noch der Platzhalter \
+             (~/.config/atlas/env) — ohne Tailnet-Host bleibt nur der öffentliche Tunnel{RESET}"
+        );
+    }
+
+    // fresh start — the serve config too, because it outlives the containers
     ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
+    tailnet_serve_off(cfg);
 
     // dev server: --network host so it binds atlas' real port; node_modules
     // persist in the synced dir, so the install is warm after the first run.
@@ -914,7 +1005,54 @@ fn dev_start(cfg: &BuildCfg) {
         exit(1);
     }
 
-    // public tunnel via cloudflared quick tunnel (no account, no config)
+    match tailnet {
+        Some(host) => dev_expose_tailnet(cfg, host),
+        None => dev_expose_tunnel(cfg, &spec),
+    }
+    println!("{DIM}  dev-Server läuft auf atlas ({}), Mac bleibt kühl.{RESET}", cfg.name);
+    println!("{DIM}  Code live bearbeiten:  ssh {}   → ~/{}{RESET}", ssh_host(), cfg.remote_dir());
+    println!("{DIM}  Logs:  atlas dev logs   ·   Stop:  atlas dev stop{RESET}");
+}
+
+/// Publish the dev server on the tailnet.
+///
+/// tailscaled runs on atlas' host, not in the container, so the serve config
+/// is set over ssh; a container has no way to reach the local API socket.
+/// sudo because writing the serve config is root-only unless the box has run
+/// `tailscale set --operator=$USER` — the same passwordless sudo `atlas build`
+/// already needs for its chown.
+///
+/// No wait loop here: this URL is computed from the config, not discovered in
+/// a log, so there is nothing to wait for. It answers 502 until the install
+/// and the dev server are through, which `atlas dev logs` shows.
+fn dev_expose_tailnet(cfg: &BuildCfg, host: &str) {
+    let port = tailnet_port(&cfg.name);
+    let ok = ssh_ok(&format!(
+        "sudo tailscale serve --bg --https={port} http://127.0.0.1:{dev} >/dev/null",
+        dev = cfg.port
+    ));
+    if !ok {
+        eprintln!("{RED}tailscale serve fehlgeschlagen{RESET} (Port {port})");
+        eprintln!(
+            "{DIM}  läuft tailscaled auf atlas, und ist HTTPS im Tailnet aktiviert?\n  \
+             Alternative: atlas dev --public{RESET}"
+        );
+        exit(1);
+    }
+    println!("\n  {GREEN}https://{host}:{port}{RESET}\n");
+    println!("{DIM}  nur im Tailnet erreichbar, direkt über WireGuard — und die URL{RESET}");
+    println!("{DIM}  bleibt gleich, taugt also für OAuth-Redirects und Webhooks.{RESET}");
+    println!("{DIM}  Öffentlich stattdessen:  atlas dev --public{RESET}");
+}
+
+/// Public cloudflared quick tunnel (no account, no config) — opt-in, because
+/// it puts an unauthenticated dev server with this project's secrets on the
+/// open internet, under a subdomain that is random again on every start.
+///
+/// The URL only exists once cloudflared has registered it with the edge, so
+/// unlike the tailnet path this one has to wait for it to show up in the log.
+fn dev_expose_tunnel(cfg: &BuildCfg, spec: &ImageSpec) {
+    let (_, tunnel) = dev_names(cfg);
     let run_tunnel = format!(
         "docker run -d --name {tunnel} --network host --restart unless-stopped \
          {tag} cloudflared tunnel --no-autoupdate --url http://localhost:{port} >/dev/null",
@@ -930,7 +1068,7 @@ fn dev_start(cfg: &BuildCfg) {
     io::stdout().flush().ok();
     let mut url = None;
     for _ in 0..30 {
-        if let Some(u) = dev_url(cfg) {
+        if let Some(u) = tunnel_url(cfg) {
             url = Some(u);
             break;
         }
@@ -938,22 +1076,16 @@ fn dev_start(cfg: &BuildCfg) {
         io::stdout().flush().ok();
         sleep(Duration::from_secs(2));
     }
-    match url {
-        Some(u) => {
-            println!(" {GREEN}✓{RESET}");
-            println!("\n  {GREEN}{u}{RESET}\n");
-            println!("{DIM}  dev-Server läuft auf atlas ({}), Mac bleibt kühl.{RESET}", cfg.name);
-            println!("{DIM}  Code live bearbeiten:  ssh {}   → ~/{}{RESET}", ssh_host(), cfg.remote_dir());
-            println!("{DIM}  Logs:  atlas dev logs   ·   Stop:  atlas dev stop{RESET}");
-        }
-        None => {
-            println!(" {RED}keine URL{RESET}");
-            eprintln!("Tunnel-Logs:");
-            let (_, t) = dev_names(cfg);
-            print!("{}", ssh_capture(&format!("docker logs {t} 2>&1 | tail -20")));
-            exit(1);
-        }
-    }
+    let Some(u) = url else {
+        println!(" {RED}keine URL{RESET}");
+        eprintln!("Tunnel-Logs:");
+        print!("{}", ssh_capture(&format!("docker logs {tunnel} 2>&1 | tail -20")));
+        exit(1);
+    };
+    println!(" {GREEN}✓{RESET}");
+    println!("\n  {GREEN}{u}{RESET}\n");
+    println!("{DIM}  öffentlich erreichbar, ohne Login — die Subdomain ist bei jedem{RESET}");
+    println!("{DIM}  Start eine andere.{RESET}");
 }
 
 // ---- atlas agent: metrics server for the iOS app --------------------------

@@ -46,12 +46,21 @@ build command in the matching image with a per-image cache volume
 `CARGO_HOME`, `npm_config_cache`, `PUB_CACHE`, `XDG_CACHE_HOME`,
 `GRADLE_USER_HOME`), then rsyncs the declared artifact directories back.
 
-`atlas dev` instead starts two long-running containers on the server:
-`atlas-dev-<name>` (install + `<dev command>`, `--network host`) and
-`atlas-tunnel-<name>` (a cloudflared quick tunnel that prints a public
-`trycloudflare.com` URL). The install step is chosen from the lockfile in
-the project (`bun.lock*` → bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` →
-yarn, otherwise npm) unless the config sets `install` explicitly.
+`atlas dev` instead starts a long-running container on the server,
+`atlas-dev-<name>` (install + `<dev command>`, `--network host`). The
+install step is chosen from the lockfile in the project (`bun.lock*` →
+bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, otherwise npm) unless
+the config sets `install` explicitly.
+
+By default that container is published on the tailnet only, with
+`tailscale serve` on the host — `https://<tailnet host>:<port>`, the port
+derived from the project `name` so it stays the same across restarts.
+`atlas dev --public` instead starts a second container,
+`atlas-tunnel-<name>`, running a cloudflared quick tunnel that prints a
+public `trycloudflare.com` URL. That is why the `dev` target carries
+cloudflared while `build` does not: a build container cannot open a
+tunnel, and the tailnet path needs nothing inside the image at all
+(`tailscaled` runs on the host).
 
 ## Secrets
 
@@ -93,7 +102,7 @@ A flat `key = "value"` file at the project root of whatever you build:
 | `artifacts` | for `atlas build` | space-separated directory paths (relative to the project root) copied back after the build |
 | `dev` | for `atlas dev` | dev-server command |
 | `install` | no (default: detect) | dependency install run before `dev`; override when the lockfile is not the whole story |
-| `port` | no (default `3000`) | dev-server port the tunnel forwards |
+| `port` | no (default `3000`) | port the dev server listens on; what `tailscale serve` (or the tunnel) forwards to |
 
 ## Operational notes
 
