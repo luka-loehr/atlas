@@ -12,14 +12,11 @@
 #   ./disk-guard.sh --require-free  exit 1 if below the build floor (pre-build gate)
 #   ./disk-guard.sh --json          machine-readable state on stdout
 #
-# Alerts go to Hermes via report-to-hermes, and to the journal at err priority.
+# Alerts go to the journal at err priority.
 # State lives in $STATE_DIR so the next run can measure the burn rate.
 #
-# This guard only measures and reports. The one thing it may delete is a cargo
-# build tree, and only at the emergency threshold, and only by handing off to
-# cargo-reaper.service, which has its own safety floor and never touches a tree
-# an agent is still building in. It never touches ~/photos, ~/drive/blobs,
-# Postgres or /srv/backups.
+# This guard only measures and reports. It never deletes anything and never
+# touches ~/photos, ~/drive/blobs, Postgres or /srv/backups.
 
 set -uo pipefail
 
@@ -50,10 +47,6 @@ PROJECT_MIN="${DISK_GUARD_PROJECT_MIN:-60}"
 # Re-send an unchanged alert at most this often (seconds).
 RENOTIFY_SEC="${DISK_GUARD_RENOTIFY_SEC:-21600}" # 6 h
 
-# Hand off to cargo-reaper at the emergency threshold.
-EMERGENCY_REAP="${DISK_GUARD_EMERGENCY_REAP:-1}"
-
-TASK="${DISK_GUARD_TASK:-atlas-disk-guard}"
 # Free-text appended to every report. Used by the self-test so a deliberately
 # provoked alert is distinguishable from a real one by whoever receives it.
 NOTE="${DISK_GUARD_NOTE:-}"
@@ -169,8 +162,6 @@ case "$mode" in
     require)
         if ((avail_gib < FLOOR_GIB)); then
             echo "disk-guard: REFUSING — ${avail_gib} G free on $MOUNT is below the ${FLOOR_GIB} G floor." >&2
-            echo "  Reclaim first:  ~/atlas/scripts/cargo-reaper/reap.sh          # dry run" >&2
-            echo "                  sudo systemctl start cargo-reaper.service    # apply" >&2
             exit 1
         fi
         echo "disk-guard: ok — ${avail_gib} G free (floor ${FLOOR_GIB} G)"
@@ -182,20 +173,6 @@ esac
 
 echo "$line"
 write_json
-
-emergency_note=""
-if [[ $level == emergency && $EMERGENCY_REAP == 1 ]]; then
-    echo "disk-guard: emergency — handing off to cargo-reaper.service"
-    if reap_out=$(sudo -n systemctl start cargo-reaper.service 2>&1); then
-        read -r _ _ used2 avail2 _ < <(df -P -B1 "$MOUNT" | tail -1)
-        freed=$(((avail2 - avail) / GIB))
-        emergency_note=" Ran cargo-reaper: reclaimed ${freed} G, now $((avail2 / GIB)) G free."
-        echo "disk-guard: reaper done, reclaimed ${freed} G"
-    else
-        emergency_note=" cargo-reaper could not be started: ${reap_out}"
-        echo "disk-guard: reaper failed: $reap_out" >&2
-    fi
-fi
 
 send=0 kind=""
 if [[ $level != ok ]]; then
@@ -209,31 +186,19 @@ elif [[ $last_alert_level != ok ]]; then
 fi
 
 if ((send)); then
-    case "$level" in
-        emergency | critical) status=failed ;;
-        warn) status=in_review ;;
-        *) status=done ;;
-    esac
     if [[ $kind == recovery ]]; then
         report="atlas root is back under the thresholds: ${pct}% used, ${avail_gib} G free of ${total_gib} G. Previous alert level was ${last_alert_level}."
     else
         report="atlas root disk ${level}${kind:+ (${kind})}: ${reason}. ${used_gib} G used of ${total_gib} G, ${avail_gib} G free, burning ${burn_gib_min} G/min."
         ((proj_min >= 0)) && report+=" At that rate the ${FLOOR_GIB} G build floor is ${proj_min} min away."
-        report+=" This is the only disk on the box — Postgres, the photo library and every backup share it.${emergency_note}"
-        report+=" Reclaim: ~/atlas/scripts/cargo-reaper/reap.sh (dry run), sudo systemctl start cargo-reaper.service (apply)."
+        report+=" This is the only disk on the box — Postgres, the photo library and every backup share it."
     fi
     [[ -n $NOTE ]] && report="$NOTE $report"
     # "<3>" is journald's err priority prefix (SyslogLevelPrefix defaults to yes),
     # so the alert shows up in `journalctl -p err -b`. Run by hand it prints
     # literally; that is the only cost.
     echo "<3>$report" >&2
-    if report-to-hermes "$TASK" --status "$status" --report "$report" > /dev/null 2>&1; then
-        echo "disk-guard: reported to hermes ($kind, status=$status)"
-        last_alert_ts=$now last_alert_level=$level
-    else
-        echo "disk-guard: report-to-hermes FAILED — alert only in the journal" >&2
-        # Do not record the alert as sent; the next run retries.
-    fi
+    last_alert_ts=$now last_alert_level=$level
 fi
 
 mkdir -p "$STATE_DIR"

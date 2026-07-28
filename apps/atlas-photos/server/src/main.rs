@@ -657,8 +657,8 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
     //    140 -> 666, "hair" 112 -> 626, "flower" 146 -> 405). Deliberately left
     //    alone: the cutoff exists to avoid spending the 1-3 s query embedding
     //    where it buys nothing, and 1.2% of generic terms is not worth it.
-    //    Re-run the measurement if tag matching changes again — method is on
-    //    ISSUE-26, and an independent re-derivation on the same day landed within
+    //    Re-run the measurement if tag matching changes again — an independent
+    //    re-derivation on the same day landed within
     //    a couple of terms of the numbers above.
     if items.len() < 150 {
         if let Some(vec) = text_embedding(&term).await {

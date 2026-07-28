@@ -333,7 +333,7 @@ class FaceStage:
 
 # ---------------------------------------------------------------- caption ---
 
-# Two hard-won constraints, both from ISSUE-10 backfill measurements:
+# Two hard-won constraints, both from backfill measurements:
 #
 # 1. No concrete example values. The old dog-on-the-beach example JSON came
 #    back verbatim for >half the library, so the shape uses placeholders only
