@@ -92,7 +92,7 @@ safe to run repeatedly).
 
 ## Configuration
 
-Host-side `.env` next to `docker-compose.yml` (compose interpolation):
+Host-side `.env` next to `compose.yml` (compose interpolation):
 
 | Variable | Default | Purpose |
 |---|---|---|

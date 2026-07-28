@@ -1,6 +1,21 @@
+# Postgres 17 + pgvector — the data foundation for atlas-photos and the
+# knowledge graph.
+#
+#   docker compose up -d
+#   docker compose logs -f
+#
+# The project name is set explicitly. Without it compose derives one from the
+# directory, which here is "docker" — a name that says nothing and collides
+# with every other stack checked out into a docker/ folder. The volume is
+# therefore atlas-backend_pgdata.
+name: atlas-backend
+
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    # Pinned by tag AND digest: the tag says which version this is, the digest
+    # is what actually gets pulled, so a re-tagged upstream cannot change the
+    # database engine under a live library. Bump both together.
+    image: pgvector/pgvector:pg17@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
     container_name: atlas-postgres
     restart: unless-stopped
     environment:

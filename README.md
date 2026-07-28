@@ -22,8 +22,8 @@ Art-Net. No cloud, no subscriptions — your hardware, your tailnet, your data.
 |---|---|
 | [`cli/`](cli/) | Rust CLI for the Mac: `atlas` \| `boot` (Wake-on-LAN) \| `shutdown` \| `status` \| `build` \| `dev` \| any remote command |
 | [`agent/`](agent/) | `atlas-agent` — dependency-free Rust server (port 8787): metrics, WebSocket PTY terminal, Docker overview, power control, light-show & fog control |
-| [`agents/`](agents/) | The atlas agents platform: long-running AI agents on the box — first resident: **hermes** (gateway + WhatsApp bridge, full state migrated from the Mac) |
 | [`backend/`](backend/) | The data foundation: Postgres 17 + pgvector in Docker — media library, knowledge graph, embeddings, resumable ingest queue |
+| [`infra/`](infra/) | Machine-level services that are not part of an app: [AdGuard Home](infra/adguard/), the tailnet's DNS resolver |
 | [`apps/atlas-admin/`](apps/atlas-admin/) | iOS app **Atlas** (SwiftUI): dashboard, real terminal, Docker, VPN/exit-node stats, activity heatmap |
 | [`apps/atlas-lightshow/`](apps/atlas-lightshow/) | iOS app **Lightshow**: play shows, AI show creation, manual per-light control, hold-to-fog |
 | [`apps/atlas-photos/`](apps/atlas-photos/) | iOS app **Storage**: self-hosted Google Photos + Drive — Rust/axum server, SwiftUI client, GPU AI pipeline (faces, semantic photo *and* video search) |

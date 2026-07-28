@@ -1,0 +1,35 @@
+# AdGuard Home — DNS for the tailnet, and the exit node's resolver.
+#
+# Config and state live OUTSIDE this repo (bind mounts, see below): the conf
+# directory holds the admin password hash and the upstream/filter setup, so it
+# is deliberately not tracked. Point ATLAS_ADGUARD_DIR somewhere else in a .env
+# next to this file if the box ever keeps it elsewhere.
+#
+#   docker compose up -d          # start / apply a change
+#   docker compose pull && docker compose up -d   # update after bumping the pin
+name: atlas-adguard
+
+services:
+  adguard:
+    # Pinned by tag AND digest: the tag says which version this is, the digest
+    # is what actually gets pulled, so a re-tagged upstream image cannot change
+    # what runs here. Bump both together.
+    image: adguard/adguardhome:v0.107.78@sha256:1ea34eafe5dc691007946e8eaab7bf46b0de9412f39213d8c06e48b53bf9a6c5
+    container_name: adguard
+    restart: unless-stopped
+    volumes:
+      - ${ATLAS_ADGUARD_DIR:-/home/luka/adguard}/conf:/opt/adguardhome/conf
+      - ${ATLAS_ADGUARD_DIR:-/home/luka/adguard}/work:/opt/adguardhome/work
+    ports:
+      # DNS is published on the tailnet address only — never the LAN, never
+      # 0.0.0.0. An open resolver on the internet is an amplification weapon.
+      # tailscaled must own this address before the container starts; on boot
+      # that ordering holds, and restart: unless-stopped covers the race if it
+      # ever does not.
+      - "${ATLAS_TAILNET_IP:-100.x.y.z}:53:53/tcp"
+      - "${ATLAS_TAILNET_IP:-100.x.y.z}:53:53/udp"
+      # Admin UI on loopback only. Reach it over the ssh tunnel:
+      #   ssh -L 3053:127.0.0.1:3053 atlas   ->  http://127.0.0.1:3053
+      # atlas-agent also reads it from here (ATLAS_ADGUARD_URL in
+      # /etc/atlas-agent.env) to report blocked-query stats.
+      - "127.0.0.1:3053:3000/tcp"

@@ -301,6 +301,30 @@ only; for remote development tunnel it:
 `ssh atlas -L 5432:localhost:5432`. Schema design, consumers and backup
 notes: [backend/README.md](../backend/README.md).
 
+### 5.1 Compose conventions
+
+Three container stacks run on this box, and they follow the same three rules
+so that `docker ps` is readable and a rebuild is reproducible:
+
+| Stack | Directory | Project name |
+|---|---|---|
+| Postgres + pgvector | `backend/docker/` | `atlas-backend` |
+| Photos AI pipeline | `apps/atlas-photos/pipeline/` | `atlas-pipeline` |
+| AdGuard Home | `infra/adguard/` | `atlas-adguard` |
+
+1. **The file is `compose.yml`.** Not `docker-compose.yml`, which is the v1
+   spelling.
+2. **The project name is set explicitly** with a top-level `name:`. Compose
+   otherwise derives it from the directory, which produced a stack literally
+   called `docker` — meaningless in `docker ps`, and worse, the project name
+   prefixes the volume names, so renaming a directory can orphan a database.
+3. **Images are pinned by tag *and* digest.** The tag is for humans, the
+   digest is what gets pulled. A re-tagged upstream image cannot change what
+   runs here. Bump both halves together.
+
+Third-party images are pinned; the two pipeline images are built from local
+Dockerfiles and carry no digest.
+
 ## 6. Photos stack
 
 Order: pipeline (needs the schema from step 5) → Rust server → iOS app →
@@ -538,8 +562,8 @@ service rewrites at runtime (`calibration.json` is written by `atlas-agent`'s
 `POST /api/calibrate/save`, which writes *through* the symlink).
 
 **These files are owned by `luka`, not `root`.** This differs from
-`/etc/atlas-agent.env` and `/etc/atlas-bridge.env`, which are
-root-owned `0600` — those are systemd `EnvironmentFile=` directives that
+`/etc/atlas-agent.env`, which is
+root-owned `0600` — that is a systemd `EnvironmentFile=` directive that
 *systemd* reads as root before dropping privileges. The files above are
 opened by the service process itself, and both `lightshow-bridge` and
 `atlas-agent` run as `User=luka`, so root-owned `0600` would make them
@@ -581,7 +605,7 @@ Media is written on whichever machine runs `makeshow.py`, into that machine's
 own media root; the GPU host needs no media root and nothing is synced back.
 
 The pre-move copy is kept at
-`~/backups/atlas-reconcile-ISSUE-44/lightshow-shows-media.tar.gz`.
+`~/backups/atlas-reconcile-20260727/lightshow-shows-media.tar.gz`.
 
 ## Bring-up checklist
 
