@@ -302,17 +302,91 @@ const REMOTE_BASE: &str = "atlas-builds"; // relative to atlas' $HOME
 struct BuildCfg {
     root: PathBuf,          // dir holding .atlas-build.toml == rsync root
     name: String,           // remote build dir name
-    image: String,          // builder key: lambda | node | flutter
+    image: String,          // builder key: universal | mobile | node | lambda | flutter
     dir: String,            // subdir (relative to root) the build runs in
     build: String,          // build command (for `atlas build`)
     dev: String,            // dev-server command (for `atlas dev`)
+    install: String,        // dependency install for `atlas dev` ("" = detect)
     port: u16,              // dev-server port to tunnel
     artifacts: Vec<String>, // paths (relative to root) to copy back
 }
 
+/// What `docker build` needs to produce one image, and what to run it as.
+///
+/// The universal Dockerfile emits several targets from one file so they share
+/// layers; the older single-language builders have no targets at all. Both
+/// shapes resolve through here so the callers only ever deal with a tag.
+struct ImageSpec {
+    tag: String,            // docker tag to run
+    context: String,        // build context, relative to the atlas checkout
+    target: Option<String>, // multi-stage target, if the context has any
+}
+
+impl ImageSpec {
+    /// The `docker build` invocation that produces this image.
+    fn build_cmd(&self) -> String {
+        match &self.target {
+            Some(t) => format!("docker build --target {t} -t {} {}", self.tag, self.context),
+            None => format!("docker build -t {} {}", self.tag, self.context),
+        }
+    }
+}
+
+/// Resolve a config `image` key into the image that should run it.
+///
+/// `dev` picks the variant with cloudflared in it — the build target
+/// deliberately has no tunnel binary, so a build container cannot open one.
+/// Keys other than the universal ones map to the old one-directory-per-image
+/// builders unchanged, so configs written against those keep working.
+fn image_spec(key: &str, dev: bool) -> ImageSpec {
+    match key {
+        "universal" | "mobile" => {
+            // mobile carries the Flutter/Android SDK and is the same image for
+            // build and dev: it is expensive enough that splitting it again to
+            // add a tunnel binary would not pay for itself.
+            let target = if key == "mobile" {
+                "mobile"
+            } else if dev {
+                "dev"
+            } else {
+                "build"
+            };
+            ImageSpec {
+                tag: format!("atlas-universal-{}", if target == "build" { "builder" } else { target }),
+                context: "builder/universal".into(),
+                target: Some(target.into()),
+            }
+        }
+        _ => ImageSpec {
+            tag: format!("atlas-{key}-builder"),
+            context: format!("builder/{key}"),
+            target: None,
+        },
+    }
+}
+
 impl BuildCfg {
-    fn tag(&self) -> String {
-        format!("atlas-{}-builder", self.image)
+    fn spec(&self, dev: bool) -> ImageSpec {
+        image_spec(&self.image, dev)
+    }
+
+    /// How `atlas dev` installs dependencies before starting the dev server.
+    ///
+    /// Detected from the lockfile inside the container instead of assumed,
+    /// because the answer differs per project and getting it wrong is not a
+    /// no-op: running `npm install` over a bun or pnpm project writes a second
+    /// dependency tree next to the real one. An explicit `install = ...` in
+    /// the config wins, for the repos where the lockfile is not the whole
+    /// story.
+    fn install_cmd(&self) -> String {
+        if !self.install.is_empty() {
+            return self.install.clone();
+        }
+        "if [ -f bun.lockb ] || [ -f bun.lock ]; then bun install --frozen-lockfile; \
+         elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; \
+         elif [ -f yarn.lock ]; then corepack enable && yarn install --immutable; \
+         else npm install --no-fund --no-audit; fi"
+            .into()
     }
     fn workdir(&self) -> String {
         if self.dir == "." {
@@ -347,6 +421,7 @@ fn load_config() -> BuildCfg {
         dir: ".".into(),
         build: String::new(),
         dev: String::new(),
+        install: String::new(),
         port: 3000,
         artifacts: Vec::new(),
     };
@@ -365,6 +440,7 @@ fn load_config() -> BuildCfg {
             "dir" => c.dir = v,
             "build" => c.build = v,
             "dev" => c.dev = v,
+            "install" => c.install = v,
             "port" => {
                 c.port = v.parse().unwrap_or_else(|_| {
                     eprintln!("{RED}.atlas-build.toml: ungültiger port{RESET} ({v})");
@@ -474,16 +550,16 @@ fn ensure_up() {
     boot();
 }
 
-/// Build the builder image for `key` on atlas if it is not there yet.
-fn ensure_image(key: &str) {
-    let tag = format!("atlas-{key}-builder");
+/// Build the builder image on atlas if it is not there yet.
+fn ensure_image(spec: &ImageSpec) {
+    let tag = &spec.tag;
     if ssh_ok(&format!("docker image inspect {tag} >/dev/null 2>&1")) {
         return;
     }
     println!("{DIM}Image {tag} fehlt — baue es auf atlas (einmalig, ein paar Minuten){RESET}");
     let ok = run_inherit(Command::new("ssh").args([
         ssh_host(),
-        &format!("cd ~/atlas && git pull --quiet --ff-only && docker build -t {tag} builder/{key}"),
+        &format!("cd ~/atlas && git pull --quiet --ff-only && {}", spec.build_cmd()),
     ]));
     if !ok {
         eprintln!("{RED}Image-Build fehlgeschlagen{RESET}");
@@ -531,7 +607,8 @@ fn build(extra: &[String]) {
         exit(1);
     }
     ensure_up();
-    ensure_image(&cfg.image);
+    let spec = cfg.spec(false);
+    ensure_image(&spec);
     sync_to_atlas(&cfg);
 
     let mut buildcmd = cfg.build.clone();
@@ -555,10 +632,10 @@ fn build(extra: &[String]) {
         base = REMOTE_BASE,
         img = cfg.image,
         wd = cfg.workdir(),
-        tag = cfg.tag(),
+        tag = spec.tag,
         cmd = shq(&buildcmd),
     );
-    println!("{DIM}build on atlas ({}):{RESET} {buildcmd}", cfg.tag());
+    println!("{DIM}build on atlas ({}):{RESET} {buildcmd}", spec.tag);
     let t0 = Instant::now();
     let ok = run_inherit(Command::new("ssh").args([ssh_host(), &remote]));
     let secs = t0.elapsed().as_secs();
@@ -586,7 +663,7 @@ fn build(extra: &[String]) {
         "{GREEN}✓ build fertig{RESET} in {}m {:02}s  {DIM}(atlas, {}){RESET}",
         secs / 60,
         secs % 60,
-        cfg.tag()
+        spec.tag
     );
     for art in &cfg.artifacts {
         println!("  → {}", cfg.root.join(art).display());
@@ -640,7 +717,8 @@ fn dev_start(cfg: &BuildCfg) {
         exit(1);
     }
     ensure_up();
-    ensure_image(&cfg.image);
+    let spec = cfg.spec(true);
+    ensure_image(&spec);
     sync_to_atlas(cfg);
     let (dev, tunnel) = dev_names(cfg);
 
@@ -648,8 +726,12 @@ fn dev_start(cfg: &BuildCfg) {
     ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
 
     // dev server: --network host so it binds atlas' real port; node_modules
-    // persist in the synced dir, so `npm install` is warm after the first run.
-    let devcmd = format!("npm install --no-fund --no-audit && {}", cfg.dev);
+    // persist in the synced dir, so the install is warm after the first run.
+    //
+    // The install step is picked from the lockfile rather than hardcoded to
+    // npm: a bun or pnpm project used to get `npm install` run over it, which
+    // either fails or silently produces a second, wrong dependency tree.
+    let devcmd = format!("{} && {}", cfg.install_cmd(), cfg.dev);
     let run_dev = format!(
         "docker run -d --name {dev} --network host --restart unless-stopped \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
@@ -660,7 +742,7 @@ fn dev_start(cfg: &BuildCfg) {
         base = REMOTE_BASE,
         img = cfg.image,
         wd = cfg.workdir(),
-        tag = cfg.tag(),
+        tag = spec.tag,
         cmd = shq(&devcmd),
     );
     if !ssh_ok(&run_dev) {
@@ -672,7 +754,7 @@ fn dev_start(cfg: &BuildCfg) {
     let run_tunnel = format!(
         "docker run -d --name {tunnel} --network host --restart unless-stopped \
          {tag} cloudflared tunnel --no-autoupdate --url http://localhost:{port} >/dev/null",
-        tag = cfg.tag(),
+        tag = spec.tag,
         port = cfg.port,
     );
     if !ssh_ok(&run_tunnel) {

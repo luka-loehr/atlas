@@ -2,15 +2,39 @@
 
 Dockerfiles for the images that [`atlas build` and `atlas dev`](../cli/)
 run on the server. The CLI builds them lazily: on first use it runs
-`ssh <host> "cd ~/atlas && git pull --quiet --ff-only && docker build -t
-atlas-<key>-builder builder/<key>"`, then reuses the image. Manual rebuild
-is the same `docker build` on the server.
+`ssh <host> "cd ~/atlas && git pull --quiet --ff-only && docker build
+[--target <target>] -t <tag> builder/<context>"`, then reuses the image.
+Manual rebuild is the same `docker build` on the server.
 
-| Key | Image tag | Base | Purpose |
+## Images
+
+`universal` is the one to use. It carries every toolchain these repos
+build with, so a project that mixes two languages — a pnpm workspace next
+to a Rust worker — has an image that covers it.
+
+| Key | Image tag | Target | Contents |
 |---|---|---|---|
-| `lambda` | `atlas-lambda-builder` | `rust:1-bookworm` | cross-compiles Rust for AWS Lambda on Graviton (`aarch64-unknown-linux-gnu`) via cargo-lambda + Zig — the Zig sysroot decides the ABI, so an x86 server produces the same artifact a Mac would |
-| `node` | `atlas-node-builder` | `node:22-bookworm-slim` | Node/Next.js builds and dev servers; also ships `cloudflared` for the public dev tunnel |
-| `flutter` | `atlas-flutter-builder` | `ghcr.io/cirruslabs/flutter:stable` | Flutter + Android SDK (licenses pre-accepted) for APK/AAB builds |
+| `universal` | `atlas-universal-builder` | `build` | Node 22 + npm/pnpm/yarn (corepack) + Bun, Rust stable + `aarch64-unknown-linux-gnu` + cargo-lambda/Zig, Go, Python 3 + uv, JDK, and the usual native build deps (clang, cmake, ninja, protobuf, openssl/sqlite headers) |
+| `universal` (dev) | `atlas-universal-dev` | `dev` | the above **+ cloudflared**, used automatically by `atlas dev` |
+| `mobile` | `atlas-universal-mobile` | `mobile` | the above **+ Flutter SDK + Android SDK** (licenses pre-accepted) |
+
+All three come from one [`universal/Dockerfile`](universal/Dockerfile) and
+share layers, so holding all of them costs roughly what holding the
+largest one does.
+
+`mobile` is a separate target rather than part of `build` because the
+Flutter and Android SDKs are ~10 G, while everything else fits in a few.
+atlas has one 950 G volume that was 75% full when this was written, with
+[disk-guard](../scripts/disk-guard/) warning at 85% — so the languages
+every repo uses stay cheap, and the mobile stack is only materialised when
+a project actually asks for it.
+
+### Superseded
+
+`lambda`, `node` and `flutter` still resolve to their own one-directory
+images so existing configs keep working, but new configs should use
+`universal` / `mobile`. Once nothing references them, the images can be
+dropped from the server with `docker image rm`.
 
 ## How a build runs
 
@@ -23,11 +47,11 @@ build command in the matching image with a per-image cache volume
 `GRADLE_USER_HOME`), then rsyncs the declared artifact directories back.
 
 `atlas dev` instead starts two long-running containers on the server:
-`atlas-dev-<name>` (`npm install && <dev command>`, `--network host`) and
+`atlas-dev-<name>` (install + `<dev command>`, `--network host`) and
 `atlas-tunnel-<name>` (a cloudflared quick tunnel that prints a public
-`trycloudflare.com` URL). Since the dev flow hardcodes `npm install` and
-only the node image ships cloudflared, `atlas dev` effectively requires
-`image = "node"`.
+`trycloudflare.com` URL). The install step is chosen from the lockfile in
+the project (`bun.lock*` → bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` →
+yarn, otherwise npm) unless the config sets `install` explicitly.
 
 ## Configuration — `.atlas-build.toml`
 
@@ -36,11 +60,12 @@ A flat `key = "value"` file at the project root of whatever you build:
 | Key | Required | Meaning |
 |---|---|---|
 | `name` | yes | remote build dir (`~/atlas-builds/<name>`) and container name suffix |
-| `image` | yes | builder key: `lambda` \| `node` \| `flutter` |
+| `image` | yes | builder key: `universal` \| `mobile` (or the superseded `lambda` \| `node` \| `flutter`) |
 | `dir` | no (default `.`) | subdirectory the build/dev command runs in |
 | `build` | for `atlas build` | build command run inside the container |
 | `artifacts` | for `atlas build` | space-separated directory paths (relative to the project root) copied back after the build |
 | `dev` | for `atlas dev` | dev-server command |
+| `install` | no (default: detect) | dependency install run before `dev`; override when the lockfile is not the whole story |
 | `port` | no (default `3000`) | dev-server port the tunnel forwards |
 
 ## Operational notes
@@ -48,10 +73,13 @@ A flat `key = "value"` file at the project root of whatever you build:
 - Builds run as root inside the container; afterwards the CLI runs
   `sudo chown -R` on the build tree, so the server-side user needs
   passwordless sudo (see [docs/SETUP.md](../docs/SETUP.md)).
-- The images are base-pinned, not fully pinned: `rust:1` and
-  `flutter:stable` track their channels, and cloudflared is fetched from
-  the latest GitHub release at image-build time. Rebuilding an image moves
-  it to current versions.
+- The images are base-pinned, not fully pinned: `node:22`, `rust:1`,
+  `golang:1` and `flutter:stable` track their channels, and Bun and
+  cloudflared are fetched at image-build time. Rebuilding moves an image
+  to current versions; do it deliberately.
+- `git config --system --add safe.directory '*'` is set in the image
+  because builds run as root over a tree owned by the ssh user, and
+  anything that shells out to git would otherwise refuse to run.
 - Caches persist across builds per image (`.cache-<image>`), and
   `node_modules` survives inside the synced build dir on the server, so
   second builds are warm.
