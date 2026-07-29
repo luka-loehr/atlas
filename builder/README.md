@@ -111,6 +111,40 @@ warns with both short SHAs and starts anyway — you asked for the built target,
 not for the newest code. `atlas start status` shows the branch, commit, build
 time, whether it is running, and whether it is stale.
 
+## Running things on atlas — `test`, `exec`, `run`
+
+`atlas build` produces an artifact and leaves it on the server; these three
+*execute* on the server and stream it back, **propagating the command's exit
+code**. That turns atlas from a build box into an execute box — the point being
+that the command runs from atlas' network position, with atlas' secrets, while
+the Mac stays cold. All three share `build`'s flags (`--local`, `--path`,
+`--target`, `-b`), inject the same secrets, and run with `--network host`.
+
+```
+atlas test [-b B] [-- args]   run the project's tests (cargo/npm test, or `test =`)
+atlas exec [-b B] -- CMD       fresh-sync the tree, then run CMD in the build root
+atlas run  [-b B] -- CMD       run CMD against the ALREADY-built tree (no sync, no rebuild)
+```
+
+- **`test`** and **`exec`** sync first, exactly like `build`: `--local` rsyncs
+  the working tree, otherwise the branch worktree is hard-reset to
+  `origin/<branch>`. Because that can pull the rug out from a running
+  `atlas start` on the same branch, a running app is stopped for the duration
+  and restarted after — the same dance `build` does. `test` picks its command
+  from `test =` or the lockfile (`cargo test`, else `<pm> test`); anything after
+  `--` is forwarded to the runner, and a second `--` reaches the test binary
+  (`atlas test -- -- --nocapture` → `cargo test -- --nocapture`).
+- **`run`** does **not** sync — it runs against what `atlas build` last left, so
+  the produced binary is still there. Give the command as a path so it is
+  unambiguous which binary runs: `atlas run --path security/tests/rt-harness --local
+  -- ./target/release/attack-money --secret-file /tmp/s`. Running against a tree
+  that was never built is an error that names the build to run first.
+
+`exec`/`run` take a **program and its arguments**, not a shell line — each token
+is passed through verbatim, so arguments with spaces survive and nothing is
+re-split or glob-expanded on the server. For shell features (pipes, `&&`,
+redirection) invoke a shell explicitly: `atlas exec -- sh -c 'a && b'`.
+
 ## How a dev server runs
 
 `atlas dev [-b <branch>]` starts a long-running container on the server,
@@ -170,6 +204,7 @@ A flat `key = "value"` file at the project root of whatever you build:
 | `image` | yes | builder key: `universal` \| `mobile` — nothing else resolves |
 | `dir` | no (default `.`) | subdirectory the build/dev command runs in |
 | `build` | for `atlas build` | build command run inside the container |
+| `test` | no (default: detected) | test command for `atlas test`; when absent, `cargo test` for a Rust crate, else the JS package manager's `test` script |
 | `artifacts` | for `atlas build` | space-separated paths (relative to the project root) the build must produce; verified after the build and recorded in the target's state |
 | `dev` | for `atlas dev` | dev-server command |
 | `install` | no (default: from the lockfile) | dependency install run before `dev`; override when the lockfile is not the whole story |
@@ -177,7 +212,7 @@ A flat `key = "value"` file at the project root of whatever you build:
 | `repo` | no (default: the checkout's `origin`) | git URL the server clones; `git@host:owner/repo.git` is normalised to https so the server's stored credentials apply |
 | `port` | no (default `3000`) | port the server listens on; what `tailscale serve` (or the tunnel) forwards to |
 
-Those ten keys are the whole schema — anything else in the file is ignored,
+Those eleven keys are the whole schema — anything else in the file is ignored,
 and an `image` outside `universal` / `mobile` is an error rather than a
 fallback. When `install` is absent, `atlas dev` picks the package manager from
 the lockfile it finds in `dir`:

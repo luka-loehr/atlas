@@ -155,6 +155,9 @@ fn main() {
         Some("restart") | Some("reboot") => restart(),
         Some("status") => status(),
         Some("build") => build(&args[1..]),
+        Some("test") => test(&args[1..]),
+        Some("exec") => exec(&args[1..]),
+        Some("run") => run(&args[1..]),
         Some("dev") => dev(&args[1..]),
         Some("start") => start(&args[1..]),
         Some("api") => api(&args[1..]),
@@ -185,6 +188,10 @@ fn help() {
          atlas build --path D  Unterordner D als Build-Root bauen (eigene .atlas-build.toml)\n  \
          atlas build --target T  benanntes Ziel [target.T] aus der Root-Konfig bauen\n  \
          atlas build … -- …   alles nach '--' geht an den Build-Befehl\n  \
+         atlas test  [-b B]   Tests auf atlas laufen lassen (cargo/npm test), Exit-Code kommt zurück\n  \
+         atlas exec  [-b B] -- CMD   frisch syncen, dann CMD im Build-Root auf atlas ausführen\n  \
+         atlas run   [-b B] -- CMD   ein GEBAUTES Artefakt auf atlas ausführen (kein Rebuild, kein Sync)\n  \
+         {DIM}test/exec/run teilen --local | --path D | --target T mit build; laufen mit --network host{RESET}\n  \
          atlas dev   [-b B]   dev-Server dieses Branches auf atlas, im Tailnet\n  \
          atlas dev --public   stattdessen öffentlich (cloudflared, zufällige URL)\n  \
          atlas dev   [-b B] url|logs|stop\n  \
@@ -360,6 +367,7 @@ struct BuildCfg {
     image: String,          // builder key: universal | mobile
     dir: String,            // subdir (relative to the repo root) the build runs in
     build: String,          // build command (for `atlas build`)
+    test: String,           // test command ("" = detect) for `atlas test`
     dev: String,            // dev-server command (for `atlas dev`)
     start: String,          // run-the-built-artifact command ("" = detect)
     install: String,        // dependency install for `atlas dev` ("" = detect)
@@ -446,6 +454,24 @@ impl BuildCfg {
          elif [ -f pnpm-lock.yaml ]; then pnpm start; \
          elif [ -f yarn.lock ]; then yarn start; \
          else npm run start; fi"
+            .into()
+    }
+    /// The default command for `atlas test`, when no `test = ...` is set.
+    ///
+    /// Detected inside the container in the same spirit as start_cmd: Cargo for
+    /// a Rust crate, else the JS package manager's `test` script. Every arm
+    /// forwards `"$@"`, and an explicit `test = ...` does too, so
+    /// `atlas test -- <args>` reaches the runner (the caller prefixes
+    /// `set -- <args>`).
+    fn test_cmd(&self) -> String {
+        if !self.test.is_empty() {
+            return format!("{} \"$@\"", self.test);
+        }
+        "if [ -f Cargo.toml ]; then cargo test \"$@\"; \
+         elif [ -f bun.lockb ] || [ -f bun.lock ]; then bun test \"$@\"; \
+         elif [ -f pnpm-lock.yaml ]; then pnpm test \"$@\"; \
+         elif [ -f yarn.lock ]; then yarn test \"$@\"; \
+         else npm test \"$@\"; fi"
             .into()
     }
     fn workdir(&self) -> String {
@@ -583,6 +609,7 @@ fn load_config_selected(sub: Option<&str>, target: Option<&str>) -> BuildCfg {
         image: String::new(),
         dir: ".".into(),
         build: String::new(),
+        test: String::new(),
         dev: String::new(),
         start: String::new(),
         install: String::new(),
@@ -714,6 +741,7 @@ fn apply_kv(c: &mut BuildCfg, k: &str, v: &str) {
         "image" => c.image = v,
         "dir" => c.dir = v,
         "build" => c.build = v,
+        "test" => c.test = v,
         "dev" => c.dev = v,
         "start" => c.start = v,
         "install" => c.install = v,
@@ -1549,6 +1577,180 @@ fn build(argv: &[String]) {
     } else {
         println!("{DIM}  starten:  atlas start{}{RESET}", if branch == "main" { String::new() } else { format!(" -b {branch}") });
     }
+}
+
+// ---- atlas test / exec / run: execute on atlas, not just build there ------
+//
+// `atlas build` makes an artifact and leaves it on the server. These three run
+// something there and stream it back, propagating the command's exit code —
+// turning atlas from a build box into an execute box. The red-team harness is
+// the motivating case: its tests and its attack binaries want to run from
+// atlas' network position, with atlas' secrets, while the Mac stays cold.
+//
+//   test   fresh-sync the tree, then run `cargo test`/`npm test` (or `test =`)
+//   exec   fresh-sync the tree, then run an arbitrary `-- CMD`
+//   run    run `-- CMD` against the ALREADY-built tree — no sync, no rebuild
+//
+// exec is the primitive; test and exec share the sync path, run skips it.
+
+/// `atlas test [flags] [-- <args>]` — run the project's tests on atlas.
+fn test(argv: &[String]) {
+    let flags = take_build_flags(argv);
+    reject_local_with_branch(&flags, argv);
+    let (branch, extra) = take_branch(&flags.rest);
+    let cfg = load_config_at(flags.path.as_deref(), flags.target.as_deref());
+    // Prefix `set -- <args>` so the detected/`test =` command's `"$@"` picks up
+    // anything after `--` (e.g. `atlas test -- my::case`). Empty `set --` clears
+    // the positional params, so with no args `"$@"` expands to nothing.
+    let args = command_from_extra(&extra);
+    let command = format!("set -- {args}; {}", cfg.test_cmd());
+    remote_exec(&cfg, &flags, &branch, &command, true, "test");
+}
+
+/// `atlas exec [flags] -- <cmd>` — fresh-sync, then run any command in the root.
+fn exec(argv: &[String]) {
+    let flags = take_build_flags(argv);
+    reject_local_with_branch(&flags, argv);
+    let (branch, extra) = take_branch(&flags.rest);
+    let command = command_from_extra(&extra);
+    if command.is_empty() {
+        eprintln!("{RED}atlas exec braucht einen Befehl{RESET}  (nach '--')");
+        eprintln!("{DIM}  z.B. atlas exec --path web -- npm run typecheck{RESET}");
+        exit(1);
+    }
+    let cfg = load_config_at(flags.path.as_deref(), flags.target.as_deref());
+    remote_exec(&cfg, &flags, &branch, &command, true, "exec");
+}
+
+/// `atlas run [flags] -- <cmd>` — run a built artifact against the tree that
+/// `atlas build` left, without touching it. The command is given as a path so
+/// it is unambiguous which binary runs: `atlas run -- ./target/release/mybin`.
+fn run(argv: &[String]) {
+    let flags = take_build_flags(argv);
+    reject_local_with_branch(&flags, argv);
+    let (branch, extra) = take_branch(&flags.rest);
+    let command = command_from_extra(&extra);
+    if command.is_empty() {
+        eprintln!("{RED}atlas run braucht einen Befehl{RESET}  (nach '--')");
+        eprintln!("{DIM}  z.B. atlas run --path security/tests/rt-harness -- ./target/release/attack-money --help{RESET}");
+        exit(1);
+    }
+    let cfg = load_config_at(flags.path.as_deref(), flags.target.as_deref());
+    remote_exec(&cfg, &flags, &branch, &command, false, "run");
+}
+
+/// `--local` and `--branch` name two different sources for the tree; together
+/// they contradict. Same guard build uses, shared by test/exec/run.
+fn reject_local_with_branch(flags: &BuildFlags, argv: &[String]) {
+    if flags.local && has_branch_flag(argv) {
+        eprintln!("{RED}--local und --branch schließen sich aus{RESET}");
+        eprintln!("{DIM}  --local nutzt den Arbeitsbaum, --branch einen gepushten Ref{RESET}");
+        exit(1);
+    }
+}
+
+/// Everything after the first literal `--` (or the whole list when there is no
+/// `--`), each token shell-quoted so args with spaces survive the round-trip to
+/// `sh -c` on atlas.
+fn command_from_extra(extra: &[String]) -> String {
+    let start = extra.iter().position(|a| a == "--").map(|i| i + 1).unwrap_or(0);
+    extra[start..].iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ")
+}
+
+/// The shared body of test/exec/run: resolve the tree (`--local` scratch dir or
+/// a branch worktree), optionally sync it fresh, run `command` in the container
+/// and stream it, and exit with the command's own code.
+///
+/// `sync=true` (test/exec) rsyncs/hard-resets like build, so a running
+/// `atlas start` on the same branch is stopped first and restarted after — the
+/// same tree, the same reason as build. `sync=false` (run) executes what is
+/// already there and never disturbs a running app.
+fn remote_exec(cfg: &BuildCfg, flags: &BuildFlags, branch: &str, command: &str, sync: bool, verb: &str) -> ! {
+    ensure_up();
+    let spec = cfg.spec(false);
+    ensure_image(&spec);
+    warn_if_secrets_unpushed(cfg);
+
+    let slug = if flags.local { "local".to_string() } else { slug_of(branch) };
+    let (src_dir, mount_repo) = if flags.local {
+        (cfg.local_dir(), false)
+    } else {
+        (cfg.wt_dir(&slug), true)
+    };
+
+    if sync {
+        if flags.local {
+            println!("{DIM}  --local: kein .git synchronisiert{RESET}");
+            let top = git_toplevel(&cfg.root);
+            sync_local(cfg, &top);
+        } else {
+            sync_worktree(cfg, branch, &slug);
+        }
+    } else if !ssh_ok(&format!("[ -d \"$HOME/{src_dir}\" ]")) {
+        // run against a tree that was never built — say what to build, don't
+        // start a container against a missing mount.
+        let what = if flags.local { "--local".to_string() } else { format!("-b {branch}") };
+        eprintln!("{RED}nichts gebaut{RESET} ({what}) — erst bauen:  atlas build {what}");
+        exit(1);
+    }
+
+    // Only a fresh sync of a branch tree can pull the rug out from a running
+    // app; a --local dir is nobody's start dir, and run never rewrites the tree.
+    let running = start_name(cfg, &slug);
+    let was_running = sync
+        && !flags.local
+        && ssh_ok(&format!("docker ps -q --filter name=^{running}$ | grep -q ."));
+    if was_running {
+        println!("{DIM}  {running} für {verb} gestoppt{RESET}");
+        ssh_ok(&format!("docker stop {running} >/dev/null"));
+    }
+
+    println!("{DIM}{verb} auf atlas ({}):{RESET} {command}", spec.tag);
+    let code = container_exec(cfg, &spec, &src_dir, mount_repo, command);
+
+    if was_running {
+        if ssh_ok(&format!("docker start {running} >/dev/null")) {
+            println!("{DIM}  {running} wieder gestartet{RESET}");
+        } else {
+            eprintln!("{RED}  {running} konnte nicht wieder gestartet werden{RESET} — atlas start");
+        }
+    }
+    exit(code);
+}
+
+/// docker-run `command` in the build image against `src_dir`, streaming, and
+/// return its exit code. Mirrors build's container invocation — same caches,
+/// same env-file secrets, same run-as-root-then-chown-back — but adds
+/// `--network host` so the command runs from atlas' real network position
+/// (the whole point of running here), and has no artifact/state step.
+fn container_exec(cfg: &BuildCfg, spec: &ImageSpec, src_dir: &str, mount_repo: bool, command: &str) -> i32 {
+    let repo_mount = if mount_repo {
+        format!("-v \"$HOME/{r}\":\"$HOME/{r}\" ", r = cfg.repo_dir())
+    } else {
+        String::new()
+    };
+    let remote = format!(
+        "{prologue}docker run --rm --network host $envf \
+         -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
+         -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
+         -e GRADLE_USER_HOME=/cache/gradle \
+         -v \"$HOME/{src}\":/build -v \"$HOME/{cache}\":/cache \
+         {repo_mount}\
+         -w {wd} {tag} sh -c {cmd}; rc=$?; \
+         sudo chown -R $(id -u):$(id -g) \"$HOME/{src}\" >/dev/null 2>&1; exit $rc",
+        prologue = env_file_prologue(cfg),
+        src = src_dir,
+        cache = cfg.cache_dir(),
+        wd = cfg.workdir(),
+        tag = spec.tag,
+        cmd = shq(command),
+    );
+    Command::new("ssh")
+        .args([ssh_host(), &remote])
+        .status()
+        .ok()
+        .and_then(|s| s.code())
+        .unwrap_or(1)
 }
 
 // ---- atlas start: run what `atlas build` produced, for one branch ---------
