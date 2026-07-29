@@ -123,6 +123,13 @@ RUN apt-get update \
 # out to git (version stamping, dependency resolution) would fail without this.
 RUN git config --system --add safe.directory '*'
 
+# The strict-but-skippable JS install every project shares. Kept as a script in
+# the image rather than repeated in each .atlas-build.toml so there is one
+# implementation to fix, and last in this stage so editing it does not rebuild
+# a single toolchain layer.
+COPY atlas-install /usr/local/bin/atlas-install
+RUN chmod 0755 /usr/local/bin/atlas-install
+
 LABEL org.opencontainers.image.title="atlas-universal-builder"
 
 # ---------------------------------------------------------------------------
