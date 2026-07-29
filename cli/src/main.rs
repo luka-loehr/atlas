@@ -5,7 +5,7 @@
 //!   atlas shutdown     powers the box off, waits until it is down
 //!   atlas restart      reboot, waits for the box to come back
 //!   atlas status       is it up? which route (LAN / tailnet)?
-//!   atlas build        build a branch of this project on atlas (source: GitHub)
+//!   atlas build        build this project on atlas (a pushed branch, or --local)
 //!   atlas dev          run this project's dev server on atlas
 //!   atlas start        run what `atlas build` produced for a branch
 //!   atlas secrets      push/list/drop this project's env file on atlas
@@ -176,7 +176,9 @@ fn help() {
          atlas status       up/down + route (LAN/tailnet)\n\n\
          PROJEKTE {DIM}(brauchen .atlas-build.toml; --branch B | -b B, Standard: main){RESET}\n  \
          atlas build [-b B]   Branch auf atlas bauen — atlas holt ihn von GitHub\n  \
-         atlas build -b B -- …  alles nach '--' geht an den Build-Befehl\n  \
+         atlas build --local  den lokalen Arbeitsbaum bauen (uncommitted, kein push)\n  \
+         atlas build --path D  ein Ziel aus Unterordner D bauen (eigene .atlas-build.toml)\n  \
+         atlas build … -- …   alles nach '--' geht an den Build-Befehl\n  \
          atlas dev   [-b B]   dev-Server dieses Branches auf atlas, im Tailnet\n  \
          atlas dev --public   stattdessen öffentlich (cloudflared, zufällige URL)\n  \
          atlas dev   [-b B] url|logs|stop\n  \
@@ -459,6 +461,12 @@ impl BuildCfg {
     fn wt_dir(&self, slug: &str) -> String {
         format!("{}/wt/{slug}", self.base_dir())
     }
+    /// Where `--local` rsyncs the working tree. Separate from the branch
+    /// worktrees on purpose: a local build never disturbs the checkout a
+    /// running `atlas start` is serving from.
+    fn local_dir(&self) -> String {
+        format!("{}/local", self.base_dir())
+    }
     fn state_file(&self, slug: &str) -> String {
         format!("{}/state/{slug}.json", self.base_dir())
     }
@@ -472,7 +480,31 @@ impl BuildCfg {
 
 /// Walk up from cwd to find .atlas-build.toml and parse it.
 fn load_config() -> BuildCfg {
-    let mut dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    load_config_from(env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+/// Like `load_config`, but scoped to `--path <subdir>`: the search starts in
+/// that subdir so a repo can hold more than one target — an app config at the
+/// root and, say, a red-team crate's config under security/tests/rt-harness,
+/// each built without cd-ing or swapping files. A subdir with no config of its
+/// own still walks up to the root one, so `--path` never makes a build vanish.
+fn load_config_at(sub: Option<&str>) -> BuildCfg {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    match sub {
+        None => load_config_from(cwd),
+        Some(p) => {
+            let start = cwd.join(p);
+            if !start.is_dir() {
+                eprintln!("{RED}--path: kein Verzeichnis{RESET} ({p})");
+                exit(1);
+            }
+            load_config_from(start)
+        }
+    }
+}
+
+fn load_config_from(start: PathBuf) -> BuildCfg {
+    let mut dir = start;
     let file = loop {
         let cand = dir.join(".atlas-build.toml");
         if cand.is_file() {
@@ -622,6 +654,58 @@ fn slug_of(branch: &str) -> String {
 
 fn branch_of_slug(slug: &str) -> String {
     slug.replace("__", "/")
+}
+
+/// What `atlas build` was asked to build, before the branch is resolved.
+struct BuildFlags {
+    local: bool,          // --local / -l: the working tree, not a pushed ref
+    path: Option<String>, // --path <subdir>: which target in the repo
+    rest: Vec<String>,    // everything else, for take_branch + the build command
+}
+
+/// Pull `--local`/`-l` and `--path <p>`/`-p <p>` out of `atlas build`'s args,
+/// leaving `--branch` and the pass-through command for take_branch. Stops at a
+/// literal `--` so those flags reach the build command untouched.
+fn take_build_flags(argv: &[String]) -> BuildFlags {
+    let mut local = false;
+    let mut path: Option<String> = None;
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < argv.len() {
+        let a = argv[i].as_str();
+        if a == "--" {
+            rest.extend_from_slice(&argv[i..]);
+            break;
+        }
+        if a == "--local" || a == "-l" {
+            local = true;
+        } else if let Some(v) = a.strip_prefix("--path=").or_else(|| a.strip_prefix("-p=")) {
+            path = Some(v.to_string());
+        } else if a == "--path" || a == "-p" {
+            let Some(v) = argv.get(i + 1) else {
+                eprintln!("{RED}{a} braucht ein Verzeichnis{RESET}");
+                exit(1);
+            };
+            path = Some(v.clone());
+            i += 1;
+        } else {
+            rest.push(argv[i].clone());
+        }
+        i += 1;
+    }
+    BuildFlags { local, path, rest }
+}
+
+/// True if the args carry an explicit `--branch`/`-b` (before any `--`), so
+/// `--local` and `--branch` together can be rejected as contradictory rather
+/// than silently ignoring one.
+fn has_branch_flag(argv: &[String]) -> bool {
+    argv.iter()
+        .take_while(|a| a.as_str() != "--")
+        .any(|a| {
+            let a = a.as_str();
+            a == "--branch" || a == "-b" || a.starts_with("--branch=") || a.starts_with("-b=")
+        })
 }
 
 /// Pull `--branch B` / `-b B` / `--branch=B` out of an argument list and return
@@ -915,6 +999,75 @@ fn normalize_git_url(raw: &str) -> Option<String> {
 ///
 /// Everything here runs as the ssh user and never under sudo: root has no git
 /// credentials on the box, so a sudo-wrapped fetch would fail on private repos.
+/// The git working tree root for `--local`. `--local` builds whatever is on
+/// disk, including uncommitted edits, so it needs the toplevel — the build's
+/// `dir` is relative to the repo root, exactly as the committed path resolves
+/// it. No remote/origin is required (that is the whole point of `--local`),
+/// only a local checkout to define the root.
+fn git_toplevel(root: &Path) -> PathBuf {
+    let out = Command::new("git")
+        .args(["-C".as_ref(), root.as_os_str(), "rev-parse".as_ref(), "--show-toplevel".as_ref()])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if out.is_empty() {
+        eprintln!("{RED}--local braucht ein lokales git-Repo{RESET} (in {})", root.display());
+        exit(1);
+    }
+    PathBuf::from(out)
+}
+
+/// rsync the local working tree (uncommitted edits and all) up to a scratch
+/// dir, so the edit→build→fix loop needs no commit and no push. The `.git`
+/// dir and the warm/regenerable output dirs are excluded: their absence is
+/// what makes git-stamping builds prefer the committed path, and what keeps
+/// node_modules/target/.next warm between local builds (rsync --delete cannot
+/// touch what it never sees). Same 0700 hardening as the worktree path.
+fn sync_local(cfg: &BuildCfg, toplevel: &Path) {
+    let base = cfg.base_dir();
+    let dest = cfg.local_dir();
+    let setup = format!(
+        "mkdir -p \"$HOME/{dest}\" \"$HOME/{cache}\" && \
+         chmod 700 \"$HOME/{REMOTE_BASE}\" \"$HOME/{base}\"",
+        cache = cfg.cache_dir(),
+    );
+    if !run_inherit(Command::new("ssh").args([ssh_host(), &setup])) {
+        eprintln!("{RED}Vorbereitung auf atlas fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    println!("{DIM}sync (lokaler Arbeitsbaum) -> atlas{RESET}");
+    let ok = run_inherit(Command::new("rsync").args([
+        "-az",
+        "--delete",
+        "--chmod=Dgo=,Fgo=",
+        "--exclude",
+        ".git",
+        "--exclude",
+        "target",
+        "--exclude",
+        "node_modules",
+        "--exclude",
+        ".next",
+        "--exclude",
+        "build",
+        &format!("{}/", toplevel.display()),
+        &format!("{}:{}/", ssh_host(), dest),
+    ]));
+    if !ok {
+        eprintln!("{RED}rsync -> atlas fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    // --chmod only reaches files rsync transferred; catch up the rest, scoped
+    // to files we own so a prior root-owned build output does not abort it.
+    ssh_ok(&format!(
+        "d=\"$HOME/{dest}\"; chmod 700 \"$d\"; \
+         find \"$d\" -user \"$(id -un)\" \\( -type d -o -type f \\) \
+         -exec chmod go= {{}} + 2>/dev/null; true",
+    ));
+}
+
 fn sync_worktree(cfg: &BuildCfg, branch: &str, slug: &str) -> String {
     let url = repo_url(cfg);
     let base = cfg.base_dir();
@@ -1082,9 +1235,14 @@ fn built_branches(cfg: &BuildCfg) -> Vec<String> {
 }
 
 fn build(argv: &[String]) {
-    let (branch, extra) = take_branch(argv);
-    let slug = slug_of(&branch);
-    let cfg = load_config();
+    let flags = take_build_flags(argv);
+    if flags.local && has_branch_flag(argv) {
+        eprintln!("{RED}--local und --branch schließen sich aus{RESET}");
+        eprintln!("{DIM}  --local baut den Arbeitsbaum, --branch einen gepushten Ref{RESET}");
+        exit(1);
+    }
+    let (branch, extra) = take_branch(&flags.rest);
+    let cfg = load_config_at(flags.path.as_deref());
     if cfg.build.is_empty() || cfg.artifacts.is_empty() {
         eprintln!("{RED}.atlas-build.toml hat kein build/artifacts{RESET}");
         exit(1);
@@ -1093,7 +1251,22 @@ fn build(argv: &[String]) {
     let spec = cfg.spec(false);
     ensure_image(&spec);
     warn_if_secrets_unpushed(&cfg);
-    let commit = sync_worktree(&cfg, &branch, &slug);
+
+    // Resolve where /build comes from. `--local` rsyncs the working tree into
+    // its own dir; otherwise a detached worktree at origin/<branch>. `slug`
+    // keys the state + start-container name; a local build uses "local" and
+    // never collides with a branch. `mount_repo` is only needed for the
+    // worktree, whose `.git` is a file pointing into the shared object store.
+    let (src_dir, slug, label, commit, mount_repo) = if flags.local {
+        let top = git_toplevel(&cfg.root);
+        sync_local(&cfg, &top);
+        (cfg.local_dir(), "local".to_string(), "lokaler Arbeitsbaum".to_string(), String::new(), false)
+    } else {
+        let slug = slug_of(&branch);
+        let commit = sync_worktree(&cfg, &branch, &slug);
+        let label = format!("{branch} @ {}", short(&commit));
+        (cfg.wt_dir(&slug), slug, label, commit, true)
+    };
 
     // Everything after a literal `--` is for the build command, not for us.
     let mut buildcmd = cfg.build.clone();
@@ -1105,38 +1278,44 @@ fn build(argv: &[String]) {
     // `.git` is a FILE containing `gitdir: <abs path into .repo>`. Without the
     // object store visible at exactly that path, every git command inside the
     // build fails with "not a git repository" — which breaks any build that
-    // stamps a version or embeds a commit.
+    // stamps a version or embeds a commit. A --local tree has no `.git` (it is
+    // excluded from the rsync), so it skips this mount.
     //
     // Run as root inside the container (works for every base image, incl.
-    // flutter's SDK dir), then chown the worktree back to the SSH user so the
-    // next fetch and the next start don't trip over root-owned files. `; rc=$?`
+    // flutter's SDK dir), then chown the tree back to the SSH user so the
+    // next sync and the next start don't trip over root-owned files. `; rc=$?`
     // keeps the build's exit code even though the chown always runs.
+    let repo_mount = if mount_repo {
+        format!("-v \"$HOME/{r}\":\"$HOME/{r}\" ", r = cfg.repo_dir())
+    } else {
+        String::new()
+    };
     let remote = format!(
         "{prologue}docker run --rm $envf \
          -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
          -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
          -e GRADLE_USER_HOME=/cache/gradle \
-         -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
-         -v \"$HOME/{repo}\":\"$HOME/{repo}\" \
+         -v \"$HOME/{src}\":/build -v \"$HOME/{cache}\":/cache \
+         {repo_mount}\
          -w {wd} {tag} sh -c {cmd}; rc=$?; \
-         sudo chown -R $(id -u):$(id -g) \"$HOME/{wt}\" >/dev/null 2>&1; exit $rc",
+         sudo chown -R $(id -u):$(id -g) \"$HOME/{src}\" >/dev/null 2>&1; exit $rc",
         prologue = env_file_prologue(&cfg),
-        wt = cfg.wt_dir(&slug),
+        src = src_dir,
         cache = cfg.cache_dir(),
-        repo = cfg.repo_dir(),
         wd = cfg.workdir(),
         tag = spec.tag,
         cmd = shq(&buildcmd),
     );
-    // A running app serves out of the same worktree the build is about to
-    // rewrite. Leaving it up is not merely unclean: `next build` deletes
-    // `.next` underneath it, so it starts reporting "client reference manifest
-    // does not exist" and ENOENT for pages that exist, AND the contention
-    // measurably more than doubles the build (29s vs 12s on dairo-frontend).
-    // Stopping it first costs the same downtime the corruption did, minus the
-    // errors, and hands back the faster build.
+
+    // A running app serves out of the same worktree a branch build rewrites, so
+    // `next build` would delete `.next` underneath it — bogus "client reference
+    // manifest does not exist"/ENOENT errors, and contention that more than
+    // doubles the build (29s vs 12s). Stop it first, start it again after. A
+    // --local build writes to its own dir and touches no running app, so this
+    // whole dance is skipped there.
     let running = start_name(&cfg, &slug);
-    let was_running = ssh_ok(&format!("docker ps -q --filter name=^{running}$ | grep -q ."));
+    let was_running =
+        !flags.local && ssh_ok(&format!("docker ps -q --filter name=^{running}$ | grep -q ."));
     if was_running {
         println!("{DIM}  {running} für den Build gestoppt{RESET}");
         ssh_ok(&format!("docker stop {running} >/dev/null"));
@@ -1148,43 +1327,48 @@ fn build(argv: &[String]) {
     let secs = t0.elapsed().as_secs();
     if !ok {
         eprintln!("{RED}Build fehlgeschlagen{RESET} (nach {secs}s)");
-        eprintln!("{DIM}  kein Target für '{branch}' hinterlegt — atlas start bleibt beim alten{RESET}");
-        // Deliberately left stopped: a failed `next build` leaves .next in an
-        // unknown half-written state, and serving that is worse than serving
-        // nothing. `atlas start` after a green build brings it back.
         if was_running {
+            // Deliberately left stopped: a failed `next build` leaves .next in
+            // an unknown half-written state, and serving that is worse than
+            // serving nothing. `atlas start` after a green build brings it back.
             eprintln!("{DIM}  {running} bleibt gestoppt (halb geschriebenes .next){RESET}");
         }
         exit(1);
     }
 
-    // The build said 0; make sure it actually produced what it claims, so
-    // `atlas start` cannot be pointed at an empty directory.
+    // The build said 0; make sure it actually produced what it claims, so a
+    // later `atlas start` cannot be pointed at an empty directory.
     let missing = ssh_capture(&format!(
-        "for a in {arts}; do [ -e \"$HOME/{wt}/$a\" ] || echo \"$a\"; done",
+        "for a in {arts}; do [ -e \"$HOME/{src}/$a\" ] || echo \"$a\"; done",
         arts = cfg.artifacts.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" "),
-        wt = cfg.wt_dir(&slug),
+        src = src_dir,
     ));
     let missing: Vec<&str> = missing.split_whitespace().collect();
     if !missing.is_empty() {
         eprintln!("{RED}Build meldete Erfolg, aber es fehlt:{RESET} {}", missing.join(", "));
-        eprintln!("{DIM}  kein Target hinterlegt — artifacts in .atlas-build.toml prüfen{RESET}");
+        eprintln!("{DIM}  artifacts in .atlas-build.toml prüfen{RESET}");
         exit(1);
     }
 
-    write_state(&cfg, &branch, &slug, &commit, secs);
+    // Only a branch build is startable — `atlas start` resolves a branch, and a
+    // local tree has no ref to reproduce. So state is written only for those.
+    if !flags.local {
+        write_state(&cfg, &branch, &slug, &commit, secs);
+    }
     println!(
-        "{GREEN}✓ build fertig{RESET} in {}m {:02}s  {DIM}({branch} @ {}, {}){RESET}",
+        "{GREEN}✓ build fertig{RESET} in {}m {:02}s  {DIM}({label}, {}){RESET}",
         secs / 60,
         secs % 60,
-        short(&commit),
         spec.tag
     );
 
-    // Bring back whatever was serving before, now on the build that just
-    // succeeded. Only when it was up to begin with — a build should not start
-    // an app nobody asked to run.
-    if was_running {
+    if flags.local {
+        // Nothing to restart; point at what came back instead.
+        for a in &cfg.artifacts {
+            println!("{DIM}  → atlas:~/{src_dir}/{a}{RESET}");
+        }
+    } else if was_running {
+        // Bring back whatever was serving before, now on the fresh build.
         if ssh_ok(&format!("docker start {running} >/dev/null")) {
             println!("{DIM}  {running} auf dem neuen Build wieder gestartet{RESET}");
         } else {

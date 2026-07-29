@@ -67,6 +67,21 @@ cache volume (`~/atlas-builds/.cache-<image>` mounted at `/cache`, wired up as
 `CARGO_HOME`, `npm_config_cache`, `PUB_CACHE`, `XDG_CACHE_HOME`,
 `GRADLE_USER_HOME`).
 
+Two flags shape *what* gets built:
+
+- `--local` builds the **working tree as it is on disk** — uncommitted edits
+  and all — by rsyncing it to a scratch dir (`~/atlas-builds/<name>/local`)
+  instead of checking out a pushed ref. This is the edit→build→fix loop
+  without committing to test-compile. `.git` and the warm output dirs
+  (`target`, `node_modules`, `.next`, `build`) are excluded, so a `--local`
+  build has no git available (use a branch build for version stamping) and
+  never disturbs a running `atlas start`. Mutually exclusive with `--branch`.
+- `--path <subdir>` scopes the config lookup to a subdirectory, so one repo can
+  hold several targets — an app config at the root and, say, a standalone
+  crate's config under `security/tests/rt-harness/` — each built without
+  cd-ing or swapping files. Each target needs its own `.atlas-build.toml` with
+  a distinct `name`. Composes with `--local`.
+
 `.repo` is also mounted at its own absolute path inside the container. A
 worktree's `.git` is a *file* containing `gitdir: <absolute path into .repo>`,
 so without that the object store is invisible and every `git` command in a
