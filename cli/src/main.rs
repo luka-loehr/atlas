@@ -1128,6 +1128,20 @@ fn build(argv: &[String]) {
         tag = spec.tag,
         cmd = shq(&buildcmd),
     );
+    // A running app serves out of the same worktree the build is about to
+    // rewrite. Leaving it up is not merely unclean: `next build` deletes
+    // `.next` underneath it, so it starts reporting "client reference manifest
+    // does not exist" and ENOENT for pages that exist, AND the contention
+    // measurably more than doubles the build (29s vs 12s on dairo-frontend).
+    // Stopping it first costs the same downtime the corruption did, minus the
+    // errors, and hands back the faster build.
+    let running = start_name(&cfg, &slug);
+    let was_running = ssh_ok(&format!("docker ps -q --filter name=^{running}$ | grep -q ."));
+    if was_running {
+        println!("{DIM}  {running} für den Build gestoppt{RESET}");
+        ssh_ok(&format!("docker stop {running} >/dev/null"));
+    }
+
     println!("{DIM}build auf atlas ({}):{RESET} {buildcmd}", spec.tag);
     let t0 = Instant::now();
     let ok = run_inherit(Command::new("ssh").args([ssh_host(), &remote]));
@@ -1135,6 +1149,12 @@ fn build(argv: &[String]) {
     if !ok {
         eprintln!("{RED}Build fehlgeschlagen{RESET} (nach {secs}s)");
         eprintln!("{DIM}  kein Target für '{branch}' hinterlegt — atlas start bleibt beim alten{RESET}");
+        // Deliberately left stopped: a failed `next build` leaves .next in an
+        // unknown half-written state, and serving that is worse than serving
+        // nothing. `atlas start` after a green build brings it back.
+        if was_running {
+            eprintln!("{DIM}  {running} bleibt gestoppt (halb geschriebenes .next){RESET}");
+        }
         exit(1);
     }
 
@@ -1161,19 +1181,14 @@ fn build(argv: &[String]) {
         spec.tag
     );
 
-    // A build and the running app share one worktree, so `next build` deletes
-    // and rewrites the very directory `next start` is serving out of. The
-    // running container survives it but its files are swapped underneath it,
-    // and it starts throwing "client reference manifest does not exist" and
-    // ENOENT on pages that plainly exist — a bug that looks like a broken
-    // build and is not. Restarting it on the new output is the only honest
-    // end state: it was serving the previous build a moment ago anyway.
-    let running = start_name(&cfg, &slug);
-    if ssh_ok(&format!("docker ps -q --filter name=^{running}$ | grep -q .")) {
-        if ssh_ok(&format!("docker restart {running} >/dev/null")) {
-            println!("{DIM}  {running} auf den neuen Build neu gestartet{RESET}");
+    // Bring back whatever was serving before, now on the build that just
+    // succeeded. Only when it was up to begin with — a build should not start
+    // an app nobody asked to run.
+    if was_running {
+        if ssh_ok(&format!("docker start {running} >/dev/null")) {
+            println!("{DIM}  {running} auf dem neuen Build wieder gestartet{RESET}");
         } else {
-            eprintln!("{RED}  {running} läuft noch auf dem alten Build{RESET} — atlas start");
+            eprintln!("{RED}  {running} konnte nicht wieder gestartet werden{RESET} — atlas start");
         }
     } else {
         println!("{DIM}  starten:  atlas start{}{RESET}", if branch == "main" { String::new() } else { format!(" -b {branch}") });
