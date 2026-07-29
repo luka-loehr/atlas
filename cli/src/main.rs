@@ -1160,7 +1160,24 @@ fn build(argv: &[String]) {
         short(&commit),
         spec.tag
     );
-    println!("{DIM}  starten:  atlas start{}{RESET}", if branch == "main" { String::new() } else { format!(" -b {branch}") });
+
+    // A build and the running app share one worktree, so `next build` deletes
+    // and rewrites the very directory `next start` is serving out of. The
+    // running container survives it but its files are swapped underneath it,
+    // and it starts throwing "client reference manifest does not exist" and
+    // ENOENT on pages that plainly exist — a bug that looks like a broken
+    // build and is not. Restarting it on the new output is the only honest
+    // end state: it was serving the previous build a moment ago anyway.
+    let running = start_name(&cfg, &slug);
+    if ssh_ok(&format!("docker ps -q --filter name=^{running}$ | grep -q .")) {
+        if ssh_ok(&format!("docker restart {running} >/dev/null")) {
+            println!("{DIM}  {running} auf den neuen Build neu gestartet{RESET}");
+        } else {
+            eprintln!("{RED}  {running} läuft noch auf dem alten Build{RESET} — atlas start");
+        }
+    } else {
+        println!("{DIM}  starten:  atlas start{}{RESET}", if branch == "main" { String::new() } else { format!(" -b {branch}") });
+    }
 }
 
 // ---- atlas start: run what `atlas build` produced, for one branch ---------
