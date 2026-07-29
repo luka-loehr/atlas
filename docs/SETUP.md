@@ -184,28 +184,39 @@ home, add a second alias pointing at the LAN IP and pass it via
 
 ### Security model
 
-The whole platform relies on one boundary: **services bind on the server and
-are reachable over the tailnet only. Never port-forward any of them to the
-internet.** There is no TLS on the services themselves — WireGuard encrypts
-the path inside the tailnet, and on the raw LAN you accept cleartext or bind
-to the Tailscale IP.
+The rule is **never port-forward any of this to the internet**. Inside that,
+confinement is per service, and it is worth being precise about which mechanism
+does the work: two ports are enforced by nftables, most of the rest are
+confined by the address they bind, and two — sshd and Art-Net — listen on every
+interface on purpose. The table below says which is which. There is no TLS on
+the services themselves — WireGuard encrypts the path inside the tailnet, and
+on the raw LAN you accept cleartext or bind to the Tailscale IP.
 
 | Port | Service | Binds | Auth |
 |---|---|---|---|
-| 22/tcp | sshd | all | SSH keys |
+| 22/tcp | sshd | all — **not** in the firewall table | SSH keys |
 | 5432/tcp | Postgres | `127.0.0.1` only | password (loopback only — remote dev via SSH tunnel) |
 | 8787/tcp | atlas-api | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_API_TOKEN` |
 | 8788/tcp | atlas-photos server | `0.0.0.0` (configurable), firewalled to lo + tailnet | `ATLAS_PHOTOS_TOKEN` |
 | 8093/tcp | embed-api sidecar | `127.0.0.1` only | none (loopback only) |
-| 6454/udp | Art-Net (bridge host) | all | none — LAN only |
+| 6454/udp | Art-Net (bridge host) | all — **not** in the firewall table | none — any host on the LAN can drive the lamps |
 | 53/tcp+udp | AdGuard Home | the tailnet address only (`ATLAS_TAILNET_IP`) — **not** in the firewall table | none — tailnet only |
 | 3053/tcp | AdGuard admin UI | `127.0.0.1` only (reach it via `ssh -L 3053:127.0.0.1:3053 atlas`) | AdGuard's own login |
 | 3100/tcp | paperclip | the tailnet address only (`--bind tailnet`) — **not** in the firewall table | board API key |
 | 3111/tcp | paperclip-bridge | `BRIDGE_BIND`, default `127.0.0.1` — **not** in the firewall table | the same board API key |
 
-The last four rows are confined by their own bind address, not by nftables:
-`scripts/firewall/firewall.nft` matches exactly `{ 8787, 8788 }`. If you move
-any of them onto `0.0.0.0`, nothing stops the LAN from reaching them.
+`scripts/firewall/firewall.nft` matches exactly `{ 8787, 8788 }`, tcp only, so
+every other row above is confined by its bind address alone — or, for sshd and
+Art-Net, not confined at all. Move any of them onto `0.0.0.0` and nothing stops
+the LAN from reaching them. Art-Net is the one that is already there: 6454/udp
+is unauthenticated and drives physical hardware, and the only thing keeping it
+off the internet is that the router does not forward it.
+
+Adding a port to that set is also not a general remedy. The nft table registers
+`hook input` only, while AdGuard's `53` and `3053` are Docker-*published*
+ports: LAN traffic to them is DNAT'd in `nat/prerouting` and then traverses the
+forward hook, never `input`. A rule added for those two would silently match
+nothing. Their bind address is the control.
 
 Where the tokens fit:
 
@@ -350,8 +361,8 @@ cp .env.example .env
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ATLAS_PHOTOS_DIR` | `/srv/atlas/photos` | host photo library root (`originals/`, `thumbs/`, `faces/`) |
-| `ATLAS_MODELS_DIR` | `/srv/atlas/models` | host model cache (~6 GB after first start) |
+| `ATLAS_PHOTOS_DIR` | none — **required** | host photo library root (`originals/`, `thumbs/`, `faces/`), e.g. `/home/atlas/photos` |
+| `ATLAS_MODELS_DIR` | none — **required** | host model cache (~6 GB after first start), e.g. `/home/atlas/models` |
 | `ATLAS_PG_ENV_FILE` | `../../../backend/docker/.env` | file with the `POSTGRES_PASSWORD=` line, mounted read-only |
 | `ATLAS_PIPELINE_UID` / `ATLAS_PIPELINE_GID` | `1000` / `1000` | owner of the photo library on the host |
 | `ATLAS_EMBED_REVISION` | `main` | git revision of the Qwen embedding repo — code from it is executed; pin a commit sha |
@@ -453,19 +464,9 @@ box as a systemd service (it uses the `~/atlas` clone):
 atlas api
 ```
 
-Upgrading a box that ran the predecessor service (`atlas-agent`): both the env
-file and the variables inside it are renamed, because no commit can rewrite a
-file under `/etc` and the failure is silent — the server comes up token-less
-and read-only.
-
-```bash
-sudo mv /etc/atlas-agent.env /etc/atlas-api.env       # only on such a host
-sudo sed -i 's/^ATLAS_AGENT_/ATLAS_API_/' /etc/atlas-api.env
-```
-
-`atlas api` does exactly this and then disables and removes the old unit and
-binary, but only *after* the new build has installed successfully. Running the
-two lines by hand first is harmless and makes the state obvious.
+It resets the server's checkout to `origin/main`, builds `api/`, installs the
+binary and the unit, and restarts it — all in one `set -e` chain, so a failed
+build leaves the running server untouched.
 
 Manual equivalent: `cargo build --release` in `~/atlas/api`, install the binary
 to `/usr/local/bin/atlas-api`, copy `atlas-api.service` — adjust `User=` — then

@@ -25,11 +25,12 @@ No cloud, no subscriptions — your hardware, your tailnet, your data.
 | [`api/`](api/) | `atlas-api` — Rust control-plane server (port 8787): metrics, WebSocket PTY terminal, Docker overview, power control, light-show & fog control |
 | [`backend/`](backend/) | The data foundation: Postgres 17 + pgvector in Docker — media library, knowledge graph, embeddings, resumable ingest queue |
 | [`infra/`](infra/) | Machine-level services that are not part of an app: [AdGuard Home](infra/adguard/), the tailnet's DNS resolver |
+| [`apps/`](apps/) | The four SwiftUI iOS apps, one directory each — app sources, and for Photos the server and AI pipeline that back it |
 | [`apps/atlas-admin/`](apps/atlas-admin/) | iOS app **Atlas Admin** (SwiftUI): dashboard, real terminal, Docker, VPN/exit-node stats, activity heatmap |
 | [`apps/atlas-lightshow/`](apps/atlas-lightshow/) | iOS app **Atlas Lightshow**: play shows, AI show creation, manual per-light control, hold-to-fog |
 | [`apps/atlas-photos/`](apps/atlas-photos/) | iOS app **Atlas Photos**: self-hosted Google Photos + Drive — Rust/axum server, SwiftUI client, GPU AI pipeline (faces, semantic photo *and* video search) |
 | [`apps/atlas-agents/`](apps/atlas-agents/) | iOS app **Atlas Agents**: the AI agent company on your phone — board, live fleet, asks, home-screen widget and Live Activity |
-| [`agents/`](agents/) | The AI agent platform that runs on the server: the Paperclip SSE bridge, the operator CLIs and the agent onboarding docs |
+| [`agents/`](agents/) | The AI agent platform that runs on the server: the Paperclip SSE bridge, the operator CLIs and the shared operating rules |
 | [`lightshows/`](lightshows/) | Show production: GPU song analysis, dark-gap compiler, AI composer, Art-Net→Hue bridge, fog hardware |
 | [`builder/`](builder/) | The remote build images `atlas build` / `atlas dev` run in: one [universal Dockerfile](builder/universal/Dockerfile) with three targets (`build`, `dev`, `mobile`), base-pinned |
 | [`scripts/`](scripts/) | Everything that keeps the box alive: [health check](scripts/healthcheck/), [firewall](scripts/firewall/), [disk guard](scripts/disk-guard/), [Postgres backups](scripts/pg-backup/), [tailnet DNS failover](scripts/tailnet-dns/), [power oneshots](scripts/power/), plus Takeout transfer, photo triage UI and embedding-space maps |
@@ -54,9 +55,11 @@ No cloud, no subscriptions — your hardware, your tailnet, your data.
   agents works on the server; the bridge diffs their board and pushes only the
   changes over SSE, so the Atlas Agents app, its widget and its Live Activity
   stay current without polling from the phone.
-- **Tailnet-first security** — nothing is port-forwarded. Services are
-  reachable only inside your private Tailscale network, with optional bearer
-  tokens on top ([security model](docs/SETUP.md#security-model)).
+- **Tailnet-first security** — nothing is port-forwarded to the internet. The
+  two HTTP services are firewalled to loopback + tailnet by nftables and take a
+  bearer token on top; the rest are confined by the address they bind. sshd and
+  Art-Net are the deliberate exceptions and stay LAN-reachable
+  ([security model](docs/SETUP.md#security-model) says which is which).
 
 ## Quickstart
 

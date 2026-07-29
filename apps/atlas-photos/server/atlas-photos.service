@@ -8,8 +8,8 @@ Type=simple
 # Set this to the user that owns the photo library (PHOTOS_DIR/DRIVE_DIR)
 User=atlas
 # Configuration (all optional, see server/src/main.rs), e.g.:
-#   Environment=PHOTOS_DIR=/srv/atlas/photos
-#   Environment=DRIVE_DIR=/srv/atlas/drive
+#   Environment=PHOTOS_DIR=/home/atlas/photos
+#   Environment=DRIVE_DIR=/home/atlas/drive
 #   Environment=ATLAS_PHOTOS_BIND=0.0.0.0:8788
 #   Environment=ATLAS_PHOTOS_TOKEN=change-me
 # or keep secrets out of the unit file:

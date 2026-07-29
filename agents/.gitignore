@@ -1,0 +1,14 @@
+# The agents' role documents. These are internal instruction bundles, not
+# documentation: each one names a third party's infrastructure and account
+# details (a school's self-hosted Forgejo instance and the classmate who owns
+# the repos, the commercial messaging account whose keys send real mail), and
+# each one tells the reader exactly which file on the box holds the live
+# credential for it. They also carry the standing operational risk notes —
+# which units must not be restarted, which key is not a sandbox. None of that
+# survives publication, and this repo is public.
+#
+# The bundles live on the box under ~/.paperclip and are deployed there by
+# hand. This rule is the only thing keeping them out of the repo; publishing
+# them is a decision, not a cleanup. Path-scoped on purpose — it must not
+# swallow an unrelated `onboarding/` somewhere else under agents/.
+paperclip-bridge/onboarding/

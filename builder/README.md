@@ -43,9 +43,9 @@ build command in the matching image with a per-image cache volume
 
 `atlas dev` instead starts a long-running container on the server,
 `atlas-dev-<name>` (install + `<dev command>`, `--network host`). The
-install step is chosen from the lockfile in the project (`bun.lock*` →
-bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, otherwise npm) unless
-the config sets `install` explicitly.
+install step is whatever the config's `install` says, or — when that key is
+absent — is picked from the project's lockfile
+([below](#configuration--atlas-buildtoml)).
 
 By default that container is published on the tailnet only, with
 `tailscale serve` on the host — `https://<tailnet host>:<port>`, the port
@@ -96,8 +96,36 @@ A flat `key = "value"` file at the project root of whatever you build:
 | `build` | for `atlas build` | build command run inside the container |
 | `artifacts` | for `atlas build` | space-separated directory paths (relative to the project root) copied back after the build |
 | `dev` | for `atlas dev` | dev-server command |
-| `install` | no (default: detect) | dependency install run before `dev`; override when the lockfile is not the whole story |
+| `install` | no (default: from the lockfile) | dependency install run before `dev`; override when the lockfile is not the whole story |
 | `port` | no (default `3000`) | port the dev server listens on; what `tailscale serve` (or the tunnel) forwards to |
+
+Those eight keys are the whole schema — anything else in the file is ignored,
+and an `image` outside `universal` / `mobile` is an error rather than a
+fallback. When `install` is absent, `atlas dev` picks the package manager from
+the lockfile it finds in `dir`:
+
+| Lockfile | Install command |
+|---|---|
+| `bun.lock` / `bun.lockb` | `bun install --frozen-lockfile` |
+| `pnpm-lock.yaml` | `corepack enable && pnpm install --frozen-lockfile` |
+| `yarn.lock` | `corepack enable && yarn install --immutable` |
+| none of the above | `npm install --no-fund --no-audit` |
+
+The check runs inside the container, in that order. Detecting it beats
+assuming npm: running `npm install` over a bun or pnpm project either fails or
+writes a second, wrong dependency tree next to the real one.
+
+Example:
+
+```toml
+name = "my-app"
+image = "universal"
+dir = "web"
+build = "pnpm build"
+artifacts = "web/dist"
+dev = "pnpm dev --host 0.0.0.0 --port 3000"
+port = 3000
+```
 
 ## Operational notes
 

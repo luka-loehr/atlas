@@ -81,3 +81,9 @@ Not covered: Art-Net on `0.0.0.0:6454/udp`, which is unauthenticated and
 drives physical hardware. It is left open because the Art-Net source is
 configured as `192.168.1.100` (see `/etc/atlas/lightshow-artnet-host`) —
 closing it means moving the lightshow onto the tailnet first.
+
+Docker-published ports cannot be covered by this table at all. A published
+container port is DNAT'd in `nat/prerouting` and then traverses the `forward`
+hook; it never reaches `hook input`, the only hook this ruleset registers.
+Adding such a port to `private_ports` would look like confinement and block
+nothing — confine those at the bind address in their `compose.yml` instead.

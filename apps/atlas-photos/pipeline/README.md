@@ -108,12 +108,16 @@ encoding itself and can force-regenerate with `--all`.
 
 ## Configuration
 
-Host-side `.env` next to `compose.yml` (compose interpolation):
+Host-side `.env` next to `compose.yml` (compose interpolation). `ATLAS_PHOTOS_DIR`
+and `ATLAS_MODELS_DIR` have **no default** — they are the two host paths that
+cannot be guessed, and a wrong one is mounted silently, so compose aborts with
+the message from `compose.yml` rather than starting workers over an empty
+directory. Copy [`.env.example`](.env.example) to `.env` and set both.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ATLAS_PHOTOS_DIR` | `/srv/atlas/photos` | host photo library (`originals/`, `thumbs/`, `faces/`), mounted at `/photos` |
-| `ATLAS_MODELS_DIR` | `/srv/atlas/models` | model cache (~6 GB), mounted at `/models` |
+| `ATLAS_PHOTOS_DIR` | none — **required** | host photo library (`originals/`, `thumbs/`, `faces/`), mounted at `/photos` |
+| `ATLAS_MODELS_DIR` | none — **required** | model cache (~6 GB), mounted at `/models` |
 | `ATLAS_PG_ENV_FILE` | `../../../backend/docker/.env` | file with a `POSTGRES_PASSWORD=` line, mounted read-only at `/secrets/.env` |
 | `ATLAS_PIPELINE_UID` / `ATLAS_PIPELINE_GID` | `1000` / `1000` | uid:gid `pipeline-cpu` writes thumbs as (match the library owner) |
 | `ATLAS_EMBED_REVISION` | `main` | git revision of the Qwen embedding model repo. Its bundled `scripts/` code is imported and executed by the workers — pin a commit sha to freeze the supply chain |

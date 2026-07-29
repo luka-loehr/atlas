@@ -14,18 +14,26 @@ docker compose down       # stop (config survives — it is on the host)
 
 | Address | Purpose |
 |---|---|
-| `100.x.y.z:53` (tcp+udp) | DNS, **tailnet address only** |
+| `100.x.y.z:53` (tcp+udp) | DNS, **tailnet address only** — `$ATLAS_TAILNET_IP` |
 | `127.0.0.1:3053` | admin UI, loopback only |
+
+`100.x.y.z` is a placeholder for this box's own tailnet address. It comes from
+`ATLAS_TAILNET_IP` in the `.env` next to `compose.yml` and **has no default** —
+`compose.yml` uses `${ATLAS_TAILNET_IP:?…}`, so with the variable unset
+`docker compose up` fails immediately instead of starting a container bound to
+some other address. Read the real value off the box with `tailscale ip -4`.
 
 DNS is deliberately not published on `0.0.0.0` or the LAN address. A resolver
 reachable from the internet is an amplification weapon, and this box sits
 behind a router whose port forwarding is one checkbox away from making that
 true. The tailnet is the boundary.
 
-That boundary is the publish address and nothing else:
-[atlas-firewall](../../scripts/firewall/) matches only tcp/8787 and tcp/8788,
-so port 53 is not covered by an nftables rule. Bind it wrong and it is open —
-there is no second line of defence here.
+That boundary is the publish address and nothing else. There is no second line
+of defence: [atlas-firewall](../../scripts/firewall/) matches only tcp/8787 and
+tcp/8788, and adding 53 to its port set would not help either. Docker publishes
+a port by DNAT in `nat`/`prerouting`, after which the packet traverses the
+`forward` hook — it never reaches `input`, which is the only hook the atlas
+ruleset registers. Bind this wrong and it is open.
 
 The admin UI has no TLS and holds the filter configuration, so it stays on
 loopback. Reach it through an ssh tunnel:
@@ -53,11 +61,13 @@ Postgres dump, so a `docker compose down -v` or a lost `~/adguard` means
 rebuilding the filter setup by hand. Copy `~/adguard/conf` somewhere safe
 before doing anything drastic to it.
 
-Override the location with a `.env` next to this file:
+The `.env` next to this file carries both the required tailnet address and, if
+the box keeps its AdGuard state somewhere other than `~/adguard`, a location
+override:
 
 ```ini
-ATLAS_ADGUARD_DIR=/srv/atlas/adguard
-ATLAS_TAILNET_IP=100.x.y.z
+ATLAS_TAILNET_IP=100.x.y.z          # required — `tailscale ip -4` on this box
+ATLAS_ADGUARD_DIR=/mnt/data/adguard # optional — defaults to the home directory
 ```
 
 ## Updating

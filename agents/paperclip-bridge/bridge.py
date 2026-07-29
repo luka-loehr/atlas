@@ -28,13 +28,18 @@ from urllib.parse import urlparse, parse_qs
 import asks
 
 # Every deployment-specific value comes from the environment — see
-# paperclip-bridge.env.example. BRIDGE_BIND defaults to loopback on purpose:
-# an empty value would bind 0.0.0.0 and put a tailnet-only service on every
-# interface.
+# paperclip-bridge.env.example. There are no addresses in this file.
+#
+# BRIDGE_BIND falls back to loopback on purpose, and the fallback is `or`
+# rather than a get() default: ThreadingHTTPServer reads an empty host as
+# 0.0.0.0, so a `BRIDGE_BIND=` line with no value in the env file — which
+# systemd passes through as "" and get() therefore keeps — would silently put
+# this tailnet-only service on every interface. Unset and empty both have to
+# land on 127.0.0.1, and no value here may ever be a wildcard.
 PAPERCLIP = os.environ.get("PAPERCLIP_API", "")
 COMPANY = os.environ.get("PAPERCLIP_COMPANY", "")
 TOKEN = os.environ.get("PAPERCLIP_TOKEN", "")
-BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1")
+BIND = os.environ.get("BRIDGE_BIND", "").strip() or "127.0.0.1"
 PORT = int(os.environ.get("BRIDGE_PORT", "3111"))
 POLL_IDLE = float(os.environ.get("BRIDGE_POLL_IDLE", "5"))
 POLL_BUSY = float(os.environ.get("BRIDGE_POLL_BUSY", "1.5"))

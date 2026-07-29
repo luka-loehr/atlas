@@ -1140,12 +1140,10 @@ fn systemctl(verb: &str, done: &str) {
 
 /// Pull the repo on atlas, build the API server, install + enable the systemd unit.
 ///
-/// The predecessor unit is torn down *after* the new binary and unit are in
-/// place, never before: a release build that fails on the server would
-/// otherwise leave the box with no control plane at all, over the same SSH
-/// path that manages its power. The teardown itself is not optional — the old
-/// unit binds the same port, so leaving it enabled makes atlas-api exit on
-/// bind at the next reboot.
+/// `set -e` plus the `&&` chain is deliberate: nothing is installed and the
+/// running unit is not restarted unless the release build succeeded. This is
+/// the same SSH path that manages the box' power, so a half-applied update
+/// would leave it with no control plane and no way back in but a physical one.
 fn api_install() {
     ensure_up();
     println!("{DIM}baue + installiere atlas-api auf atlas ...{RESET}");
@@ -1154,10 +1152,6 @@ fn api_install() {
          . ~/.cargo/env && cargo build --release --quiet && \
          sudo install -m755 target/release/atlas-api /usr/local/bin/atlas-api && \
          sudo cp atlas-api.service /etc/systemd/system/atlas-api.service && \
-         sudo sh -c '[ -f /etc/atlas-agent.env ] && mv /etc/atlas-agent.env /etc/atlas-api.env || true' && \
-         sudo sh -c '[ -f /etc/atlas-api.env ] && sed -i s/^ATLAS_AGENT_/ATLAS_API_/ /etc/atlas-api.env || true' && \
-         { sudo systemctl disable --now atlas-agent >/dev/null 2>&1 || true; } && \
-         sudo rm -f /usr/local/bin/atlas-agent /etc/systemd/system/atlas-agent.service && \
          sudo systemctl daemon-reload && sudo systemctl enable --quiet atlas-api && \
          sudo systemctl restart atlas-api && \
          sleep 1 && systemctl is-active atlas-api";

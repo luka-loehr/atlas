@@ -81,14 +81,16 @@ engine/           the production system (stdlib only)
   sequence.py     .show.json format + validation
   player.py       generic 25 fps Art-Net renderer/player
   compiler.py     analysis.json -> show.json (rules + device solver)
-analyze/          analyze_song.py — runs on the GPU host (venv: analyze/.venv)
+analyze/          analyze_song.py + requirements.txt — run on the GPU host
+                  (the venv at analyze/.venv is not in the repo)
 ai/               ai_show.py — optional Gemini + Claude composer (--ai)
 makeshow.py       CLI: song/URL -> analysis (cached) -> compiled show
 play.py           CLI: play a .show.json
-bridge/           hue_stream.py (bridge host): Art-Net -> Hue DTLS + devices
+bridge/           hue_stream.py (bridge host): Art-Net -> Hue DTLS + devices,
+                  credentials.example.json, lightshow-bridge.service
 hardware/         fog.ino — Arduino heartbeat fog trigger, fail-safe auto-off
-shows/            compiled shows (party-rock.show.json = hand-designed reference)
-analyses/         one measured analysis per song, keyed by show slug (tracked)
+shows/            one .show.json per show, plus a .summary.md for --ai runs
+analyses/         one measured analysis per analysed song, keyed by show slug
 scripts/          port_party_rock.py — regenerates the reference show JSON
 tests/            golden.py + reference_show_v6.py (frame-parity proof)
 tools/            artnet_test.py, fog_trigger.py, beat_cal.py, make_calibration.py
@@ -98,8 +100,37 @@ tools/            artnet_test.py, fog_trigger.py, beat_cal.py, make_calibration.
 needs the original audio *and* a CUDA host, so these are the only surviving
 copy of each measurement. `makeshow.py` short-circuits on a present analysis
 rather than re-running the GPU stage. It writes `shows/<slug>.show.json` and
-`analyses/<slug>.analysis.json` from the same slug, so the two filenames must
-always match or the short-circuit stops finding them.
+`analyses/<slug>.analysis.json` from the same slug — `slug()` lowercases
+`--title` (or the audio filename) and maps every non-alphanumeric character
+to `-` — so the two stems must stay byte-identical or the short-circuit
+stops finding the cache and silently re-runs the GPU stage.
+
+### What is in `shows/`
+
+Nine shows are tracked. Only the seven that went through the analyzer have an
+entry in `analyses/`; the other two are generated, not measured.
+
+| show | produced by | analysis | `meta.song_file` |
+|---|---|---|---|
+| `party-rock` | `scripts/port_party_rock.py` — the hand-designed v6 reference | — | `music.mp3` |
+| `party-rock-anthem-auto` | `makeshow.py` on the same track, rules engine | yes | `music.mp3` |
+| `calibration` | `tools/make_calibration.py` — synthetic click track | — | `calibration.wav` |
+| `darude-sandstorm` | `makeshow.py` | yes | `darude-sandstorm.mp3` |
+| `dj-snake-selena-gomez-ozuna-cardi-b-taki-taki-letra-lyrics` | `makeshow.py` | yes | same stem `.mp3` |
+| `james-hype-miggy-dela-rosa-ferrari-lyric-video` | `makeshow.py --ai` (ships the `.summary.md`) | yes | same stem `.mp3` |
+| `lmfao-party-rock-anthem-ft` | `makeshow.py` | yes | same stem `.mp3` |
+| `travis-scott-fe-n-ft` | `makeshow.py` | yes | `travis-scott-fe-n-ft.mp3` |
+| `fein-final` | `makeshow.py` on the same track, second cut | yes | `fein-final.mp3` |
+
+Two pairs share a track and are **not** duplicates of each other:
+
+- `party-rock` and `party-rock-anthem-auto` are the hand-designed reference
+  and the compiled one, which is the whole point of the golden test.
+- `travis-scott-fe-n-ft` and `fein-final` are two choreographies of FE!N.
+  Both carry 29 cues, but 17 of them differ, and `fein-final` drives eleven
+  fog windows where the other drives seven. Their analyses are byte-identical
+  because the analyzer is deterministic and the input audio is the same file —
+  that is the measurement being reused, not a duplicated show.
 
 Audio is not part of the repo. It lives in the **media root** —
 `ATLAS_LIGHTSHOW_MEDIA_DIR`, default `/var/lib/atlas/lightshow-media` — which
@@ -107,8 +138,10 @@ is deliberately outside the checkout, so `git clean -fdx` cannot delete it.
 `shows/` holds only the tracked `.show.json` / `.summary.md`.
 
 `meta.song_file` is a bare basename resolved against the media root (an
-absolute path is used as-is). Supply your own audio by dropping it in there
-under the show's name: the reference show `party-rock` expects `music.mp3`.
+absolute path is used as-is) — it is the source of truth, so a show whose
+audio is shared with another one names that file rather than its own slug.
+Supply your own audio by dropping it in there under the name the show asks
+for: `party-rock` and `party-rock-anthem-auto` both expect `music.mp3`.
 Readers still fall back to `shows/` for legacy files, but nothing writes
 there — `makeshow.py` copies new audio and covers straight to the media root.
 See `docs/SETUP.md` section 9.
@@ -296,8 +329,8 @@ python3 tools/artnet_test.py [secs]     # 10 s rainbow chase by default
 python3 tools/fog_trigger.py 800        # fog burst; only while hue_stream.py is NOT running
 ```
 
-There is no offline 3D preview. A show is verified by rendering it
-(`tests/golden.py`, pure `render()`) or by playing it against the bridge.
+A show is verified either by rendering it — `tests/golden.py`, pure
+`render()`, no network and no audio — or by playing it against the bridge.
 
 ## Operational notes
 
