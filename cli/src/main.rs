@@ -412,21 +412,17 @@ impl BuildCfg {
 
     /// How `atlas dev` installs dependencies before starting the dev server.
     ///
-    /// Detected from the lockfile inside the container instead of assumed,
-    /// because the answer differs per project and getting it wrong is not a
-    /// no-op: running `npm install` over a bun or pnpm project writes a second
-    /// dependency tree next to the real one. An explicit `install = ...` in
-    /// the config wins, for the repos where the lockfile is not the whole
-    /// story.
+    /// `atlas-install` (in the builder image) probes the lockfile rather than
+    /// assuming npm — getting that wrong is not a no-op, since `npm install`
+    /// over a bun or pnpm project writes a second dependency tree next to the
+    /// real one — and skips the install entirely when the lockfile is
+    /// unchanged. An explicit `install = ...` in the config wins, for the
+    /// repos where the lockfile is not the whole story.
     fn install_cmd(&self) -> String {
         if !self.install.is_empty() {
             return self.install.clone();
         }
-        "if [ -f bun.lockb ] || [ -f bun.lock ]; then bun install --frozen-lockfile; \
-         elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; \
-         elif [ -f yarn.lock ]; then corepack enable && yarn install --immutable; \
-         else npm install --no-fund --no-audit; fi"
-            .into()
+        "atlas-install".into()
     }
     /// How `atlas start` runs what the build produced.
     ///

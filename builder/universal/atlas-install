@@ -1,0 +1,56 @@
+#!/bin/sh
+# atlas-install — install JS dependencies, but only when they actually changed.
+#
+# A remote build reuses its worktree: `git clean` runs without -x, so
+# node_modules survives between runs precisely so the next one is warm. Then
+# `npm ci` deletes it and reinstalls all of it anyway — measured at 7s of a 17s
+# dairo-frontend build, re-adding 1053 packages that were already correct.
+#
+# The fix is not a loose `npm install`: that mutates the lockfile and makes the
+# remote build stop matching CI. Instead keep the strict, lockfile-pinned
+# install and just skip it when the lockfile is byte-identical to the one the
+# current node_modules was built from. Determinism unchanged, ~7s back.
+#
+# The stamp lives INSIDE node_modules on purpose: every strict install wipes
+# that directory, so a stale tree can never keep a stamp that outlives it.
+set -e
+
+# Not a JS project (cargo, flutter, ...) — nothing to do, and saying so would
+# be noise in a Rust build log.
+[ -f package.json ] || exit 0
+
+# Pick the package manager the project actually uses. Order matters: a repo can
+# carry more than one lockfile, and the most specific wins. Getting this wrong
+# is not a no-op — `npm install` over a pnpm project writes a second, wrong
+# dependency tree next to the real one.
+if [ -f bun.lockb ]; then
+  lock=bun.lockb; install='bun install --frozen-lockfile'
+elif [ -f bun.lock ]; then
+  lock=bun.lock; install='bun install --frozen-lockfile'
+elif [ -f pnpm-lock.yaml ]; then
+  lock=pnpm-lock.yaml; install='corepack enable && pnpm install --frozen-lockfile'
+elif [ -f yarn.lock ]; then
+  lock=yarn.lock; install='corepack enable && yarn install --immutable'
+elif [ -f package-lock.json ]; then
+  lock=package-lock.json; install='npm ci --no-fund --no-audit'
+else
+  # No lockfile at all: nothing to pin against, so there is also nothing to
+  # skip — always install, and key the stamp on package.json.
+  lock=package.json; install='npm install --no-fund --no-audit'
+fi
+
+stamp=node_modules/.atlas-install-stamp
+want="$(sha256sum "$lock" | cut -d' ' -f1)"
+
+if [ -d node_modules ] && [ -f "$stamp" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then
+  echo "atlas-install: $lock unchanged, node_modules reused"
+  exit 0
+fi
+
+echo "atlas-install: installing from $lock"
+sh -c "$install"
+
+# Only stamp after a clean install: if the install fails, `set -e` aborts here
+# and the next run reinstalls rather than trusting a half-populated tree.
+mkdir -p node_modules
+printf '%s' "$want" > "$stamp"
