@@ -31,11 +31,27 @@ pub(crate) fn caddy_admin_ok() -> bool {
 /// Upsert (idempotent): delete any existing route with this id, then POST the
 /// fresh one. `host`/`id` are validated and `port` is a u16, so the JSON cannot
 /// carry an injection.
+///
+/// The handler is a subroute, not a bare reverse_proxy, so it can strip the
+/// `Origin`/`Referer` headers on exactly Next.js' internal dev endpoints
+/// (`/_next/*`, `/__nextjs*`) before proxying. Next's dev server blocks
+/// cross-origin requests to those endpoints (killing HMR) unless the origin is
+/// in `allowedDevOrigins`; with no `Origin` header it treats them as same-site
+/// and allows them. Scoping the strip to those paths means a public dev URL
+/// works for any Next project with zero per-repo config, while the app's own
+/// routes (server actions, API — which rely on `Origin` for CSRF) keep it. The
+/// first subroute (headers) is non-terminal, so it falls through to the second
+/// (reverse_proxy); non-`/_next` requests skip it and proxy with headers intact.
 pub(crate) fn caddy_route_upsert(host: &str, port: u16, id: &str) -> bool {
     let route = format!(
         "{{\"@id\":\"{id}\",\"match\":[{{\"host\":[\"{host}\"]}}],\
-         \"handle\":[{{\"handler\":\"reverse_proxy\",\
-         \"upstreams\":[{{\"dial\":\"127.0.0.1:{port}\"}}]}}]}}"
+         \"handle\":[{{\"handler\":\"subroute\",\"routes\":[\
+           {{\"match\":[{{\"path\":[\"/_next/*\",\"/__nextjs*\"]}}],\
+             \"handle\":[{{\"handler\":\"headers\",\
+               \"request\":{{\"delete\":[\"Origin\",\"Referer\"]}}}}]}},\
+           {{\"handle\":[{{\"handler\":\"reverse_proxy\",\
+             \"upstreams\":[{{\"dial\":\"127.0.0.1:{port}\"}}]}}]}}\
+         ]}}]}}"
     );
     ssh_ok(&format!(
         "curl -sf -X DELETE {ADMIN}/id/{id} >/dev/null 2>&1; \

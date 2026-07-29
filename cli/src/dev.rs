@@ -108,6 +108,21 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
     ssh_ok(&format!("docker rm -f {dev} >/dev/null 2>&1"));
     serve_off(cfg, slug, "dev");
 
+    // The host(s) this dev server is reachable at, injected as ATLAS_DEV_ORIGINS
+    // so a framework config can allow this origin without hardcoding a URL — e.g.
+    // Next's `allowedDevOrigins: process.env.ATLAS_DEV_ORIGINS?.split(",") ?? []`.
+    // A production build never sets this env, so it stays dev-only by
+    // construction. The tailnet host covers the private path; --public adds the
+    // stable lukaloehr host. Both are validated hostnames (charset [a-z0-9.-]).
+    let mut origins: Vec<String> = Vec::new();
+    if let Some(h) = tailnet_host() {
+        origins.push(h.to_string());
+    }
+    if public {
+        origins.push(format!("{}.lukaloehr.com", host_label(cfg, slug)));
+    }
+    let dev_origins = origins.join(",");
+
     // dev server: --network host so it binds atlas' real port; node_modules
     // persist in the worktree (git clean keeps ignored files). The install step
     // is picked from the lockfile rather than hardcoded to npm.
@@ -115,11 +130,13 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
     let run_dev = format!(
         "{prologue}docker run -d --name {dev} --network host --restart unless-stopped $envf \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
+         -e ATLAS_DEV_ORIGINS={origins} \
          -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
          -v \"$HOME/{repo}\":\"$HOME/{repo}\" \
          -w {wd} {tag} sh -c {cmd} >/dev/null",
         prologue = env_file_prologue(cfg),
         port = cfg.port,
+        origins = dev_origins,
         wt = cfg.wt_dir(slug),
         cache = cfg.cache_dir(),
         repo = cfg.repo_dir(),
