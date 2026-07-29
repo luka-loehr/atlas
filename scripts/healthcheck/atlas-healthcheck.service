@@ -7,6 +7,7 @@ After=network-online.target docker.service atlas-api.service atlas-photos.servic
 Type=oneshot
 User=luka
 Environment=ATLAS_HEALTH_RETRIES=12
+Environment=ATLAS_HEALTH_DIR=/var/lib/atlas/health
 ExecStart=/home/luka/atlas/scripts/healthcheck/healthcheck.sh
 TimeoutStartSec=20min
 Nice=10

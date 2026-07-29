@@ -22,8 +22,8 @@ services:
     container_name: adguard
     restart: unless-stopped
     volumes:
-      - ${ATLAS_ADGUARD_DIR:-/home/luka/adguard}/conf:/opt/adguardhome/conf
-      - ${ATLAS_ADGUARD_DIR:-/home/luka/adguard}/work:/opt/adguardhome/work
+      - ${ATLAS_ADGUARD_DIR:?set in .env}/conf:/opt/adguardhome/conf
+      - ${ATLAS_ADGUARD_DIR:?set in .env}/work:/opt/adguardhome/work
     ports:
       # DNS is published on the tailnet address only — never the LAN, never
       # 0.0.0.0. An open resolver on the internet is an amplification weapon.

@@ -9,6 +9,7 @@ User=luka
 Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=5min
+Environment=DISK_GUARD_STATE_DIR=/var/lib/atlas/health
 ExecStart=/home/luka/atlas/scripts/disk-guard/disk-guard.sh
 # A non-zero exit means critical-or-worse; SuccessExitStatus keeps systemd from
 # marking the unit failed for a condition the script reported correctly.
