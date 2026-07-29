@@ -1,0 +1,26 @@
+[Unit]
+Description=Clean shutdown on three fast power-button presses
+Documentation=file:///home/luka/atlas/scripts/power-button/README.md
+# logind must be up first: it is what ignores the key, leaving it to us.
+After=systemd-logind.service
+
+[Service]
+Type=simple
+# No User= on purpose. This needs to read /dev/input/event* and to call
+# `systemctl poweroff`, both of which are root's. Naming an account here is
+# also how the old atlas-agent unit crash-looped for an hour — it shipped
+# User=atlas for an account that does not exist on this box.
+ExecStart=/home/luka/atlas/scripts/power-button/power-button.py
+Restart=always
+RestartSec=5
+
+# It only ever reads input devices and asks systemd to power off.
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target
