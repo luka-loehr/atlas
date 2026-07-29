@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0CBD9C7F399ABC97CE2567E8 /* CalibrationScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6B83B6C4A3A3A4A76171B0 /* CalibrationScreen.swift */; };
 		2AA6A34D9CF3BC0C2AEBCE34 /* AtlasClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F7DFBA7623A3360900C55BC /* AtlasClient.swift */; };
 		3A9C39C4810FE1716A4FE92B /* LightsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660323B72B0A38B592D59648 /* LightsModel.swift */; };
 		3DFC7488F3DC9A822A2C39B9 /* ShowAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498A2CD08BA3775697E2ED00 /* ShowAudio.swift */; };
@@ -16,26 +15,27 @@
 		8B15F103DCEDC5DA487AFD2B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 07ECFBC7477A16EADD9E7F2E /* Assets.xcassets */; };
 		8E10624565130ECEF4CE116D /* ShowsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26CFB9D1F0CFC6E068D05BF /* ShowsScreen.swift */; };
 		950277B629D9EEFAD97AE114 /* LightsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62058E4AF88668139EE69096 /* LightsScreen.swift */; };
-		A7A4087503940F01E8EBC3FC /* ShowPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4460A7CF04697BA5E74A82E8 /* ShowPlayerScreen.swift */; };
 		A91060CEF150FF9FC0089EBE /* CreateShowSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F712AF5024AE2243C58F0F31 /* CreateShowSheet.swift */; };
+		C05B06D3C7C77A2A11D1314F /* CalibrationScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5EADDC79F66EE4EEEFFB838 /* CalibrationScreen.swift */; };
+		DA5731D3F7F1729B59E49488 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71502476C4882152CE1EC6D1 /* SettingsScreen.swift */; };
 		E117DB372B9F62E956577F07 /* VisualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 171DF91AA51BC796EF3E6A36 /* VisualizerView.swift */; };
-		E16EC0990FE9CC2C4DDA88DA /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A31AE8FD09B887DF060CD6 /* SettingsScreen.swift */; };
+		EC304B993C1C23F34BE93E4D /* ShowPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED57B9B0E207F038110E05EB /* ShowPlayerScreen.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		07ECFBC7477A16EADD9E7F2E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		171DF91AA51BC796EF3E6A36 /* VisualizerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerView.swift; sourceTree = "<group>"; };
 		2FD36902A4917206DFAB8C8E /* AtlasLightshow.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AtlasLightshow.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		3A6B83B6C4A3A3A4A76171B0 /* CalibrationScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationScreen.swift; sourceTree = "<group>"; };
-		4460A7CF04697BA5E74A82E8 /* ShowPlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowPlayerScreen.swift; sourceTree = "<group>"; };
 		47278349F52D9983A5D9886E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		498A2CD08BA3775697E2ED00 /* ShowAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowAudio.swift; sourceTree = "<group>"; };
 		4F7DFBA7623A3360900C55BC /* AtlasClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasClient.swift; sourceTree = "<group>"; };
 		62058E4AF88668139EE69096 /* LightsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightsScreen.swift; sourceTree = "<group>"; };
 		660323B72B0A38B592D59648 /* LightsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightsModel.swift; sourceTree = "<group>"; };
+		71502476C4882152CE1EC6D1 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
 		7D37FA4E8F8797171CE44AB3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A26CFB9D1F0CFC6E068D05BF /* ShowsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowsScreen.swift; sourceTree = "<group>"; };
-		C8A31AE8FD09B887DF060CD6 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
+		ED57B9B0E207F038110E05EB /* ShowPlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowPlayerScreen.swift; sourceTree = "<group>"; };
+		F5EADDC79F66EE4EEEFFB838 /* CalibrationScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationScreen.swift; sourceTree = "<group>"; };
 		F712AF5024AE2243C58F0F31 /* CreateShowSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateShowSheet.swift; sourceTree = "<group>"; };
 		FFF01A54A2916A7896CC727F /* AtlasLightshowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasLightshowApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -70,11 +70,11 @@
 		5CCB59B495C4CAB64E1F59EF /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				3A6B83B6C4A3A3A4A76171B0 /* CalibrationScreen.swift */,
+				F5EADDC79F66EE4EEEFFB838 /* CalibrationScreen.swift */,
 				F712AF5024AE2243C58F0F31 /* CreateShowSheet.swift */,
 				62058E4AF88668139EE69096 /* LightsScreen.swift */,
-				C8A31AE8FD09B887DF060CD6 /* SettingsScreen.swift */,
-				4460A7CF04697BA5E74A82E8 /* ShowPlayerScreen.swift */,
+				71502476C4882152CE1EC6D1 /* SettingsScreen.swift */,
+				ED57B9B0E207F038110E05EB /* ShowPlayerScreen.swift */,
 				A26CFB9D1F0CFC6E068D05BF /* ShowsScreen.swift */,
 				47278349F52D9983A5D9886E /* Theme.swift */,
 				171DF91AA51BC796EF3E6A36 /* VisualizerView.swift */,
@@ -171,13 +171,13 @@
 			files = (
 				2AA6A34D9CF3BC0C2AEBCE34 /* AtlasClient.swift in Sources */,
 				429E0661B4F349652100D6BA /* AtlasLightshowApp.swift in Sources */,
-				0CBD9C7F399ABC97CE2567E8 /* CalibrationScreen.swift in Sources */,
+				C05B06D3C7C77A2A11D1314F /* CalibrationScreen.swift in Sources */,
 				A91060CEF150FF9FC0089EBE /* CreateShowSheet.swift in Sources */,
 				3A9C39C4810FE1716A4FE92B /* LightsModel.swift in Sources */,
 				950277B629D9EEFAD97AE114 /* LightsScreen.swift in Sources */,
-				E16EC0990FE9CC2C4DDA88DA /* SettingsScreen.swift in Sources */,
+				DA5731D3F7F1729B59E49488 /* SettingsScreen.swift in Sources */,
 				3DFC7488F3DC9A822A2C39B9 /* ShowAudio.swift in Sources */,
-				A7A4087503940F01E8EBC3FC /* ShowPlayerScreen.swift in Sources */,
+				EC304B993C1C23F34BE93E4D /* ShowPlayerScreen.swift in Sources */,
 				8E10624565130ECEF4CE116D /* ShowsScreen.swift in Sources */,
 				62B5A7CF9CD93BFF26FD16D8 /* Theme.swift in Sources */,
 				E117DB372B9F62E956577F07 /* VisualizerView.swift in Sources */,

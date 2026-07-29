@@ -17,8 +17,10 @@ x-pipeline-common: &pipeline-common
     # pin a commit sha for supply-chain safety (see .env.example)
     ATLAS_EMBED_REVISION: ${ATLAS_EMBED_REVISION:-main}
   volumes:
-    - ${ATLAS_PHOTOS_DIR:-/srv/atlas/photos}:/photos
-    - ${ATLAS_MODELS_DIR:-/srv/atlas/models}:/models
+    # No defaults on purpose: a wrong host path is mounted silently and the
+    # workers then index an empty directory. Unset => compose refuses to start.
+    - ${ATLAS_PHOTOS_DIR:?set ATLAS_PHOTOS_DIR to the host photo library, see .env.example}:/photos
+    - ${ATLAS_MODELS_DIR:?set ATLAS_MODELS_DIR to the host model cache, see .env.example}:/models
     - ${ATLAS_PG_ENV_FILE:-../../../backend/docker/.env}:/secrets/.env:ro
     # Source is mounted, not baked in: git pull + docker compose restart = new code.
     - .:/app:ro

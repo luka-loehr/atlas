@@ -1,9 +1,13 @@
 # AdGuard Home — DNS for the tailnet, and the exit node's resolver.
 #
+# Needs a .env next to this file with ATLAS_TAILNET_IP set to this box's
+# tailnet address (`tailscale ip -4`). There is no default; compose refuses to
+# start without it, which is the point — see the ports section.
+#
 # Config and state live OUTSIDE this repo (bind mounts, see below): the conf
 # directory holds the admin password hash and the upstream/filter setup, so it
-# is deliberately not tracked. Point ATLAS_ADGUARD_DIR somewhere else in a .env
-# next to this file if the box ever keeps it elsewhere.
+# is deliberately not tracked. Point ATLAS_ADGUARD_DIR somewhere else in the
+# same .env if the box ever keeps it elsewhere.
 #
 #   docker compose up -d          # start / apply a change
 #   docker compose pull && docker compose up -d   # update after bumping the pin
@@ -26,8 +30,11 @@ services:
       # tailscaled must own this address before the container starts; on boot
       # that ordering holds, and restart: unless-stopped covers the race if it
       # ever does not.
-      - "${ATLAS_TAILNET_IP:-100.x.y.z}:53:53/tcp"
-      - "${ATLAS_TAILNET_IP:-100.x.y.z}:53:53/udp"
+      # No default on purpose: a wrong-but-plausible fallback would bind an
+      # address that is not this box's, and compose would still come up. This
+      # spelling makes an unset variable a hard error instead.
+      - "${ATLAS_TAILNET_IP:?set ATLAS_TAILNET_IP in .env - this box's tailnet address, from `tailscale ip -4`}:53:53/tcp"
+      - "${ATLAS_TAILNET_IP:?set ATLAS_TAILNET_IP in .env - this box's tailnet address, from `tailscale ip -4`}:53:53/udp"
       # Admin UI on loopback only. Reach it over the ssh tunnel:
       #   ssh -L 3053:127.0.0.1:3053 atlas   ->  http://127.0.0.1:3053
       # atlas-api also reads it from here (ATLAS_ADGUARD_URL in

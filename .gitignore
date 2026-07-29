@@ -34,7 +34,14 @@ Secrets.swift
 # `git clean -fdx` removes a link, not a running service's credentials.
 # Mapping: docs/SETUP.md section 9. The Hue credentials and the calibration
 # state are covered one level down, in lightshows/.gitignore.
-.env
+#
+# `*.env` rather than `.env`, so a named env file (paperclip-bridge.env) is
+# covered too. `.env.*` adds the suffixed variants (`.env.production`), which
+# `*.env` does not match. The negation is what keeps the tracked templates
+# visible — without it `.env.*` would swallow `.env.example` as well.
+*.env
+.env.*
+!.env.example
 *.local
 
 # Show media lives in ATLAS_LIGHTSHOW_MEDIA_DIR (default /var/lib/atlas/

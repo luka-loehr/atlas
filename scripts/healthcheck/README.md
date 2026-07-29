@@ -21,9 +21,7 @@ override with `ATLAS_HEALTH_RETRIES` / `ATLAS_HEALTH_RETRY_SLEEP`) because
 containers need a moment after boot/resume. Build checks run once.
 
 Check ids are written verbatim into `~/atlas-health/status.json` and
-`history.log`, so lines written before the `agent/` → `api/` rename still read
-`build-agent` / `agent-http`. That is history, not a compatibility alias —
-nothing reads the old ids.
+`history.log`; nothing reads them back, so they are a label, not an interface.
 
 ## Where to see results
 

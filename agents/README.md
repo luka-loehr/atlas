@@ -3,10 +3,22 @@
 Long-running AI agents that live on atlas. Their actual homes (state, secrets,
 checkouts) are outside the repo on the box; what is tracked here is the glue
 Luka wrote himself — the event bridge, the CLIs the agents call, and the
-documents that tell them who they are.
+operating rules they share.
 
 Two things run: **paperclip**, a company of agents that does delegated work,
 and **hermes**, Luka's personal agent, which is that company's CEO.
+
+## What is deliberately not here
+
+The per-role onboarding documents are **not published**. Each one names a third
+party's infrastructure and accounts — a school's self-hosted Forgejo instance
+and the classmate who owns the repos, the commercial messaging account whose
+keys send real mail — and points at the file on the box holding the live
+credential for it, alongside standing risk notes about which units must not be
+restarted. They live under `~/.paperclip` on the server and are held out of the
+repo by `agents/.gitignore`. What is tracked is only the part that is safe to
+read in public: `COMMS.md`, the shared operating rules, and
+`hermes-skill/SKILL.md`, the manifest that frames Hermes as the CEO.
 
 ## paperclip
 
@@ -27,7 +39,12 @@ Luka's personal agent, migrated 2026-07-23 from the Mac to atlas with its full
 state (`state.db`, sessions, skills, cron, memories, SOUL.md, config) plus
 `~/hermes-workspace`.
 
-**Telegram is the only messaging platform.**
+**Telegram is the only messaging platform.** Hermes reaches Luka over Telegram
+and nowhere else: there is no WhatsApp integration and no email platform. The
+mail gateway that used to sit here was removed — it needed a Proton bridge
+running alongside it, which was never worth the moving part. Nothing in this
+directory sends mail, and the agent CLIs below are the only other way anything
+reaches Hermes.
 
 - **Home**: `~/.hermes` (state) + `~/.hermes/hermes-agent` (upstream
   `NousResearch/hermes-agent` checkout). Runtime: uv-managed venv (Python 3.12;
@@ -63,14 +80,13 @@ Python 3 — no venv, no wheels.
 | `report-to-hermes` | Agent CLI: hand a finished task or a question up to Hermes |
 | `COMMS.md` | The company's operating rules — how work is finished, owned and escalated |
 | `hermes-skill/SKILL.md` | Claude skill manifest (`name: paperclip`) that frames Hermes as the CEO |
-| `onboarding/*.md` | Five role documents: atlas engineer, dairo engineer, ephraim engineer, research specialist, communications secretary |
 
 ### File convention
 
 - **No extension = an executable the agents invoke by bare name.** Each one has
   a `#!/usr/bin/env python3` shebang, is mode `755`, and is documented by name
-  in `COMMS.md`, `hermes-skill/SKILL.md` or an onboarding file. They are put on
-  the agents' PATH by symlink on the box; nothing imports them.
+  in `COMMS.md` or `hermes-skill/SKILL.md`. They are put on the agents' PATH by
+  symlink on the box; nothing imports them.
 - **`.py` = a module of the bridge service**, run by the interpreter from the
   unit (`ExecStart=/usr/bin/python3 .../bridge.py`), never invoked by name.
 
@@ -96,10 +112,13 @@ addresses, company ids or keys in the source. Copy
 fill it in.
 
 `bridge.py` refuses to start unless `PAPERCLIP_TOKEN`, `PAPERCLIP_COMPANY` and
-`PAPERCLIP_API` are set, and `BRIDGE_BIND` defaults to `127.0.0.1` rather than
-`0.0.0.0` so a missing value fails closed instead of publishing a tailnet-only
-service on every interface. The four CLIs likewise exit 3 with a clear message
-when their URL or company id is unset.
+`PAPERCLIP_API` are set. `BRIDGE_BIND` is the one setting with a fallback, and
+it fails closed: unset **and** empty both land on `127.0.0.1`, never `0.0.0.0`.
+The empty case is the one that matters — `EnvironmentFile=` turns a bare
+`BRIDGE_BIND=` into an empty string, and `ThreadingHTTPServer` reads an empty
+host as every interface, which would publish a tailnet-only service on the LAN.
+The four CLIs likewise exit 3 with a clear message when their URL or company id
+is unset.
 
 The board API key itself is never in the repo. On the box it lives in
 `/etc/paperclip-bridge.env` and `~/.paperclip/atlas-automation.key`; in the iOS

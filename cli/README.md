@@ -185,13 +185,12 @@ server's Rust toolchain, installs the binary to `/usr/local/bin/atlas-api`,
 installs `atlas-api.service`, and enables + restarts it. Afterwards the metrics
 endpoint is `http://<ATLAS_API_URL>/api/metrics` (port 8787 by default).
 
-The predecessor `atlas-agent` unit is disabled and removed as part of the same
-run, but only *after* the new binary and unit are in place — a build that fails
-on the server must not leave the box with no control plane, since this is the
-same SSH path that manages its power. An existing `/etc/atlas-agent.env` is
-moved to `/etc/atlas-api.env` in the same step and its `ATLAS_AGENT_*`
-variables are rewritten to `ATLAS_API_*`; without that the server would come up
-token-less and read-only, which fails silently.
+The whole remote script is one `set -e` + `&&` chain, so nothing is installed
+and the running unit is not restarted unless the release build succeeded — a
+build that fails on the server must not leave the box with no control plane,
+since this is the same SSH path that manages its power. The unit reads its
+token from `/etc/atlas-api.env` (`ATLAS_API_*` variables), which lives outside
+the checkout and is never touched by an install.
 
 `api logs` follows `journalctl -u atlas-api`. `api stop` and `api restart` map
 to the corresponding `sudo systemctl` calls and exit non-zero if the call
