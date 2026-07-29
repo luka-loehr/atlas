@@ -160,6 +160,11 @@ fn main() {
         Some("api") => api(&args[1..]),
         Some("secrets") => secrets(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
+        // Handle before the ssh passthrough below, or `atlas --version` would
+        // run `ssh atlas --version` and print ssh's usage.
+        Some("--version") | Some("-V") | Some("version") => {
+            println!("atlas {}", env!("CARGO_PKG_VERSION"));
+        }
         // anything else: run it on atlas (`atlas htop`, `atlas nvidia-smi`, ...)
         Some(_) => ssh(&args),
     }
@@ -177,7 +182,8 @@ fn help() {
          PROJEKTE {DIM}(brauchen .atlas-build.toml; --branch B | -b B, Standard: main){RESET}\n  \
          atlas build [-b B]   Branch auf atlas bauen — atlas holt ihn von GitHub\n  \
          atlas build --local  den lokalen Arbeitsbaum bauen (uncommitted, kein push)\n  \
-         atlas build --path D  ein Ziel aus Unterordner D bauen (eigene .atlas-build.toml)\n  \
+         atlas build --path D  Unterordner D als Build-Root bauen (eigene .atlas-build.toml)\n  \
+         atlas build --target T  benanntes Ziel [target.T] aus der Root-Konfig bauen\n  \
          atlas build … -- …   alles nach '--' geht an den Build-Befehl\n  \
          atlas dev   [-b B]   dev-Server dieses Branches auf atlas, im Tailnet\n  \
          atlas dev --public   stattdessen öffentlich (cloudflared, zufällige URL)\n  \
@@ -467,6 +473,16 @@ impl BuildCfg {
     fn local_dir(&self) -> String {
         format!("{}/local", self.base_dir())
     }
+    /// An artifact path relative to the mounted /build root. Artifacts are
+    /// declared relative to the build root (`dir`), so a subdir target writes
+    /// `artifacts = target`, not the repo-root-relative `sub/dir/target`.
+    fn artifact_rel(&self, a: &str) -> String {
+        if self.dir == "." {
+            a.to_string()
+        } else {
+            format!("{}/{a}", self.dir)
+        }
+    }
     fn state_file(&self, slug: &str) -> String {
         format!("{}/state/{slug}.json", self.base_dir())
     }
@@ -480,44 +496,89 @@ impl BuildCfg {
 
 /// Walk up from cwd to find .atlas-build.toml and parse it.
 fn load_config() -> BuildCfg {
-    load_config_from(env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    load_config_selected(None, None)
 }
 
-/// Like `load_config`, but scoped to `--path <subdir>`: the search starts in
-/// that subdir so a repo can hold more than one target — an app config at the
-/// root and, say, a red-team crate's config under security/tests/rt-harness,
-/// each built without cd-ing or swapping files. A subdir with no config of its
-/// own still walks up to the root one, so `--path` never makes a build vanish.
-fn load_config_at(sub: Option<&str>) -> BuildCfg {
+/// Load the config for `atlas build`, honouring `--path` and `--target`.
+///
+/// `--path D` treats D as the build root: its own `.atlas-build.toml` (no
+/// walk-up — D is meant to be a self-contained target), the build runs IN D,
+/// and artifacts resolve relative to D. `--target T` instead picks the
+/// `[target.T]` section from one root config, so a growing repo keeps every
+/// target in a single discoverable file rather than a scatter of subdir
+/// configs. The two are different spellings of "which target" and do not mix.
+fn load_config_at(sub: Option<&str>, target: Option<&str>) -> BuildCfg {
+    load_config_selected(sub, target)
+}
+
+fn load_config_selected(sub: Option<&str>, target: Option<&str>) -> BuildCfg {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    match sub {
-        None => load_config_from(cwd),
+
+    // Find the config file. `--path` points straight at a subdir's own config;
+    // otherwise walk up from the current directory as before.
+    let (file, scoped) = match sub {
         Some(p) => {
-            let start = cwd.join(p);
-            if !start.is_dir() {
+            let d = cwd.join(p);
+            if !d.is_dir() {
                 eprintln!("{RED}--path: kein Verzeichnis{RESET} ({p})");
                 exit(1);
             }
-            load_config_from(start)
+            let f = d.join(".atlas-build.toml");
+            if !f.is_file() {
+                eprintln!("{RED}--path {p}: dort liegt keine .atlas-build.toml{RESET}");
+                eprintln!("{DIM}  --path D erwartet D als eigenes Build-Ziel mit eigener Konfig{RESET}");
+                exit(1);
+            }
+            (f, true)
         }
-    }
-}
-
-fn load_config_from(start: PathBuf) -> BuildCfg {
-    let mut dir = start;
-    let file = loop {
-        let cand = dir.join(".atlas-build.toml");
-        if cand.is_file() {
-            break cand;
-        }
-        if !dir.pop() {
-            eprintln!("{RED}kein .atlas-build.toml gefunden{RESET} (hier oder in einem Elternordner)");
-            exit(1);
+        None => {
+            let mut dir = cwd.clone();
+            let f = loop {
+                let cand = dir.join(".atlas-build.toml");
+                if cand.is_file() {
+                    break cand;
+                }
+                if !dir.pop() {
+                    eprintln!("{RED}kein .atlas-build.toml gefunden{RESET} (hier oder in einem Elternordner)");
+                    exit(1);
+                }
+            };
+            (f, false)
         }
     };
+    let cfg_dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
     let text = fs::read_to_string(&file).unwrap_or_default();
+    let (top, targets) = parse_sections(&text);
+
+    // Resolve which key/value set applies: a chosen [target.T], or the flat
+    // top level. A file with targets demands one be named; a --target against a
+    // flat file is a mistake worth catching, not ignoring.
+    let names: Vec<String> = targets.iter().map(|(n, _)| n.clone()).collect();
+    let chosen: Vec<(String, String)> = if !targets.is_empty() {
+        let want = match target {
+            Some(t) => t,
+            None => {
+                eprintln!("{RED}diese .atlas-build.toml hat Targets{RESET} — atlas build --target <name>");
+                eprintln!("{DIM}  vorhanden: {}{RESET}", names.join(", "));
+                exit(1);
+            }
+        };
+        let Some((_, kvs)) = targets.iter().find(|(n, _)| n == want) else {
+            eprintln!("{RED}kein Target '{want}'{RESET}");
+            eprintln!("{DIM}  vorhanden: {}{RESET}", names.join(", "));
+            exit(1);
+        };
+        top.iter().cloned().chain(kvs.iter().cloned()).collect()
+    } else {
+        if let Some(t) = target {
+            eprintln!("{RED}--target {t}: diese .atlas-build.toml hat keine Targets{RESET}");
+            exit(1);
+        }
+        top.clone()
+    };
+
     let mut c = BuildCfg {
-        root: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        root: cfg_dir.clone(),
         name: String::new(),
         image: String::new(),
         dir: ".".into(),
@@ -529,34 +590,32 @@ fn load_config_from(start: PathBuf) -> BuildCfg {
         port: 3000,
         artifacts: Vec::new(),
     };
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let Some((k, v)) = line.split_once('=') else {
-            continue;
-        };
-        let (k, v) = (k.trim(), parse_toml_value(v));
-        match k {
-            "name" => c.name = v,
-            "image" => c.image = v,
-            "dir" => c.dir = v,
-            "build" => c.build = v,
-            "dev" => c.dev = v,
-            "start" => c.start = v,
-            "install" => c.install = v,
-            "repo" => c.repo = v,
-            "port" => {
-                c.port = v.parse().unwrap_or_else(|_| {
-                    eprintln!("{RED}.atlas-build.toml: ungültiger port{RESET} ({v})");
-                    exit(1);
-                })
-            }
-            "artifacts" => c.artifacts = v.split_whitespace().map(String::from).collect(),
-            _ => {}
+    // Top level first (shared defaults), then the target's own keys win.
+    let base_had_name = top.iter().any(|(k, _)| k == "name");
+    for (k, v) in &chosen {
+        apply_kv(&mut c, k, v);
+    }
+    // A target without its own name inherits "<repo>-<target>", so each gets a
+    // distinct remote dir + cache instead of clobbering the shared one.
+    if let Some(t) = target {
+        let target_set_name = targets
+            .iter()
+            .find(|(n, _)| n == t)
+            .map(|(_, kvs)| kvs.iter().any(|(k, _)| k == "name"))
+            .unwrap_or(false);
+        if !target_set_name && base_had_name {
+            c.name = format!("{}-{t}", c.name);
         }
     }
+
+    // `--path D` makes D the build root. D is expressed relative to the repo
+    // root (the container mounts the whole repo at /build), so translate the
+    // cwd-relative path through git, then fold in any `dir` the config set.
+    if scoped {
+        let prefix = repo_subdir(&cfg_dir);
+        c.dir = join_dir(&prefix, &c.dir);
+    }
+
     if c.name.is_empty() || c.image.is_empty() {
         eprintln!("{RED}.atlas-build.toml unvollständig{RESET} (name, image nötig)");
         exit(1);
@@ -605,6 +664,99 @@ fn parse_toml_value(raw: &str) -> String {
     }
     let end = raw.find('#').unwrap_or(raw.len());
     raw[..end].trim().to_string()
+}
+
+/// Split a config into its flat top-level keys and any `[target.NAME]` sections,
+/// preserving order so later keys win. Keeps the file a flat key=value list
+/// plus the one bracket form — no general TOML tables, which the rest of the
+/// parser has no use for.
+fn parse_sections(text: &str) -> (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>) {
+    let mut top: Vec<(String, String)> = Vec::new();
+    let mut targets: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    let mut cur: Option<usize> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(inner) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            let Some(name) = inner.trim().strip_prefix("target.") else {
+                eprintln!("{RED}.atlas-build.toml: nur [target.NAME] wird unterstützt{RESET} ({line})");
+                exit(1);
+            };
+            let name = name.trim().to_string();
+            if !valid_name(&name) {
+                eprintln!("{RED}.atlas-build.toml: ungültiger Target-Name{RESET} ({name})");
+                exit(1);
+            }
+            targets.push((name, Vec::new()));
+            cur = Some(targets.len() - 1);
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let kv = (k.trim().to_string(), parse_toml_value(v));
+        match cur {
+            None => top.push(kv),
+            Some(i) => targets[i].1.push(kv),
+        }
+    }
+    (top, targets)
+}
+
+/// Apply one config key to the builder. Shared by the top-level pass and each
+/// target section, so both understand exactly the same keys.
+fn apply_kv(c: &mut BuildCfg, k: &str, v: &str) {
+    let v = v.to_string();
+    match k {
+        "name" => c.name = v,
+        "image" => c.image = v,
+        "dir" => c.dir = v,
+        "build" => c.build = v,
+        "dev" => c.dev = v,
+        "start" => c.start = v,
+        "install" => c.install = v,
+        "repo" => c.repo = v,
+        "port" => {
+            c.port = v.parse().unwrap_or_else(|_| {
+                eprintln!("{RED}.atlas-build.toml: ungültiger port{RESET} ({v})");
+                exit(1);
+            })
+        }
+        "artifacts" => c.artifacts = v.split_whitespace().map(String::from).collect(),
+        _ => {}
+    }
+}
+
+/// The path from the repo root to `dir`, via git (`--show-prefix`). `--path`
+/// gives a cwd-relative dir but the container mounts the whole repo at /build,
+/// so the build root has to be named relative to the repo root.
+fn repo_subdir(dir: &Path) -> String {
+    let out = Command::new("git")
+        .args(["-C".as_ref(), dir.as_os_str(), "rev-parse".as_ref(), "--show-prefix".as_ref()])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if out.is_empty() {
+        eprintln!("{RED}--path braucht ein git-Repo{RESET} (in {})", dir.display());
+        exit(1);
+    }
+    out.trim_end_matches('/').to_string()
+}
+
+/// Join a repo-relative prefix with a config's own `dir`, either of which may
+/// be empty or ".".
+fn join_dir(prefix: &str, dir: &str) -> String {
+    let dir = if dir == "." { "" } else { dir };
+    match (prefix.is_empty(), dir.is_empty()) {
+        (true, true) => ".".into(),
+        (false, true) => prefix.to_string(),
+        (true, false) => dir.to_string(),
+        (false, false) => format!("{prefix}/{dir}"),
+    }
 }
 
 /// `name`/`image` become docker tags, container names and remote dir names
@@ -658,19 +810,30 @@ fn branch_of_slug(slug: &str) -> String {
 
 /// What `atlas build` was asked to build, before the branch is resolved.
 struct BuildFlags {
-    local: bool,          // --local / -l: the working tree, not a pushed ref
-    path: Option<String>, // --path <subdir>: which target in the repo
-    rest: Vec<String>,    // everything else, for take_branch + the build command
+    local: bool,            // --local / -l: the working tree, not a pushed ref
+    path: Option<String>,   // --path <subdir>: a subdir target (its own config)
+    target: Option<String>, // --target <name>: a [target.NAME] in one config
+    rest: Vec<String>,      // everything else, for take_branch + the command
 }
 
-/// Pull `--local`/`-l` and `--path <p>`/`-p <p>` out of `atlas build`'s args,
-/// leaving `--branch` and the pass-through command for take_branch. Stops at a
-/// literal `--` so those flags reach the build command untouched.
+/// Pull `--local`/`-l`, `--path <p>`/`-p <p>` and `--target <t>`/`-t <t>` out
+/// of `atlas build`'s args, leaving `--branch` and the pass-through command for
+/// take_branch. Stops at a literal `--` so those flags reach the build command
+/// untouched.
 fn take_build_flags(argv: &[String]) -> BuildFlags {
     let mut local = false;
     let mut path: Option<String> = None;
+    let mut target: Option<String> = None;
     let mut rest: Vec<String> = Vec::new();
     let mut i = 0;
+    let need = |a: &str, argv: &[String], i: &mut usize| -> String {
+        let Some(v) = argv.get(*i + 1) else {
+            eprintln!("{RED}{a} braucht ein Argument{RESET}");
+            exit(1);
+        };
+        *i += 1;
+        v.clone()
+    };
     while i < argv.len() {
         let a = argv[i].as_str();
         if a == "--" {
@@ -682,18 +845,22 @@ fn take_build_flags(argv: &[String]) -> BuildFlags {
         } else if let Some(v) = a.strip_prefix("--path=").or_else(|| a.strip_prefix("-p=")) {
             path = Some(v.to_string());
         } else if a == "--path" || a == "-p" {
-            let Some(v) = argv.get(i + 1) else {
-                eprintln!("{RED}{a} braucht ein Verzeichnis{RESET}");
-                exit(1);
-            };
-            path = Some(v.clone());
-            i += 1;
+            path = Some(need(a, argv, &mut i));
+        } else if let Some(v) = a.strip_prefix("--target=").or_else(|| a.strip_prefix("-t=")) {
+            target = Some(v.to_string());
+        } else if a == "--target" || a == "-t" {
+            target = Some(need(a, argv, &mut i));
         } else {
             rest.push(argv[i].clone());
         }
         i += 1;
     }
-    BuildFlags { local, path, rest }
+    if path.is_some() && target.is_some() {
+        eprintln!("{RED}--path und --target schließen sich aus{RESET}");
+        eprintln!("{DIM}  --path D: eigenes Ziel im Unterordner; --target T: benanntes Ziel in der Root-Konfig{RESET}");
+        exit(1);
+    }
+    BuildFlags { local, path, target, rest }
 }
 
 /// True if the args carry an explicit `--branch`/`-b` (before any `--`), so
@@ -1242,7 +1409,7 @@ fn build(argv: &[String]) {
         exit(1);
     }
     let (branch, extra) = take_branch(&flags.rest);
-    let cfg = load_config_at(flags.path.as_deref());
+    let cfg = load_config_at(flags.path.as_deref(), flags.target.as_deref());
     if cfg.build.is_empty() || cfg.artifacts.is_empty() {
         eprintln!("{RED}.atlas-build.toml hat kein build/artifacts{RESET}");
         exit(1);
@@ -1258,6 +1425,11 @@ fn build(argv: &[String]) {
     // never collides with a branch. `mount_repo` is only needed for the
     // worktree, whose `.git` is a file pointing into the shared object store.
     let (src_dir, slug, label, commit, mount_repo) = if flags.local {
+        // The rsync drops `.git`, so anything that reads a version from git
+        // (`git describe`, `rev-parse`) silently gets nothing. Say so once,
+        // rather than let someone chase a blank version — a branch build has
+        // the repo and stamps correctly.
+        println!("{DIM}  --local: kein .git synchronisiert — git-Versionsstempel bleiben leer{RESET}");
         let top = git_toplevel(&cfg.root);
         sync_local(&cfg, &top);
         (cfg.local_dir(), "local".to_string(), "lokaler Arbeitsbaum".to_string(), String::new(), false)
@@ -1340,7 +1512,7 @@ fn build(argv: &[String]) {
     // later `atlas start` cannot be pointed at an empty directory.
     let missing = ssh_capture(&format!(
         "for a in {arts}; do [ -e \"$HOME/{src}/$a\" ] || echo \"$a\"; done",
-        arts = cfg.artifacts.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" "),
+        arts = cfg.artifacts.iter().map(|a| shq(&cfg.artifact_rel(a))).collect::<Vec<_>>().join(" "),
         src = src_dir,
     ));
     let missing: Vec<&str> = missing.split_whitespace().collect();
@@ -1365,7 +1537,7 @@ fn build(argv: &[String]) {
     if flags.local {
         // Nothing to restart; point at what came back instead.
         for a in &cfg.artifacts {
-            println!("{DIM}  → atlas:~/{src_dir}/{a}{RESET}");
+            println!("{DIM}  → atlas:~/{src_dir}/{}{RESET}", cfg.artifact_rel(a));
         }
     } else if was_running {
         // Bring back whatever was serving before, now on the fresh build.
