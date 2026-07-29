@@ -1,0 +1,25 @@
+# cloudflared ingress — LOCALLY-MANAGED tunnel alternative (NOT the default).
+#
+# The default path used by scripts/proxy/setup.sh is a REMOTELY-MANAGED tunnel:
+# the tunnel is created via the Cloudflare API, its ingress is stored in
+# Cloudflare, and cloudflared runs with `tunnel run --token <TUNNEL_TOKEN>`
+# (see scripts/proxy/cloudflared.service). In that mode this file is UNUSED —
+# there is no config.yml and no credentials JSON on disk.
+#
+# Use this file only if you deliberately switch to a locally-managed tunnel
+# (`cloudflared tunnel create atlas`, which needs a one-time browser login to
+# mint ~/.cloudflared/cert.pem). Then:
+#   1. put this file at ~/.cloudflared/config.yml
+#   2. replace <TUNNEL-ID> with the id printed by `cloudflared tunnel list`
+#   3. run cloudflared with `tunnel run atlas` (drop --token from the service)
+#
+# Ingress is intentionally trivial: everything goes to the host Caddy on
+# 127.0.0.1:8080, which fans out per-Host to the right dev container. TLS is
+# terminated at the Cloudflare edge, so the origin hop is plain HTTP.
+
+tunnel: <TUNNEL-ID>
+credentials-file: /home/atlas/.cloudflared/<TUNNEL-ID>.json
+
+ingress:
+  - service: http://localhost:8080   # -> host Caddy (all *.lukaloehr.com)
+  - service: http_status:404         # required catch-all

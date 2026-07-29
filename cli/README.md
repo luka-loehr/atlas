@@ -2,221 +2,181 @@
 
 `atlas` is a single-binary Rust CLI (std only, zero dependencies) that controls
 the atlas homelab server from a workstation. It wraps SSH for everyday access,
-handles power management via Wake-on-LAN, offloads project builds and dev
-servers to the server's Docker engine, and installs the companion control-plane
-server [api](../api).
+manages power via Wake-on-LAN, offloads project builds and dev servers to the
+server's Docker engine, publishes dev servers on the tailnet or on stable
+`lukaloehr.com` subdomains, and installs the companion control-plane
+[api](../api).
 
 Everything goes over `ssh`. Project source comes from GitHub, not from this
-machine. The binary is Unix-only — a bare
-`atlas` replaces its own process with `ssh`, so you get a real interactive
-session, not a wrapper.
+machine. The binary is Unix-only — a bare `atlas` replaces its own process with
+`ssh`, so you get a real interactive session, not a wrapper. Anything the
+dispatcher does not recognize as a verb is passed through verbatim as a remote
+command (`atlas nvidia-smi`).
 
-## Commands
+For the full story — how builds sync, how the images are structured, the config
+schema in depth, repo-hash namespacing, and the dev-networking design — see the
+[builder README](../builder/README.md).
+
+## Command surface
+
+### Machine
 
 | command | what it does |
 |---|---|
 | `atlas` | interactive SSH session (execs `ssh -t <host>`) |
 | `atlas <cmd ...>` | run any command on the server (`atlas nvidia-smi`) |
-| `atlas boot` (`up`, `wake`) | send a Wake-on-LAN magic packet, wait until SSH answers (120 s timeout) |
-| `atlas shutdown` (`off`, `poweroff`) | `sudo poweroff` over SSH, wait until port 22 is down (60 s) |
-| `atlas restart` (`reboot`) | `sudo reboot`, wait for the box to go down and come back |
-| `atlas status` | up/down, plus which route answered (LAN or tailnet) |
-| `atlas build [args...]` | build the current project on the server in a builder image; extra args are appended to the build command |
-| `atlas dev` | start the project's dev server on the server, published on the tailnet |
-| `atlas dev --public` (`--tunnel`) | expose it through a public cloudflared quick tunnel instead |
-| `atlas dev url` / `dev logs` / `dev stop` | print whichever URL is live / follow the dev-server logs / stop server, tunnel and serve config |
-| `atlas secrets push [file]` | upload this project's env file to the server (never synced, `0600`) |
-| `atlas secrets list` / `secrets rm` | which projects have one (never the contents) / drop this project's |
-| `atlas api` | build + install the control-plane API server (systemd service) |
-| `atlas api logs\|status\|stop\|restart` | manage the `atlas-api` service |
-| `atlas help` | usage |
+| `atlas boot` (`up`, `wake`) | Wake-on-LAN, wait until reachable (120 s) |
+| `atlas shutdown` (`off`, `poweroff`) | `sudo poweroff`, wait until down (60 s) |
+| `atlas restart` (`reboot`) | `sudo reboot`, wait for down then back up |
+| `atlas status` | up/down + which route answered (LAN / tailnet) |
+| `atlas doctor` | preflight: reachability, docker, disk, images, tunnel, Caddy, sudo |
 
-`boot`, `shutdown` and `restart` are synchronous — they poll until the machine
-actually reaches the target state, so they chain in scripts
-(`atlas boot && atlas build`).
+`boot`/`shutdown`/`restart` are synchronous — they poll to the target state, so
+they chain in scripts (`atlas boot && atlas build`).
 
-Reachability is a 700 ms TCP probe of the configured `host:port` (22 by
-default), first on `ATLAS_LAN_ADDR`, then on `ATLAS_TAILNET_ADDR` (either
-route can be disabled by setting it empty).
-Wake-on-LAN only works from inside the LAN; from elsewhere, wake the box via
-your router's remote-access feature, then use the CLI over the tailnet.
-`shutdown`/`restart` deliberately ignore ssh's exit code (the connection drops
-mid-command) and trust the port probe instead.
+### Build
+
+All build-family commands need an `atlas.toml` (or a legacy `.atlas-build.toml`).
+Shared flags: `--branch B` / `-b B` (default `main`), `--local` / `-l` (build
+the working tree, no push), `--path D` (subdir as its own root), `--target T`
+(a named `[target.T]` section). `--` ends atlas flags. `--local` ⊥ `--branch`;
+`--path` ⊥ `--target`.
+
+| command | what it does |
+|---|---|
+| `atlas build [-b B]` | build a pushed branch on atlas (fetched from GitHub); artifacts stay on atlas |
+| `atlas build --local` | build the local working tree (uncommitted, no push) |
+| `atlas build --path D` | build subdir D as its own root (its own `atlas.toml`) |
+| `atlas build --target T` | build the named `[target.T]` from the root config |
+| `atlas build ... -- ...` | everything after `--` goes to the build command |
+| `atlas test [-b B] [-- a]` | run tests on atlas (`cargo`/`npm test`); exit code returns |
+| `atlas exec [-b B] -- CMD` | fresh-sync, then run CMD in the build root on atlas |
+| `atlas run [-b B] -- CMD` | run a BUILT artifact on atlas (no sync, no rebuild) |
+| `atlas watch` | local: watch the working tree, re-run `build --local` on change |
+
+`test`/`exec`/`run` share `--local` / `--path D` / `--target T` and run with
+`--network host`. `exec`/`run` take a program and its arguments verbatim — for
+shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
+
+### Serve
+
+| command | what it does |
+|---|---|
+| `atlas dev [-b B]` | dev server on atlas, on the tailnet (private, stable URL) |
+| `atlas dev [-b B] --public` | publish at `https://<name>.lukaloehr.com` (stable) |
+| `atlas dev [-b B] url\|logs\|stop` | print URL / follow dev logs / stop + tear down this project's route |
+| `atlas start [-b B]` | run the BUILT result of this branch (never builds) |
+| `atlas start [-b B] status\|logs\|stop` | inspect / tear down the started app |
+| `atlas api` | build + install the control-plane API · `api logs\|status\|stop\|restart` |
+
+### Observe
+
+| command | what it does |
+|---|---|
+| `atlas ls` | fleet: every project on atlas — branches, running, URL, disk |
+| `atlas logs [-b B] [-f]` | `docker logs` of this project's dev/start container |
+| `atlas health [-b B]` | HTTP-probe the dev/start URL at `health`; non-zero exit if unhealthy |
+| `atlas open [-b B]` | open the dev/start URL in the local browser |
+| `atlas info` | this project: name, repo, hash, remote dir, image, URL, secrets |
+
+### Config
+
+| command | what it does |
+|---|---|
+| `atlas secrets push [file]` | upload this project's env file (never in git, `0600` on atlas) |
+| `atlas secrets list` / `secrets rm` | which projects have one · drop this project's |
+| `atlas migrate` | write `atlas.toml` from a legacy `.atlas-build.toml` |
+| `atlas help` (`-h`, `--help`) | usage |
+| `atlas --version` (`-V`, `version`) | print the version |
+
+## Configuration file — `atlas.toml`
+
+Per-project config lives in an `atlas.toml` at the project root; the CLI walks
+up from the current directory until it finds one, preferring `atlas.toml` over a
+legacy `.atlas-build.toml` in the same directory. It is a flat `key = value`
+list (not full TOML) with quoted or bare values, `#` comments, and optional
+`[target.NAME]` sections.
+
+Source comes from **GitHub**, not from this machine: the server clones the repo
+and keeps a worktree per branch. Push before you build. `--branch B` / `-b B`
+selects the branch (default `main`); `--local` builds the working tree instead.
+
+```toml
+name      = "my-app"         # required — project id + container prefix (A-Za-z0-9._-)
+image     = "universal"      # required — builder key: universal | mobile
+dir       = "web"            # subdir (relative to this file) the build/dev runs in
+build     = "pnpm build"     # build command (required for `atlas build`)
+artifacts = "web/dist"       # whitespace-separated paths the build must produce
+dev       = "pnpm dev --host 0.0.0.0 --port 3000"  # dev-server command
+start     = "pnpm start"     # run the BUILT artifact, for `atlas start` (default: detect)
+install   = "pnpm install"   # dep install before dev/start (default: detect from lockfile)
+repo      = "https://..."    # git URL to clone (default: this checkout's origin)
+port      = 3000             # port the server binds (default 3000)
+health    = "/api/health"    # path `atlas health` probes (default /)
+```
+
+`health` is the only key new in v2; every other key is identical to the legacy
+schema. `atlas migrate` copies a `.atlas-build.toml` to `atlas.toml` byte-for-
+byte (1:1 mapping) and keeps the legacy file as a fallback — no value changes.
+See the [builder README](../builder/README.md#configuration--atlastoml) for the
+full schema table, `[target.NAME]` semantics, and lockfile-based install/start
+detection.
+
+### Repo-hash namespacing
+
+Each project's remote directory and container names are keyed by `name` **and**
+a short deterministic hash of the origin git URL —
+`~/atlas-builds/<name>-<hash8>/`. Two different repos that happen to share a
+`name` (e.g. the `rt-harness` config that ships in both `dairo-frontend` and
+`dairo-backend`) no longer clobber each other's build tree, state, or
+containers. The hash is stable across machines, installs and Rust releases; the
+tailnet dev port and the public subdomain label stay name-based on purpose (URL
+stability). See [the builder README](../builder/README.md#repo-hash-namespacing--why-a-name-is-not-enough).
+
+## Dev networking — one-liner
+
+`atlas dev` is **tailnet-private by default** (`tailscale serve` →
+`https://<tailnet host>:<port>`, port derived from `name` so it never moves);
+`atlas dev --public` publishes at a **stable** subdomain —
+`https://<name>.lukaloehr.com` for `main`, `https://<name>-<dns-branch>.lukaloehr.com`
+otherwise — via a persistent host Cloudflare Tunnel + host Caddy and a wildcard
+`*.lukaloehr.com` DNS record. The old random `trycloudflare.com` quick tunnel is
+**removed**. `atlas dev --public` needs no Cloudflare token at runtime; it only
+upserts a Caddy route. If the tunnel or Caddy is down it prints
+`run scripts/atlas-web/install.sh on atlas` and exits non-zero.
 
 ## Build & install
 
-Requires a Rust toolchain with edition-2024 support and a Unix OS (the CLI
-uses `exec()`; it does not build on Windows).
+Requires a Rust toolchain with edition-2024 support and a Unix OS (the CLI uses
+`exec()`; it does not build on Windows).
 
 ```bash
 cargo install --path cli    # from the repo root — installs `atlas` into ~/.cargo/bin
 ```
 
-Client-side you need `ssh` (with a host alias matching `ATLAS_SSH_HOST` and
+Client-side you need `ssh` (a host alias matching `ATLAS_SSH_HOST` with
 non-interactive key auth), and `git` for reading a project's `origin` remote.
-Server-side prerequisites are
-listed below; machine-level setup is covered in [docs/SETUP.md](../docs/SETUP.md).
+Machine-level setup is covered in [docs/SETUP.md](../docs/SETUP.md).
 
-## Configuration
+## Configuration (environment)
 
 Every value resolves in order: environment variable → the optional file
-`~/.config/atlas/env` (plain `KEY=VALUE` lines, `#` comments, optional quotes)
-→ a generic built-in default. The file keeps personal addresses out of shell
+`~/.config/atlas/env` (plain `KEY=VALUE` lines, `#` comments, optional quotes) →
+a generic built-in default. The file keeps personal addresses out of shell
 profiles and the repo.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `ATLAS_SSH_HOST` | `atlas` | ssh host (alias from `~/.ssh/config`) |
-| `ATLAS_LAN_ADDR` | `192.168.1.100:22` | LAN ssh route, `host:port` (empty = skip this route) |
+| `ATLAS_LAN_ADDR` | `192.168.1.100:22` | LAN ssh route, `host:port` (empty = skip) |
 | `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip) |
-| `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until you set the real one) |
+| `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until set) |
 | `ATLAS_WOL_BROADCAST` | `192.168.1.255:9` | broadcast `addr:port` for the magic packet |
 | `ATLAS_API_URL` | tailnet host + `:8787` | API server `host:port`, printed after `atlas api` |
 
-## Remote builds (`atlas build`)
-
-Per-project configuration lives in a `.atlas-build.toml`; the CLI walks up
-from the current directory until it finds one. The file is a flat
-`key = value` list (not full TOML) — quoted or bare values, `#` comments.
-
-Source comes from **GitHub**, not from this machine: the server clones the repo
-and keeps a worktree per branch. Push before you build. `--branch B` / `-b B`
-selects the branch (default `main`).
-
-```toml
-name      = "my-app"         # required — remote dir + container names (A-Za-z0-9._-)
-image     = "universal"      # required — builder key: universal | mobile
-dir       = "."              # subdir (relative to this file) the build runs in
-build     = "npm run build"  # build command (required for `atlas build`)
-dev       = "npm run dev"    # dev-server command (required for `atlas dev`)
-install   = "npm ci"         # dependency install for `atlas dev` (default: detect from the lockfile)
-start     = "npm run start"  # run the BUILT artifact, for `atlas start` (default: detect)
-repo      = "https://..."    # git URL to clone (default: this checkout's origin)
-port      = 3000             # port the server listens on (default 3000)
-artifacts = "dist"           # whitespace-separated paths the build must produce
-```
-
-Both keys resolve to targets of the single [`builder/universal`](../builder)
-Dockerfile, so they share layers: `universal` → `atlas-universal-builder` for
-`build` and `atlas-universal-dev` (the one with `cloudflared` in it) for `dev`,
-`mobile` → `atlas-universal-mobile` for both. Any other value is rejected.
-
-`atlas build` then:
-
-1. wakes the server if it is asleep;
-2. ensures the builder image exists on the server — if missing, it is built
-   from [`builder/universal`](../builder) in the server's `~/atlas` checkout
-   (after a `git pull --ff-only`);
-3. fetches the repo on the server and hard-resets `wt/<branch-slug>` to
-   `origin/<branch>` — a branch that does not exist on the remote is an error
-   naming the branches that do;
-4. runs the build command in the container — as root, with a per-image cache
-   volume (`~/atlas-builds/.cache-<image>` mounted at `/cache`, wired up for
-   cargo/npm/pub/gradle so later builds start warm), then chowns the tree back
-   to the SSH user;
-5. verifies the declared `artifacts` actually exist, then records
-   `state/<branch-slug>.json`. Nothing is copied back to this machine — the
-   build stays where it can be run by `atlas start`. A failed build, or one
-   that exits 0 without producing its artifacts, writes no state.
-
-## Running a built target (`atlas start`)
-
-`atlas start [-b B]` runs the config's `start` command against what
-`atlas build` produced for that branch, published on the tailnet like `dev`.
-
-It **never builds**. Asking to start a branch with no target fails and lists
-the branches that have one, so a missing target is a sentence rather than a
-surprise 20-minute build. If the built commit has fallen behind the branch's
-remote tip, `start` says so with both short SHAs and starts the built target
-anyway. `atlas start status|logs|stop` inspect and tear it down.
-
-`name`, `image`, `dir` and `artifacts` end up inside remote shell commands, so
-the CLI enforces a conservative charset (`A-Za-z0-9._-`, first character
-alphanumeric for `name`/`image`); paths must be relative (no leading `/` or
-`-`) and must not contain `..` components.
-
-## Remote dev servers (`atlas dev`)
-
-`atlas dev` syncs the project like `build`, then starts `atlas-dev-<name>`:
-the install step for the project's lockfile followed by `<dev>`, with
-`--network host`, `HOST=0.0.0.0` and `PORT=<port>`.
-
-By default the dev server is published **on the tailnet only**, via
-`tailscale serve` on the server:
-
-```
-https://<tailnet host>:<port>      # e.g. https://atlas.your-tailnet.ts.net:20841
-```
-
-The host comes from `ATLAS_TAILNET_ADDR`; the port is derived from the project
-`name` (FNV-1a, band 20000–20999), so it is the same on every restart and two
-projects do not collide. That matters for everything that has to know the URL
-up front — OAuth redirect URIs, webhook targets, Next.js `allowedDevOrigins`.
-It is a port and not a path prefix because frameworks emit absolute asset URLs
-(`/_next/static/…`) that a prefix would break. `tailscaled` runs on the host,
-not in the container, so the CLI sets this over SSH with `sudo tailscale serve`
-(passwordless sudo, same as the post-build `chown`). No wait loop is needed:
-the URL is computed, not discovered — it answers 502 until the dev server is
-actually up (`atlas dev logs`).
-
-`atlas dev --public` (or `--tunnel`) skips that and starts a second container,
-`atlas-tunnel-<name>`, running a `cloudflared` quick tunnel (no Cloudflare
-account needed) against `http://localhost:<port>`. The CLI polls its logs for
-up to 60 s and prints the `https://….trycloudflare.com` URL. That URL is
-public, unauthenticated and random again on every start — hence opt-in. If
-`ATLAS_TAILNET_ADDR` is unset or still the placeholder, `atlas dev` says so and
-falls back to the tunnel.
-
-Re-running `atlas dev` re-syncs and restarts everything, including the serve
-config, so switching between the two modes is just the flag. The synced source
-lives at `~/atlas-builds/<name>` on the server if you want to edit it in place
-(a later re-sync overwrites those edits).
-
-Security note: `--network host` opens the dev port on every server interface
-regardless of mode. Containers use `--restart unless-stopped` and the serve
-config is persistent host state — both survive reboots until `atlas dev stop`,
-which removes the containers *and* turns the serve port off.
-
-## Project secrets (`atlas secrets`)
-
-Env files never travel with the source, because the source is the repo — a
-secret committed there would be published. Every worktree under
-`~/atlas-builds` is hard-reset to `origin/<branch>` on each run, so a secret
-parked in one is thrown away on the next build. The env-file store lives
-outside the worktrees for exactly that reason.
-
-`atlas secrets push [file]` streams the file (default `.env.local`, else
-`.env`) over ssh **stdin** — the contents never appear in a shell argument
-(`/proc/*/cmdline` is world-readable) and never touch an intermediate file. It
-lands as `~/atlas-secrets/<name>.env`, mode `0600` in a `0700` directory,
-outside the synced tree. `atlas build` and `atlas dev` then pass it to
-`docker run --env-file` at run time, so the values are environment variables in
-the container rather than a file on disk. If a project has a local env file but
-nothing in the store, both commands say so before starting.
-
-`atlas secrets list` prints name, size and mtime — never the contents.
-`atlas secrets rm` drops the current project's file.
-
-## Control-plane API (`atlas api`)
-
-Bare `atlas api` installs or updates the [api](../api) server on the machine:
-it runs `git fetch` + `git reset --hard origin/main` in the server's `~/atlas`
-checkout (this discards any local changes there), builds `api/` with the
-server's Rust toolchain, installs the binary to `/usr/local/bin/atlas-api`,
-installs `atlas-api.service`, and enables + restarts it. Afterwards the metrics
-endpoint is `http://<ATLAS_API_URL>/api/metrics` (port 8787 by default).
-
-The whole remote script is one `set -e` + `&&` chain, so nothing is installed
-and the running unit is not restarted unless the release build succeeded — a
-build that fails on the server must not leave the box with no control plane,
-since this is the same SSH path that manages its power. The unit reads its
-token from `/etc/atlas-api.env` (`ATLAS_API_*` variables), which lives outside
-the checkout and is never touched by an install.
-
-`api logs` follows `journalctl -u atlas-api`. `api stop` and `api restart` map
-to the corresponding `sudo systemctl` calls and exit non-zero if the call
-failed. `api status` prints the first 12 lines of `systemctl status` and does
-not treat an inactive unit as an error — that is an answer, not a failure.
+The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
+(`ControlPath ~/.ssh/cm/%r@%h:%p`, `ControlPersist`); it never sets conflicting
+`-o ControlMaster` / `-S` flags of its own.
 
 ## Server prerequisites
 
@@ -229,4 +189,7 @@ not treat an inactive unit as an error — that is an answer, not a failure.
   https, so `~/.git-credentials` or a credential helper)
 - passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `cp`,
   `mv`, `rm` and `chown`, plus `tailscale serve` for `atlas dev`
+- for `atlas dev --public`: the atlas-web infra (host Caddy + a named Cloudflare
+  Tunnel + a `*.lukaloehr.com` wildcard DNS record), installed once by
+  [`scripts/atlas-web/`](../scripts/atlas-web/) and verified by `atlas doctor`
 - a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas api`)

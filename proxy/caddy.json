@@ -1,0 +1,16 @@
+{
+  "admin": {
+    "listen": "localhost:2019"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "atlas": {
+          "listen": [":8080"],
+          "automatic_https": { "disable": true },
+          "routes": []
+        }
+      }
+    }
+  }
+}
