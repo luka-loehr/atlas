@@ -1,0 +1,28 @@
+[Unit]
+Description=Cloudflare Tunnel (atlas) — edge for *.lukaloehr.com -> host Caddy
+Documentation=file:///home/atlas/atlas/scripts/proxy/README.md
+# Start after Caddy so the first request the tunnel forwards has somewhere to
+# land. Not a hard Requires: cloudflared retries the origin on its own, and we
+# would rather the tunnel stay up (serving 502) than crash-loop with Caddy.
+After=network-online.target caddy.service
+Wants=network-online.target caddy.service
+# The tunnel token is injected via the environment (TUNNEL_TOKEN), never argv,
+# so it is not visible in `ps`. The unit refuses to start without it.
+ConditionPathExists=/etc/atlas/cloudflared.env
+
+[Service]
+# Remotely-managed tunnel: ingress lives in Cloudflare, cloudflared authenticates
+# with the token and needs no config.yml or credentials JSON on disk.
+EnvironmentFile=/etc/atlas/cloudflared.env
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
+Restart=on-failure
+RestartSec=5s
+# Hardening: cloudflared needs no privileges beyond outbound network.
+DynamicUser=no
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

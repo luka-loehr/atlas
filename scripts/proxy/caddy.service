@@ -1,0 +1,28 @@
+[Unit]
+Description=Caddy reverse proxy for atlas dev subdomains (*.lukaloehr.com)
+Documentation=file:///home/atlas/atlas/scripts/proxy/README.md
+# The Cloudflare tunnel forwards to this proxy; bring Caddy up first so the
+# tunnel never points at a dead origin. Network only — Caddy talks to the
+# admin API on localhost and reverse-proxies to loopback dev containers.
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/atlas/caddy.json
+
+[Service]
+Type=notify
+# Plain-HTTP reverse proxy on :8080 with the admin API on localhost:2019.
+# TLS is terminated at the Cloudflare edge, so Caddy never provisions certs.
+ExecStart=/usr/bin/caddy run --environ --config /etc/atlas/caddy.json
+# `caddy reload` swaps config without dropping in-flight connections. It also
+# refuses an invalid config, so a bad edit never takes the proxy down.
+ExecReload=/usr/bin/caddy reload --config /etc/atlas/caddy.json --force
+Restart=on-failure
+RestartSec=3s
+# Runtime routes are added/removed by the atlas CLI through the admin API and
+# live only in memory; on restart Caddy reloads the empty base config and the
+# CLI re-adds a route on the next `atlas dev --public`. This is intentional —
+# dev exposure is ephemeral, the wildcard DNS + tunnel are the durable parts.
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
