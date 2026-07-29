@@ -158,11 +158,15 @@ echo "    tunnel id: $TUNNEL_ID"
 
 # --- 3. set tunnel ingress: everything -> host Caddy ------------------------
 echo "==> setting tunnel ingress -> http://localhost:8080 (host Caddy)"
+# A single catch-all rule: everything the tunnel receives goes to host Caddy,
+# which routes by Host. Cloudflare requires the LAST ingress rule to be the
+# catch-all (service only, no hostname) — so this one rule IS the whole ingress.
+# A trailing { service: "http_status:404" } would make THIS rule a non-final
+# catch-all and the API rejects the config with HTTP 400.
 INGRESS_BODY=$(jq -nc '{
   config: {
     ingress: [
-      { service: "http://localhost:8080" },
-      { service: "http_status:404" }
+      { service: "http://localhost:8080" }
     ]
   }
 }')
