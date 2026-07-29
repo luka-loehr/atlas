@@ -1151,7 +1151,8 @@ fn api_install() {
          git reset --hard --quiet origin/main && cd api && \
          . ~/.cargo/env && cargo build --release --quiet && \
          sudo install -m755 target/release/atlas-api /usr/local/bin/atlas-api && \
-         sudo cp atlas-api.service /etc/systemd/system/atlas-api.service && \
+         sed \"s|^User=.*|User=$(id -un)|\" atlas-api.service \
+           | sudo tee /etc/systemd/system/atlas-api.service >/dev/null && \
          sudo systemctl daemon-reload && sudo systemctl enable --quiet atlas-api && \
          sudo systemctl restart atlas-api && \
          sleep 1 && systemctl is-active atlas-api";

@@ -5,10 +5,20 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# The account the API server runs as — adjust to your deployment. It needs the
-# `docker` group for /api/docker, and passwordless sudo for exactly
-# `poweroff` and `reboot` if the power endpoints should work.
-User=atlas
+# The account the API server runs as. `atlas api` substitutes the account that
+# runs the deploy; the sentinel below is never a valid user on purpose, so a
+# hand-copied unit fails with "Unknown user: SET-BY-INSTALLER" instead of
+# silently pointing at a plausible-but-absent account.
+#
+# A previous revision shipped `User=atlas` here. There is no `atlas` user on
+# the box, so every install crash-looped the service (status=217/USER) with a
+# name that reads like it ought to exist. Do not reintroduce a concrete
+# username here — substitute it at install time.
+#
+# Whatever account it ends up as needs the `docker` group for /api/docker, and
+# passwordless sudo for exactly `poweroff` and `reboot` if the power endpoints
+# should work.
+User=SET-BY-INSTALLER
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/local/bin/atlas-api
 # Optional env file (may be absent): ATLAS_API_TOKEN (bearer token —
