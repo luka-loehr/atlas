@@ -138,7 +138,13 @@ atlas run  [-b B] -- CMD       run CMD against the ALREADY-built tree (no sync, 
   the produced binary is still there. Give the command as a path so it is
   unambiguous which binary runs: `atlas run --path security/tests/rt-harness --local
   -- ./target/release/attack-money --secret-file /tmp/s`. Running against a tree
-  that was never built is an error that names the build to run first.
+  that was never built is an error that names the build to run first. Note that
+  `build`, `test` and `run` share one tree per source (the `--local` scratch dir,
+  or a branch worktree) — they are **not** isolated from each other. `test`
+  compiles a **debug** build (`target/debug`) and `build` a **release** one
+  (`target/release`) in that same tree, so after changing code, `atlas build`
+  before pointing `run` at `target/release/…` — otherwise it runs a stale binary
+  or none at all.
 
 `exec`/`run` take a **program and its arguments**, not a shell line — each token
 is passed through verbatim, so arguments with spaces survive and nothing is

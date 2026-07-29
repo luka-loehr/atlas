@@ -192,6 +192,7 @@ fn help() {
          atlas exec  [-b B] -- CMD   frisch syncen, dann CMD im Build-Root auf atlas ausführen\n  \
          atlas run   [-b B] -- CMD   ein GEBAUTES Artefakt auf atlas ausführen (kein Rebuild, kein Sync)\n  \
          {DIM}test/exec/run teilen --local | --path D | --target T mit build; laufen mit --network host{RESET}\n  \
+         {DIM}run führt aus, was `atlas build` erzeugt hat (release, target/release/…); test baut debug — bei Codeänderung erst atlas build{RESET}\n  \
          atlas dev   [-b B]   dev-Server dieses Branches auf atlas, im Tailnet\n  \
          atlas dev --public   stattdessen öffentlich (cloudflared, zufällige URL)\n  \
          atlas dev   [-b B] url|logs|stop\n  \
@@ -1563,10 +1564,13 @@ fn build(argv: &[String]) {
     );
 
     if flags.local {
-        // Nothing to restart; point at what came back instead.
+        // Artifacts STAY on atlas — nothing is copied back to the Mac. Name
+        // where they live (not "→ atlas", which reads like a copy TO atlas) and
+        // how to run them in place.
         for a in &cfg.artifacts {
-            println!("{DIM}  → atlas:~/{src_dir}/{}{RESET}", cfg.artifact_rel(a));
+            println!("{DIM}  liegt auf atlas (nicht kopiert): ~/{src_dir}/{}{RESET}", cfg.artifact_rel(a));
         }
+        println!("{DIM}  ausführen:  atlas run --local -- ./<pfad/zum/binary>{RESET}");
     } else if was_running {
         // Bring back whatever was serving before, now on the fresh build.
         if ssh_ok(&format!("docker start {running} >/dev/null")) {
