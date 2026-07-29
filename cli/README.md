@@ -6,7 +6,8 @@ handles power management via Wake-on-LAN, offloads project builds and dev
 servers to the server's Docker engine, and installs the companion control-plane
 server [api](../api).
 
-Everything goes over `ssh` and `rsync`. The binary is Unix-only — a bare
+Everything goes over `ssh`. Project source comes from GitHub, not from this
+machine. The binary is Unix-only — a bare
 `atlas` replaces its own process with `ssh`, so you get a real interactive
 session, not a wrapper.
 
@@ -51,8 +52,9 @@ uses `exec()`; it does not build on Windows).
 cargo install --path cli    # from the repo root — installs `atlas` into ~/.cargo/bin
 ```
 
-Client-side you also need `ssh` (with a host alias matching `ATLAS_SSH_HOST`
-and non-interactive key auth) and `rsync`. Server-side prerequisites are
+Client-side you need `ssh` (with a host alias matching `ATLAS_SSH_HOST` and
+non-interactive key auth), and `git` for reading a project's `origin` remote.
+Server-side prerequisites are
 listed below; machine-level setup is covered in [docs/SETUP.md](../docs/SETUP.md).
 
 ## Configuration
@@ -64,7 +66,7 @@ profiles and the repo.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ATLAS_SSH_HOST` | `atlas` | ssh/rsync host (alias from `~/.ssh/config`) |
+| `ATLAS_SSH_HOST` | `atlas` | ssh host (alias from `~/.ssh/config`) |
 | `ATLAS_LAN_ADDR` | `192.168.1.100:22` | LAN ssh route, `host:port` (empty = skip this route) |
 | `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip) |
 | `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until you set the real one) |
@@ -74,9 +76,12 @@ profiles and the repo.
 ## Remote builds (`atlas build`)
 
 Per-project configuration lives in a `.atlas-build.toml`; the CLI walks up
-from the current directory until it finds one, and the directory containing it
-is the sync root. The file is a flat `key = value` list (not full TOML) —
-quoted or bare values, `#` comments.
+from the current directory until it finds one. The file is a flat
+`key = value` list (not full TOML) — quoted or bare values, `#` comments.
+
+Source comes from **GitHub**, not from this machine: the server clones the repo
+and keeps a worktree per branch. Push before you build. `--branch B` / `-b B`
+selects the branch (default `main`).
 
 ```toml
 name      = "my-app"         # required — remote dir + container names (A-Za-z0-9._-)
@@ -85,8 +90,10 @@ dir       = "."              # subdir (relative to this file) the build runs in
 build     = "npm run build"  # build command (required for `atlas build`)
 dev       = "npm run dev"    # dev-server command (required for `atlas dev`)
 install   = "npm ci"         # dependency install for `atlas dev` (default: detect from the lockfile)
-port      = 3000             # port the dev server listens on (default 3000)
-artifacts = "dist"           # whitespace-separated paths to copy back (required for `atlas build`)
+start     = "npm run start"  # run the BUILT artifact, for `atlas start` (default: detect)
+repo      = "https://..."    # git URL to clone (default: this checkout's origin)
+port      = 3000             # port the server listens on (default 3000)
+artifacts = "dist"           # whitespace-separated paths the build must produce
 ```
 
 Both keys resolve to targets of the single [`builder/universal`](../builder)
@@ -100,14 +107,28 @@ Dockerfile, so they share layers: `universal` → `atlas-universal-builder` for
 2. ensures the builder image exists on the server — if missing, it is built
    from [`builder/universal`](../builder) in the server's `~/atlas` checkout
    (after a `git pull --ff-only`);
-3. rsyncs the project to `~/atlas-builds/<name>` on the server, excluding
-   `.git`, `target`, `node_modules`, `.next`, `build`;
+3. fetches the repo on the server and hard-resets `wt/<branch-slug>` to
+   `origin/<branch>` — a branch that does not exist on the remote is an error
+   naming the branches that do;
 4. runs the build command in the container — as root, with a per-image cache
    volume (`~/atlas-builds/.cache-<image>` mounted at `/cache`, wired up for
    cargo/npm/pub/gradle so later builds start warm), then chowns the tree back
    to the SSH user;
-5. rsyncs each `artifacts` path back into the local project. This uses
-   `--delete`: local artifact directories are replaced by the server's copy.
+5. verifies the declared `artifacts` actually exist, then records
+   `state/<branch-slug>.json`. Nothing is copied back to this machine — the
+   build stays where it can be run by `atlas start`. A failed build, or one
+   that exits 0 without producing its artifacts, writes no state.
+
+## Running a built target (`atlas start`)
+
+`atlas start [-b B]` runs the config's `start` command against what
+`atlas build` produced for that branch, published on the tailnet like `dev`.
+
+It **never builds**. Asking to start a branch with no target fails and lists
+the branches that have one, so a missing target is a sentence rather than a
+surprise 20-minute build. If the built commit has fallen behind the branch's
+remote tip, `start` says so with both short SHAs and starts the built target
+anyway. `atlas start status|logs|stop` inspect and tear it down.
 
 `name`, `image`, `dir` and `artifacts` end up inside remote shell commands, so
 the CLI enforces a conservative charset (`A-Za-z0-9._-`, first character
@@ -158,11 +179,11 @@ which removes the containers *and* turns the serve port off.
 
 ## Project secrets (`atlas secrets`)
 
-Env files are deliberately excluded from the build sync (`.env`, `.env.*`;
-`.env.example` and `.env.sample` are the two exceptions). Everything under
-`~/atlas-builds` is an rsync mirror of the workstation, so a secret parked
-there would be rewritten by every sync — or, being excluded from it, go
-silently stale.
+Env files never travel with the source, because the source is the repo — a
+secret committed there would be published. Every worktree under
+`~/atlas-builds` is hard-reset to `origin/<branch>` on each run, so a secret
+parked in one is thrown away on the next build. The env-file store lives
+outside the worktrees for exactly that reason.
 
 `atlas secrets push [file]` streams the file (default `.env.local`, else
 `.env`) over ssh **stdin** — the contents never appear in a shell argument
@@ -204,7 +225,8 @@ not treat an inactive unit as an error — that is an answer, not a failure.
 - this repository cloned at `~/atlas` with a reachable git remote
   (`build`/`dev` build images from it; `api` resets it to `origin/main`)
 - Docker Engine, with the SSH user in the `docker` group
-- `rsync`
+- `git`, and credentials for any private repo you build (the server clones over
+  https, so `~/.git-credentials` or a credential helper)
 - passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `cp`,
   `mv`, `rm` and `chown`, plus `tailscale serve` for `atlas dev`
 - a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas api`)

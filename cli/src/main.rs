@@ -5,8 +5,9 @@
 //!   atlas shutdown     powers the box off, waits until it is down
 //!   atlas restart      reboot, waits for the box to come back
 //!   atlas status       is it up? which route (LAN / tailnet)?
-//!   atlas build        build this project on atlas in a builder container
+//!   atlas build        build a branch of this project on atlas (source: GitHub)
 //!   atlas dev          run this project's dev server on atlas
+//!   atlas start        run what `atlas build` produced for a branch
 //!   atlas secrets      push/list/drop this project's env file on atlas
 //!   atlas api          build + install atlas-api (the control-plane server)
 //!   atlas <cmd ...>    run any command on atlas (forwarded to ssh)
@@ -155,6 +156,7 @@ fn main() {
         Some("status") => status(),
         Some("build") => build(&args[1..]),
         Some("dev") => dev(&args[1..]),
+        Some("start") => start(&args[1..]),
         Some("api") => api(&args[1..]),
         Some("secrets") => secrets(&args[1..]),
         Some("help") | Some("-h") | Some("--help") => help(),
@@ -171,14 +173,17 @@ fn help() {
          atlas boot         wake via WoL, wait until reachable\n  \
          atlas shutdown     power off, wait until down\n  \
          atlas restart      reboot, wait until back\n  \
-         atlas status       up/down + route (LAN/tailnet)\n  \
-         atlas build        build this project on atlas (needs .atlas-build.toml)\n  \
-         atlas dev          run its dev server on atlas, reachable on the tailnet\n  \
-         atlas dev --public expose it publicly instead (cloudflared, random URL)\n  \
-         atlas dev url      print the URL of the running dev server\n  \
-         atlas dev stop     stop the dev server + tunnel + serve config\n  \
-         atlas dev logs     follow the dev-server logs\n  \
-         atlas secrets push env-file for this project (never synced, 0600 on atlas)\n  \
+         atlas status       up/down + route (LAN/tailnet)\n\n\
+         PROJEKTE {DIM}(brauchen .atlas-build.toml; --branch B | -b B, Standard: main){RESET}\n  \
+         atlas build [-b B]   Branch auf atlas bauen — atlas holt ihn von GitHub\n  \
+         atlas build -b B -- …  alles nach '--' geht an den Build-Befehl\n  \
+         atlas dev   [-b B]   dev-Server dieses Branches auf atlas, im Tailnet\n  \
+         atlas dev --public   stattdessen öffentlich (cloudflared, zufällige URL)\n  \
+         atlas dev   [-b B] url|logs|stop\n  \
+         atlas start [-b B]   das GEBAUTE Ergebnis dieses Branches starten\n  \
+         atlas start [-b B] status|logs|stop\n\n\
+         SONST\n  \
+         atlas secrets push env-file for this project (nie im git, 0600 auf atlas)\n  \
          atlas secrets list/rm  show which projects have one / drop it\n  \
          atlas api          build+install the control-plane API (for the iOS apps)\n  \
          atlas api logs     follow the API logs   ·   api status/stop/restart\n  \
@@ -322,25 +327,37 @@ fn status() {
     }
 }
 
-// ---- remote build & dev ---------------------------------------------------
+// ---- remote build, dev & start --------------------------------------------
 
-const REMOTE_BASE: &str = "atlas-builds"; // relative to atlas' $HOME
-// Secrets live OUTSIDE the synced build tree: anything under REMOTE_BASE is a
-// mirror of the Mac and gets rewritten by every rsync, so a file kept there
-// would be either clobbered or silently stale. 0600 in a 0700 dir, injected as
+/// What atlas keeps per project, relative to atlas' $HOME:
+///
+///   atlas-builds/<name>/.repo/            clone (created --no-checkout)
+///   atlas-builds/<name>/wt/<slug>/        one worktree per branch
+///   atlas-builds/<name>/state/<slug>.json what `atlas build` last produced
+///   atlas-builds/.cache-<image>/          shared package caches
+///
+/// The Mac never pushes source here — GitHub is the meeting point and atlas
+/// pulls. The tree is disposable: every run hard-resets it to origin/<branch>,
+/// so it is never hand-edited and nothing may be stored in it.
+const REMOTE_BASE: &str = "atlas-builds";
+// Secrets live OUTSIDE the build tree: everything under REMOTE_BASE is a
+// checkout that gets reset (or thrown away and re-cloned), so a file kept there
+// would be deleted or silently stale. 0600 in a 0700 dir, injected as
 // environment variables at run time rather than lying around as a file.
 const SECRETS_BASE: &str = "atlas-secrets";
 
 struct BuildCfg {
-    root: PathBuf,          // dir holding .atlas-build.toml == rsync root
-    name: String,           // remote build dir name
+    root: PathBuf,          // dir holding .atlas-build.toml (the local checkout)
+    name: String,           // project dir name on atlas
     image: String,          // builder key: universal | mobile
-    dir: String,            // subdir (relative to root) the build runs in
+    dir: String,            // subdir (relative to the repo root) the build runs in
     build: String,          // build command (for `atlas build`)
     dev: String,            // dev-server command (for `atlas dev`)
+    start: String,          // run-the-built-artifact command ("" = detect)
     install: String,        // dependency install for `atlas dev` ("" = detect)
-    port: u16,              // dev-server port to tunnel
-    artifacts: Vec<String>, // paths (relative to root) to copy back
+    repo: String,           // git URL ("" = origin of the local checkout)
+    port: u16,              // port the server binds on atlas
+    artifacts: Vec<String>, // paths (relative to the repo root) the build produces
 }
 
 /// What `docker build` needs to produce one image, and what to run it as.
@@ -411,6 +428,22 @@ impl BuildCfg {
          else npm install --no-fund --no-audit; fi"
             .into()
     }
+    /// How `atlas start` runs what the build produced.
+    ///
+    /// Same lockfile probe as install_cmd and for the same reason — it is the
+    /// package manager's own script runner that knows how to start the app.
+    /// An explicit `start = ...` wins, and everything that is not a JS project
+    /// (cargo, flutter, ...) needs one: `npm run start` is meaningless there.
+    fn start_cmd(&self) -> String {
+        if !self.start.is_empty() {
+            return self.start.clone();
+        }
+        "if [ -f bun.lockb ] || [ -f bun.lock ]; then bun run start; \
+         elif [ -f pnpm-lock.yaml ]; then pnpm start; \
+         elif [ -f yarn.lock ]; then yarn start; \
+         else npm run start; fi"
+            .into()
+    }
     fn workdir(&self) -> String {
         if self.dir == "." {
             "/build".into()
@@ -418,8 +451,23 @@ impl BuildCfg {
             format!("/build/{}", self.dir)
         }
     }
-    fn remote_dir(&self) -> String {
+    /// All paths below are relative to atlas' $HOME and are used inside
+    /// double-quoted "$HOME/..." expansions; `name` and the branch slug are
+    /// charset-validated, so they need no further quoting.
+    fn base_dir(&self) -> String {
         format!("{REMOTE_BASE}/{}", self.name)
+    }
+    fn repo_dir(&self) -> String {
+        format!("{}/.repo", self.base_dir())
+    }
+    fn wt_dir(&self, slug: &str) -> String {
+        format!("{}/wt/{slug}", self.base_dir())
+    }
+    fn state_file(&self, slug: &str) -> String {
+        format!("{}/state/{slug}.json", self.base_dir())
+    }
+    fn cache_dir(&self) -> String {
+        format!("{REMOTE_BASE}/.cache-{}", self.image)
     }
     fn secrets_file(&self) -> String {
         format!("{SECRETS_BASE}/{}.env", self.name)
@@ -447,7 +495,9 @@ fn load_config() -> BuildCfg {
         dir: ".".into(),
         build: String::new(),
         dev: String::new(),
+        start: String::new(),
         install: String::new(),
+        repo: String::new(),
         port: 3000,
         artifacts: Vec::new(),
     };
@@ -466,7 +516,9 @@ fn load_config() -> BuildCfg {
             "dir" => c.dir = v,
             "build" => c.build = v,
             "dev" => c.dev = v,
+            "start" => c.start = v,
             "install" => c.install = v,
+            "repo" => c.repo = v,
             "port" => {
                 c.port = v.parse().unwrap_or_else(|_| {
                     eprintln!("{RED}.atlas-build.toml: ungültiger port{RESET} ({v})");
@@ -548,6 +600,78 @@ fn valid_rel_path(s: &str) -> bool {
         })
 }
 
+// ---- branches: validation, slug, flag parsing -----------------------------
+
+/// A branch name reaches a remote shell, the filesystem (as a slug) and a
+/// docker container name. Allow only what all three survive unquoted.
+///
+/// `__` is rejected because the slug maps '/' onto it: without that rule
+/// `feature/x` and `feature__x` would be the same directory and the same
+/// container, and `atlas start` would run the wrong build.
+fn valid_branch(b: &str) -> bool {
+    !b.is_empty()
+        && b.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && !b.contains("..")
+        && !b.contains("__")
+        && !b.contains("//")
+        && !b.ends_with('/')
+        && b.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
+}
+
+/// Branch → one path/container component. Bijective, because valid_branch
+/// rejects `__`.
+fn slug_of(branch: &str) -> String {
+    branch.replace('/', "__")
+}
+
+fn branch_of_slug(slug: &str) -> String {
+    slug.replace("__", "/")
+}
+
+/// Pull `--branch B` / `-b B` / `--branch=B` out of an argument list and return
+/// it with the rest of the arguments (default "main").
+///
+/// Stops at a literal `--` so `atlas build -- --branch x` passes the flag on to
+/// the build command instead of eating it.
+fn take_branch(argv: &[String]) -> (String, Vec<String>) {
+    let mut branch: Option<String> = None;
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < argv.len() {
+        let a = argv[i].as_str();
+        if a == "--" {
+            rest.extend_from_slice(&argv[i..]);
+            break;
+        }
+        if let Some(v) = a.strip_prefix("--branch=").or_else(|| a.strip_prefix("-b=")) {
+            branch = Some(v.to_string());
+        } else if a == "--branch" || a == "-b" {
+            let Some(v) = argv.get(i + 1) else {
+                eprintln!("{RED}{a} braucht einen Branchnamen{RESET}");
+                exit(1);
+            };
+            branch = Some(v.clone());
+            i += 1;
+        } else {
+            rest.push(argv[i].clone());
+        }
+        i += 1;
+    }
+    let branch = branch.unwrap_or_else(|| "main".into());
+    if !valid_branch(&branch) {
+        eprintln!("{RED}ungültiger Branchname '{branch}'{RESET}");
+        eprintln!("{DIM}  erlaubt: A-Za-z0-9._-/ , Anfang alphanumerisch, kein '..' und kein '__'{RESET}");
+        exit(1);
+    }
+    (branch, rest)
+}
+
+
+/// First seven characters of a commit sha (never panics on a corrupt state).
+fn short(sha: &str) -> &str {
+    sha.get(..7).unwrap_or(sha)
+}
+
 fn run_inherit(cmd: &mut Command) -> bool {
     cmd.status().map(|s| s.success()).unwrap_or(false)
 }
@@ -605,9 +729,9 @@ fn ensure_image(spec: &ImageSpec) {
 
 /// `atlas secrets push [file] | list | rm`
 ///
-/// Secrets are deliberately kept out of the synced tree. Everything under
-/// ~/atlas-builds is an rsync mirror of the Mac, so a secret parked there is
-/// rewritten by every sync (or, being excluded from it, goes silently stale)
+/// Secrets are deliberately kept out of the build tree. Everything under
+/// ~/atlas-builds is a git checkout that every build resets, so a secret parked
+/// there is deleted by the next run (or, being gitignored, goes silently stale)
 /// and lingers on disk for as long as the project does. The store is a 0600
 /// file in a 0700 directory outside that tree, handed to the container as
 /// environment variables at run time instead of lying around as a file.
@@ -713,86 +837,257 @@ fn warn_if_secrets_unpushed(cfg: &BuildCfg) {
         return;
     }
     println!(
-        "{DIM}Hinweis: .env liegt lokal, aber nicht auf atlas — env-Dateien werden nicht \
-         mitsynchronisiert.\n  atlas secrets push{RESET}"
+        "{DIM}Hinweis: .env liegt lokal, aber nicht auf atlas — env-Dateien liegen nicht \
+         im git und kommen deshalb nicht mit dem Branch mit.\n  atlas secrets push{RESET}"
     );
 }
 
-/// rsync the project tree to atlas (outputs/caches stay on their own sides).
-fn sync_to_atlas(cfg: &BuildCfg) {
-    let ok = run_inherit(Command::new("ssh").args([
-        ssh_host(),
-        // 0700 on the base: the tree below holds whole checkouts of private
-        // repos and was 0775/0755 on a box where any process could read it.
-        // The project dir itself is handled by rsync's --chmod below, because
-        // -a would otherwise re-apply the Mac's 0755 on every sync.
-        &format!(
-            "mkdir -p {d} {REMOTE_BASE}/.cache-{i} && chmod 700 \"$HOME/{REMOTE_BASE}\"",
-            d = cfg.remote_dir(),
-            i = cfg.image
-        ),
-    ]));
-    if !ok {
-        eprintln!("{RED}mkdir auf atlas fehlgeschlagen{RESET}");
+// ---- git on atlas: the tree comes from GitHub, never from the Mac ---------
+
+/// The git URL atlas clones from: an explicit `repo = ...`, otherwise the
+/// origin of the local checkout.
+///
+/// Read on the Mac, not derived from `name`: the project dir on atlas does not
+/// encode the owner, and two projects of different owners can share a name.
+fn repo_url(cfg: &BuildCfg) -> String {
+    let raw = if cfg.repo.is_empty() {
+        let out = Command::new("git")
+            .args(["-C".as_ref(), cfg.root.as_os_str(), "remote".as_ref(), "get-url".as_ref(), "origin".as_ref()])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        if out.is_empty() {
+            eprintln!("{RED}kein git-Remote 'origin'{RESET} in {}", cfg.root.display());
+            eprintln!(
+                "{DIM}  atlas baut aus GitHub, nicht vom Mac — Repo pushen, oder \
+                 repo = \"https://...\" in .atlas-build.toml setzen{RESET}"
+            );
+            exit(1);
+        }
+        out
+    } else {
+        cfg.repo.clone()
+    };
+    match normalize_git_url(&raw) {
+        Some(u) => u,
+        None => {
+            eprintln!("{RED}unbrauchbare Repo-URL:{RESET} {raw}");
+            eprintln!("{DIM}  erlaubt: https://host/owner/repo.git oder git@host:owner/repo.git{RESET}");
+            exit(1);
+        }
+    }
+}
+
+/// Rewrite an SSH remote to https and reject anything that is not a plain URL.
+///
+/// atlas authenticates with ~/.git-credentials, which only answers for https —
+/// a `git@github.com:` remote fails there with "Permission denied (publickey)"
+/// on a box that has no deploy key. The charset check is the second line of
+/// defence after shq(): nothing with a shell metacharacter gets that far.
+fn normalize_git_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.contains("://") && !s.starts_with("https://") && !s.starts_with("ssh://") {
+        return None; // git://, http://, file:// — not what atlas can authenticate
+    }
+    let url = if s.starts_with("https://") {
+        s.to_string()
+    } else if let Some(rest) = s.strip_prefix("ssh://") {
+        format!("https://{}", rest.rsplit_once('@').map_or(rest, |(_, h)| h))
+    } else if let Some((user_host, path)) = s.split_once(':') {
+        // scp form: git@host:owner/repo.git
+        if user_host.contains('/') || path.is_empty() {
+            return None;
+        }
+        let host = user_host.rsplit_once('@').map_or(user_host, |(_, h)| h);
+        format!("https://{host}/{path}")
+    } else {
+        return None;
+    };
+    let (host, path) = url.strip_prefix("https://")?.split_once('/')?;
+    if host.is_empty() || path.is_empty() {
+        return None;
+    }
+    url.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@' | '~' | '+' | '%'))
+        .then_some(url)
+}
+
+/// Make ~/atlas-builds/<name>/wt/<slug> an exact checkout of origin/<branch>
+/// and return the commit it now sits on.
+///
+/// Everything here runs as the ssh user and never under sudo: root has no git
+/// credentials on the box, so a sudo-wrapped fetch would fail on private repos.
+fn sync_worktree(cfg: &BuildCfg, branch: &str, slug: &str) -> String {
+    let url = repo_url(cfg);
+    let base = cfg.base_dir();
+    let repo = cfg.repo_dir();
+    let wt = cfg.wt_dir(slug);
+
+    // Clone (or repair an interrupted clone), then fetch. `--no-checkout`
+    // because .repo only ever holds the object store — the branches live in
+    // worktrees next to it.
+    let setup = format!(
+        "set -e; mkdir -p \"$HOME/{base}\" \"$HOME/{cache}\"; \
+         chmod 700 \"$HOME/{REMOTE_BASE}\" \"$HOME/{base}\"; \
+         r=\"$HOME/{repo}\"; \
+         if [ -d \"$r\" ] && ! git -C \"$r\" rev-parse --git-dir >/dev/null 2>&1; then rm -rf \"$r\"; fi; \
+         if [ ! -d \"$r\" ]; then git clone --quiet --no-checkout {url} \"$r\"; fi; \
+         git -C \"$r\" remote set-url origin {url}; \
+         git -C \"$r\" fetch --prune --quiet origin",
+        cache = cfg.cache_dir(),
+        url = shq(&url),
+    );
+    println!("{DIM}git fetch auf atlas ({url}){RESET}");
+    if !run_inherit(Command::new("ssh").args([ssh_host(), &setup])) {
+        eprintln!("{RED}git fetch auf atlas fehlgeschlagen{RESET}");
+        eprintln!(
+            "{DIM}  private Repos brauchen ~/.git-credentials auf atlas (https, nicht git@…){RESET}"
+        );
         exit(1);
     }
-    println!("{DIM}sync -> atlas{RESET}");
-    let ok = run_inherit(Command::new("rsync").args([
-        "-az",
-        "--delete",
-        // Strip group/other off everything that lands on atlas while leaving
-        // the owner bits (and therefore the execute bit on scripts) alone.
-        // Done here rather than as a chmod because -a re-applies the source's
-        // permissions on every sync, undoing anything set out of band.
-        "--chmod=Dgo=,Fgo=",
-        // Secrets do not travel with the source. The two sample files are the
-        // exception: they carry no values and repos do read them. Include
-        // rules must precede the exclude they carve out of — rsync takes the
-        // first rule that matches.
-        "--include",
-        ".env.example",
-        "--include",
-        ".env.sample",
-        "--exclude",
-        ".env",
-        "--exclude",
-        ".env.*",
-        "--exclude",
-        ".git",
-        "--exclude",
-        "target",
-        "--exclude",
-        "node_modules",
-        "--exclude",
-        ".next",
-        "--exclude",
-        "build",
-        &format!("{}/", cfg.root.display()),
-        &format!("{}:{}/", ssh_host(), cfg.remote_dir()),
-    ]));
-    if !ok {
-        eprintln!("{RED}rsync -> atlas fehlgeschlagen{RESET}");
+
+    // Resolve the branch before touching the worktree, so a typo is a sentence
+    // and not a git stack trace half-way through a checkout.
+    let commit = ssh_capture(&format!(
+        "git -C \"$HOME/{repo}\" rev-parse --verify --quiet {rev}",
+        rev = shq(&format!("refs/remotes/origin/{branch}^{{commit}}")),
+    ))
+    .trim()
+    .to_string();
+    if commit.len() < 7 || !commit.chars().all(|c| c.is_ascii_hexdigit()) {
+        eprintln!("{RED}Branch '{branch}' gibt es auf dem Remote nicht{RESET}");
+        let list = ssh_capture(&format!(
+            "git -C \"$HOME/{repo}\" for-each-ref --format='%(refname:strip=3)' \
+             refs/remotes/origin | grep -v '^HEAD$' | head -20"
+        ));
+        let list: Vec<&str> = list.split_whitespace().collect();
+        if !list.is_empty() {
+            eprintln!("{DIM}  vorhanden: {}{RESET}", list.join(", "));
+        }
         exit(1);
     }
-    // --chmod above only reaches files rsync actually transferred, so a tree
-    // that synced before this existed keeps its old 0755. Catch those up here.
+
+    // Create or update the worktree, and heal anything a killed run left
+    // behind: a stale admin entry, a directory that is no longer a worktree, a
+    // half-finished rebase/merge, local modifications. The tree is disposable
+    // by design, so healing means throwing it away rather than asking.
     //
-    // Scoped to files WE own and error-swallowing on purpose: `atlas dev` runs
-    // its container as root and never chowns back (unlike a build), so it
-    // leaves root-owned output under .next that this user can neither chmod nor
-    // needs to — it is generated, not the private source we are hiding. A bare
-    // `chmod -R` choked on exactly that ("Permission denied" on .next/dev). The
-    // `find -user` only walks our own files, so it is idempotent and cheap to
-    // repeat every sync.
+    // Detached HEAD, not a local branch: two worktrees may not check out the
+    // same branch, and we only ever want exactly what origin/<branch> points at.
+    //
+    // `clean -ffd` without -x on purpose — ignored files are node_modules, the
+    // package caches and the build output, i.e. everything that makes the next
+    // run warm. Only untracked-and-not-ignored leftovers go.
+    let update = format!(
+        "set -e; r=\"$HOME/{repo}\"; w=\"$HOME/{wt}\"; \
+         git -C \"$r\" worktree prune; \
+         if [ -d \"$w\" ] && ! git -C \"$w\" rev-parse --is-inside-work-tree >/dev/null 2>&1; \
+           then rm -rf \"$w\"; fi; \
+         if [ -d \"$w\" ]; then \
+           ( for op in am rebase merge cherry-pick revert; do \
+               git -C \"$w\" $op --abort >/dev/null 2>&1 || true; done; \
+             git -C \"$w\" reset --hard --quiet {sha} && git -C \"$w\" clean -ffdq ) \
+           || rm -rf \"$w\"; \
+         fi; \
+         if [ ! -d \"$w\" ]; then mkdir -p \"$HOME/{base}/wt\"; \
+           git -C \"$r\" worktree add --detach --force --quiet \"$w\" {sha}; fi; \
+         chmod 700 \"$w\"; \
+         find \"$w\" -user \"$(id -un)\" \\( -type d -o -type f \\) \
+           -exec chmod go= {{}} + 2>/dev/null || true",
+        sha = shq(&commit),
+    );
+    // The permissions walk is the same one the old rsync did and for the same
+    // reason: this tree is a checkout of a PRIVATE repo on a box where other
+    // processes exist. Scoped to files we own because a dev container runs as
+    // root and leaves root-owned output that a bare `chmod -R` chokes on.
+    if !run_inherit(Command::new("ssh").args([ssh_host(), &update])) {
+        eprintln!("{RED}Worktree für '{branch}' konnte nicht aktualisiert werden{RESET}");
+        eprintln!("{DIM}  Notausgang:  ssh {} 'rm -rf ~/{wt}'  und nochmal{RESET}", ssh_host());
+        exit(1);
+    }
+    println!("{DIM}  {branch} @ {}{RESET}", short(&commit));
+    commit
+}
+
+/// The current tip of <branch> on the remote, or None when it cannot be asked.
+/// Used for the staleness warning only — no network must never block a start.
+fn remote_tip(cfg: &BuildCfg, branch: &str) -> Option<String> {
+    let out = ssh_capture(&format!(
+        "git -C \"$HOME/{repo}\" ls-remote --heads origin {b} 2>/dev/null | head -1 | cut -f1",
+        repo = cfg.repo_dir(),
+        b = shq(branch),
+    ));
+    let sha = out.trim().to_string();
+    (sha.len() >= 7 && sha.chars().all(|c| c.is_ascii_hexdigit())).then_some(sha)
+}
+
+/// Hash key for a project's `tailscale serve` port.
+///
+/// `main` in dev mode keeps the bare project name, so the URL a project has
+/// always had — and every OAuth redirect, webhook and `allowedDevOrigins`
+/// entry configured against it — does not move now that branches exist.
+/// Everything else gets its own port, so two branches (or a dev server and a
+/// started build) can be up at the same time without fighting.
+fn port_key(cfg: &BuildCfg, slug: &str, mode: &str) -> String {
+    if slug == "main" && mode == "dev" {
+        cfg.name.clone()
+    } else {
+        format!("{}/{slug}#{mode}", cfg.name)
+    }
+}
+
+/// Write the per-branch build record. Only ever called after a build exited 0,
+/// so a failed build cannot leave a target that `atlas start` would trust.
+///
+/// Written to a temp file and moved into place: a run killed mid-write would
+/// otherwise leave truncated JSON that reads as "no target" at best and as a
+/// bogus commit at worst.
+fn write_state(cfg: &BuildCfg, branch: &str, slug: &str, commit: &str, secs: u64) {
+    let arts = cfg.artifacts.iter().map(|a| format!("\"{a}\"")).collect::<Vec<_>>().join(",");
+    // The timestamp is the box's, taken at write time, and is passed as its own
+    // printf argument: everything else goes through shq(), which single-quotes
+    // and would keep a `$(date …)` as literal text.
+    let head = format!("{{\"branch\":\"{branch}\",\"commit\":\"{commit}\",\"built_at\":\"");
+    let tail = format!(
+        "\",\"ok\":true,\"seconds\":{secs},\"image\":\"{img}\",\"artifacts\":[{arts}]}}",
+        img = cfg.image,
+    );
+    let f = cfg.state_file(slug);
     ssh_ok(&format!(
-        "d=\"$HOME/{d}\"; chmod 700 \"$d\" 2>/dev/null; \
-         find \"$d\" -user \"$(id -un)\" \\( -type d -o -type f \\) \
-         -exec chmod go= {{}} + 2>/dev/null; true",
-        d = cfg.remote_dir()
+        "mkdir -p \"$(dirname \"$HOME/{f}\")\" \
+         && printf '%s%s%s\\n' {h} \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" {t} > \"$HOME/{f}.tmp\" \
+         && mv \"$HOME/{f}.tmp\" \"$HOME/{f}\"",
+        h = shq(&head),
+        t = shq(&tail),
     ));
 }
 
-fn build(extra: &[String]) {
+/// One field out of the per-branch state file. Empty when there is no target,
+/// the file is unreadable, or the field is missing — every caller treats empty
+/// as "no usable target" rather than guessing.
+fn state_field(cfg: &BuildCfg, slug: &str, key: &str) -> String {
+    ssh_capture(&format!(
+        "sed -n 's/.*\"{key}\":\"\\([^\"]*\\)\".*/\\1/p' \"$HOME/{f}\" 2>/dev/null | head -1",
+        f = cfg.state_file(slug),
+    ))
+    .trim()
+    .to_string()
+}
+
+/// Branches that currently have a successful build on atlas.
+fn built_branches(cfg: &BuildCfg) -> Vec<String> {
+    let out = ssh_capture(&format!(
+        "ls \"$HOME/{}/state\" 2>/dev/null | sed 's/\\.json$//'",
+        cfg.base_dir()
+    ));
+    out.split_whitespace().map(branch_of_slug).collect()
+}
+
+fn build(argv: &[String]) {
+    let (branch, extra) = take_branch(argv);
+    let slug = slug_of(&branch);
     let cfg = load_config();
     if cfg.build.is_empty() || cfg.artifacts.is_empty() {
         eprintln!("{RED}.atlas-build.toml hat kein build/artifacts{RESET}");
@@ -802,86 +1097,228 @@ fn build(extra: &[String]) {
     let spec = cfg.spec(false);
     ensure_image(&spec);
     warn_if_secrets_unpushed(&cfg);
-    sync_to_atlas(&cfg);
+    let commit = sync_worktree(&cfg, &branch, &slug);
 
+    // Everything after a literal `--` is for the build command, not for us.
     let mut buildcmd = cfg.build.clone();
-    for a in extra {
+    for a in extra.iter().filter(|a| a.as_str() != "--") {
         buildcmd.push(' ');
         buildcmd.push_str(a);
     }
+    // .repo is mounted at its own absolute path, not just /build: a worktree's
+    // `.git` is a FILE containing `gitdir: <abs path into .repo>`. Without the
+    // object store visible at exactly that path, every git command inside the
+    // build fails with "not a git repository" — which breaks any build that
+    // stamps a version or embeds a commit.
+    //
     // Run as root inside the container (works for every base image, incl.
-    // flutter's SDK dir), then chown the tree back to the SSH user so the next
-    // rsync and the artifact pull don't trip over root-owned files. `; rc=$?`
+    // flutter's SDK dir), then chown the worktree back to the SSH user so the
+    // next fetch and the next start don't trip over root-owned files. `; rc=$?`
     // keeps the build's exit code even though the chown always runs.
     let remote = format!(
         "{prologue}docker run --rm $envf \
          -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
          -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
          -e GRADLE_USER_HOME=/cache/gradle \
-         -v \"$HOME/{dir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
+         -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
+         -v \"$HOME/{repo}\":\"$HOME/{repo}\" \
          -w {wd} {tag} sh -c {cmd}; rc=$?; \
-         sudo chown -R $(id -u):$(id -g) \"$HOME/{dir}\" >/dev/null 2>&1; exit $rc",
+         sudo chown -R $(id -u):$(id -g) \"$HOME/{wt}\" >/dev/null 2>&1; exit $rc",
         prologue = env_file_prologue(&cfg),
-        dir = cfg.remote_dir(),
-        base = REMOTE_BASE,
-        img = cfg.image,
+        wt = cfg.wt_dir(&slug),
+        cache = cfg.cache_dir(),
+        repo = cfg.repo_dir(),
         wd = cfg.workdir(),
         tag = spec.tag,
         cmd = shq(&buildcmd),
     );
-    println!("{DIM}build on atlas ({}):{RESET} {buildcmd}", spec.tag);
+    println!("{DIM}build auf atlas ({}):{RESET} {buildcmd}", spec.tag);
     let t0 = Instant::now();
     let ok = run_inherit(Command::new("ssh").args([ssh_host(), &remote]));
     let secs = t0.elapsed().as_secs();
     if !ok {
         eprintln!("{RED}Build fehlgeschlagen{RESET} (nach {secs}s)");
+        eprintln!("{DIM}  kein Target für '{branch}' hinterlegt — atlas start bleibt beim alten{RESET}");
         exit(1);
     }
 
-    println!("{DIM}sync artifacts <- atlas{RESET}");
-    for art in &cfg.artifacts {
-        let local = cfg.root.join(art);
-        fs::create_dir_all(&local).ok();
-        let ok = run_inherit(Command::new("rsync").args([
-            "-az",
-            "--delete",
-            &format!("{}:{}/{art}/", ssh_host(), cfg.remote_dir()),
-            &format!("{}/", local.display()),
-        ]));
-        if !ok {
-            eprintln!("{RED}Artefakt-Sync fehlgeschlagen{RESET} ({art})");
-            exit(1);
-        }
+    // The build said 0; make sure it actually produced what it claims, so
+    // `atlas start` cannot be pointed at an empty directory.
+    let missing = ssh_capture(&format!(
+        "for a in {arts}; do [ -e \"$HOME/{wt}/$a\" ] || echo \"$a\"; done",
+        arts = cfg.artifacts.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" "),
+        wt = cfg.wt_dir(&slug),
+    ));
+    let missing: Vec<&str> = missing.split_whitespace().collect();
+    if !missing.is_empty() {
+        eprintln!("{RED}Build meldete Erfolg, aber es fehlt:{RESET} {}", missing.join(", "));
+        eprintln!("{DIM}  kein Target hinterlegt — artifacts in .atlas-build.toml prüfen{RESET}");
+        exit(1);
     }
+
+    write_state(&cfg, &branch, &slug, &commit, secs);
     println!(
-        "{GREEN}✓ build fertig{RESET} in {}m {:02}s  {DIM}(atlas, {}){RESET}",
+        "{GREEN}✓ build fertig{RESET} in {}m {:02}s  {DIM}({branch} @ {}, {}){RESET}",
         secs / 60,
         secs % 60,
+        short(&commit),
         spec.tag
     );
-    for art in &cfg.artifacts {
-        println!("  → {}", cfg.root.join(art).display());
+    println!("{DIM}  starten:  atlas start{}{RESET}", if branch == "main" { String::new() } else { format!(" -b {branch}") });
+}
+
+// ---- atlas start: run what `atlas build` produced, for one branch ---------
+
+fn start(argv: &[String]) {
+    let (branch, rest) = take_branch(argv);
+    let slug = slug_of(&branch);
+    let cfg = load_config();
+    match rest.first().map(String::as_str) {
+        Some("stop") => start_stop(&cfg, &slug, &branch),
+        Some("logs") => start_logs(&cfg, &slug),
+        Some("status") => start_status(&cfg, &slug, &branch),
+        _ => start_run(&cfg, &branch, &slug),
+    }
+}
+
+fn start_name(cfg: &BuildCfg, slug: &str) -> String {
+    format!("atlas-start-{}-{slug}", cfg.name)
+}
+
+fn start_run(cfg: &BuildCfg, branch: &str, slug: &str) {
+    ensure_up();
+
+    // Branch-native, and this is the whole point: start never builds. A branch
+    // without a target is a stop, not an implicit 20-minute build.
+    let commit = state_field(cfg, slug, "commit");
+    if commit.is_empty() {
+        eprintln!("{RED}kein Target für '{branch}' auf atlas{RESET}");
+        let have = built_branches(cfg);
+        if have.is_empty() {
+            eprintln!("{DIM}  für dieses Projekt wurde noch nichts gebaut{RESET}");
+        } else {
+            eprintln!("{DIM}  gebaut: {}{RESET}", have.join(", "));
+        }
+        eprintln!("{DIM}  bauen mit:  atlas build{}{RESET}", if branch == "main" { String::new() } else { format!(" -b {branch}") });
+        exit(1);
+    }
+
+    // Stale is a warning, never a refusal: the user asked for the built
+    // target, not for the newest code.
+    if let Some(tip) = remote_tip(cfg, branch)
+        && tip != commit
+    {
+        println!(
+            "{DIM}Achtung: Target ist {} , origin/{branch} steht auf {} — atlas build zum Auffrischen{RESET}",
+            short(&commit),
+            short(&tip)
+        );
+    }
+
+    let spec = cfg.spec(true);
+    ensure_image(&spec);
+    warn_if_secrets_unpushed(cfg);
+    let name = start_name(cfg, slug);
+
+    // Fresh container and a fresh serve mapping: the mapping outlives the
+    // container, so a stale one would proxy to a port nothing listens on.
+    ssh_ok(&format!("docker rm -f {name} >/dev/null 2>&1"));
+    serve_off(cfg, slug, "start");
+
+    let run = format!(
+        "{prologue}docker run -d --name {name} --network host --restart unless-stopped $envf \
+         -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
+         -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
+         -v \"$HOME/{repo}\":\"$HOME/{repo}\" \
+         -w {wd} {tag} sh -c {cmd} >/dev/null",
+        prologue = env_file_prologue(cfg),
+        port = cfg.port,
+        wt = cfg.wt_dir(slug),
+        cache = cfg.cache_dir(),
+        repo = cfg.repo_dir(),
+        wd = cfg.workdir(),
+        tag = spec.tag,
+        cmd = shq(&cfg.start_cmd()),
+    );
+    if !ssh_ok(&run) {
+        eprintln!("{RED}Start fehlgeschlagen{RESET}");
+        exit(1);
+    }
+    println!("{GREEN}✓ {} läuft{RESET}  {DIM}({branch} @ {}){RESET}", cfg.name, short(&commit));
+    match tailnet_host() {
+        Some(host) => {
+            let port = tailnet_port(&port_key(cfg, slug, "start"));
+            if ssh_ok(&format!(
+                "sudo tailscale serve --bg --https={port} http://127.0.0.1:{app} >/dev/null",
+                app = cfg.port
+            )) {
+                println!("  {GREEN}https://{host}:{port}{RESET}");
+            }
+        }
+        None => println!("{DIM}  kein Tailnet-Host gesetzt — nur auf atlas selbst erreichbar{RESET}"),
+    }
+    println!("{DIM}  Logs:  atlas start logs   ·   Stop:  atlas start stop{RESET}");
+}
+
+fn start_stop(cfg: &BuildCfg, slug: &str, branch: &str) {
+    ssh_ok(&format!("docker rm -f {} >/dev/null 2>&1", start_name(cfg, slug)));
+    serve_off(cfg, slug, "start");
+    println!("{GREEN}gestoppt{RESET} ({} @ {branch})", cfg.name);
+}
+
+fn start_logs(cfg: &BuildCfg, slug: &str) -> ! {
+    let err = Command::new("ssh")
+        .args(["-t", ssh_host(), &format!("docker logs -f {}", start_name(cfg, slug))])
+        .exec();
+    eprintln!("ssh: {err}");
+    exit(1);
+}
+
+fn start_status(cfg: &BuildCfg, slug: &str, branch: &str) {
+    let commit = state_field(cfg, slug, "commit");
+    if commit.is_empty() {
+        println!("{DIM}kein Target für '{branch}'{RESET}");
+        let have = built_branches(cfg);
+        if !have.is_empty() {
+            println!("{DIM}  gebaut: {}{RESET}", have.join(", "));
+        }
+        return;
+    }
+    let built = state_field(cfg, slug, "built_at");
+    let running = ssh_capture(&format!(
+        "docker inspect -f '{{{{.State.Running}}}}' {} 2>/dev/null",
+        start_name(cfg, slug)
+    ));
+    println!("{}  {branch} @ {}", cfg.name, short(&commit));
+    println!("  gebaut:  {}", if built.is_empty() { "?".into() } else { built });
+    println!("  läuft:   {}", if running.trim() == "true" { "ja" } else { "nein" });
+    if let Some(tip) = remote_tip(cfg, branch)
+        && tip != commit
+    {
+        println!("  {DIM}veraltet — origin/{branch} steht auf {}{RESET}", short(&tip));
     }
 }
 
 // ---- atlas dev: run a dev server on atlas, on the tailnet by default ------
 
-fn dev(sub: &[String]) {
+fn dev(argv: &[String]) {
+    let (branch, sub) = take_branch(argv);
+    let slug = slug_of(&branch);
     let cfg = load_config();
     match sub.first().map(String::as_str) {
-        Some("stop") => dev_stop(&cfg),
+        Some("stop") => dev_stop(&cfg, &slug, &branch),
         Some("url") => {
-            println!("{}", dev_url(&cfg).unwrap_or_else(|| "(kein dev-Server aktiv)".into()))
+            println!("{}", dev_url(&cfg, &slug).unwrap_or_else(|| "(kein dev-Server aktiv)".into()))
         }
-        Some("logs") => dev_logs(&cfg),
+        Some("logs") => dev_logs(&cfg, &slug),
         // `--tunnel` is the old mental model ("gib mir den Tunnel"), `--public`
         // says what actually changes: the dev server leaves the tailnet.
-        _ => dev_start(&cfg, sub.iter().any(|a| a == "--public" || a == "--tunnel")),
+        _ => dev_start(&cfg, &branch, &slug, sub.iter().any(|a| a == "--public" || a == "--tunnel")),
     }
 }
 
-fn dev_names(cfg: &BuildCfg) -> (String, String) {
-    (format!("atlas-dev-{}", cfg.name), format!("atlas-tunnel-{}", cfg.name))
+fn dev_names(cfg: &BuildCfg, slug: &str) -> (String, String) {
+    (format!("atlas-dev-{}-{slug}", cfg.name), format!("atlas-tunnel-{}-{slug}", cfg.name))
 }
 
 /// The HTTPS port `tailscale serve` publishes this project's dev server on.
@@ -909,15 +1346,15 @@ fn tailnet_port(name: &str) -> u16 {
 
 /// Whichever URL currently serves this project: the tailnet one when its serve
 /// config is up, otherwise the tunnel's.
-fn dev_url(cfg: &BuildCfg) -> Option<String> {
-    tailnet_url(cfg).or_else(|| tunnel_url(cfg))
+fn dev_url(cfg: &BuildCfg, slug: &str) -> Option<String> {
+    tailnet_url(cfg, slug).or_else(|| tunnel_url(cfg, slug))
 }
 
 /// The tailnet URL, but only if `tailscale serve` is really publishing it —
 /// `atlas dev url` must not print an address that answers nothing.
-fn tailnet_url(cfg: &BuildCfg) -> Option<String> {
+fn tailnet_url(cfg: &BuildCfg, slug: &str) -> Option<String> {
     let host = tailnet_host()?;
-    let port = tailnet_port(&cfg.name);
+    let port = tailnet_port(&port_key(cfg, slug, "dev"));
     // `serve status` is readable without sudo and prints one `https://host:port`
     // line per published port; anchor the match so the proxy target lines
     // ("|-- / proxy http://127.0.0.1:3000") cannot match a port by accident.
@@ -928,8 +1365,8 @@ fn tailnet_url(cfg: &BuildCfg) -> Option<String> {
 }
 
 /// Scrape the public URL out of the tunnel container's logs.
-fn tunnel_url(cfg: &BuildCfg) -> Option<String> {
-    let (_, tunnel) = dev_names(cfg);
+fn tunnel_url(cfg: &BuildCfg, slug: &str) -> Option<String> {
+    let (_, tunnel) = dev_names(cfg, slug);
     let out = ssh_capture(&format!(
         "docker logs {tunnel} 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | head -1"
     ));
@@ -941,23 +1378,23 @@ fn tunnel_url(cfg: &BuildCfg) -> Option<String> {
 /// tailscaled persists it and re-publishes the port after a reboot, so leaving
 /// it behind would advertise a dead port forever. `off` on a port that has no
 /// handler exits 1 — expected, hence the discarded status.
-fn tailnet_serve_off(cfg: &BuildCfg) {
+fn serve_off(cfg: &BuildCfg, slug: &str, mode: &str) {
     if tailnet_host().is_none() {
         return;
     }
-    let port = tailnet_port(&cfg.name);
+    let port = tailnet_port(&port_key(cfg, slug, mode));
     ssh_ok(&format!("sudo tailscale serve --https={port} off >/dev/null 2>&1"));
 }
 
-fn dev_stop(cfg: &BuildCfg) {
-    let (dev, tunnel) = dev_names(cfg);
+fn dev_stop(cfg: &BuildCfg, slug: &str, branch: &str) {
+    let (dev, tunnel) = dev_names(cfg, slug);
     ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
-    tailnet_serve_off(cfg);
-    println!("{GREEN}dev gestoppt{RESET} ({})", cfg.name);
+    serve_off(cfg, slug, "dev");
+    println!("{GREEN}dev gestoppt{RESET} ({} @ {branch})", cfg.name);
 }
 
-fn dev_logs(cfg: &BuildCfg) -> ! {
-    let (dev, _) = dev_names(cfg);
+fn dev_logs(cfg: &BuildCfg, slug: &str) -> ! {
+    let (dev, _) = dev_names(cfg, slug);
     let err = Command::new("ssh")
         .args(["-t", ssh_host(), &format!("docker logs -f {dev}")])
         .exec();
@@ -965,7 +1402,7 @@ fn dev_logs(cfg: &BuildCfg) -> ! {
     exit(1);
 }
 
-fn dev_start(cfg: &BuildCfg, public: bool) {
+fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
     if cfg.dev.is_empty() {
         eprintln!("{RED}.atlas-build.toml hat kein dev = ...{RESET}");
         exit(1);
@@ -974,8 +1411,8 @@ fn dev_start(cfg: &BuildCfg, public: bool) {
     let spec = cfg.spec(true);
     ensure_image(&spec);
     warn_if_secrets_unpushed(cfg);
-    sync_to_atlas(cfg);
-    let (dev, tunnel) = dev_names(cfg);
+    let commit = sync_worktree(cfg, branch, slug);
+    let (dev, tunnel) = dev_names(cfg, slug);
 
     // Without a tailnet host there is nothing to publish on, so the public
     // tunnel is the only way out — say why rather than failing.
@@ -989,10 +1426,11 @@ fn dev_start(cfg: &BuildCfg, public: bool) {
 
     // fresh start — the serve config too, because it outlives the containers
     ssh_ok(&format!("docker rm -f {dev} {tunnel} >/dev/null 2>&1"));
-    tailnet_serve_off(cfg);
+    serve_off(cfg, slug, "dev");
 
     // dev server: --network host so it binds atlas' real port; node_modules
-    // persist in the synced dir, so the install is warm after the first run.
+    // persist in the branch's worktree (git clean keeps ignored files), so the
+    // install is warm after the first run on that branch.
     //
     // The install step is picked from the lockfile rather than hardcoded to
     // npm: a bun or pnpm project used to get `npm install` run over it, which
@@ -1001,13 +1439,14 @@ fn dev_start(cfg: &BuildCfg, public: bool) {
     let run_dev = format!(
         "{prologue}docker run -d --name {dev} --network host --restart unless-stopped $envf \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
-         -v \"$HOME/{rdir}\":/build -v \"$HOME/{base}/.cache-{img}\":/cache \
+         -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
+         -v \"$HOME/{repo}\":\"$HOME/{repo}\" \
          -w {wd} {tag} sh -c {cmd} >/dev/null",
         prologue = env_file_prologue(cfg),
         port = cfg.port,
-        rdir = cfg.remote_dir(),
-        base = REMOTE_BASE,
-        img = cfg.image,
+        wt = cfg.wt_dir(slug),
+        cache = cfg.cache_dir(),
+        repo = cfg.repo_dir(),
         wd = cfg.workdir(),
         tag = spec.tag,
         cmd = shq(&devcmd),
@@ -1018,11 +1457,18 @@ fn dev_start(cfg: &BuildCfg, public: bool) {
     }
 
     match tailnet {
-        Some(host) => dev_expose_tailnet(cfg, host),
-        None => dev_expose_tunnel(cfg, &spec),
+        Some(host) => dev_expose_tailnet(cfg, slug, host),
+        None => dev_expose_tunnel(cfg, slug, &spec),
     }
-    println!("{DIM}  dev-Server läuft auf atlas ({}), Mac bleibt kühl.{RESET}", cfg.name);
-    println!("{DIM}  Code live bearbeiten:  ssh {}   → ~/{}{RESET}", ssh_host(), cfg.remote_dir());
+    println!(
+        "{DIM}  dev-Server läuft auf atlas ({} @ {branch}, {}), Mac bleibt kühl.{RESET}",
+        cfg.name,
+        short(&commit)
+    );
+    // Deliberately no "edit live on atlas" hint any more: the worktree is
+    // disposable and every run hard-resets it to origin/<branch>. Edit on the
+    // Mac (or wherever), push, and run this again.
+    println!("{DIM}  Änderungen:  push → atlas dev{RESET}");
     println!("{DIM}  Logs:  atlas dev logs   ·   Stop:  atlas dev stop{RESET}");
 }
 
@@ -1037,8 +1483,8 @@ fn dev_start(cfg: &BuildCfg, public: bool) {
 /// No wait loop here: this URL is computed from the config, not discovered in
 /// a log, so there is nothing to wait for. It answers 502 until the install
 /// and the dev server are through, which `atlas dev logs` shows.
-fn dev_expose_tailnet(cfg: &BuildCfg, host: &str) {
-    let port = tailnet_port(&cfg.name);
+fn dev_expose_tailnet(cfg: &BuildCfg, slug: &str, host: &str) {
+    let port = tailnet_port(&port_key(cfg, slug, "dev"));
     let ok = ssh_ok(&format!(
         "sudo tailscale serve --bg --https={port} http://127.0.0.1:{dev} >/dev/null",
         dev = cfg.port
@@ -1063,8 +1509,8 @@ fn dev_expose_tailnet(cfg: &BuildCfg, host: &str) {
 ///
 /// The URL only exists once cloudflared has registered it with the edge, so
 /// unlike the tailnet path this one has to wait for it to show up in the log.
-fn dev_expose_tunnel(cfg: &BuildCfg, spec: &ImageSpec) {
-    let (_, tunnel) = dev_names(cfg);
+fn dev_expose_tunnel(cfg: &BuildCfg, slug: &str, spec: &ImageSpec) {
+    let (_, tunnel) = dev_names(cfg, slug);
     let run_tunnel = format!(
         "docker run -d --name {tunnel} --network host --restart unless-stopped \
          {tag} cloudflared tunnel --no-autoupdate --url http://localhost:{port} >/dev/null",
@@ -1080,7 +1526,7 @@ fn dev_expose_tunnel(cfg: &BuildCfg, spec: &ImageSpec) {
     io::stdout().flush().ok();
     let mut url = None;
     for _ in 0..30 {
-        if let Some(u) = tunnel_url(cfg) {
+        if let Some(u) = tunnel_url(cfg, slug) {
             url = Some(u);
             break;
         }
