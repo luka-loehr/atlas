@@ -15,7 +15,11 @@ Restart=always
 RestartSec=5
 
 # It only ever reads input devices and asks systemd to power off.
-ProtectHome=yes
+#
+# read-only rather than yes: the checkout this runs from lives under /home, and
+# ProtectHome=yes hides it entirely — the unit fails with 203/EXEC before the
+# interpreter is even reached.
+ProtectHome=read-only
 ProtectSystem=strict
 PrivateTmp=yes
 NoNewPrivileges=yes
