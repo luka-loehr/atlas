@@ -1,4 +1,5 @@
-//! Per-project config: `atlas.toml` (v2) with `.atlas-build.toml` fallback,
+//! Per-project config: `atlas.toml` (v2; the legacy `.atlas-build.toml` is no
+//! longer read — see `atlas migrate`),
 //! the `BuildCfg` model, path/name validators, and the remote-path scheme.
 
 use std::env;
@@ -215,9 +216,12 @@ pub(crate) fn load_config_at(sub: Option<&str>, target: Option<&str>) -> BuildCf
     load_config_selected(sub, target)
 }
 
-/// Locate the config file. Prefers `atlas.toml`, falls back to the legacy
-/// `.atlas-build.toml`. Returns (file, scoped, is_legacy).
-fn resolve_config_file(sub: Option<&str>, cwd: &Path) -> (PathBuf, bool, bool) {
+/// Locate the `atlas.toml` config file. Returns (file, scoped).
+///
+/// The legacy `.atlas-build.toml` format is no longer read: everything has been
+/// migrated and the new CLI is the only one in use. A stray legacy file can
+/// still be converted one-off with `atlas migrate`, but it is not a fallback.
+fn resolve_config_file(sub: Option<&str>, cwd: &Path) -> (PathBuf, bool) {
     match sub {
         Some(p) => {
             let d = cwd.join(p);
@@ -227,15 +231,11 @@ fn resolve_config_file(sub: Option<&str>, cwd: &Path) -> (PathBuf, bool, bool) {
             }
             let a = d.join("atlas.toml");
             if a.is_file() {
-                return (a, true, false);
+                return (a, true);
             }
-            let l = d.join(".atlas-build.toml");
-            if l.is_file() {
-                return (l, true, true);
-            }
-            eprintln!("{RED}--path {p}: no atlas.toml (or .atlas-build.toml) there{RESET}");
+            eprintln!("{RED}--path {p}: no atlas.toml there{RESET}");
             eprintln!(
-                "{DIM}  --path D expects D as its own build target with its own config{RESET}"
+                "{DIM}  --path D expects D as its own build target with its own atlas.toml{RESET}"
             );
             exit(1);
         }
@@ -244,11 +244,7 @@ fn resolve_config_file(sub: Option<&str>, cwd: &Path) -> (PathBuf, bool, bool) {
             loop {
                 let a = dir.join("atlas.toml");
                 if a.is_file() {
-                    return (a, false, false);
-                }
-                let l = dir.join(".atlas-build.toml");
-                if l.is_file() {
-                    return (l, false, true);
+                    return (a, false);
                 }
                 if !dir.pop() {
                     eprintln!("{RED}no atlas.toml found{RESET} (here or in a parent directory)");
@@ -261,12 +257,7 @@ fn resolve_config_file(sub: Option<&str>, cwd: &Path) -> (PathBuf, bool, bool) {
 
 fn load_config_selected(sub: Option<&str>, target: Option<&str>) -> BuildCfg {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let (file, scoped, is_legacy) = resolve_config_file(sub, &cwd);
-    if is_legacy {
-        println!(
-            "{DIM}using legacy .atlas-build.toml — run 'atlas migrate' to adopt atlas.toml{RESET}"
-        );
-    }
+    let (file, scoped) = resolve_config_file(sub, &cwd);
     let cfg_dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
     let text = fs::read_to_string(&file).unwrap_or_default();
     let (top, targets) = parse_sections(&text);

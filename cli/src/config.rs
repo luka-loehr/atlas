@@ -137,9 +137,10 @@ pub(crate) fn parse_mac(s: &str) -> Option<[u8; 6]> {
 }
 
 /// `atlas migrate [--force]` — write `atlas.toml` from a legacy
-/// `.atlas-build.toml` for the current project (walk-up). The migration is a
-/// content-preserving copy (the v2 schema is a 1:1 superset), and the legacy
-/// file is kept as a fallback.
+/// `.atlas-build.toml` for the current project (walk-up), then remove the legacy
+/// file. The migration is a content-preserving copy (the v2 schema is a 1:1
+/// superset). The legacy format is no longer read as a fallback, so this is the
+/// only way a stray `.atlas-build.toml` becomes usable again.
 pub(crate) fn migrate(argv: &[String]) {
     let force = argv.iter().any(|a| a == "--force");
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -193,5 +194,12 @@ pub(crate) fn migrate(argv: &[String]) {
         eprintln!("{RED}cannot write {}{RESET}: {e}", atlas.display());
         exit(1);
     }
-    println!("{GREEN}✓{RESET} wrote atlas.toml (kept .atlas-build.toml as fallback)");
+    // The legacy format is deprecated and no longer read — remove it so it can
+    // never go silently stale next to the atlas.toml that supersedes it.
+    let removed = fs::remove_file(&legacy).is_ok();
+    if removed {
+        println!("{GREEN}✓{RESET} wrote atlas.toml, removed the legacy .atlas-build.toml");
+    } else {
+        println!("{GREEN}✓{RESET} wrote atlas.toml (could not remove .atlas-build.toml — delete it manually)");
+    }
 }
