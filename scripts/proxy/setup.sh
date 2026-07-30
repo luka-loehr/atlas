@@ -8,7 +8,7 @@
 #   Cloudflare edge  --(named tunnel "atlas")-->  cloudflared on atlas
 #        |  *.lukaloehr.com CNAME <tunnel-id>.cfargotunnel.com (proxied)
 #        v
-#   host Caddy  (127.0.0.1:8080, admin API localhost:2019)
+#   host Caddy  (:8080 on all interfaces, admin API localhost:2019)
 #        |  per-Host reverse_proxy routes added at runtime by `atlas dev`
 #        v
 #   dev containers  (127.0.0.1:<port>, --network host)

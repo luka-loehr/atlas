@@ -1,6 +1,6 @@
 [Unit]
 Description=Caddy reverse proxy for atlas dev subdomains (*.lukaloehr.com)
-Documentation=file:///home/atlas/atlas/scripts/proxy/README.md
+Documentation=https://github.com/luka-loehr/atlas/tree/main/scripts/proxy
 # The Cloudflare tunnel forwards to this proxy; bring Caddy up first so the
 # tunnel never points at a dead origin. Network only — Caddy talks to the
 # admin API on localhost and reverse-proxies to loopback dev containers.

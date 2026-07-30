@@ -45,9 +45,19 @@ curl -sf -X DELETE http://localhost:2019/id/<id> >/dev/null 2>&1        # ignore
 curl -sf -H 'Content-Type: application/json' \
      -X POST http://localhost:2019/config/apps/http/servers/atlas/routes \
      -d '{"@id":"<id>","match":[{"host":["<name>.lukaloehr.com"]}],
-          "handle":[{"handler":"reverse_proxy",
-                     "upstreams":[{"dial":"127.0.0.1:<port>"}]}]}'
+          "handle":[{"handler":"subroute","routes":[
+            {"match":[{"path":["/_next/*","/__nextjs*"]}],
+             "handle":[{"handler":"headers",
+                        "request":{"delete":["Origin","Referer"]}}]},
+            {"handle":[{"handler":"reverse_proxy",
+                        "upstreams":[{"dial":"127.0.0.1:<port>"}]}]}]}]}'
 ```
+
+The route is a **subroute**, not a bare reverse_proxy: its first sub-route
+strips `Origin`/`Referer` on exactly Next.js' internal dev endpoints
+(`/_next/*`, `/__nextjs*`) so HMR works with zero per-repo config, and it is
+non-terminal, so every request falls through to the reverse_proxy — all other
+paths proxy with their headers intact (CSRF unaffected).
 
 `atlas dev stop` removes just that route (`DELETE /id/<id>`). The tunnel, Caddy,
 and the wildcard DNS record are persistent infra and are never touched by the
@@ -88,8 +98,9 @@ re-touching Cloudflare): `./install.sh`.
 ## Required Cloudflare API token permissions
 
 The token lives only on atlas at `~/atlas-secrets/cloudflare.env` (0600) and is
-read **only** by `setup.sh` and `atlas doctor`'s optional DNS check. Steady-state
-`atlas dev --public` needs no token.
+read **only** by `setup.sh` — `atlas doctor` checks just that the file exists,
+and its wildcard-DNS check is a plain `dig` that never touches the token.
+Steady-state `atlas dev --public` needs no token.
 
 | Scope | Permission | Why | Status |
 |---|---|---|---|

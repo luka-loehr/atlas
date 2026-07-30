@@ -1,6 +1,6 @@
 [Unit]
 Description=Cloudflare Tunnel (atlas) — edge for *.lukaloehr.com -> host Caddy
-Documentation=file:///home/atlas/atlas/scripts/proxy/README.md
+Documentation=https://github.com/luka-loehr/atlas/tree/main/scripts/proxy
 # Start after Caddy so the first request the tunnel forwards has somewhere to
 # land. Not a hard Requires: cloudflared retries the origin on its own, and we
 # would rather the tunnel stay up (serving 502) than crash-loop with Caddy.

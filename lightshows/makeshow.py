@@ -197,6 +197,7 @@ def main():
                     f"_Gemini: {music.get('genre','?')} · {music.get('mood','?')}_\n")
         print(f"SUMMARY:{' '.join(ai_summary.split())}", flush=True)
     else:
+        print("PHASE:compile", flush=True)
         seq, warnings = compile_show(analysis, os.path.basename(local_song),
                                      title=title or name,
                                      opts={"extreme": args.extreme})
@@ -228,7 +229,7 @@ def git_autopush(name, title):
                            for f in os.listdir(SHOWS) if f.startswith(name + ".")]
                if os.path.exists(os.path.join(ROOT, p))))
     if not g("status", "--porcelain").stdout.strip():
-        print("git: nichts zu committen", flush=True)
+        print("git: nothing to commit", flush=True)
         return
     if g("commit", "-m", f"show: {title}").returncode == 0:
         print(f"git: commit 'show: {title}'", flush=True)

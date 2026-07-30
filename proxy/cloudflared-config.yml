@@ -18,8 +18,11 @@
 # terminated at the Cloudflare edge, so the origin hop is plain HTTP.
 
 tunnel: <TUNNEL-ID>
-credentials-file: /home/atlas/.cloudflared/<TUNNEL-ID>.json
+credentials-file: /home/<user>/.cloudflared/<TUNNEL-ID>.json
 
 ingress:
-  - service: http://localhost:8080   # -> host Caddy (all *.lukaloehr.com)
-  - service: http_status:404         # required catch-all
+  # The hostname-less final rule IS the catch-all: everything reaching the
+  # tunnel goes to the host Caddy, which fans out per Host header. Do not add
+  # a rule after it — cloudflared rejects a non-final catch-all, the same
+  # error the Cloudflare API returns as a 400 on the remotely-managed path.
+  - service: http://localhost:8080

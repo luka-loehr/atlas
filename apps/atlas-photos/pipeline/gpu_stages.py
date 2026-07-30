@@ -435,7 +435,7 @@ class CaptionStage:
             if parsed is None:
                 results.append((jid, f"caption JSON unparseable: {text[:120]!r}"))
                 continue
-            # caption verworfen — nur Tags werden gespeichert
+            # caption discarded — only the tags are stored
             tags = parsed.tags
             source = TAG_SOURCE_PARTIAL if parsed.partial else TAG_SOURCE
             if parsed.partial:

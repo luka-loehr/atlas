@@ -35,9 +35,10 @@ services:
       dockerfile: Dockerfile.cpu
     image: atlas-pipeline-cpu
 
-  # Qwen3-VL-Embedding-2B Text-Embeddings fuer die semantische Suche. Nutzt das GPU-Image
-  # (torch+transformers sind da schon drin), aber OHNE GPU-Reservierung —
-  # torch laeuft dann auf CPU. Lauscht nur auf 127.0.0.1:8093 (Rust-Server).
+  # Qwen3-VL-Embedding-2B text embeddings for semantic search. Uses the GPU
+  # image (torch+transformers are already in it) but WITHOUT a GPU
+  # reservation — torch runs on CPU. Listens on 127.0.0.1:8093 only (for the
+  # Rust server).
   embed-api:
     <<: *pipeline-common
     image: atlas-pipeline-gpu

@@ -119,7 +119,7 @@ practice the driver is enough there too).
 ### Rust toolchain, repo clone, sudoers
 
 ```bash
-# Rust (the API server needs >= 1.88: edition 2024)
+# Rust (the API server needs >= 1.85: edition 2024)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # the repo — several defaults assume this exact path
@@ -132,8 +132,9 @@ the photo server/ingest default `PG_ENV_FILE` points into it.
 
 Passwordless sudo: the API server's power endpoints and `atlas
 shutdown/restart` need exactly `poweroff` and `reboot`; `atlas api`
-additionally uses `systemctl`, `install`, `cp`, `mv` and `rm`
-non-interactively, and `atlas build` uses `chown`. Minimal power-only rule:
+additionally uses `systemctl`, `install` and `tee` non-interactively,
+`atlas build` uses `chown`, and `atlas dev` uses `tailscale serve`.
+Minimal power-only rule:
 
 ```
 # /etc/sudoers.d/atlas  (visudo -f)
@@ -163,7 +164,7 @@ tailscale status
 ```
 
 - **Mac:** Tailscale from the App Store or `brew install --cask tailscale`.
-- **iPhone:** Tailscale from the App Store — required for all four iOS apps
+- **iPhone:** Tailscale from the App Store — required for all three iOS apps
   when you are not on the home LAN.
 
 Enable **MagicDNS** in the Tailscale admin console so
@@ -184,13 +185,17 @@ home, add a second alias pointing at the LAN IP and pass it via
 
 ### Security model
 
-The rule is **never port-forward any of this to the internet**. Inside that,
-confinement is per service, and it is worth being precise about which mechanism
-does the work: two ports are enforced by nftables, most of the rest are
-confined by the address they bind, and two — sshd and Art-Net — listen on every
-interface on purpose. The table below says which is which. There is no TLS on
-the services themselves — WireGuard encrypts the path inside the tailnet, and
-on the raw LAN you accept cleartext or bind to the Tailscale IP.
+The rule is **never port-forward any of this to the internet**. The one
+deliberate internet-facing path is `atlas dev --public` (section 7.3): an
+*outbound* Cloudflare Tunnel that publishes a chosen dev container at
+`<name>.lukaloehr.com` — nothing is forwarded on the router for it either.
+Inside that, confinement is per service, and it is worth being precise about
+which mechanism does the work: two ports are enforced by nftables, most of the
+rest are confined by the address they bind, and a few — sshd, Art-Net and the
+host Caddy — listen on every interface on purpose. The table below says which
+is which. There is no TLS on the services themselves — WireGuard encrypts the
+path inside the tailnet, and on the raw LAN you accept cleartext or bind to
+the Tailscale IP.
 
 | Port | Service | Binds | Auth |
 |---|---|---|---|
@@ -202,11 +207,13 @@ on the raw LAN you accept cleartext or bind to the Tailscale IP.
 | 6454/udp | Art-Net (bridge host) | all — **not** in the firewall table | none — any host on the LAN can drive the lamps |
 | 53/tcp+udp | AdGuard Home | the tailnet address only (`ATLAS_TAILNET_IP`) — **not** in the firewall table | none — tailnet only |
 | 3053/tcp | AdGuard admin UI | `127.0.0.1` only (reach it via `ssh -L 3053:127.0.0.1:3053 atlas`) | AdGuard's own login |
+| 8080/tcp | host Caddy (dev-subdomain proxy, section 7.3) | all — **not** in the firewall table | none — serves only the per-Host routes `atlas dev --public` adds, so without a matching `<name>.lukaloehr.com` Host header it answers nothing |
+| 2019/tcp | Caddy admin API | `localhost` only | none (loopback only — `atlas dev` mutates it over ssh) |
 
 `scripts/firewall/firewall.nft` matches exactly `{ 8787, 8788 }`, tcp only, so
-every other row above is confined by its bind address alone — or, for sshd and
-Art-Net, not confined at all. Move any of them onto `0.0.0.0` and nothing stops
-the LAN from reaching them. Art-Net is the one that is already there: 6454/udp
+every other row above is confined by its bind address alone — or, for sshd,
+Art-Net and the host Caddy, not confined at all. Move any of them onto
+`0.0.0.0` and nothing stops the LAN from reaching them. Art-Net is the one that is already there: 6454/udp
 is unauthenticated and drives physical hardware, and the only thing keeping it
 off the internet is that the router does not forward it.
 
@@ -423,7 +430,7 @@ is configured inside the app — `atlas.your-tailnet.ts.net:8788` plus the
 bearer token; nothing is compiled in. An ATS exception allows plain HTTP to
 `*.ts.net` hosts (WireGuard already encrypts in-tailnet traffic).
 
-**Schemes, once for all four apps:** no app commits a shared `.xcscheme` and
+**Schemes, once for all three apps:** no app commits a shared `.xcscheme` and
 no `project.yml` declares a `scheme:`, so every `xcodebuild -scheme <Name>`
 in these docs and in the app READMEs relies on Xcode autocreating the scheme
 the first time the project is opened or built.
@@ -451,7 +458,7 @@ pipeline jobs; the workers drain the queue whenever the box is awake.
 `ingest_drive.py` does the same for a Takeout **Drive** export, and
 `pipeline/backfill_jobs.py` re-enqueues jobs for existing assets.
 
-## 7. The API server and its iOS apps
+## 7. The API server, the iOS apps, and the dev proxy
 
 ### 7.1 atlas-api
 
@@ -508,6 +515,29 @@ your team, and change the bundle identifier for your fork. Do it in
 and would discard an Xcode-local change. In each app's settings, point it at
 the API server: host `atlas.your-tailnet.ts.net:8787` and the
 `ATLAS_API_TOKEN` value. The iPhone must be on the tailnet.
+
+### 7.3 Dev-subdomain proxy (optional — only for `atlas dev --public`)
+
+`atlas build` / `atlas dev` over the tailnet need nothing beyond the CLI
+prerequisites. Publishing a dev server on the internet at a stable
+`https://<name>.lukaloehr.com` URL additionally needs the host-side proxy
+infra: a persistent named Cloudflare Tunnel plus a host Caddy whose per-Host
+routes `atlas dev` adds and removes at runtime.
+
+One-time bring-up, fully documented in
+[scripts/proxy/README.md](../scripts/proxy/README.md): put a Cloudflare API
+token in `~/atlas-secrets/cloudflare.env`, then run
+`~/atlas/scripts/proxy/setup.sh` (idempotent — creates or reuses the tunnel,
+sets its ingress to Caddy, upserts the wildcard DNS record, arms the
+`caddy`/`cloudflared` units). Verify with `atlas doctor` from the Mac, or on
+the box:
+
+```bash
+systemctl is-active caddy cloudflared
+curl -sf localhost:2019/config/ >/dev/null && echo 'caddy admin ok'
+```
+
+Steady-state `atlas dev --public` never touches Cloudflare and needs no token.
 
 ## 8. Light shows
 

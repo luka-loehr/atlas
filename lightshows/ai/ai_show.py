@@ -1,7 +1,8 @@
 """AI show composer — Gemini LISTENS to the song, Claude COMPOSES the show.
 
-Runs on the GPU host (needs a Gemini API key — GEMINI_API_KEY env var or key
-file, see below — plus Claude Code auth).
+Runs in-process on whichever machine executes `makeshow.py` (only `analyze/`
+is delegated to the GPU host), so the Gemini API key — GEMINI_API_KEY env var
+or key file, see below — and the Claude Code auth belong on that machine.
 
     from ai.ai_show import compose
     seq, summary, music = compose(analysis, song_path, title, song_file)

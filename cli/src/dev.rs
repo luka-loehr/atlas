@@ -100,7 +100,7 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
     if public && (!caddy_admin_ok() || !tunnel_active()) {
         eprintln!("{RED}public dev infra is not ready on atlas{RESET}");
         eprintln!("{DIM}  Caddy admin and cloudflared must be running{RESET}");
-        eprintln!("{DIM}  run scripts/atlas-web/install.sh on atlas{RESET}");
+        eprintln!("{DIM}  run scripts/proxy/install.sh on atlas{RESET}");
         exit(1);
     }
 

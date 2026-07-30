@@ -7,7 +7,7 @@
 # roughly what holding the biggest one does.
 #
 #   build   -> atlas-universal-builder   `atlas build`, every language below
-#   dev     -> atlas-universal-dev       + cloudflared, for `atlas dev`
+#   dev     -> atlas-universal-dev       the `atlas dev` runtime (+ cloudflared)
 #   mobile  -> atlas-universal-mobile    + Flutter/Android SDK (see the note)
 #
 # Why mobile is a separate target and not just part of `build`: the Flutter and
@@ -133,12 +133,15 @@ RUN chmod 0755 /usr/local/bin/atlas-install
 LABEL org.opencontainers.image.title="atlas-universal-builder"
 
 # ---------------------------------------------------------------------------
-# dev — build + the public tunnel
+# dev — the `atlas dev` runtime
 # ---------------------------------------------------------------------------
 FROM build AS dev
 
-# cloudflared for `atlas dev`'s public quick tunnel. Kept out of the build
-# target so a build container has no reason and no means to open one.
+# cloudflared is kept in this image for legacy reasons only: the public dev
+# path no longer uses it — public URLs ride the persistent host-level named
+# tunnel + host Caddy (scripts/proxy/), and nothing in the container shells
+# out to this binary any more. Still kept out of the build target so a build
+# container has no means to open a tunnel.
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     curl -fsSL -o /usr/local/bin/cloudflared \

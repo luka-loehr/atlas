@@ -1,7 +1,8 @@
 # Build output. `target/` is unanchored so it covers every Rust crate
 # (api/, cli/, apps/atlas-photos/server/). `build-sim/` and `build-device/`
-# are the -derivedDataPath values the iOS build commands in the app READMEs
-# use; `DerivedData/` is what Xcode writes when it picks the path itself.
+# are the conventional -derivedDataPath values used for local simulator and
+# device builds; `DerivedData/` is what Xcode writes when it picks the path
+# itself.
 target/
 build/
 build-sim/

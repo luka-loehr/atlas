@@ -342,7 +342,8 @@ A show is verified either by rendering it — `tests/golden.py`, pure
   for slams out of true silence.
 - **Progress protocol:** `makeshow.py` and the AI composer emit
   machine-readable stdout markers for a companion UI: `PHASE:<stage>`
-  (`download`/`analyze`/`gemini`/`claude`/`commit`/`done`), `TITLE:`,
+  (`download`/`analyze`, then `gemini`/`claude` on the AI path or `compile`
+  on the rules path, then `commit`/`done`), `TITLE:`,
   `THUMB:`, `SUMMARY:`, `AI:` (composer ticker) and `FAILED:` on errors,
   interleaved with yt-dlp progress lines.
 - **Network exposure:** the bridge binds `0.0.0.0:6454` and accepts
