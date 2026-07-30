@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
-"""Frozen legacy show engine v6 "dark-gap" — the golden-test oracle.
+"""Frozen reference show engine v6 "dark-gap" — the golden-test oracle.
 
 tests/golden.py loads this module and compares its render(t) frame-by-frame
-against the modular engine Player. The render() half must stay FROZEN; the
-old standalone Art-Net playback engine was removed (superseded by
-engine/player.py + play.py).
+against the modular engine Player. The render() half must stay FROZEN — it
+is a pure renderer; Art-Net playback lives in engine/player.py + play.py.
 
-How it got here:
+The design, layer by layer:
 
-v6 = dark-gap: in intense effects ALL fixtures go ON together and OFF
-together — true black between pulses. One lamp filling another's gap keeps
-the room lit and kills the low-FPS strobe feeling.
-v5 = EXTREME: hardware strobe on EVERY drop (6.5s pre-power, windows merged
-where a re-strike is physically impossible), ~2.3x more fog, triple white
-kick flashes on drop 1, full-room 255 white slams on every beat in drops.
-v4 = club-master teardown: peaks unclipped (drops -> 1.0 full white),
-high-energy sections lifted 0.30-0.42 -> 0.80-0.90, builds actually build,
-10s hardware-strobe SOLO at drop 3 (all Hue black).
+dark-gap: in intense effects ALL fixtures go ON together and OFF together —
+true black between pulses. One lamp filling another's gap keeps the room lit
+and kills the low-FPS strobe feeling.
+EXTREME: hardware strobe on EVERY drop (6.5s pre-power, windows merged
+where a re-strike is physically impossible), fog on every drop and most builds,
+triple white kick flashes on drop 1, full-room 255 white slams on every
+beat in drops.
+club-master energy: peaks unclipped (drops -> 1.0 full white), high-energy
+sections at ~0.90, builds actually build, 10s hardware-strobe SOLO at
+drop 3 (all Hue black).
 
-v3 = full MIR rebuild (two librosa agents + own kick-lattice verification):
-  - TRUE tempo 130.00 BPM. Beat lattice anchored on the measured drop-1
-    groove kick at 59.700s hits every other drop <25ms (118.30 / 158.92 /
-    196.28 / 229.06). The old imported beat track (136 BPM, irregular) is gone.
-  - All section boundaries moved to measured musical events.
+MIR grounding (two librosa agents + own kick-lattice verification):
+  - TRUE tempo 130.00 BPM. The beat lattice, anchored on the measured drop-1
+    groove kick at 59.700s, hits every other drop <25ms (118.30 / 158.92 /
+    196.28 / 229.06).
+  - All section boundaries sit on measured musical events.
   - Drop 3 (158.92) is the TRACK PEAK (max RMS + max sub-bass) right after
     the only clean silence -> hardware strobe solo (the money cue).
   - Chorus 74.0-87.2 is the rhythmically densest music (rank 1 onsets)
-    and Finale2 229.1+ is rank 2 -> both upgraded.
+    and Finale2 229.1+ is rank 2 -> both run at full chorus/drop energy.
   - Single-frame accents on the strongest measured impacts.
   - Fog (disco globe!) only in lit phases; laser + hardware strobe with
     warm-up pre-power (3.9s / 6.5s).
@@ -280,7 +280,7 @@ def render(t):
         for ch in REGALE:
             put(dmx, ch, hsv(0.63, 1.0, 0.06))
 
-    # ===== 88.76 - 94.58: comet — 2nd loudest section, brightened ========
+    # ===== 88.76 - 94.58: comet — 2nd loudest section =====================
     elif t < 94580:
         bi = beat_idx(t)
         bar = sec_bar(t, 88760)
@@ -466,7 +466,7 @@ def render(t):
         for ch in REGALE:
             put(dmx, ch, hsv(0.63, 1.0, 0.06))
 
-    # ===== 229.06: FINALE 2 — rank-2 rhythmic intensity, upgraded ========
+    # ===== 229.06: FINALE 2 — rank-2 rhythmic intensity ===================
     elif t < 258650:
         if drop_hit(dmx, t, 229060):
             pass
@@ -477,7 +477,7 @@ def render(t):
             bar = sec_bar(t, 229060)
             palette = [0.87, 0.0, 0.13, 0.95]         # magenta/red/amber/hot-pink per bar
             hue = palette[bar % 4]
-            if bar % 8 == 7:                          # dense burst bar (was the sweep)
+            if bar % 8 == 7:                          # dense burst bar
                 gate, W = bphase(t) % EIGHTH, 65
             else:
                 gate, W = bphase(t), 95

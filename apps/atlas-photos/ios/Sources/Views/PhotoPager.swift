@@ -3,11 +3,11 @@ import UIKit
 
 /// UIPageViewController-backed pager for the photo viewer.
 ///
-/// Replaces SwiftUI's `TabView(.page)`, which could settle BETWEEN two pages
-/// (half of each visible) when its gesture fought the zoom scroll views.
-/// UIPageViewController physically cannot rest between pages and advances
-/// EXACTLY one page per swipe — rapid successive swipes each move one page,
-/// which is the Apple-/Google-Photos feel.
+/// UIPageViewController rather than SwiftUI's `TabView(.page)`: the TabView
+/// gesture can fight the zoom scroll views and settle BETWEEN two pages (half
+/// of each visible). UIPageViewController physically cannot rest between
+/// pages and advances EXACTLY one page per swipe — rapid successive swipes
+/// each move one page, which is the Apple-/Google-Photos feel.
 struct PhotoPager<Content: View>: UIViewControllerRepresentable {
     @Binding var index: Int
     let count: Int

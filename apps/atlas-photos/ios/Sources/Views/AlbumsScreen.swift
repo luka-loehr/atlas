@@ -155,8 +155,8 @@ struct AlbumsScreen: View {
 
     // MARK: - Data
 
-    /// Real user albums only — the legacy Takeout "Trash"/"Locked Folder" album
-    /// rows are surfaced through Dienstprogramme instead.
+    /// Real user albums only — Takeout's "Trash"/"Locked Folder" album rows
+    /// are surfaced through Dienstprogramme instead.
     private var userAlbums: [Album] {
         albums.filter { !SpecialAlbum.isLocked($0.title) && !SpecialAlbum.isTrash($0.title) }
     }

@@ -13,10 +13,10 @@ no show is playing. Env overrides: ARTNET_BIND, ARTNET_IDLE_TIMEOUT.
 
 DMX channel map (1-based):
    1- 3  R,G,B  light 17  Deckenlampe
-   4- 6  R,G,B  light 13  Display pixel 1 (Play bar, ex-Gruen)
+   4- 6  R,G,B  light 13  Display pixel 1 (Play bar)
    7- 9  R,G,B  light 20  Regal Hinten
   10-12  R,G,B  light 16  Regal Links
-  13-15  R,G,B  light 12  Display pixel 2 (Play bar, ex-Rot)
+  13-15  R,G,B  light 12  Display pixel 2 (Play bar)
   16-18  R,G,B  light 23  Regal Rechts
   19            fog: value >= 128 -> fog on (heartbeat to Arduino)
 """
@@ -39,16 +39,16 @@ FOG_PORT = "/dev/ttyACM0"
 
 LASER_IDX = 19                           # 0-based index of DMX channel 20
 LASER_THRESHOLD = 128                    # >= 50% -> laser plug on
-LASER_V1 = "22"                          # Hue plug (ex-Kaktus) v1 light id
+LASER_V1 = "22"                          # laser Hue plug v1 light id
 
 STROBEPLUG_IDX = 20                      # 0-based index of DMX channel 21
 STROBEPLUG_THRESHOLD = 128               # >= 50% -> strobe plug on
-STROBEPLUG_V1 = "25"                     # Hue plug (ex-Drucker) v1 light id
+STROBEPLUG_V1 = "25"                     # strobe Hue plug v1 light id
 
 def set_plug(v1_id, on, label, wait=False):
     """Toggle a Hue plug via the v1 REST API. Normally in a background
     thread so the 25fps stream never stalls; wait=True runs it synchronously
-    (shutdown path — daemon threads die with the process, which used to
+    (shutdown path — a daemon-thread toggle dies with the process and can
     leave the strobe plug ON after a stop)."""
     def _do():
         ctx = ssl.create_default_context()
@@ -154,10 +154,10 @@ def run_session(sock):
             # Drain ALL pending Art-Net packets each tick. Two independent 25fps
             # clocks (sender + this bridge) mean a single narrow on-pulse packet
             # can arrive and be immediately overwritten by the next off packet
-            # before we ever send it out -> flashes silently vanish (looked like
-            # random "bursts"/aliasing on short strobes). Fix: peak-hold across
-            # everything received this tick, seeded from the last known state,
-            # so a brief flash always survives into the next output frame.
+            # before it ever goes out -> the flash silently vanishes (reads as
+            # random "bursts"/aliasing on short strobes). Hence the peak-hold
+            # across everything received this tick, seeded from the last known
+            # state, so a brief flash always survives into the next output frame.
             peak = bytearray(dmx)
             got = False
             while True:

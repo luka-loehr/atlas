@@ -30,7 +30,7 @@ caddy validate --config /etc/atlas/caddy.json
 # Distro packages ship their own caddy.service / cloudflared.service in
 # /lib/systemd/system. Stop and disable them first; the atlas units copied to
 # /etc/systemd/system below have the same names and take precedence, so this
-# just clears the old enablement/instance before we install and enable ours.
+# just clears the distro enablement/instance before we install and enable ours.
 for unit in caddy cloudflared; do
   if systemctl list-unit-files "$unit.service" >/dev/null 2>&1; then
     sudo systemctl disable --now "$unit.service" 2>/dev/null || true

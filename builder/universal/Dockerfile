@@ -1,7 +1,7 @@
 # atlas-universal — one toolchain for every remote build and dev server.
 #
-# Before this image every language meant another builder tag, and a repo that
-# mixed two (a pnpm workspace next to a Rust worker) had no image at all. The
+# One image carries every toolchain these repos build with, so a repo that
+# mixes two languages (a pnpm workspace next to a Rust worker) is covered. The
 # three targets below come out of ONE Dockerfile so they share layers: `dev`
 # and `mobile` are `build` plus a thin top layer, so holding all three costs
 # roughly what holding the biggest one does.
@@ -124,7 +124,7 @@ RUN apt-get update \
 RUN git config --system --add safe.directory '*'
 
 # The strict-but-skippable JS install every project shares. Kept as a script in
-# the image rather than repeated in each .atlas-build.toml so there is one
+# the image rather than repeated in each atlas.toml so there is one
 # implementation to fix, and last in this stage so editing it does not rebuild
 # a single toolchain layer.
 COPY atlas-install /usr/local/bin/atlas-install
@@ -137,11 +137,10 @@ LABEL org.opencontainers.image.title="atlas-universal-builder"
 # ---------------------------------------------------------------------------
 FROM build AS dev
 
-# cloudflared is kept in this image for legacy reasons only: the public dev
-# path no longer uses it — public URLs ride the persistent host-level named
-# tunnel + host Caddy (scripts/proxy/), and nothing in the container shells
-# out to this binary any more. Still kept out of the build target so a build
-# container has no means to open a tunnel.
+# cloudflared lives in the dev target, not in build, so a build container has
+# no means to open a tunnel. The public dev path does not use it — public URLs
+# ride the persistent host-level named tunnel + host Caddy (scripts/proxy/),
+# and nothing in the container shells out to this binary.
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     curl -fsSL -o /usr/local/bin/cloudflared \

@@ -17,8 +17,8 @@ domain tables are the graph nodes, one generic `edges` table links them, one
 
 **Media** — `assets` (photos/videos), `albums`, `album_assets`, `tags`.
 `assets.id` is the file's SHA-256 content hash (dedupe key and stable asset
-URL in one; the `BLAKE3` comment in `001_init.sql` is historical — every
-ingest path computes SHA-256). Per-asset state lives in `archived`,
+URL in one; the comment in `001_init.sql` says `BLAKE3`, but every ingest
+path computes SHA-256). Per-asset state lives in `archived`,
 `trashed_at` and `locked` columns with matching partial indexes, so the main
 timeline query is a single index scan. `exif` (JSONB) holds a curated subset
 of exiftool output for the viewer's info sheet.

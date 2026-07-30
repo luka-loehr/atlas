@@ -92,7 +92,8 @@ def fail(conn, job_id, err):
 def reap(conn):
     """Requeue running jobs with a stale (>10 min) heartbeat — crashed or
     power-cycled workers. Called at worker startup and every 5 min.
-    (heartbeat_at IS NULL covers legacy 'running' rows from before 003.)"""
+    (heartbeat_at IS NULL also requeues — a 'running' row with no heartbeat
+    recorded must never stay stuck.)"""
     conn.execute(
         """UPDATE ingest_jobs
               SET status = 'pending', locked_by = NULL, updated_at = now()

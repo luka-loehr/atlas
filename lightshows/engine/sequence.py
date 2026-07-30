@@ -69,14 +69,14 @@ def media_dir():
     """Where show media (audio + covers) lives. The default is deliberately
     OUTSIDE the checkout: shows/ is a tracked directory, so media sitting in it
     is one `git clean -fdx` from deletion. Writers must use this and only this;
-    readers keep a shows/ fallback for legacy and hand-dropped files."""
+    readers keep a shows/ fallback for hand-dropped files."""
     # ATLAS_LIGHTSHOW_MEDIA_DIR: override the media root (e.g. a NAS mount)
     d = os.environ.get("ATLAS_LIGHTSHOW_MEDIA_DIR", "").strip()
     return os.path.abspath(d or "/var/lib/atlas/lightshow-media")
 
 def song_path(seq, seq_path):
     """Resolve meta.song_file: absolute as-is, else the media root, else
-    (legacy) next to the sequence file."""
+    next to the sequence file."""
     sf = seq["meta"].get("song_file")
     if not sf:
         return None

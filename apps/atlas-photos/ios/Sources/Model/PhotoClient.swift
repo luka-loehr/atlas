@@ -9,7 +9,7 @@ struct Asset: Codable, Sendable, Identifiable, Hashable {
     let width: Int?
     let height: Int?
     let durationS: Double?
-    // optional so JSON cached before the server started sending it still decodes
+    // optional so cached JSON without the key still decodes
     var favorite: Bool? = nil
 
     var isVideo: Bool { type == "video" }
@@ -163,8 +163,9 @@ struct PhotoClient: Sendable {
 
     // content-addressed, immutable URLs — safe to cache forever
     func thumbURL(_ id: String, _ size: Int) -> URL? {
-        // v2: cache-buster after the ICC-profile fix — thumb URLs are cached
-        // immutable, so recolored thumbnails need a new cache identity
+        // ?v= cache-buster: thumb URLs are cached as immutable, so whenever
+        // thumb rendering changes (e.g. ICC profile handling) bump it to give
+        // the regenerated thumbnails a new cache identity
         URL(string: "http://\(host)/api/assets/\(id)/thumb/\(size)?v=2")
     }
     func originalURL(_ id: String) -> URL? {

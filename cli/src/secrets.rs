@@ -89,7 +89,8 @@ fn secrets_list() {
     print!("{out}");
 }
 
-/// Remove both the hashed and the legacy secrets file for this project.
+/// Remove both the hashed and the un-hashed (`<name>.env`) secrets file for
+/// this project.
 fn secrets_rm() {
     let cfg = load_config();
     ensure_up();
@@ -103,8 +104,8 @@ fn secrets_rm() {
 }
 
 /// Shell prologue that sets $envf to a `--env-file` flag when this project has a
-/// secrets file. Prefers the hashed path, falls back to the legacy `<name>.env`
-/// so pre-hash pushes keep working until the next `secrets push`.
+/// secrets file. Prefers the hashed path; an un-hashed `<name>.env` in the store
+/// is read as a fallback until a `secrets push` writes the hashed file.
 pub(crate) fn env_file_prologue(cfg: &BuildCfg) -> String {
     format!(
         "sec=\"$HOME/{hashed}\"; [ -f \"$sec\" ] || sec=\"$HOME/{legacy}\"; \

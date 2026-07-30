@@ -116,7 +116,7 @@ All optional, via environment variables — the unit loads
 | `ATLAS_API_BIND` | `0.0.0.0:<port>` | full listen address, e.g. a Tailscale IP; overrides `ATLAS_API_PORT` |
 | `ATLAS_API_PORT` | `8787` | listen port when `ATLAS_API_BIND` is unset |
 | `ATLAS_LIGHTSHOWS_DIR` | `$HOME/atlas/lightshows` | the [lightshows](../lightshows) checkout the show/fog/lights routes drive |
-| `ATLAS_LIGHTSHOW_MEDIA_DIR` | `/var/lib/atlas/lightshow-media` | media root for show audio and covers, kept outside the checkout (legacy files in `shows/` are still found) |
+| `ATLAS_LIGHTSHOW_MEDIA_DIR` | `/var/lib/atlas/lightshow-media` | media root for show audio and covers, kept outside the checkout (`shows/` inside the checkout is probed as a fallback) |
 | `ATLAS_REPO_DIR` | `$HOME/atlas` | git clone whose commits feed the activity heatmap |
 | `ATLAS_HUE_PLUG_IDS` | `22,25` | Hue light ids of the effect plugs forced off on show stop |
 | `ATLAS_ADGUARD_URL` | `http://127.0.0.1:3000` | AdGuard Home admin API base URL |

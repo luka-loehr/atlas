@@ -22,9 +22,9 @@ __pycache__/
 .DS_Store
 
 # Secrets compiled into an iOS app. No app currently uses the pattern; the
-# rule stays as the repo-wide backstop (deliberately unanchored, so no
-# directory rename can ever expose one). A tracked Secrets.example.swift has
-# a different basename and would stay visible.
+# rule is the repo-wide backstop (deliberately unanchored, so no directory
+# rename can ever expose one). A tracked Secrets.example.swift has a
+# different basename and stays visible.
 Secrets.swift
 
 # Machine configuration and credentials. On atlas, backend/docker/.env,
@@ -44,10 +44,11 @@ Secrets.swift
 *.local
 
 # Show media lives in ATLAS_LIGHTSHOW_MEDIA_DIR (default /var/lib/atlas/
-# lightshow-media), outside the checkout. Nothing writes here any more; these
-# patterns only cover hand-dropped legacy files that the readers still fall
-# back to. Every extension audio_file() probes is listed, so such a file is
-# ignored rather than merely untracked — plain `git clean -fd` cannot take it.
+# lightshow-media), outside the checkout. Nothing writes into this directory;
+# these patterns cover media files dropped in by hand, which the readers
+# fall back to. Every extension audio_file() probes is listed, so such a file
+# is ignored rather than merely untracked — plain `git clean -fd` cannot take
+# it.
 lightshows/shows/*.mp3
 lightshows/shows/*.jpg
 lightshows/shows/*.wav

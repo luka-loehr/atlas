@@ -16,6 +16,11 @@ Art-Net, and a remote build & dev platform that runs any repo's builds on the
 server — with dev servers at stable public URLs when you want them. No cloud
 lock-in, no subscriptions — your hardware, your tailnet, your data.
 
+> **Status: v0.0.1 — beta, proof of concept.** This is one person's real
+> homelab, published as-is. Everything in the repo runs daily on the
+> author's hardware, but it is a first release: interfaces may change
+> without notice, and sharp edges exist.
+
 ---
 
 ## What's inside
@@ -81,18 +86,6 @@ cd backend/docker && cp .env.example .env && docker compose up -d
 Full from-scratch setup — hardware, Ubuntu, Tailscale/tailnet, Wake-on-LAN,
 CUDA, models, iOS builds: **[docs/SETUP.md](docs/SETUP.md)**
 
-Per-area docs:
-[cli](cli/README.md) ·
-[api](api/README.md) ·
-[backend](backend/README.md) ·
-[infra/adguard](infra/adguard/README.md) ·
-[builder](builder/README.md) ·
-[atlas-admin](apps/atlas-admin/README.md) ·
-[atlas-lightshow](apps/atlas-lightshow/README.md) ·
-[atlas-photos](apps/atlas-photos/README.md) ·
-[lightshows](lightshows/README.md) ·
-[scripts](scripts/README.md)
-
 ## Architecture
 
 ```
@@ -107,6 +100,19 @@ Per-area docs:
 
 Everything meets on your private tailnet — except `atlas dev --public` URLs,
 which ride an outbound Cloudflare Tunnel; the server sleeps until woken.
+
+## Per-area docs
+
+[cli](cli/README.md) ·
+[api](api/README.md) ·
+[backend](backend/README.md) ·
+[infra/adguard](infra/adguard/README.md) ·
+[builder](builder/README.md) ·
+[atlas-admin](apps/atlas-admin/README.md) ·
+[atlas-lightshow](apps/atlas-lightshow/README.md) ·
+[atlas-photos](apps/atlas-photos/README.md) ·
+[lightshows](lightshows/README.md) ·
+[scripts](scripts/README.md)
 
 > **Note:** docs and the CLI are English; the iOS app UIs are German (the
 > author's daily drivers). Contributions translating them are welcome.

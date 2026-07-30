@@ -12,14 +12,14 @@ Both listeners bind `0.0.0.0`/`[::]`, and `atlas-photos` runs with
 deliberate — the iOS apps depend on it — so the network layer, not the
 application, is what has to say no to the LAN.
 
-Before this existed, any device on `192.168.1.0/24` could run
+Without this table, any device on `192.168.1.0/24` can run
 `curl http://192.168.1.100:8788/api/stats` and page the library.
 
-The exposure was IPv4-only, because both services bind `0.0.0.0` rather than
+The exposure is IPv4-only, because both services bind `0.0.0.0` rather than
 `[::]` — `ss -ltnp` shows no IPv6 socket for either port, and a request to
 atlas' own globally routable `2001:db8:1::/64` address is refused
 even with the firewall stopped. The rules live in an `inet` table anyway, so
-the day a bind changes to `[::]` the LAN does not silently regain access.
+the day a bind changes to `[::]` the LAN does not silently gain access.
 
 ## Install
 

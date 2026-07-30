@@ -22,7 +22,7 @@ fn lightshow_dir() -> String {
 
 /// Where show media (audio + covers) lives. Defaults OUTSIDE the checkout:
 /// `shows/` is tracked, so media kept there dies to a `git clean -fdx`.
-/// Readers below probe this first and fall back to `shows/` for legacy files.
+/// Readers below probe this first and fall back to `shows/`.
 fn lightshow_media_dir() -> String {
     // ATLAS_LIGHTSHOW_MEDIA_DIR: override the media root (e.g. a NAS mount)
     std::env::var("ATLAS_LIGHTSHOW_MEDIA_DIR")
@@ -607,8 +607,8 @@ pub fn calibrate_get() -> String {
     fs::read_to_string(path).unwrap_or_else(|_| r#"{"audio_latency_ms":null}"#.into())
 }
 
-/// The two roots a reader probes, in order: the media root, then the legacy
-/// `shows/` directory. `safe(name)` is what keeps these HTTP-reachable paths
+/// The two roots a reader probes, in order: the media root, then `shows/`
+/// in the checkout. `safe(name)` is what keeps these HTTP-reachable paths
 /// from being traversed out of, so it stays on the front of both callers.
 fn media_roots() -> [String; 2] {
     [
@@ -617,7 +617,7 @@ fn media_roots() -> [String; 2] {
     ]
 }
 
-/// A show's cover: <name>.jpg under the media root, else legacy shows/.
+/// A show's cover: <name>.jpg under the media root, else shows/.
 pub fn show_thumb(name: &str) -> Option<std::path::PathBuf> {
     if !safe(name) {
         return None;
@@ -646,9 +646,9 @@ fn resolve_under_root(root: &str, rel: &str) -> Option<std::path::PathBuf> {
 }
 
 /// Absolute path to a show's audio file: whatever `meta.song_file` in
-/// `<name>.show.json` names (the source of truth play.py uses), else the
-/// legacy guess of <name>.<audio-ext>. Both are looked for under the media
-/// root first, then legacy shows/.
+/// `<name>.show.json` names (the source of truth play.py uses), else a
+/// guess of <name>.<audio-ext>. Both are looked for under the media
+/// root first, then shows/.
 pub fn audio_file(name: &str) -> Option<std::path::PathBuf> {
     if !safe(name) {
         return None;

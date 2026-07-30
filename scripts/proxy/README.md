@@ -1,8 +1,8 @@
 # atlas dev-subdomain proxy
 
 Host-side infrastructure that makes stable `https://<name>.lukaloehr.com` dev
-subdomains work. Replaces the old random `*.trycloudflare.com` quick-tunnel with
-a persistent named Cloudflare Tunnel + a host Caddy reverse proxy.
+subdomains work: a persistent named Cloudflare Tunnel + a host Caddy reverse
+proxy.
 
 ```
 Cloudflare edge (TLS)                          ← *.lukaloehr.com is proxied here

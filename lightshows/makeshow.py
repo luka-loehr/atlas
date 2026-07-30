@@ -213,7 +213,7 @@ def main():
 def git_autopush(name, title):
     """Commit + push the new show (json + summary + analysis). Non-fatal.
     Opt-in: nothing is committed unless explicitly enabled. Audio and covers
-    live in the media root now, so the shows/ glob below only ever matches
+    live in the media root, so the shows/ glob below only ever matches
     tracked files — which is what we want, they may not be redistributable."""
     # ATLAS_AUTOPUSH: set to "1" to auto-commit+push each newly compiled show
     if os.environ.get("ATLAS_AUTOPUSH") != "1":

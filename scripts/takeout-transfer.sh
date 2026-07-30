@@ -2,11 +2,11 @@
 # Robust Takeout → atlas transfer watcher.
 #
 # Watches ~/Downloads for completed `takeout-*.zip` files and moves each to
-# atlas:~/takeout/photos/. Fixes the previous version's bugs:
-#   • filenames with spaces / "(1)" browser-duplicate suffixes no longer break
-#     word-splitting (glob + quoted vars, no `for x in $(ls …)`).
+# atlas:~/takeout/photos/. Deliberate properties:
+#   • filenames with spaces / "(1)" browser-duplicate suffixes survive intact
+#     (glob + quoted vars, no `for x in $(ls …)` word-splitting).
 #   • idempotent: a part already on atlas with matching size is treated as a
-#     duplicate and the local copy is deleted instead of endlessly re-rsynced.
+#     duplicate and the local copy is deleted rather than re-rsynced.
 #   • only completed downloads are touched (skips *.crdownload and files whose
 #     size is still growing).
 # Emits one line per meaningful event (Monitor turns each into a notification).
