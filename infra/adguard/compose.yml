@@ -1,13 +1,14 @@
 # AdGuard Home — DNS for the tailnet, and the exit node's resolver.
 #
-# Needs a .env next to this file with ATLAS_TAILNET_IP set to this box's
-# tailnet address (`tailscale ip -4`). There is no default; compose refuses to
-# start without it, which is the point — see the ports section.
+# Needs a .env next to this file (template: .env.example) with two values:
+# ATLAS_TAILNET_IP, this box's tailnet address (`tailscale ip -4`), and
+# ATLAS_ADGUARD_DIR, where AdGuard's conf/ and work/ live. Neither has a
+# default; compose refuses to start with either unset, which is the point —
+# see the ports section.
 #
 # Config and state live OUTSIDE this repo (bind mounts, see below): the conf
 # directory holds the admin password hash and the upstream/filter setup, so it
-# is deliberately not tracked. Point ATLAS_ADGUARD_DIR somewhere else in the
-# same .env if the box ever keeps it elsewhere.
+# is deliberately not tracked. ATLAS_ADGUARD_DIR says where it lives.
 #
 #   docker compose up -d          # start / apply a change
 #   docker compose pull && docker compose up -d   # update after bumping the pin

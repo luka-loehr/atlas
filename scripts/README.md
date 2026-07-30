@@ -14,6 +14,12 @@ Two shapes in here, and the difference is the naming convention:
 - **A loose `*.sh` at the top level** for one-shots you run by hand — no unit,
   no install step.
 
+Two deliberate exceptions to the first shape: [`power-button/`](power-button/)
+ships no `install.sh` (its README documents the two-line `cp` + `enable` by
+hand), and [`proxy/`](proxy/)'s `caddy.service`/`cloudflared.service` carry no
+`atlas-` prefix — they intentionally shadow the distro packages' units of the
+same names (see the comment in `proxy/install.sh`).
+
 Units run the scripts straight out of `~/atlas`, so re-run the relevant
 `install.sh` after a pull that moves or renames one.
 
@@ -25,6 +31,8 @@ Units run the scripts straight out of `~/atlas`, so re-run the relevant
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres` with retention, plus a restore drill that verifies row counts |
 | [`tailnet-dns/`](tailnet-dns/) | Publishes AdGuard as the tailnet's DNS while atlas is up and withdraws it at shutdown, so a sleeping box never blackholes the tailnet's DNS |
 | [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-api can report CPU power |
+| [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
+| [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.lukaloehr.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
 | [`ci-health/`](ci-health/) | Daily recorder for the self-hosted GitHub Actions runners on this box (units only — the checker lives outside this repo) |
 | [`photo-triage/`](photo-triage/) | Keyboard-driven local web UI to review delete candidates (screenshots, blurry, black frames, documents), plus the two scoring scripts that find them |
 | [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud, served at `/map` by atlas-photos |
@@ -47,6 +55,8 @@ the machine.
 | `atlas-tailnet-dns.service` | boot + shutdown (`ExecStop` is the point) | [`tailnet-dns/install.sh`](tailnet-dns/install.sh) |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
 | `dairo-ci-health.timer` | daily 12:05 UTC, `Persistent` | [`ci-health/install.sh`](ci-health/install.sh) |
+| `atlas-power-button.service` | boot | by hand — see [`power-button/`](power-button/) |
+| `caddy.service`, `cloudflared.service` | boot (steady-state dev-proxy infra) | [`proxy/install.sh`](proxy/install.sh) |
 
 Both calendar timers set `Persistent=true` for the same reason: atlas is
 powered off whenever it is not needed, and a plain calendar schedule silently

@@ -85,16 +85,15 @@ ssh your-server
 cd ~/atlas/api
 cargo build --release
 sudo install -m755 target/release/atlas-api /usr/local/bin/atlas-api
-sudo cp atlas-api.service /etc/systemd/system/     # first install: adjust User=
+sudo cp atlas-api.service /etc/systemd/system/     # first install: set User=
 sudo systemctl daemon-reload
 sudo systemctl enable --now atlas-api              # later: systemctl restart atlas-api
 ```
 
-Upgrading a box that ran an earlier release: see the one-time migration line
-in [docs/SETUP.md](../docs/SETUP.md) section 7.1 before the first start.
-
-The unit runs the server as `User=atlas` — change that to your service
-account. Ad-hoc development run:
+The unit ships `User=SET-BY-INSTALLER` — a deliberate placeholder. `atlas api`
+substitutes the actual server user at install time; on a manual install like
+the above, replace it yourself. A concrete username is intentionally not
+shipped (see the comment in the unit for why). Ad-hoc development run:
 
 ```bash
 ATLAS_API_OPEN=1 cargo run

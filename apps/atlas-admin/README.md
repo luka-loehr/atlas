@@ -82,8 +82,9 @@ xcodegen generate
 In Xcode: select your iPhone as the destination, then **enable signing** — the
 committed project ships with `CODE_SIGNING_ALLOWED = NO` and no team, so you
 must actively turn signing on, pick your team, and typically change the bundle
-id (`com.lukaloehr.AtlasAdmin`). SwiftTerm (1.14.0) resolves via SPM on
-first build.
+id (`com.lukaloehr.AtlasAdmin`). Make those changes in `project.yml` if they
+should survive: `xcodegen generate` overwrites the project file and discards
+Xcode-local edits. SwiftTerm (1.14.0) resolves via SPM on first build.
 
 On first launch the settings sheet opens automatically: enter the API host
 (e.g. `atlas.your-tailnet.ts.net:8787`) and, if the server runs with a token,

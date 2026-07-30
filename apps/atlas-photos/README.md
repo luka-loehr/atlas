@@ -150,6 +150,10 @@ xcodegen generate
 open AtlasPhotos.xcodeproj   # set your own team/bundle prefix in project.yml
 ```
 
+Like its siblings, the committed project ships `CODE_SIGNING_ALLOWED: NO`; for
+a device build enable signing and set your team in `project.yml` — not in
+Xcode, since `xcodegen generate` overwrites the project file.
+
 The server host is configured inside the app (e.g.
 `atlas.your-tailnet.ts.net:8788`) along with an optional bearer token; nothing
 is compiled in. The app renders the timeline as a scrubbable grid backed by the

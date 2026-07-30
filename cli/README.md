@@ -36,10 +36,12 @@ they chain in scripts (`atlas boot && atlas build`).
 
 ### Build
 
-All build-family commands need an `atlas.toml` (or a legacy `.atlas-build.toml`).
+All build-family commands need an `atlas.toml` (the legacy `.atlas-build.toml`
+is no longer read — `atlas migrate` converts one).
 Shared flags: `--branch B` / `-b B` (default `main`), `--local` / `-l` (build
-the working tree, no push), `--path D` (subdir as its own root), `--target T`
-(a named `[target.T]` section). `--` ends atlas flags. `--local` ⊥ `--branch`;
+the working tree, no push), `--path D` / `-p D` (subdir as its own root),
+`--target T` / `-t T` (a named `[target.T]` section). `--` ends atlas flags.
+`--local` ⊥ `--branch`;
 `--path` ⊥ `--target`.
 
 | command | what it does |
@@ -74,8 +76,8 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 | command | what it does |
 |---|---|
 | `atlas ls` | fleet: every project on atlas — branches, running, URL, disk |
-| `atlas logs [-b B] [-f]` | `docker logs` of this project's dev/start container |
-| `atlas health [-b B]` | HTTP-probe the dev/start URL at `health`; non-zero exit if unhealthy |
+| `atlas logs [-b B] [-f] [--dev\|--start]` | `docker logs` of this project's dev/start container |
+| `atlas health [-b B] [--local]` | HTTP-probe the dev/start URL at `health`; non-zero exit if unhealthy |
 | `atlas open [-b B]` | open the dev/start URL in the local browser |
 | `atlas info` | this project: name, repo, hash, remote dir, image, URL, secrets |
 
@@ -85,17 +87,16 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 |---|---|
 | `atlas secrets push [file]` | upload this project's env file (never in git, `0600` on atlas) |
 | `atlas secrets list` / `secrets rm` | which projects have one · drop this project's |
-| `atlas migrate` | write `atlas.toml` from a legacy `.atlas-build.toml` |
+| `atlas migrate [--force]` | write `atlas.toml` from a legacy `.atlas-build.toml`, deleting the legacy file; `--force` overwrites an existing `atlas.toml` |
 | `atlas help` (`-h`, `--help`) | usage |
 | `atlas --version` (`-V`, `version`) | print the version |
 
 ## Configuration file — `atlas.toml`
 
 Per-project config lives in an `atlas.toml` at the project root; the CLI walks
-up from the current directory until it finds one, preferring `atlas.toml` over a
-legacy `.atlas-build.toml` in the same directory. It is a flat `key = value`
-list (not full TOML) with quoted or bare values, `#` comments, and optional
-`[target.NAME]` sections.
+up from the current directory until it finds one — `atlas.toml` is the only
+filename it looks for. It is a flat `key = value` list (not full TOML) with
+quoted or bare values, `#` comments, and optional `[target.NAME]` sections.
 
 Source comes from **GitHub**, not from this machine: the server clones the repo
 and keeps a worktree per branch. Push before you build. `--branch B` / `-b B`
@@ -116,8 +117,9 @@ health    = "/api/health"    # path `atlas health` probes (default /)
 ```
 
 `health` is the only key new in v2; every other key is identical to the legacy
-schema. `atlas migrate` copies a `.atlas-build.toml` to `atlas.toml` byte-for-
-byte (1:1 mapping) and keeps the legacy file as a fallback — no value changes.
+schema. `atlas migrate` copies a `.atlas-build.toml` to `atlas.toml` unchanged
+apart from a prepended provenance comment (1:1 key mapping, no value changes)
+and **deletes the legacy file** — it is not read as a fallback.
 See the [builder README](../builder/README.md#configuration--atlastoml) for the
 full schema table, `[target.NAME]` semantics, and lockfile-based install/start
 detection.
@@ -143,7 +145,7 @@ otherwise — via a persistent host Cloudflare Tunnel + host Caddy and a wildcar
 `*.lukaloehr.com` DNS record. The old random `trycloudflare.com` quick tunnel is
 **removed**. `atlas dev --public` needs no Cloudflare token at runtime; it only
 upserts a Caddy route. If the tunnel or Caddy is down it prints
-`run scripts/atlas-web/install.sh on atlas` and exits non-zero.
+`run scripts/proxy/install.sh on atlas` and exits non-zero.
 
 ## Build & install
 
@@ -187,9 +189,9 @@ The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 - Docker Engine, with the SSH user in the `docker` group
 - `git`, and credentials for any private repo you build (the server clones over
   https, so `~/.git-credentials` or a credential helper)
-- passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `cp`,
-  `mv`, `rm` and `chown`, plus `tailscale serve` for `atlas dev`
-- for `atlas dev --public`: the atlas-web infra (host Caddy + a named Cloudflare
-  Tunnel + a `*.lukaloehr.com` wildcard DNS record), installed once by
-  [`scripts/atlas-web/`](../scripts/atlas-web/) and verified by `atlas doctor`
+- passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `tee`
+  and `chown`, plus `tailscale serve` for `atlas dev`
+- for `atlas dev --public`: the dev-subdomain proxy infra (host Caddy + a named
+  Cloudflare Tunnel + a `*.lukaloehr.com` wildcard DNS record), installed once
+  by [`scripts/proxy/`](../scripts/proxy/) and verified by `atlas doctor`
 - a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas api`)

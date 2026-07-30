@@ -48,22 +48,22 @@ iOS app — see `ATLAS_ADGUARD_URL` / `ATLAS_ADGUARD_AUTH` in
 
 ## Config lives on the host, not in git
 
-Two bind mounts, defaulting to `~/adguard`:
+Two bind mounts under `$ATLAS_ADGUARD_DIR` (required, no default — compose
+refuses to start without it):
 
 | Host path | Container path | Holds |
 |---|---|---|
-| `~/adguard/conf` | `/opt/adguardhome/conf` | `AdGuardHome.yaml`: admin password hash, upstreams, filter lists, per-client rules |
-| `~/adguard/work` | `/opt/adguardhome/work` | query log, statistics database |
+| `$ATLAS_ADGUARD_DIR/conf` | `/opt/adguardhome/conf` | `AdGuardHome.yaml`: admin password hash, upstreams, filter lists, per-client rules |
+| `$ATLAS_ADGUARD_DIR/work` | `/opt/adguardhome/work` | query log, statistics database |
 
 `conf` contains a password hash and the full client list, which is why it is
 not tracked here. **It is also the only copy** — it is not in the nightly
-Postgres dump, so a `docker compose down -v` or a lost `~/adguard` means
-rebuilding the filter setup by hand. Copy `~/adguard/conf` somewhere safe
-before doing anything drastic to it.
+Postgres dump, so a `docker compose down -v` or a lost state directory means
+rebuilding the filter setup by hand. Copy `$ATLAS_ADGUARD_DIR/conf` somewhere
+safe before doing anything drastic to it.
 
-The `.env` next to this file carries both the required tailnet address and, if
-the box keeps its AdGuard state somewhere other than `~/adguard`, a location
-override:
+The `.env` next to this file (template: `.env.example`) carries both required
+values:
 
 ```ini
 ATLAS_TAILNET_IP=100.x.y.z          # required — `tailscale ip -4` on this box

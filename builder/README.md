@@ -91,9 +91,10 @@ port (derived from `name` alone, so a project's tailnet URL never moves — see
 [dev networking](#dev-networking--tailnet-private-vs-public-subdomains)); and
 the public subdomain label (name-based by product requirement). Two *different*
 repos that share a `name` and both run tailnet `dev` at once would still
-collide on that front port and public host; `atlas doctor` and `atlas ls`
-surface it. In practice the only same-name pair (`rt-harness`) never runs
-`dev`.
+collide on that front port and public host; nothing detects that
+automatically — `atlas ls` prints every project's name and hash side by side,
+which is where a duplicate shows up. In practice the only same-name pair
+(`rt-harness`) never runs `dev`.
 
 **Warm-tree adoption.** The first time a hashed project syncs, if a pre-hash
 `~/atlas-builds/<name>` tree still exists and the hashed dir does not yet, the
@@ -111,7 +112,7 @@ and `atlas start` could run the wrong build.
 ## How a build runs
 
 `atlas build [-b <branch>]` finds `atlas.toml` (walking up from the current
-directory; a legacy `.atlas-build.toml` is still accepted as a fallback —
+directory; the legacy `.atlas-build.toml` is no longer read —
 [see below](#configuration--atlastoml)), fetches the repo on the server,
 resets that branch's worktree, and runs the build command in the matching
 image with a per-image cache volume (`~/atlas-builds/.cache-<image>` mounted at
@@ -252,7 +253,7 @@ How it works, and why it needs no per-request Cloudflare call:
 
 1. A **persistent named Cloudflare Tunnel** (`cloudflared.service`) and a
    **host Caddy** (`caddy.service`) run on atlas as steady-state infra,
-   installed once by [`scripts/atlas-web/`](../scripts/atlas-web/). Caddy
+   installed once by [`scripts/proxy/`](../scripts/proxy/). Caddy
    reverse-proxies `<host>` → `127.0.0.1:<port>`; the tunnel carries
    `*.lukaloehr.com` traffic to Caddy; TLS terminates at the Cloudflare edge.
 2. A single **wildcard DNS** record — `*.lukaloehr.com` CNAME to the tunnel,
@@ -262,7 +263,7 @@ How it works, and why it needs no per-request Cloudflare call:
    to upsert one reverse-proxy route, then prints the deterministic URL.
 3. If the tunnel or Caddy is not running, `atlas dev --public` refuses to
    improvise: it prints the exact remediation
-   (`run scripts/atlas-web/install.sh on atlas`) and exits non-zero.
+   (`run scripts/proxy/install.sh on atlas`) and exits non-zero.
 
 `atlas dev url | logs | stop` print the current URL, follow the dev logs, or
 stop the dev container and tear down **only this project's** tailnet serve
@@ -305,23 +306,22 @@ dev container runs as root and leaves root-owned build output that a blanket
 
 ## Configuration — `atlas.toml`
 
-The config file is now **`atlas.toml`**. It replaces `.atlas-build.toml`, but
-the binary still **reads** the legacy file as a fallback, so nothing breaks
-before you migrate. The format and parser are unchanged: a flat
+The config file is **`atlas.toml`**. It replaces `.atlas-build.toml`, which is
+**no longer read** — a project that still has only the legacy file gets a hard
+error pointing at `atlas migrate`. The format and parser are unchanged: a flat
 `key = "value"` list (not full TOML) with quoted or bare values, `#` comments,
 and optional `[target.NAME]` sections.
 
-**Resolution.** Walking up from the current directory, each dir prefers
-`atlas.toml`; if only `.atlas-build.toml` is present there, that wins and the
-CLI prints a one-time dim hint suggesting `atlas migrate`. With `--path D` the
-lookup is `D/atlas.toml`, else `D/.atlas-build.toml`.
+**Resolution.** Walking up from the current directory, the CLI looks for
+`atlas.toml` and nothing else. With `--path D` the lookup is exactly
+`D/atlas.toml`; if it is missing, the command exits 1.
 
 **Migration.** `atlas migrate [--force]` writes `atlas.toml` from the current
-project's `.atlas-build.toml` — a byte-for-byte copy with one comment line
-prepended — and **keeps** the legacy file as a fallback. The mapping is 1:1:
-every legacy key becomes the identically named `atlas.toml` key with identical
-semantics. There is no rename or restructure; that is why the existing parser
-reads v2 unchanged.
+project's `.atlas-build.toml` — an unchanged copy with one provenance comment
+prepended — and **deletes** the legacy file. The mapping is 1:1: every legacy
+key becomes the identically named `atlas.toml` key with identical semantics.
+There is no rename or restructure; that is why the existing parser reads v2
+unchanged.
 
 | Key | Required | Meaning |
 |---|---|---|
@@ -354,7 +354,14 @@ lockfile it finds in `dir`:
 | `bun.lock` / `bun.lockb` | `bun install --frozen-lockfile` |
 | `pnpm-lock.yaml` | `corepack enable && pnpm install --frozen-lockfile` |
 | `yarn.lock` | `corepack enable && yarn install --immutable` |
-| none of the above | `npm install --no-fund --no-audit` |
+| `package-lock.json` | `npm ci --no-fund --no-audit` |
+| no lockfile at all | `npm install --no-fund --no-audit` — nothing to pin against, so also nothing to skip |
+
+Two behaviors sit above that table (`builder/universal/atlas-install`): the
+install is **skipped entirely** when the lockfile's sha256 matches the stamp
+the previous run left inside `node_modules` (a strict install wipes that
+directory, so a stale tree can never keep its stamp), and for a project with
+no `package.json` the script is a silent no-op.
 
 `start` is detected the same way when the key is absent: `bun run start`,
 `pnpm start`, `yarn start`, else `npm run start`. The check runs inside the
@@ -386,7 +393,7 @@ Seven read-mostly commands make a fleet legible without SSHing in by hand:
 | `atlas logs [-b B] [-f] [--dev\|--start]` | `docker logs` of this project's dev or start container (auto-picks the running one; flags disambiguate) |
 | `atlas health [-b B] [--local]` | HTTP-probe the resolved dev/start URL (or `127.0.0.1:<port>` with `--local`) at the config's `health` path; non-zero exit if unhealthy |
 | `atlas open [-b B]` | open the resolved dev/start URL in the local browser |
-| `atlas doctor` | preflight checklist — reachability, ssh, docker, disk (85% guard), builder images, tailscale, the tunnel + Caddy + wildcard DNS, passwordless sudo, pending warm-tree adoption — each `PASS`/`WARN`/`FAIL`; non-zero exit on any `FAIL` |
+| `atlas doctor` | preflight checklist — reachability, ssh, docker, disk (85% guard), builder + mobile images, tailscale, the tunnel + Caddy admin + `cloudflare.env` presence + wildcard DNS, passwordless sudo — each `PASS`/`WARN`/`FAIL`; non-zero exit on any `FAIL` |
 | `atlas info` | this project's identity — name, canonical repo URL, hash, remote dir, image, port + health, resolved public and tailnet dev URLs, built branches, and whether secrets are pushed (hashed or legacy) |
 | `atlas watch [--path D] [--target T]` | local: watch the working tree (same excludes as `--local`) and re-run `build --local` on change, debounced 800 ms, coalescing save storms |
 
@@ -397,14 +404,19 @@ disk-guard 85% threshold and never bypasses it.
 ## Dev servers and cross-origin checks
 
 A dev server reached over the tailnet or a public subdomain is not on
-`localhost`, and most frameworks reject that by default. Allow the hosts
-explicitly:
+`localhost`, and most frameworks reject that by default. Atlas owns the
+allow-list, so no repo hardcodes hosts:
 
-- **Next.js** — `allowedDevOrigins: ["**.lukaloehr.com", "**.ts.net"]`.
-  A single `*` matches exactly one DNS label, so `*.ts.net` does **not** match
-  `box.tailnet.ts.net`; `**` is required. (`**.trycloudflare.com` is no longer
-  needed — the random tunnel is gone.)
-- **Vite / Astro** — `server.allowedHosts`.
+- **`ATLAS_DEV_ORIGINS`** — the CLI injects this into every dev container: a
+  comma-separated list of the exact hosts this project is reachable at (the
+  tailnet host, plus `<name>.lukaloehr.com` with `--public`). A production
+  build never sets it, so it is dev-only by construction. For **Next.js**:
+  `allowedDevOrigins: process.env.ATLAS_DEV_ORIGINS?.split(",") ?? []`; for
+  **Vite / Astro**, feed it to `server.allowedHosts`.
+- **Next HMR needs no config at all on the public path**: the Caddy route is a
+  subroute that strips `Origin`/`Referer` on exactly `/_next/*` and
+  `/__nextjs*` before proxying — Next treats those requests as same-site — while
+  the app's own routes keep their headers (CSRF stays intact).
 
 ## Operational notes
 
@@ -423,7 +435,7 @@ explicitly:
 - Caches persist across builds per image (`.cache-<image>`), and
   `node_modules` survives inside the synced build dir on the server, so
   second builds are warm.
-- The public dev path depends on the atlas-web infra (host Caddy + the named
+- The public dev path depends on the dev-subdomain proxy infra (host Caddy + the named
   Cloudflare Tunnel + wildcard DNS). Install or verify it with
-  [`scripts/atlas-web/`](../scripts/atlas-web/); `atlas doctor` reports its
+  [`scripts/proxy/`](../scripts/proxy/); `atlas doctor` reports its
   health.

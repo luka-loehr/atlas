@@ -8,7 +8,7 @@ After=systemd-logind.service
 Type=simple
 # No User= on purpose. This needs to read /dev/input/event* and to call
 # `systemctl poweroff`, both of which are root's. Naming an account here is
-# also how the old atlas-agent unit crash-looped for an hour — it shipped
+# also how a since-removed unit crash-looped for an hour — it shipped
 # User=atlas for an account that does not exist on this box.
 ExecStart=/home/luka/atlas/scripts/power-button/power-button.py
 Restart=always
