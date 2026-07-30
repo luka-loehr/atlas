@@ -20,12 +20,10 @@ __pycache__/
 # macOS.
 .DS_Store
 
-# Secrets compiled into an iOS app. Every app keeps its real values in a
-# Secrets.swift beside a tracked Secrets.example.swift;
-# apps/atlas-agents/ios/Sources/Shared/Secrets.swift holds the live Paperclip
-# board API key. Deliberately unanchored: this is the repo-wide backstop, so
-# no directory rename can ever expose one. Secrets.example.swift has a
-# different basename and stays tracked.
+# Secrets compiled into an iOS app. No app currently uses the pattern; the
+# rule stays as the repo-wide backstop (deliberately unanchored, so no
+# directory rename can ever expose one). A tracked Secrets.example.swift has
+# a different basename and would stay visible.
 Secrets.swift
 
 # Machine configuration and credentials. On atlas, backend/docker/.env,
@@ -35,7 +33,7 @@ Secrets.swift
 # Mapping: docs/SETUP.md section 9. The Hue credentials and the calibration
 # state are covered one level down, in lightshows/.gitignore.
 #
-# `*.env` rather than `.env`, so a named env file (paperclip-bridge.env) is
+# `*.env` rather than `.env`, so named env files (`something.env`) are
 # covered too. `.env.*` adds the suffixed variants (`.env.production`), which
 # `*.env` does not match. The negation is what keeps the tracked templates
 # visible — without it `.env.*` would swallow `.env.example` as well.

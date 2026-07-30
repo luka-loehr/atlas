@@ -1,5 +1,0 @@
-# The real board API key. Do not hoist this rule to a parent directory: the
-# mid-string slash anchors it here, so a verbatim copy one level up would
-# silently stop matching. (The root .gitignore also carries an unanchored
-# `Secrets.swift` as a backstop.)
-Sources/Shared/Secrets.swift
