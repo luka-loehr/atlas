@@ -4,7 +4,7 @@
 the atlas homelab server from a workstation. It wraps SSH for everyday access,
 manages power via Wake-on-LAN, offloads project builds and dev servers to the
 server's Docker engine, publishes dev servers on the tailnet or on stable
-`lukaloehr.com` subdomains, and installs the companion control-plane
+`your-domain.com` subdomains, and installs the companion control-plane
 [api](../api).
 
 Everything goes over `ssh`. Project source comes from GitHub, not from this
@@ -64,7 +64,7 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 | command | what it does |
 |---|---|
 | `atlas dev [-b B]` | dev server on atlas, on the tailnet (private, stable URL) |
-| `atlas dev [-b B] --public` | publish at `https://<name>.lukaloehr.com` (stable) |
+| `atlas dev [-b B] --public` | publish at `https://<name>.your-domain.com` (stable) |
 | `atlas dev [-b B] url\|logs\|stop` | print URL / follow dev logs / stop + tear down this project's route |
 | `atlas start [-b B]` | run the BUILT result of this branch (never builds) |
 | `atlas start [-b B] status\|logs\|stop` | inspect / tear down the started app |
@@ -135,9 +135,9 @@ stability). See [the builder README](../builder/README.md#repo-hash-namespacing-
 `atlas dev` is **tailnet-private by default** (`tailscale serve` →
 `https://<tailnet host>:<port>`, port derived from `name` so it never moves);
 `atlas dev --public` publishes at a **stable** subdomain —
-`https://<name>.lukaloehr.com` for `main`, `https://<name>-<dns-branch>.lukaloehr.com`
+`https://<name>.your-domain.com` for `main`, `https://<name>-<dns-branch>.your-domain.com`
 otherwise — via a persistent host Cloudflare Tunnel + host Caddy and a wildcard
-`*.lukaloehr.com` DNS record. `atlas dev --public` needs no Cloudflare token at
+`*.your-domain.com` DNS record. `atlas dev --public` needs no Cloudflare token at
 runtime; it only upserts a Caddy route. If the tunnel or Caddy is down it prints
 `run scripts/proxy/install.sh on atlas` and exits non-zero.
 
@@ -169,6 +169,7 @@ profiles and the repo.
 | `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until set) |
 | `ATLAS_WOL_BROADCAST` | `192.168.1.255:9` | broadcast `addr:port` for the magic packet |
 | `ATLAS_API_URL` | tailnet host + `:8787` | API server `host:port`, printed after `atlas api` |
+| `ATLAS_DEV_DOMAIN` | *(empty)* | your Cloudflare-managed domain for `atlas dev --public` URLs (`<name>.<domain>`); empty = tailnet dev only. Bring-up: [`scripts/proxy/`](../scripts/proxy/) |
 
 The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 (`ControlPath ~/.ssh/cm/%r@%h:%p`, `ControlPersist`); it never sets conflicting
@@ -186,6 +187,6 @@ The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 - passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `tee`
   and `chown`, plus `tailscale serve` for `atlas dev`
 - for `atlas dev --public`: the dev-subdomain proxy infra (host Caddy + a named
-  Cloudflare Tunnel + a `*.lukaloehr.com` wildcard DNS record), installed once
+  Cloudflare Tunnel + a `*.your-domain.com` wildcard DNS record), installed once
   by [`scripts/proxy/`](../scripts/proxy/) and verified by `atlas doctor`
 - a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas api`)

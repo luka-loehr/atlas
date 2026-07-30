@@ -110,13 +110,16 @@ fn slugs_to_branches(csv: &str) -> String {
         .join(", ")
 }
 
-/// The public host for a project name, if Caddy currently routes one.
+/// The public host for a project name, if Caddy currently routes one (needs
+/// ATLAS_DEV_DOMAIN to know what the hosts look like).
 fn public_url_for(name: &str, hosts: &[String]) -> Option<String> {
-    let exact = format!("{name}.lukaloehr.com");
+    let domain = crate::config::dev_domain()?;
+    let exact = format!("{name}.{domain}");
     let prefix = format!("{name}-");
+    let suffix = format!(".{domain}");
     hosts
         .iter()
-        .find(|h| **h == exact || (h.starts_with(&prefix) && h.ends_with(".lukaloehr.com")))
+        .find(|h| **h == exact || (h.starts_with(&prefix) && h.ends_with(&suffix)))
         .map(|h| format!("https://{h}"))
 }
 
@@ -378,16 +381,25 @@ pub(crate) fn doctor() {
         },
     );
 
-    let dns = wildcard_dns_ok();
-    add(
-        if dns { St::Pass } else { St::Warn },
-        "wildcard DNS",
-        if dns {
-            "resolves".into()
-        } else {
-            "unresolved".into()
-        },
-    );
+    match crate::config::dev_domain() {
+        Some(domain) => {
+            let dns = wildcard_dns_ok(domain);
+            add(
+                if dns { St::Pass } else { St::Warn },
+                "wildcard DNS",
+                if dns {
+                    format!("*.{domain} resolves")
+                } else {
+                    format!("*.{domain} unresolved")
+                },
+            );
+        }
+        None => add(
+            St::Warn,
+            "wildcard DNS",
+            "ATLAS_DEV_DOMAIN unset (public dev not configured)".into(),
+        ),
+    }
 
     let sudo = ssh_ok("sudo -n true");
     add(
@@ -428,10 +440,10 @@ pub(crate) fn info() {
     let cfg = load_config();
     let slug = "main";
     let label = host_label(&cfg, slug);
-    let public = if valid_host_label(&label) {
-        format!("https://{label}.lukaloehr.com")
-    } else {
-        format!("(invalid host label from name '{}')", cfg.name)
+    let public = match crate::config::dev_domain() {
+        None => "(ATLAS_DEV_DOMAIN unset — tailnet only)".into(),
+        Some(d) if valid_host_label(&label) => format!("https://{label}.{d}"),
+        Some(_) => format!("(invalid host label from name '{}')", cfg.name),
     };
 
     println!("{:<12}{}", "name", cfg.name);

@@ -27,6 +27,7 @@ pub(crate) struct Config {
     pub(crate) lan_addr: String,      // ATLAS_LAN_ADDR — LAN ssh route host:port ("" = skip)
     pub(crate) tailnet_addr: String, // ATLAS_TAILNET_ADDR — tailnet ssh route host:port ("" = skip)
     pub(crate) api_url: String,      // ATLAS_API_URL — atlas-api host:port
+    pub(crate) dev_domain: String, // ATLAS_DEV_DOMAIN — public dev-subdomain zone ("" = public dev off)
 }
 
 pub(crate) fn config() -> &'static Config {
@@ -73,6 +74,24 @@ impl Config {
             exit(1);
         };
         let tailnet_addr = get("ATLAS_TAILNET_ADDR", DEFAULT_TAILNET_ADDR);
+        // The Cloudflare-managed zone public dev subdomains live under
+        // (`<name>.<domain>`). Optional: without it, `atlas dev` is
+        // tailnet-only and `--public` explains what to set.
+        let dev_domain = get("ATLAS_DEV_DOMAIN", "")
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        if !dev_domain.is_empty()
+            && !(dev_domain.contains('.')
+                && dev_domain
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-'))
+        {
+            eprintln!(
+                "{RED}ATLAS_DEV_DOMAIN invalid:{RESET} {dev_domain} (a registrable domain like example.com)"
+            );
+            exit(1);
+        }
         // ATLAS_API_URL defaults to the tailnet host with the API's port 8787
         let tailnet_host = host_of(&tailnet_addr);
         let api_default = if tailnet_host.is_empty() {
@@ -88,8 +107,29 @@ impl Config {
             lan_addr: get("ATLAS_LAN_ADDR", "192.168.1.100:22"),
             api_url: get("ATLAS_API_URL", &api_default),
             tailnet_addr,
+            dev_domain,
         }
     }
+}
+
+/// The domain public dev subdomains live under (ATLAS_DEV_DOMAIN) — a zone on
+/// the user's own Cloudflare account, wired up once by `scripts/proxy/setup.sh`.
+/// None until configured; tailnet dev works without it.
+pub(crate) fn dev_domain() -> Option<&'static str> {
+    let d = config().dev_domain.as_str();
+    if d.is_empty() { None } else { Some(d) }
+}
+
+/// `dev_domain()`, or exit 1 with the remediation — for the paths that cannot
+/// proceed without it (`atlas dev --public`).
+pub(crate) fn require_dev_domain() -> &'static str {
+    dev_domain().unwrap_or_else(|| {
+        eprintln!("{RED}--public needs ATLAS_DEV_DOMAIN{RESET}");
+        eprintln!(
+            "{DIM}  set it in ~/.config/atlas/env to the Cloudflare-managed domain your dev\n  subdomains live under (e.g. ATLAS_DEV_DOMAIN=example.com), then bring up the\n  proxy once with scripts/proxy/setup.sh — see scripts/proxy/README.md{RESET}"
+        );
+        exit(1);
+    })
 }
 
 /// Optional config file `~/.config/atlas/env`: plain KEY=VALUE lines, lines

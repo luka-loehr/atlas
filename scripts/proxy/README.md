@@ -1,12 +1,22 @@
 # atlas dev-subdomain proxy
 
-Host-side infrastructure that makes stable `https://<name>.lukaloehr.com` dev
+Host-side infrastructure that makes stable `https://<name>.your-domain.com` dev
 subdomains work: a persistent named Cloudflare Tunnel + a host Caddy reverse
 proxy.
 
+**Bring your own domain.** Everything here is parameterized on a zone in
+*your* Cloudflare account — any registrable domain whose nameservers point at
+Cloudflare; the free plan covers all of it (tunnel, wildcard DNS, edge TLS).
+The domain appears in exactly two configs and they must agree:
+
+| Where | What |
+|---|---|
+| `~/atlas-secrets/cloudflare.env` on atlas | `CF_ZONE=<your domain>` + `CF_ZONE_ID` (zone Overview page) — read by `setup.sh` for the one-time cloud bootstrap |
+| `~/.config/atlas/env` on the Mac | `ATLAS_DEV_DOMAIN=<the same domain>` — what the `atlas` CLI builds `<name>.<domain>` URLs from |
+
 ```
-Cloudflare edge (TLS)                          ← *.lukaloehr.com is proxied here
-      │  *.lukaloehr.com  CNAME  <tunnel-id>.cfargotunnel.com
+Cloudflare edge (TLS)                          ← *.your-domain.com is proxied here
+      │  *.your-domain.com  CNAME  <tunnel-id>.cfargotunnel.com
       ▼
 cloudflared.service  ── named tunnel "atlas", token auth, no config.yml ──┐
       │                                                                    │
@@ -44,7 +54,7 @@ HTTP. Caddy never provisions a certificate (`automatic_https` disabled).
 curl -sf -X DELETE http://localhost:2019/id/<id> >/dev/null 2>&1        # ignore 404
 curl -sf -H 'Content-Type: application/json' \
      -X POST http://localhost:2019/config/apps/http/servers/atlas/routes \
-     -d '{"@id":"<id>","match":[{"host":["<name>.lukaloehr.com"]}],
+     -d '{"@id":"<id>","match":[{"host":["<name>.your-domain.com"]}],
           "handle":[{"handler":"subroute","routes":[
             {"match":[{"path":["/_next/*","/__nextjs*"]}],
              "handle":[{"handler":"headers",
@@ -64,7 +74,7 @@ and the wildcard DNS record are persistent infra and are never touched by the
 CLI — only `setup.sh` manages them.
 
 Because DNS is a **wildcard**, no per-project DNS record is ever created:
-`<name>.lukaloehr.com` and `<name>-<branch>.lukaloehr.com` are already covered.
+`<name>.your-domain.com` and `<name>-<branch>.your-domain.com` are already covered.
 
 ## Bring-up on atlas
 
@@ -77,8 +87,8 @@ install -d -m700 ~/atlas-secrets
 umask 077
 cat > ~/atlas-secrets/cloudflare.env <<'EOF'
 CLOUDFLARE_API_TOKEN=<token>
-CF_ZONE_ID=579eafcb03283fdb369881f8040f7049
-CF_ZONE=lukaloehr.com
+CF_ZONE_ID=<your-zone-id>
+CF_ZONE=your-domain.com
 # CF_ACCOUNT_ID=<optional; else resolved from the zone>
 EOF
 
@@ -89,7 +99,7 @@ cd ~/atlas/scripts/proxy
 # 3. verify
 systemctl is-active caddy cloudflared
 curl -sf localhost:2019/config/ >/dev/null && echo 'caddy admin ok'
-dig +short '*.lukaloehr.com' | grep cfargotunnel && echo 'wildcard ok'
+dig +short '*.your-domain.com' | grep cfargotunnel && echo 'wildcard ok'
 ```
 
 To re-arm the units after editing `caddy.json` or a `.service` file (without
@@ -104,8 +114,8 @@ Steady-state `atlas dev --public` needs no token.
 
 | Scope | Permission | Why | Status |
 |---|---|---|---|
-| Zone `lukaloehr.com` | **DNS → Edit** | create/update the wildcard CNAME | confirmed present |
-| Zone `lukaloehr.com` | **Zone → Read** | resolve zone id → account id (skip by setting `CF_ACCOUNT_ID`) | add if `CF_ACCOUNT_ID` unset |
+| Zone `your-domain.com` | **DNS → Edit** | create/update the wildcard CNAME | confirmed present |
+| Zone `your-domain.com` | **Zone → Read** | resolve zone id → account id (skip by setting `CF_ACCOUNT_ID`) | add if `CF_ACCOUNT_ID` unset |
 | Account (owner of the zone) | **Cloudflare Tunnel → Edit** | create the tunnel, set ingress, read its run token | **likely missing — grant this** |
 
 Grant the tunnel permission at

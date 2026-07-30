@@ -1,12 +1,12 @@
 //! `atlas dev`: run a dev server on atlas. Default is tailnet-private with a
-//! stable URL; `--public` publishes at https://<name>.lukaloehr.com via host
-//! Caddy + the persistent named Cloudflare tunnel — both URLs are stable,
+//! stable URL; `--public` publishes at https://<name>.<ATLAS_DEV_DOMAIN> via
+//! host Caddy + the persistent named Cloudflare tunnel — both URLs are stable,
 //! never randomly generated.
 
 use std::os::unix::process::CommandExt;
 use std::process::{Command, exit};
 
-use crate::config::{ssh_host, tailnet_host};
+use crate::config::{dev_domain, require_dev_domain, ssh_host, tailnet_host};
 use crate::git::sync_worktree;
 use crate::project::{BuildCfg, ensure_image, host_label, load_config, slug_of, valid_host_label};
 use crate::secrets::{env_file_prologue, warn_if_secrets_unpushed};
@@ -45,7 +45,7 @@ fn dev_name(cfg: &BuildCfg, slug: &str) -> String {
 pub(crate) fn dev_url(cfg: &BuildCfg, slug: &str) -> Option<String> {
     serve_url(cfg, slug, "dev").or_else(|| {
         if caddy_route_exists(&route_id(cfg, slug)) {
-            Some(format!("https://{}.lukaloehr.com", host_label(cfg, slug)))
+            dev_domain().map(|d| format!("https://{}.{d}", host_label(cfg, slug)))
         } else {
             None
         }
@@ -113,13 +113,17 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
     // Next's `allowedDevOrigins: process.env.ATLAS_DEV_ORIGINS?.split(",") ?? []`.
     // A production build never sets this env, so it stays dev-only by
     // construction. The tailnet host covers the private path; --public adds the
-    // stable lukaloehr host. Both are validated hostnames (charset [a-z0-9.-]).
+    // stable ATLAS_DEV_DOMAIN host. Both are validated hostnames ([a-z0-9.-]).
     let mut origins: Vec<String> = Vec::new();
     if let Some(h) = tailnet_host() {
         origins.push(h.to_string());
     }
     if public {
-        origins.push(format!("{}.lukaloehr.com", host_label(cfg, slug)));
+        origins.push(format!(
+            "{}.{}",
+            host_label(cfg, slug),
+            require_dev_domain()
+        ));
     }
     let dev_origins = origins.join(",");
 
@@ -196,7 +200,7 @@ fn dev_expose_tailnet(cfg: &BuildCfg, slug: &str) {
 /// route to the app's loopback port.
 fn dev_expose_public(cfg: &BuildCfg, slug: &str) {
     let label = host_label(cfg, slug);
-    let host = format!("{label}.lukaloehr.com");
+    let host = format!("{label}.{}", require_dev_domain());
     if !valid_host_label(&label) || host.len() > 253 {
         eprintln!(
             "{RED}cannot build a valid public host from '{}'{RESET}",
