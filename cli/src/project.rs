@@ -560,7 +560,8 @@ pub(crate) fn dns_branch(branch: &str) -> String {
 }
 
 /// The public host label for a project/branch: `<name>` for main, else
-/// `<name>-<dns-branch>`. The full public host is this + `.lukaloehr.com`.
+/// `<name>-<dns-branch>`. The full public host is this + `.` + the configured
+/// ATLAS_DEV_DOMAIN.
 pub(crate) fn host_label(cfg: &BuildCfg, slug: &str) -> String {
     let branch = branch_of_slug(slug);
     if branch == "main" {

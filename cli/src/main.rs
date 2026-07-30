@@ -96,7 +96,7 @@ fn help() {
          {DIM}test/exec/run share --local | --path D | --target T; run with --network host{RESET}\n\n\
          SERVE\n  \
          atlas dev   [-b B]         dev server on atlas, on the tailnet (private, stable URL)\n  \
-         atlas dev   [-b B] --public  publish at https://<name>.lukaloehr.com (stable)\n  \
+         atlas dev   [-b B] --public  publish at https://<name>.<ATLAS_DEV_DOMAIN> (stable)\n  \
          atlas dev   [-b B] url|logs|stop\n  \
          atlas start [-b B]         run the BUILT result of this branch\n  \
          atlas start [-b B] status|logs|stop\n  \

@@ -37,7 +37,7 @@ lock-in, no subscriptions — your hardware, your tailnet, your data.
 | [`apps/atlas-photos/`](apps/atlas-photos/) | iOS app **Atlas Photos**: self-hosted Google Photos + Drive — Rust/axum server, SwiftUI client, GPU AI pipeline (faces, semantic photo *and* video search) |
 | [`lightshows/`](lightshows/) | Show production: GPU song analysis, dark-gap compiler, AI composer, Art-Net→Hue bridge, fog hardware |
 | [`builder/`](builder/) | The remote build images `atlas build` / `atlas dev` run in: one [universal Dockerfile](builder/universal/Dockerfile) with three targets (`build`, `dev`, `mobile`), base-pinned |
-| [`proxy/`](proxy/) | Base configs for the dev-subdomain proxy — the host Caddy + named Cloudflare Tunnel behind `atlas dev --public`'s stable `*.lukaloehr.com` URLs; installed by [`scripts/proxy/`](scripts/proxy/) |
+| [`proxy/`](proxy/) | Base configs for the dev-subdomain proxy — the host Caddy + named Cloudflare Tunnel behind `atlas dev --public`'s stable `*.your-domain.com` URLs; installed by [`scripts/proxy/`](scripts/proxy/) |
 | [`scripts/`](scripts/) | Everything that keeps the box alive: [health check](scripts/healthcheck/), [firewall](scripts/firewall/), [disk guard](scripts/disk-guard/), [Postgres backups](scripts/pg-backup/), [tailnet DNS failover](scripts/tailnet-dns/), [power oneshots](scripts/power/), [power-button gesture](scripts/power-button/), [dev-subdomain proxy](scripts/proxy/), [CI-runner recorder](scripts/ci-health/), plus Takeout transfer, photo triage UI and embedding-space maps |
 | [`docs/`](docs/) | [SETUP.md](docs/SETUP.md) — the from-scratch machine-level guide everything else builds on |
 | [`.github/`](.github/) | Repo assets (the banner above) |
@@ -59,7 +59,8 @@ lock-in, no subscriptions — your hardware, your tailnet, your data.
 - **Build on the server, not the laptop** — `atlas build` ships the working
   tree or a repo to the box and builds it in a pinned universal image;
   `atlas dev` serves it back over the tailnet, or publicly at a stable
-  `https://<name>.lukaloehr.com` subdomain through a named Cloudflare Tunnel.
+  `https://<name>.your-domain.com` subdomain — any domain on your own
+  Cloudflare account — through a named Cloudflare Tunnel.
 - **Tailnet-first security** — nothing is port-forwarded to the internet. The
   two HTTP services are firewalled to loopback + tailnet by nftables and take a
   bearer token on top; the rest are confined by the address they bind. sshd and

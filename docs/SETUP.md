@@ -188,7 +188,7 @@ home, add a second alias pointing at the LAN IP and pass it via
 The rule is **never port-forward any of this to the internet**. The one
 deliberate internet-facing path is `atlas dev --public` (section 7.3): an
 *outbound* Cloudflare Tunnel that publishes a chosen dev container at
-`<name>.lukaloehr.com` — nothing is forwarded on the router for it either.
+`<name>.your-domain.com` — nothing is forwarded on the router for it either.
 Inside that, confinement is per service, and it is worth being precise about
 which mechanism does the work: two ports are enforced by nftables, most of the
 rest are confined by the address they bind, and a few — sshd, Art-Net and the
@@ -207,7 +207,7 @@ the Tailscale IP.
 | 6454/udp | Art-Net (bridge host) | all — **not** in the firewall table | none — any host on the LAN can drive the lamps |
 | 53/tcp+udp | AdGuard Home | the tailnet address only (`ATLAS_TAILNET_IP`) — **not** in the firewall table | none — tailnet only |
 | 3053/tcp | AdGuard admin UI | `127.0.0.1` only (reach it via `ssh -L 3053:127.0.0.1:3053 atlas`) | AdGuard's own login |
-| 8080/tcp | host Caddy (dev-subdomain proxy, section 7.3) | all — **not** in the firewall table | none — serves only the per-Host routes `atlas dev --public` adds, so without a matching `<name>.lukaloehr.com` Host header it answers nothing |
+| 8080/tcp | host Caddy (dev-subdomain proxy, section 7.3) | all — **not** in the firewall table | none — serves only the per-Host routes `atlas dev --public` adds, so without a matching `<name>.your-domain.com` Host header it answers nothing |
 | 2019/tcp | Caddy admin API | `localhost` only | none (loopback only — `atlas dev` mutates it over ssh) |
 
 `scripts/firewall/firewall.nft` matches exactly `{ 8787, 8788 }`, tcp only, so
@@ -284,6 +284,10 @@ ATLAS_WOL_MAC=aa:bb:cc:dd:ee:ff
 ATLAS_WOL_BROADCAST=192.168.1.255:9
 # atlas-api host:port (defaults to the tailnet host + :8787).
 ATLAS_API_URL=atlas.your-tailnet.ts.net:8787
+# Your Cloudflare-managed domain for `atlas dev --public` URLs
+# (<name>.<domain>). Leave unset for tailnet-only dev; section 7.3 has the
+# one-time server-side bring-up.
+#ATLAS_DEV_DOMAIN=your-domain.com
 EOF
 ```
 
@@ -521,9 +525,19 @@ the API server: host `atlas.your-tailnet.ts.net:8787` and the
 
 `atlas build` / `atlas dev` over the tailnet need nothing beyond the CLI
 prerequisites. Publishing a dev server on the internet at a stable
-`https://<name>.lukaloehr.com` URL additionally needs the host-side proxy
-infra: a persistent named Cloudflare Tunnel plus a host Caddy whose per-Host
-routes `atlas dev` adds and removes at runtime.
+`https://<name>.your-domain.com` URL additionally needs **a domain of your
+own on Cloudflare** and the host-side proxy infra: a persistent named
+Cloudflare Tunnel plus a host Caddy whose per-Host routes `atlas dev` adds
+and removes at runtime.
+
+The domain is fully yours to choose: any registrable domain whose nameservers
+point at Cloudflare (the free plan is enough). Tell atlas about it in two
+places — `CF_ZONE`/`CF_ZONE_ID` in the server-side token file below (both are
+on the zone's Overview page in the Cloudflare dashboard), and
+`ATLAS_DEV_DOMAIN=<the same domain>` in `~/.config/atlas/env` on the Mac
+(section 4), which is what the CLI builds URLs from. Without
+`ATLAS_DEV_DOMAIN`, `atlas dev` is tailnet-only and `--public` exits with the
+remediation.
 
 One-time bring-up, fully documented in
 [scripts/proxy/README.md](../scripts/proxy/README.md): put a Cloudflare API

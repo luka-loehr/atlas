@@ -2,11 +2,11 @@
 # =============================================================================
 # atlas dev-subdomain infrastructure — one-time cloud bootstrap.
 #
-# Brings up the pieces that make https://<name>.lukaloehr.com dev subdomains
+# Brings up the pieces that make https://<name>.your-domain.com dev subdomains
 # work, without any interactive browser login:
 #
 #   Cloudflare edge  --(named tunnel "atlas")-->  cloudflared on atlas
-#        |  *.lukaloehr.com CNAME <tunnel-id>.cfargotunnel.com (proxied)
+#        |  *.your-domain.com CNAME <tunnel-id>.cfargotunnel.com (proxied)
 #        v
 #   host Caddy  (:8080 on all interfaces, admin API localhost:2019)
 #        |  per-Host reverse_proxy routes added at runtime by `atlas dev`
@@ -18,7 +18,7 @@
 #   2. resolves the account id (from the zone) if not supplied
 #   3. creates OR reuses a remotely-managed named tunnel "atlas" via the API
 #   4. sets the tunnel ingress to send everything to the host Caddy
-#   5. upserts the wildcard DNS record *.lukaloehr.com -> <id>.cfargotunnel.com
+#   5. upserts the wildcard DNS record *.your-domain.com -> <id>.cfargotunnel.com
 #   6. writes the tunnel token to /etc/atlas/cloudflared.env (root, 0600)
 #   7. hands off to ./install.sh to arm Caddy + cloudflared as systemd units
 #
@@ -31,12 +31,12 @@
 #
 # The token must carry, on https://dash.cloudflare.com/profile/api-tokens:
 #
-#   * Zone   -> DNS    -> Edit      on zone lukaloehr.com   (CONFIRMED present)
+#   * Zone   -> DNS    -> Edit      on zone your-domain.com   (CONFIRMED present)
 #         creates/updates the wildcard CNAME record.
-#   * Zone   -> Zone   -> Read      on zone lukaloehr.com
+#   * Zone   -> Zone   -> Read      on zone your-domain.com
 #         resolves zone id -> account id (skip by setting CF_ACCOUNT_ID in the
 #         env file, in which case Zone:Read is not required).
-#   * Account-> Cloudflare Tunnel -> Edit   on the account owning lukaloehr.com
+#   * Account-> Cloudflare Tunnel -> Edit   on the account owning your-domain.com
 #         creates the named tunnel, sets its ingress, and reads its run token.
 #         THIS IS THE ONE LIKELY MISSING from a DNS-only token. Grant it by
 #         editing the token and adding an "Account -> Cloudflare Tunnel -> Edit"
@@ -71,7 +71,7 @@
 #        cat > ~/atlas-secrets/cloudflare.env <<'EOF'
 #        CLOUDFLARE_API_TOKEN=<token with the permissions above>
 #        CF_ZONE_ID=579eafcb03283fdb369881f8040f7049
-#        CF_ZONE=lukaloehr.com
+#        CF_ZONE=your-domain.com
 #        # CF_ACCOUNT_ID=<optional; else resolved from the zone via Zone:Read>
 #        EOF
 #
@@ -180,7 +180,7 @@ TUNNEL_TOKEN=$(cf GET "/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/token" | j
 [ -n "$TUNNEL_TOKEN" ] && [ "$TUNNEL_TOKEN" != "null" ] \
   || { echo "could not fetch tunnel token" >&2; exit 1; }
 
-# --- 5. wildcard DNS: *.lukaloehr.com -> <id>.cfargotunnel.com --------------
+# --- 5. wildcard DNS: *.your-domain.com -> <id>.cfargotunnel.com --------------
 WILDCARD="*.$CF_ZONE"
 TARGET="$TUNNEL_ID.cfargotunnel.com"
 echo "==> upserting DNS $WILDCARD CNAME $TARGET (proxied)"

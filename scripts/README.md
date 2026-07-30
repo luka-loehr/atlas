@@ -32,7 +32,7 @@ Units run the scripts straight out of `~/atlas`, so re-run the relevant
 | [`tailnet-dns/`](tailnet-dns/) | Publishes AdGuard as the tailnet's DNS while atlas is up and withdraws it at shutdown, so a sleeping box never blackholes the tailnet's DNS |
 | [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-api can report CPU power |
 | [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
-| [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.lukaloehr.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
+| [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.your-domain.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
 | [`ci-health/`](ci-health/) | Daily recorder for the self-hosted GitHub Actions runners on this box (units only — the checker lives outside this repo) |
 | [`photo-triage/`](photo-triage/) | Keyboard-driven local web UI to review delete candidates (screenshots, blurry, black frames, documents), plus the two scoring scripts that find them |
 | [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud, served at `/map` by atlas-photos |

@@ -105,7 +105,10 @@ pub(crate) fn tunnel_active() -> bool {
 
 /// Does the wildcard DNS record resolve? (WARN-only doctor check.) A proxied
 /// wildcard hides the cfargotunnel CNAME behind Cloudflare's anycast IPs, so we
-/// simply confirm the fixed probe host resolves to something.
-pub(crate) fn wildcard_dns_ok() -> bool {
-    ssh_ok("dig +short atlas-doctor.lukaloehr.com 2>/dev/null | grep -q .")
+/// simply confirm a probe host under the configured domain resolves to
+/// something.
+pub(crate) fn wildcard_dns_ok(domain: &str) -> bool {
+    ssh_ok(&format!(
+        "dig +short atlas-doctor.{domain} 2>/dev/null | grep -q ."
+    ))
 }

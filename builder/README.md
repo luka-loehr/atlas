@@ -228,15 +228,15 @@ it — never moves. Other branches, and `atlas start`,
 get their own derived ports so they can run simultaneously. `tailscaled` runs
 on the host, not in the container.
 
-**`atlas dev --public`: a stable lukaloehr.com subdomain.** `--public`
+**`atlas dev --public`: a stable your-domain.com subdomain.** `--public`
 publishes at a deterministic, stable subdomain:
 
 ```
-main branch     →  https://<name>.lukaloehr.com
-other branch    →  https://<name>-<dns-branch>.lukaloehr.com
+main branch     →  https://<name>.your-domain.com
+other branch    →  https://<name>-<dns-branch>.your-domain.com
 ```
 
-`main` is always exactly `https://<name>.lukaloehr.com` and never moves, so
+`main` is always exactly `https://<name>.your-domain.com` and never moves, so
 OAuth redirects, webhooks and cross-origin allow-lists configured against it
 are stable forever — a URL that moved between starts would break every one of
 them. `<dns-branch>` is the branch flattened for DNS: lowercased, every run
@@ -252,8 +252,8 @@ How it works, and why it needs no per-request Cloudflare call:
    **host Caddy** (`caddy.service`) run on atlas as steady-state infra,
    installed once by [`scripts/proxy/`](../scripts/proxy/). Caddy
    reverse-proxies `<host>` → `127.0.0.1:<port>`; the tunnel carries
-   `*.lukaloehr.com` traffic to Caddy; TLS terminates at the Cloudflare edge.
-2. A single **wildcard DNS** record — `*.lukaloehr.com` CNAME to the tunnel,
+   `*.your-domain.com` traffic to Caddy; TLS terminates at the Cloudflare edge.
+2. A single **wildcard DNS** record — `*.your-domain.com` CNAME to the tunnel,
    proxied — already covers every project and branch subdomain, so
    **`atlas dev --public` never creates a DNS record** and needs **no
    Cloudflare token at runtime**. It only talks to Caddy's localhost admin API
@@ -399,7 +399,7 @@ allow-list, so no repo hardcodes hosts:
 
 - **`ATLAS_DEV_ORIGINS`** — the CLI injects this into every dev container: a
   comma-separated list of the exact hosts this project is reachable at (the
-  tailnet host, plus `<name>.lukaloehr.com` with `--public`). A production
+  tailnet host, plus `<name>.your-domain.com` with `--public`). A production
   build never sets it, so it is dev-only by construction. For **Next.js**:
   `allowedDevOrigins: process.env.ATLAS_DEV_ORIGINS?.split(",") ?? []`; for
   **Vite / Astro**, feed it to `server.allowedHosts`.
