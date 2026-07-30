@@ -19,7 +19,7 @@ IP), `aa:bb:cc:dd:ee:ff` (server NIC MAC), `atlas` (server username, home
 | x86 server | everything | Any always-available box; idle power is irrelevant because the platform is designed to sleep (Wake-on-LAN). Ethernet strongly recommended — WoL over Wi-Fi is unreliable to nonexistent. |
 | NVIDIA GPU in the server | photo AI pipeline (`pipeline-gpu`: embeddings, faces, tags) and light-show song analysis | Everything else — Postgres, photo server, the API server, CPU pipeline, show playback — runs fine without one. ≥ 8 GB VRAM recommended for the vLLM caption stage. |
 | Mac | the `atlas` CLI, building the iOS apps | The CLI is Unix-only; any Linux workstation works for the CLI, but the iOS apps need Xcode. |
-| iPhone (optional) | the four SwiftUI apps (admin, photos, lightshow, agents) | iOS 26; a free or paid Apple Developer team for device signing. |
+| iPhone (optional) | the three SwiftUI apps (admin, photos, lightshow) | iOS 26; a free or paid Apple Developer team for device signing. |
 | Philips Hue (optional) | light shows | Hue Bridge v2, six color-capable lights in an Entertainment area; optionally two smart plugs (laser/strobe), an Arduino Uno + fog machine. |
 
 ## 2. Server preparation (Ubuntu Server)
@@ -202,8 +202,6 @@ on the raw LAN you accept cleartext or bind to the Tailscale IP.
 | 6454/udp | Art-Net (bridge host) | all — **not** in the firewall table | none — any host on the LAN can drive the lamps |
 | 53/tcp+udp | AdGuard Home | the tailnet address only (`ATLAS_TAILNET_IP`) — **not** in the firewall table | none — tailnet only |
 | 3053/tcp | AdGuard admin UI | `127.0.0.1` only (reach it via `ssh -L 3053:127.0.0.1:3053 atlas`) | AdGuard's own login |
-| 3100/tcp | paperclip | the tailnet address only (`--bind tailnet`) — **not** in the firewall table | board API key |
-| 3111/tcp | paperclip-bridge | `BRIDGE_BIND`, default `127.0.0.1` — **not** in the firewall table | the same board API key |
 
 `scripts/firewall/firewall.nft` matches exactly `{ 8787, 8788 }`, tcp only, so
 every other row above is confined by its bind address alone — or, for sshd and
@@ -453,7 +451,7 @@ pipeline jobs; the workers drain the queue whenever the box is awake.
 `ingest_drive.py` does the same for a Takeout **Drive** export, and
 `pipeline/backfill_jobs.py` re-enqueues jobs for existing assets.
 
-## 7. The API server, the agent platform, and their iOS apps
+## 7. The API server and its iOS apps
 
 ### 7.1 atlas-api
 
@@ -510,61 +508,6 @@ your team, and change the bundle identifier for your fork. Do it in
 and would discard an Xcode-local change. In each app's settings, point it at
 the API server: host `atlas.your-tailnet.ts.net:8787` and the
 `ATLAS_API_TOKEN` value. The iPhone must be on the tailnet.
-
-### 7.3 Agent platform (optional)
-
-Two services back the Atlas Agents app:
-
-- **paperclip** — the agent company itself. Not in this repo: it is installed
-  from npm (`npx -y paperclipai run --bind tailnet`), keeps its state in
-  `~/.paperclip`, and serves its UI and board API on the tailnet at `:3100`.
-- **paperclip-bridge** — the stdlib-only Python service that *is* in this repo.
-  It polls that board on the box, diffs the result, and pushes only the changes
-  to the app over SSE on `:3111`, so the phone never polls.
-
-Bring the bridge up on the server:
-
-```bash
-sudo cp ~/atlas/agents/paperclip-bridge/paperclip-bridge.env.example \
-        /etc/paperclip-bridge.env
-sudo chmod 600 /etc/paperclip-bridge.env
-sudo $EDITOR /etc/paperclip-bridge.env     # every setting is documented in it
-
-sudo cp ~/atlas/agents/paperclip-bridge/paperclip-bridge.service /etc/systemd/system/
-sudo $EDITOR /etc/systemd/system/paperclip-bridge.service   # User=, ExecStart path
-sudo systemctl daemon-reload && sudo systemctl enable --now paperclip-bridge
-curl -s http://127.0.0.1:3111/health
-```
-
-`bridge.py` refuses to start unless `PAPERCLIP_TOKEN`, `PAPERCLIP_COMPANY` and
-`PAPERCLIP_API` are set, and `BRIDGE_BIND` defaults to `127.0.0.1` — set it to
-the tailnet address for the phone to reach it. Roles, CLIs and the known gaps:
-[agents/README.md](../agents/README.md).
-
-### 7.4 iOS app ("Atlas Agents")
-
-This one is different from its three siblings: it signs for the device
-(`CODE_SIGNING_ALLOWED: YES`) and its `project.yml` therefore carries a
-`DEVELOPMENT_TEAM`. Automatic signing with no team fails outright, so a forker
-must substitute their own Apple Team ID there — a Team ID is a public
-identifier, not a secret.
-
-It also needs a secrets file that is deliberately never committed; a fresh
-clone does not compile without it:
-
-```bash
-cd ~/atlas/apps/atlas-agents/ios
-cp Sources/Shared/Secrets.example.swift Sources/Shared/Secrets.swift
-$EDITOR Sources/Shared/Secrets.swift   # board API host + key
-$EDITOR project.yml                    # DEVELOPMENT_TEAM + bundle ids
-brew install xcodegen && xcodegen generate
-open AtlasAgents.xcodeproj
-```
-
-`Secrets.swift` is matched by the repo-wide rule in the root `.gitignore`, so
-it cannot be committed by accident from any app directory. The app talks to
-`paperclip-bridge` on `:3111` and to paperclip on `:3100` — bring those up
-first, see [agents/README.md](../agents/README.md).
 
 ## 8. Light shows
 
@@ -653,12 +596,12 @@ service rewrites at runtime (`calibration.json` is written by atlas-api's
 `POST /api/calibrate/save`, which writes *through* the symlink).
 
 **These files are owned by the service account, not by `root`.** This differs
-from `/etc/atlas-api.env` and `/etc/paperclip-bridge.env`, which are root-owned
-`0600` — those are systemd `EnvironmentFile=` directives that *systemd* reads
-as root before dropping privileges. The files above are opened by the service
-process itself, and `lightshow-bridge`, `atlas-api` and `paperclip-bridge` all
-run as an unprivileged `User=`, so root-owned `0600` would make them unreadable
-and the bridge would crash on import.
+from `/etc/atlas-api.env`, which is root-owned `0600` — that is a systemd
+`EnvironmentFile=` directive that *systemd* reads as root before dropping
+privileges. The files above are opened by the service process itself, and
+`lightshow-bridge` and `atlas-api` both run as an unprivileged `User=`, so
+root-owned `0600` would make them unreadable and the bridge would crash on
+import.
 
 Adding another one: copy it into the store with the owner/mode above, verify
 with `cmp`, then replace the original with `ln -s`. Do not commit the
@@ -709,6 +652,5 @@ own media root; the GPU host needs no media root and nothing is synced back.
 [ ] systemctl is-active atlas-api atlas-photos   (both active)
 [ ] scripts/firewall/install.sh has run; nft list table inet atlas-fw shows rules
 [ ] iOS apps reach their hosts over the tailnet with tokens set
-[ ] agent platform only: curl http://127.0.0.1:3111/health on the server
 [ ] nothing is port-forwarded on the router
 ```
