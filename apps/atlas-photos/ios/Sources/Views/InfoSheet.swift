@@ -191,7 +191,7 @@ struct InfoSheet: View {
 
     // MARK: - Persons + tags. One shared flow up top: tappable person chips
     // (face + name -> their photo grid) first, then the pipeline's tags.
-    // KI-Beschreibungen wurden entfernt — die generierten Sätze waren zu
+    // Bewusst keine KI-Beschreibungen: die generierten Sätze sind zu
     // unzuverlässig; die Tags reichen.
 
     @ViewBuilder

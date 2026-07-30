@@ -36,8 +36,7 @@ they chain in scripts (`atlas boot && atlas build`).
 
 ### Build
 
-All build-family commands need an `atlas.toml` (the legacy `.atlas-build.toml`
-is no longer read — `atlas migrate` converts one).
+All build-family commands need an `atlas.toml`.
 Shared flags: `--branch B` / `-b B` (default `main`), `--local` / `-l` (build
 the working tree, no push), `--path D` / `-p D` (subdir as its own root),
 `--target T` / `-t T` (a named `[target.T]` section). `--` ends atlas flags.
@@ -87,7 +86,7 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 |---|---|
 | `atlas secrets push [file]` | upload this project's env file (never in git, `0600` on atlas) |
 | `atlas secrets list` / `secrets rm` | which projects have one · drop this project's |
-| `atlas migrate [--force]` | write `atlas.toml` from a legacy `.atlas-build.toml`, deleting the legacy file; `--force` overwrites an existing `atlas.toml` |
+| `atlas migrate [--force]` | converts a `.atlas-build.toml` config file to `atlas.toml` (deleting the source); `--force` overwrites an existing `atlas.toml` |
 | `atlas help` (`-h`, `--help`) | usage |
 | `atlas --version` (`-V`, `version`) | print the version |
 
@@ -116,10 +115,6 @@ port      = 3000             # port the server binds (default 3000)
 health    = "/api/health"    # path `atlas health` probes (default /)
 ```
 
-`health` is the only key new in v2; every other key is identical to the legacy
-schema. `atlas migrate` copies a `.atlas-build.toml` to `atlas.toml` unchanged
-apart from a prepended provenance comment (1:1 key mapping, no value changes)
-and **deletes the legacy file** — it is not read as a fallback.
 See the [builder README](../builder/README.md#configuration--atlastoml) for the
 full schema table, `[target.NAME]` semantics, and lockfile-based install/start
 detection.
@@ -130,7 +125,7 @@ Each project's remote directory and container names are keyed by `name` **and**
 a short deterministic hash of the origin git URL —
 `~/atlas-builds/<name>-<hash8>/`. Two different repos that happen to share a
 `name` (e.g. the `rt-harness` config that ships in both `dairo-frontend` and
-`dairo-backend`) no longer clobber each other's build tree, state, or
+`dairo-backend`) cannot clobber each other's build tree, state, or
 containers. The hash is stable across machines, installs and Rust releases; the
 tailnet dev port and the public subdomain label stay name-based on purpose (URL
 stability). See [the builder README](../builder/README.md#repo-hash-namespacing--why-a-name-is-not-enough).
@@ -142,9 +137,8 @@ stability). See [the builder README](../builder/README.md#repo-hash-namespacing-
 `atlas dev --public` publishes at a **stable** subdomain —
 `https://<name>.lukaloehr.com` for `main`, `https://<name>-<dns-branch>.lukaloehr.com`
 otherwise — via a persistent host Cloudflare Tunnel + host Caddy and a wildcard
-`*.lukaloehr.com` DNS record. The old random `trycloudflare.com` quick tunnel is
-**removed**. `atlas dev --public` needs no Cloudflare token at runtime; it only
-upserts a Caddy route. If the tunnel or Caddy is down it prints
+`*.lukaloehr.com` DNS record. `atlas dev --public` needs no Cloudflare token at
+runtime; it only upserts a Caddy route. If the tunnel or Caddy is down it prints
 `run scripts/proxy/install.sh on atlas` and exits non-zero.
 
 ## Build & install

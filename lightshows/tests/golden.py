@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Golden test: the modular player must render the ported Party Rock
-sequence FRAME-IDENTICAL to the legacy hand-coded show.py (v6)."""
+"""Golden test: the modular player must render the hand-designed Party Rock
+sequence FRAME-IDENTICAL to the frozen v6 reference engine
+(tests/reference_show_v6.py)."""
 import importlib.util
 import os
 import sys
@@ -32,10 +33,10 @@ def main():
     if diffs:
         t, a, b = first
         print(f"FAIL: {diffs}/{total} frames differ; first at t={t}ms")
-        print(f"  legacy: {list(a)}")
-        print(f"  player: {list(b)}")
+        print(f"  reference: {list(a)}")
+        print(f"  player:    {list(b)}")
         sys.exit(1)
-    print(f"GOLDEN PASS: {total} frames identical (legacy show.py == modular player)")
+    print(f"GOLDEN PASS: {total} frames identical (reference_show_v6 == modular player)")
 
 if __name__ == "__main__":
     main()

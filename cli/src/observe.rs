@@ -465,7 +465,7 @@ pub(crate) fn info() {
         println!("{:<12}pushed        {DIM}(~/{hashed}){RESET}", "secrets");
     } else if has_legacy {
         println!(
-            "{:<12}pushed (legacy ~/{legacy} — re-push to namespace)",
+            "{:<12}pushed (un-hashed ~/{legacy} — re-push to namespace)",
             "secrets"
         );
     } else {

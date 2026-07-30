@@ -1,7 +1,7 @@
 //! `atlas dev`: run a dev server on atlas. Default is tailnet-private with a
 //! stable URL; `--public` publishes at https://<name>.lukaloehr.com via host
-//! Caddy + the persistent named Cloudflare tunnel. There is no random
-//! trycloudflare quick-tunnel any more.
+//! Caddy + the persistent named Cloudflare tunnel — both URLs are stable,
+//! never randomly generated.
 
 use std::os::unix::process::CommandExt;
 use std::process::{Command, exit};
@@ -80,7 +80,7 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
         exit(1);
     }
     // Without --public we need a tailnet host to publish on; there is no public
-    // fallback tunnel any more, so say so and point at --public.
+    // fallback tunnel, so say so and point at --public.
     if !public && tailnet_host().is_none() {
         eprintln!(
             "{RED}no tailnet host configured{RESET} (ATLAS_TAILNET_ADDR in ~/.config/atlas/env)"

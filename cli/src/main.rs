@@ -110,7 +110,7 @@ fn help() {
          CONFIG\n  \
          atlas secrets push [file]  upload env file for this project (never in git, 0600 on atlas)\n  \
          atlas secrets list|rm      which projects have one  ·  drop this project's\n  \
-         atlas migrate              write atlas.toml from a legacy .atlas-build.toml\n  \
+         atlas migrate              convert a .atlas-build.toml config file to atlas.toml\n  \
          atlas --version            print the version"
     );
 }

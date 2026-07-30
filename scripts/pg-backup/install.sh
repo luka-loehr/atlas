@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Install/refresh the nightly Postgres backup timer.
 #
-# Also removes the older systemd *user* copy of the same pair. Both existed for
-# a while, so the dump ran twice a night against the same directory; the system
-# units are the ones this repo ships.
+# Also disables and removes any systemd *user* copy of the same pair — with
+# both a system and a user pair installed, the dump runs twice a night against
+# the same directory. The system units are the ones this repo ships.
 set -euo pipefail
 cd "$(dirname "$0")"
 

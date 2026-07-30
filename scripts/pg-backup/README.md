@@ -28,9 +28,9 @@ boot instead of being skipped.
 The unit runs `backup.sh` straight out of the checkout, so re-run `install.sh`
 after a pull that moves it.
 
-An older systemd **user** copy of the same pair used to live in
-`~/.config/systemd/user/`; with both installed the dump ran twice a night.
-`install.sh` disables and removes it.
+`install.sh` also disables and removes any systemd **user** copy of the same
+pair in `~/.config/systemd/user/` — with both a system and a user pair
+installed, the dump runs twice a night against the same directory.
 
 ## Retention
 

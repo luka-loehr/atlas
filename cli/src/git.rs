@@ -1,5 +1,5 @@
 //! git on atlas: the tree comes from GitHub, never from the Mac. Also the
-//! one-time adoption of pre-hash warm build dirs and the `meta.json` manifest.
+//! one-time adoption of un-hashed warm build dirs and the `meta.json` manifest.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
@@ -34,11 +34,11 @@ pub(crate) fn git_toplevel(root: &Path) -> PathBuf {
     PathBuf::from(out)
 }
 
-/// One-time adoption: if a pre-hash `~/atlas-builds/<name>` tree exists and the
-/// new `<name>-<hash8>` tree does not, move it over. Guarded (`! -e`), so it is
-/// idempotent and never overwrites or merges. Whichever repo runs first adopts
-/// a shared same-name legacy dir; the other builds cleanly into its own hash
-/// dir — which is exactly how the rt-harness collision is retired.
+/// One-time adoption: if an un-hashed `~/atlas-builds/<name>` tree exists and
+/// the `<name>-<hash8>` tree does not, move it over. Guarded (`! -e`), so it is
+/// idempotent and never overwrites or merges. When two repos share a name,
+/// whichever runs first adopts the shared un-hashed dir; the other builds
+/// cleanly into its own hash dir, so same-name projects cannot collide.
 fn adopt_legacy(cfg: &BuildCfg) {
     let legacy = cfg.legacy_base_dir();
     let new = cfg.base_dir();

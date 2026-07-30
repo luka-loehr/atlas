@@ -142,8 +142,8 @@ absolute path is used as-is) — it is the source of truth, so a show whose
 audio is shared with another one names that file rather than its own slug.
 Supply your own audio by dropping it in there under the name the show asks
 for: `party-rock` and `party-rock-anthem-auto` both expect `music.mp3`.
-Readers still fall back to `shows/` for legacy files, but nothing writes
-there — `makeshow.py` copies new audio and covers straight to the media root.
+Readers also fall back to `shows/` for hand-dropped files, but nothing writes
+there — `makeshow.py` copies audio and covers straight to the media root.
 See `docs/SETUP.md` section 9.
 
 ## Setup
@@ -315,7 +315,7 @@ python3 tests/golden.py    # 7018-frame parity: modular player == frozen v6 engi
 ```
 
 The golden test renders every 40 ms frame from −20.3 s to 260.4 s through
-both the frozen legacy engine (`tests/reference_show_v6.py`) and the modular
+both the frozen reference engine (`tests/reference_show_v6.py`) and the modular
 `Player`, and requires byte-identical output. Pure `render()` — no network,
 no audio. `scripts/port_party_rock.py` regenerates the hand-designed
 reference sequence it runs against.

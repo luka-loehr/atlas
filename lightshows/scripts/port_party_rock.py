@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Port the hand-built v6 Party Rock show into a .show.json sequence.
+"""Generate the hand-designed v6 Party Rock show as a .show.json sequence.
 
 This is the reference show: tests/golden.py proves the modular player
-renders it FRAME-IDENTICAL to the legacy hand-coded show.py.
+renders it FRAME-IDENTICAL to the frozen v6 reference engine
+(tests/reference_show_v6.py).
 """
 import os
 import sys

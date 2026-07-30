@@ -4,8 +4,8 @@ repair. Stdlib only, no GPU and no model: run it anywhere.
 
     python3 apps/atlas-photos/pipeline/test_parse_caption.py
 
-Every FAILING_* sample below is real-shaped output that the old
-find("{")/rfind("}") slice returned None for, costing a strict retry plus up
+The failure-mode samples below are real-shaped output that a naive
+find("{")/rfind("}") slice returns None for, costing a strict retry plus up
 to 5 queue attempts — each one reloading the 3.3 GiB vLLM model.
 """
 import unittest
@@ -37,12 +37,12 @@ class ParseCaptionJson(unittest.TestCase):
         self.assertEqual(r.tags, ["boy", "bike", "street"])
 
     def test_trailing_prose_with_brace(self):
-        """rfind used to grab the brace in the prose after the object."""
+        """A naive rfind slice grabs the brace in the prose after the object."""
         out = CLEAN + "\n\nNote: the format {a} was used."
         self.assertEqual(parse_caption_json(out)[1], ["boy", "bike", "street"])
 
     def test_second_object(self):
-        """Model emits a second fenced block; rfind used to span both."""
+        """Model emits a second fenced block; a naive rfind slice spans both."""
         out = ("```json\n" + CLEAN + "\n```\n\n```json\n"
                '{"caption": "Another try.", "tags": ["x", "y"]}\n```')
         r = parse_caption_json(out)
@@ -72,7 +72,7 @@ class ParseCaptionJson(unittest.TestCase):
         """Nothing usable yet — no complete caption, no tags. Still None."""
         self.assertIsNone(parse_caption_json('{"caption": "A boy rides a bi'))
 
-    # --- guards that must survive the rewrite ---------------------------
+    # --- echo and junk guards -------------------------------------------
 
     def test_example_echo_rejected(self):
         out = ('{"caption": "A dog runs.", '
@@ -133,7 +133,7 @@ class SalvageIsMarked(unittest.TestCase):
         self.assertTrue(parse_caption_json(out).partial)
 
     def test_six_of_twelve_tags_is_marked(self):
-        """The exact case from the issue: half a tag list, stored as if whole."""
+        """Half a tag list — six of twelve — must be marked, not stored as whole."""
         out = ('{"caption": "A street scene.", "tags": ['
                + ", ".join(f'"t{i}"' for i in range(6)) + ', "t6')
         r = parse_caption_json(out)
@@ -147,7 +147,7 @@ class SalvageIsMarked(unittest.TestCase):
         self.assertTrue(TAG_SOURCE_PARTIAL.startswith(TAG_SOURCE))
 
     def test_result_still_indexes_like_a_tuple(self):
-        """[0]/[1] kept working so existing call sites did not silently shift."""
+        """[0]/[1] index like a tuple, so positional call sites cannot shift."""
         r = parse_caption_json(CLEAN)
         self.assertEqual(r[0], r.caption)
         self.assertEqual(r[1], r.tags)

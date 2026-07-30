@@ -89,8 +89,8 @@ async fn main() {
     let token = std::env::var("ATLAS_PHOTOS_TOKEN").ok().filter(|t| !t.is_empty());
     // ATLAS_PHOTOS_OPEN=1: reads (GET/HEAD) need no token. This is a
     // read-only trusted-network opt-in and deliberately has NO effect on
-    // mutations — it used to grant them, which meant anyone who could reach
-    // the port could empty the trash.
+    // mutations — a flag that granted them would let anyone who can reach
+    // the port empty the trash.
     let open_mode = std::env::var("ATLAS_PHOTOS_OPEN").map(|v| v == "1").unwrap_or(false);
     match (&token, open_mode) {
         (Some(_), true) => println!("auth: reads open (ATLAS_PHOTOS_OPEN=1), mutations require the token"),
@@ -271,7 +271,7 @@ mod auth_tests {
     use super::{decide, StatusCode};
 
     /// The one invariant that matters: no combination of configuration lets an
-    /// unauthenticated mutation through. ATLAS_PHOTOS_OPEN=1 used to.
+    /// unauthenticated mutation through — ATLAS_PHOTOS_OPEN=1 included.
     #[test]
     fn no_config_lets_an_unauthenticated_mutation_through() {
         for has_token in [false, true] {
@@ -341,9 +341,9 @@ const ASSET_COLS: &str =
 
 // archived / trashed / locked assets each live in their own view
 // (/api/archive, /api/trash, /api/locked) and stay out of the main timeline,
-// search, summary and stats. Column filter over the partial index (002) instead
-// of the old album anti-join. Columns are qualified so the search join is
-// unambiguous (albums also has an `id`).
+// search, summary and stats. Column filter over the partial index (002).
+// Columns are qualified so the search join is unambiguous (albums also has
+// an `id`).
 const VISIBLE: &str =
     "AND NOT assets.archived AND assets.trashed_at IS NULL AND NOT assets.locked";
 
@@ -545,7 +545,7 @@ async fn text_embedding(q: &str) -> Option<Vec<f32>> {
             .collect::<Option<Vec<f32>>>()
     };
     // Qwen3-VL-Embedding-2B runs CPU-only in the sidecar: ~1-3 s per query, and
-    // slower while the GPU re-embed pipeline is hammering the box. 6 s ceiling so
+    // slower while the GPU embed pipeline is hammering the box. 6 s ceiling so
     // a real query never gets cut off; a wedged sidecar still degrades cleanly.
     match tokio::time::timeout(std::time::Duration::from_millis(6000), fut).await {
         Ok(Some(v)) if v.len() == 2048 => Some(v),
@@ -555,8 +555,8 @@ async fn text_embedding(q: &str) -> Option<Vec<f32>> {
 
 /// Unified search: person names, places (incl. "Kroatien" -> cc), tags,
 /// captions, albums, filenames, years — plus Qwen3-VL semantic ranking when
-/// the structured hits are thin. Response keeps the v1 `items` key and adds
-/// `persons` chips.
+/// the structured hits are thin. Response carries `items` plus `persons`
+/// chips.
 async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json<serde_json::Value>, Api> {
     let c = app.pool.get().await?;
     let term = s.q.trim().to_string();
@@ -648,17 +648,18 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
     //    Before you touch the 150: it is a silent switch, and it is coupled to
     //    how well the tag stage above matches. Anything that improves tag recall
     //    pushes more queries over the threshold and turns this stage OFF for
-    //    them, with no visible symptom. Checked 2026-07-25 against exactly that
-    //    — the word-boundary tag match (`tag ~* '\mterm'`) that replaced the old
-    //    `tag ILIKE 'term%'` prefix match. Over the whole tag vocabulary, 104 of
-    //    the 8,978 terms that used to reach this stage no longer do: 1.2%, and
-    //    they are generic words where several hundred structured hits are
-    //    already plenty ("set" 112 -> 1483 hits, "setting" 73 -> 1289, "screen"
-    //    140 -> 666, "hair" 112 -> 626, "flower" 146 -> 405). Deliberately left
-    //    alone: the cutoff exists to avoid spending the 1-3 s query embedding
-    //    where it buys nothing, and 1.2% of generic terms is not worth it.
-    //    Re-run the measurement if tag matching changes again — an independent
-    //    re-derivation on the same day landed within
+    //    them, with no visible symptom. Measured 2026-07-25 for exactly that
+    //    coupling: the word-boundary tag match (`tag ~* '\mterm'`) compared
+    //    against a plain `tag ILIKE 'term%'` prefix match. Over the whole tag
+    //    vocabulary, the word-boundary match pushes 104 of 8,978 terms over the
+    //    threshold that the prefix match leaves below it: 1.2%, and they are
+    //    generic words where several hundred structured hits are already plenty
+    //    (prefix -> word-boundary hit counts: "set" 112 -> 1483, "setting"
+    //    73 -> 1289, "screen" 140 -> 666, "hair" 112 -> 626, "flower"
+    //    146 -> 405). Deliberately left alone: the cutoff exists to avoid
+    //    spending the 1-3 s query embedding where it buys nothing, and 1.2% of
+    //    generic terms is not worth it. Re-run the measurement if tag matching
+    //    changes — an independent re-derivation on the same day landed within
     //    a couple of terms of the numbers above.
     if items.len() < 150 {
         if let Some(vec) = text_embedding(&term).await {
@@ -682,7 +683,7 @@ async fn search(State(app): State<App>, Query(s): Query<SearchQ>) -> Result<Json
                 // relative window off the best hit — keeps results that sit
                 // within a cosine-distance margin of the top match. Starting
                 // point for Qwen's distribution; tune against real queries
-                // ("Hund", "disco") once the re-embed completes.
+                // ("Hund", "disco") on a fully embedded library.
                 let cutoff = best + 0.25;
                 let mut added = 0;
                 let seen: std::collections::HashSet<String> =

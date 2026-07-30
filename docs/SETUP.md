@@ -255,8 +255,8 @@ table are in `scripts/firewall/README.md`. Verify with:
 sudo nft -a list table inet atlas-fw     # per-rule counters show what got dropped
 ```
 
-Both services bind `0.0.0.0`, not `[::]`, so only IPv4 was ever reachable —
-but the rules are `inet`, so changing a bind to `[::]` later cannot quietly
+Both services bind `0.0.0.0`, not `[::]`, so only IPv4 is reachable — but
+the rules are `inet`, so changing a bind to `[::]` later cannot quietly
 reopen the LAN.
 
 ## 4. Mac: the `atlas` CLI
@@ -339,9 +339,10 @@ so that `docker ps` is readable and a rebuild is reproducible:
 1. **The file is `compose.yml`.** Not `docker-compose.yml`, which is the v1
    spelling.
 2. **The project name is set explicitly** with a top-level `name:`. Compose
-   otherwise derives it from the directory, which produced a stack literally
-   called `docker` — meaningless in `docker ps`, and worse, the project name
-   prefixes the volume names, so renaming a directory can orphan a database.
+   otherwise derives it from the directory, which here would yield a stack
+   literally called `docker` — meaningless in `docker ps`, and worse, the
+   project name prefixes the volume names, so renaming a directory can
+   orphan a database.
 3. **Images are pinned by tag *and* digest.** The tag is for humans, the
    digest is what gets pulled. A re-tagged upstream image cannot change what
    runs here. Bump both halves together.
@@ -590,7 +591,7 @@ python3 play.py shows/party-rock.show.json     # hand-designed reference show
 
 Audio files are not in the repo. A show's `meta.song_file` is a bare basename
 that is resolved against the media root `ATLAS_LIGHTSHOW_MEDIA_DIR` (default
-`/var/lib/atlas/lightshow-media`) first, then against `shows/` as a legacy
+`/var/lib/atlas/lightshow-media`) first, then against `shows/` as a
 fallback — see [section 9](#show-media-a-media-root-not-a-symlink). The
 reference show wants `music.mp3` there. Producing shows from new songs
 (`makeshow.py`, YouTube ingestion, the GPU analysis venv at `analyze/.venv`,
@@ -639,12 +640,12 @@ symlink — the target path is machine-specific, so these stay gitignored.
 
 ### Show media: a media root, not a symlink
 
-`lightshows/shows/` used to hold ~48 M of gitignored media (`*.mp3`/`*.jpg`/
-`*.wav`) beside tracked `*.show.json` files of the same basename, so
-`git clean -fdx` took all of it. A symlink could not fix that one: the
-directory is *mixed*, so linking it whole would drag the tracked JSON out of
-the tree, and per-file links would rot because `makeshow.py` copies media in
-on every new show.
+`lightshows/shows/` is a *mixed* directory: tracked `*.show.json` files sit
+where gitignored media (`*.mp3`/`*.jpg`/`*.wav`) of the same basename would
+land beside them — exactly the kind of file `git clean -fdx` takes. A
+symlink cannot fix this one: linking the directory whole would drag the
+tracked JSON out of the tree, and per-file links would rot as every new
+show brings new media.
 
 Instead there is a **media root**, `ATLAS_LIGHTSHOW_MEDIA_DIR`, defaulting to
 `/var/lib/atlas/lightshow-media` (`0755 luka:luka`). The default points
@@ -653,15 +654,15 @@ without the variable set still writes somewhere safe.
 
 | | media root | `shows/` |
 |---|---|---|
-| audio + covers | written and read here | read only, legacy fallback |
+| audio + covers | written and read here | read only, as a fallback |
 | `.show.json`, `.summary.md` | never | written here, tracked |
 
 Writers (`makeshow.py`, `tools/make_calibration.py`) use the media root and
-have **no** fallback, so new media can never land back in the checkout.
-Readers (`engine/sequence.py:song_path`, atlas-api's `audio_file()` and
-`show_thumb()`) probe the media root first and then `shows/`, so legacy and
-hand-dropped files still play. `meta.song_file` stays a bare basename;
-absolute paths are honoured as-is.
+have **no** fallback, so new media can never land in the checkout. Readers
+(`engine/sequence.py:song_path`, atlas-api's `audio_file()` and
+`show_thumb()`) probe the media root first and then `shows/`, so files
+dropped into `shows/` by hand play too. `meta.song_file` is a bare
+basename; absolute paths are honoured as-is.
 
 `makeshow.py` can drive the GPU host over ssh (`LIGHTSHOW_REMOTE_DIR`), but
 only `analyze/` is used there — the song is copied in, analysed, and deleted.

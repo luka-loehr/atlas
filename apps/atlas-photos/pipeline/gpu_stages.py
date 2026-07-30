@@ -334,17 +334,17 @@ class FaceStage:
 
 # Two hard-won constraints, both from backfill measurements:
 #
-# 1. No concrete example values. The old dog-on-the-beach example JSON came
-#    back verbatim for >half the library, so the shape uses placeholders only
-#    (plus an echo guard in parse_caption_json).
+# 1. No concrete example values. An example JSON in the prompt (dog on the
+#    beach) comes back verbatim for >half the library, so the shape uses
+#    placeholders only (plus an echo guard in parse_caption_json).
 # 2. Prompt and caption are English, NOT German. Asking a German prompt for a
 #    German caption plus "englische" tags does not keep the languages apart in
 #    a 3B model: it put a German tag on 56% of assets (`junge` outranked `boy`
 #    5:1) and produced unparseable output for 15% of them. Tag search is a
-#    literal `tag ILIKE` prefix match (server/src/main.rs), so a split-language
-#    vocabulary silently loses hits. Measured over 40 photos sampled across the
-#    library, English prompt vs German: German tags 2.5% vs 56% of assets,
-#    unparseable 0/40 vs 6/40.
+#    literal word-boundary match (`tag ~*`, server/src/main.rs), so a
+#    split-language vocabulary silently loses hits. Measured over 40 photos
+#    sampled across the library, English prompt vs German: German tags 2.5%
+#    vs 56% of assets, unparseable 0/40 vs 6/40.
 CAPTION_PROMPT = (
     "Describe this photo. Reply with ONLY a JSON object in exactly this form:\n"
     '{"caption": "...", "tags": ["...", "..."]}\n'
@@ -354,7 +354,7 @@ CAPTION_PROMPT = (
 # instruction echoes the small model sometimes parrots back as a "tag"
 TAG_JUNK = ("keyword", "lowercase", "english", "5-12", "stichwort", "tags")
 
-# the old prompt's example tag set — reject if it ever comes back verbatim
+# the dog-on-the-beach example tag set — reject if it ever comes back verbatim
 EXAMPLE_TAGS = frozenset(("dog", "beach", "waves", "running", "summer"))
 
 # tags.source values this stage writes. A caption whose JSON arrived truncated
@@ -366,8 +366,8 @@ EXAMPLE_TAGS = frozenset(("dog", "beach", "waves", "running", "summer"))
 TAG_SOURCE = "qwen2.5-vl"
 TAG_SOURCE_PARTIAL = TAG_SOURCE + ":partial"
 
-# What parse_caption_json returns. Indexable like the (caption, tags) tuple it
-# replaces, so [0]/[1] keep working; `partial` says whether it came from the
+# What parse_caption_json returns. Indexable like a plain (caption, tags)
+# tuple, so [0]/[1] work positionally; `partial` says whether it came from the
 # salvage path rather than a clean decode.
 Caption = namedtuple("Caption", "caption tags partial")
 
@@ -391,8 +391,8 @@ class CaptionStage:
                        gpu_memory_utilization=0.80, max_model_len=4096,
                        max_num_seqs=8, enforce_eager=True,
                        limit_mm_per_prompt={"image": 1})
-        # 256 truncated a long caption often enough to matter (no closing brace
-        # -> the whole tag set had to be salvaged or lost); one sentence plus 12
+        # 256 truncates a long caption often enough to matter (no closing brace
+        # -> the whole tag set must be salvaged or lost); one sentence plus 12
         # tags fits in ~120, so 512 is headroom, not a cost — generation stops
         # at the EOS token, not at max_tokens.
         self.params = SamplingParams(temperature=0.2, max_tokens=512)
@@ -447,11 +447,11 @@ class CaptionStage:
                     cur = conn.cursor()
                     # This stage owns every qwen2.5-vl* row for the asset, and
                     # the PK is (asset_id, tag, source) — so ON CONFLICT alone
-                    # no longer makes a re-run idempotent once two sources
-                    # exist: a later complete parse would sit alongside the
-                    # partial rows instead of replacing them, double-listing
-                    # shared tags and leaving the :partial marker set forever
-                    # on an asset that has since been fixed. Clear first.
+                    # cannot make a re-run idempotent once two sources exist:
+                    # a later complete parse would sit alongside the partial
+                    # rows instead of replacing them, double-listing shared
+                    # tags and leaving the :partial marker set forever on an
+                    # asset whose tags are complete. Clear first.
                     cur.execute(
                         """DELETE FROM tags
                            WHERE asset_id = %s AND source IN (%s, %s)""",
@@ -482,10 +482,10 @@ def json_objects(t):
     """Yield every balanced {...} span in t, outermost-first, left to right.
 
     String-aware: braces and escaped quotes inside JSON strings don't move the
-    depth (a caption may legitimately contain "{"). Replaces an earlier
-    find("{")/rfind("}") slice, which produced invalid JSON whenever anything
-    brace-ish followed the object — trailing prose ("the format {a} was used")
-    or a second fenced block both made rfind overshoot the real closer.
+    depth (a caption may legitimately contain "{"). A naive
+    find("{")/rfind("}") slice produces invalid JSON whenever anything
+    brace-ish follows the object — trailing prose ("the format {a} was used")
+    or a second fenced block both make rfind overshoot the real closer.
     """
     depth = start = 0
     in_str = esc = False

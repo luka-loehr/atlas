@@ -1,5 +1,5 @@
-//! Per-project config: `atlas.toml` (v2; the legacy `.atlas-build.toml` is no
-//! longer read — see `atlas migrate`),
+//! Per-project config: `atlas.toml` (the only filename the CLI reads — `atlas
+//! migrate` converts a `.atlas-build.toml`),
 //! the `BuildCfg` model, path/name validators, and the remote-path scheme.
 
 use std::env;
@@ -146,7 +146,7 @@ impl BuildCfg {
     pub(crate) fn base_dir(&self) -> String {
         format!("{REMOTE_BASE}/{}", self.slug_id())
     }
-    /// The pre-hash legacy dir (`~/atlas-builds/<name>`), for one-time adoption.
+    /// The un-hashed dir (`~/atlas-builds/<name>`), for one-time adoption.
     pub(crate) fn legacy_base_dir(&self) -> String {
         format!("{REMOTE_BASE}/{}", self.name)
     }
@@ -180,7 +180,8 @@ impl BuildCfg {
     pub(crate) fn secrets_file(&self) -> String {
         format!("{SECRETS_BASE}/{}.env", self.slug_id())
     }
-    /// The pre-hash secrets path, still read as a back-compat fallback.
+    /// The un-hashed secrets path (`<name>.env`), read as a fallback when the
+    /// hashed file is absent.
     pub(crate) fn legacy_secrets_file(&self) -> String {
         format!("{SECRETS_BASE}/{}.env", self.name)
     }
@@ -218,9 +219,8 @@ pub(crate) fn load_config_at(sub: Option<&str>, target: Option<&str>) -> BuildCf
 
 /// Locate the `atlas.toml` config file. Returns (file, scoped).
 ///
-/// The legacy `.atlas-build.toml` format is no longer read: everything has been
-/// migrated and the new CLI is the only one in use. A stray legacy file can
-/// still be converted one-off with `atlas migrate`, but it is not a fallback.
+/// `atlas.toml` is the only filename the CLI looks for; a `.atlas-build.toml`
+/// is never read as a fallback — `atlas migrate` converts one to `atlas.toml`.
 fn resolve_config_file(sub: Option<&str>, cwd: &Path) -> (PathBuf, bool) {
     match sub {
         Some(p) => {
