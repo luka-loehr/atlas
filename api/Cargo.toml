@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 tungstenite = "0.21"       # WebSocket framing for the /term PTY bridge
-portable-pty = "0.8"       # real PTY so bash/htop/vim work in the app terminal
+portable-pty = "0.9"       # real PTY so bash/htop/vim work in the app terminal
 
 [profile.release]
 lto = true
