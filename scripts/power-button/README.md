@@ -27,7 +27,7 @@ accident.
 
 ## Install
 
-    sudo cp atlas-power-button.service /etc/systemd/system/
+    . ../lib/install-unit.sh && install_unit atlas-power-button.service   # fills in $HOME (repo at ~/atlas)
     sudo systemctl daemon-reload
     sudo systemctl enable --now atlas-power-button
 

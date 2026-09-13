@@ -1,6 +1,6 @@
 [Unit]
 Description=Clean shutdown on three fast power-button presses
-Documentation=file:///home/atlas/atlas/scripts/power-button/README.md
+Documentation=file:///home/SET-BY-INSTALLER/atlas/scripts/power-button/README.md
 # logind must be up first: it is what ignores the key, leaving it to us.
 After=systemd-logind.service
 
@@ -10,7 +10,7 @@ Type=simple
 # `systemctl poweroff`, both of which are root's. A concrete User= is also
 # a landmine: naming an account that does not exist on the box crash-loops
 # the unit.
-ExecStart=/home/atlas/atlas/scripts/power-button/power-button.py
+ExecStart=/home/SET-BY-INSTALLER/atlas/scripts/power-button/power-button.py
 Restart=always
 RestartSec=5
 

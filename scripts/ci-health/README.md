@@ -9,7 +9,7 @@ This is the thing that writes it down every day.
 |---|---|
 | `dairo-ci-health.service` | oneshot: appends a timestamped report + exit code to `~/dairo-ci-health.log` |
 | `dairo-ci-health.timer` | daily at 12:05 UTC, `Persistent=true` |
-| `install.sh` | copies both units to `/etc/systemd/system`, enables the timer |
+| `install.sh` | renders both units into `/etc/systemd/system` (via `../lib/install-unit.sh`), enables the timer |
 
 ```bash
 ./install.sh

@@ -8,9 +8,9 @@ Postgres tools needed on the host.
 |---|---|
 | `backup.sh` | pg_dump (custom format, zstd) + globals dump to `/srv/backups/atlas-postgres`, archive verified with `pg_restore -l`, then retention |
 | `restore-drill.sh` | restores the newest dump into scratch DB `atlas_restore_drill`, compares exact per-table row counts against live, checks embedding dims, drops the scratch DB (`--keep` to inspect) |
-| `atlas-pg-backup.service` | oneshot wrapper around `backup.sh` (`User=luka`, idle IO, 30 min timeout) |
+| `atlas-pg-backup.service` | oneshot wrapper around `backup.sh` (runs as the installing user, idle IO, 30 min timeout) |
 | `atlas-pg-backup.timer` | nightly at 03:30 ± 10 min, `Persistent=true` |
-| `install.sh` | copies both units to `/etc/systemd/system`, enables the timer |
+| `install.sh` | renders both units into `/etc/systemd/system` (via `../lib/install-unit.sh`), enables the timer |
 
 ## Schedule
 

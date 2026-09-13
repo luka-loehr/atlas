@@ -14,7 +14,8 @@ if systemctl --user list-unit-files atlas-pg-backup.timer >/dev/null 2>&1; then
   systemctl --user daemon-reload 2>/dev/null || true
 fi
 
-sudo cp atlas-pg-backup.service atlas-pg-backup.timer /etc/systemd/system/
+. ../lib/install-unit.sh
+install_unit atlas-pg-backup.service atlas-pg-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now atlas-pg-backup.timer
 echo "Installed."

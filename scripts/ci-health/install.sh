@@ -13,7 +13,8 @@ if [ ! -x "$CHECKER" ]; then
   exit 1
 fi
 
-sudo cp dairo-ci-health.service dairo-ci-health.timer /etc/systemd/system/
+. ../lib/install-unit.sh
+install_unit dairo-ci-health.service dairo-ci-health.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now dairo-ci-health.timer
 echo "Installed."

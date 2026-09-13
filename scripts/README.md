@@ -7,7 +7,7 @@ in [docs/SETUP.md](../docs/SETUP.md).
 Two shapes in here, and the difference is the naming convention:
 
 - **A directory per component that systemd runs.** It contains the executable,
-  its `atlas-*.service`/`.timer` units, an `install.sh` that copies them to
+  its `atlas-*.service`/`.timer` units, an `install.sh` that renders them (via [`lib/install-unit.sh`](lib/install-unit.sh)) into
   `/etc/systemd/system` and enables them, and a `README.md`. Unit names carry
   the `atlas-` prefix because systemd is a global namespace; files inside the
   directory don't, because the directory already names them.
@@ -15,7 +15,7 @@ Two shapes in here, and the difference is the naming convention:
   no install step.
 
 Two deliberate exceptions to the first shape: [`power-button/`](power-button/)
-ships no `install.sh` (its README documents the two-line `cp` + `enable` by
+ships no `install.sh` (its README documents the two-line install + `enable` by
 hand), and [`proxy/`](proxy/)'s `caddy.service`/`cloudflared.service` carry no
 `atlas-` prefix — they intentionally shadow the distro packages' units of the
 same names (see the comment in `proxy/install.sh`).

@@ -52,4 +52,4 @@ after a pull that renames or moves it.
 - `atlas-healthcheck.service` — runs on boot (`WantedBy=multi-user.target`)
 - `atlas-healthcheck-resume.service` — runs after resume (standard systemd
   resume hook: `WantedBy` + `After` the sleep targets)
-- `install.sh` — copies units to `/etc/systemd/system`, enables them
+- `install.sh` — renders units into `/etc/systemd/system` (via `../lib/install-unit.sh`), enables them

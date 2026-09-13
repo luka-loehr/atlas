@@ -2,7 +2,8 @@
 # Install/refresh the disk-guard timer and the pre-build gate.
 set -euo pipefail
 cd "$(dirname "$0")"
-sudo cp atlas-disk-guard.service atlas-disk-guard.timer /etc/systemd/system/
+. ../lib/install-unit.sh
+install_unit atlas-disk-guard.service atlas-disk-guard.timer
 sudo ln -sfn "$PWD/disk-guard.sh" /usr/local/bin/atlas-disk-guard
 sudo systemctl daemon-reload
 sudo systemctl enable --now atlas-disk-guard.timer

@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=luka
-Group=luka
+User=SET-BY-INSTALLER
+Group=SET-BY-INSTALLER
 # atlas boots with the self-hosted runners still registering; a check fired the
 # instant the timer catches up would report them offline and log a false red.
 # This is a recorder, not an alarm — three minutes of latency costs nothing.
 ExecStartPre=/bin/sleep 180
-ExecStart=/bin/bash -c '{ echo "===== $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; /home/atlas/.local/bin/dairo-ci-health 2>&1; echo "exit=$?"; } >> /home/atlas/dairo-ci-health.log 2>&1'
+ExecStart=/bin/bash -c '{ echo "===== $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; /home/SET-BY-INSTALLER/.local/bin/dairo-ci-health 2>&1; echo "exit=$?"; } >> /home/SET-BY-INSTALLER/dairo-ci-health.log 2>&1'
