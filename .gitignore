@@ -1,8 +1,7 @@
-# Build output. `target/` is unanchored so it covers every Rust crate
-# (api/, cli/, apps/atlas-photos/server/). `build-sim/` and `build-device/`
-# are the conventional -derivedDataPath values used for local simulator and
-# device builds; `DerivedData/` is what Xcode writes when it picks the path
-# itself.
+# Build output. `target/` is unanchored so it covers the Rust workspace
+# wherever cargo is run. `build-sim/` and `build-device/` are the conventional
+# -derivedDataPath values used for local simulator and device builds;
+# `DerivedData/` is what Xcode writes when it picks the path itself.
 target/
 build/
 build-sim/
@@ -14,25 +13,17 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 
-# Python bytecode.
-__pycache__/
-*.pyc
-
 # macOS.
 .DS_Store
 
-# Secrets compiled into an iOS app. No app currently uses the pattern; the
-# rule is the repo-wide backstop (deliberately unanchored, so no directory
-# rename can ever expose one). A tracked Secrets.example.swift has a
-# different basename and stays visible.
+# Secrets compiled into the iOS app. The app does not use the pattern (the
+# server address and token are entered at runtime and kept in the keychain);
+# the rule is the repo-wide backstop.
 Secrets.swift
 
-# Machine configuration and credentials. On atlas, backend/docker/.env,
-# apps/atlas-photos/pipeline/.env and lightshows/artnet_host.local are
-# SYMLINKS into /etc/atlas — the real files live outside the checkout, so
+# Machine configuration and credentials. On the server, db/.env is a SYMLINK
+# into /etc/atlas, where the real files live outside the checkout, so
 # `git clean -fdx` removes a link, not a running service's credentials.
-# Mapping: docs/SETUP.md section 9. The Hue credentials and the calibration
-# state are covered one level down, in lightshows/.gitignore.
 #
 # `*.env` rather than `.env`, so named env files (`something.env`) are
 # covered too. `.env.*` adds the suffixed variants (`.env.production`), which
@@ -42,24 +33,3 @@ Secrets.swift
 .env.*
 !.env.example
 *.local
-
-# Show media lives in ATLAS_LIGHTSHOW_MEDIA_DIR (default /var/lib/atlas/
-# lightshow-media), outside the checkout. Nothing writes into this directory;
-# these patterns cover media files dropped in by hand, which the readers
-# fall back to. Every extension audio_file() probes is listed, so such a file
-# is ignored rather than merely untracked — plain `git clean -fd` cannot take
-# it.
-lightshows/shows/*.mp3
-lightshows/shows/*.jpg
-lightshows/shows/*.wav
-lightshows/shows/*.m4a
-lightshows/shows/*.opus
-lightshows/shows/*.webm
-lightshows/shows/*.aac
-lightshows/shows/*.flac
-
-# A Mac-side web UI for naming face clusters through the atlas-photos API.
-# Held back from the public repo by the publish audit, not generated — this
-# rule is the only thing keeping it untracked. Publishing it is a decision,
-# not a cleanup.
-scripts/atlas-faces/

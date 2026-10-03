@@ -1,23 +1,20 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directories:
-      - /api
-      - /apps/atlas-photos/server
-      - /cli
+    directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: pip
-    directories:
-      - /apps/atlas-photos/ingest
-      - /lightshows/analyze
+  - package-ecosystem: swift
+    directory: /app
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
-
   - package-ecosystem: docker
-    directory: /builder/universal
+    directories:
+      - /db
+      - /builder/universal
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
       interval: weekly
