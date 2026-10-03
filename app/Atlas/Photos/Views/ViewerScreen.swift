@@ -48,7 +48,7 @@ struct ViewerScreen: View {
             if !pages.isEmpty {
                 PhotoPager(index: $index, count: pages.count) { i in
                     ViewerPage(library: library, asset: pages[i], chrome: chrome,
-                               bottomInset: chromeBottomHeight + 14) {
+                               bottomInset: chromeBottomHeight + 20) {
                         // NO withAnimation: chrome pops in/out instantly, both ways
                         chrome.toggle()
                     }
@@ -92,11 +92,11 @@ struct ViewerScreen: View {
         VStack(spacing: 0) {
             topBar(asset)
             Spacer()
-            VStack(spacing: 14) {
+            VStack(spacing: 19) {
                 Filmstrip(assets: pages, index: $index, client: library.client)
                 bottomBar(asset)
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, -6)
             .onGeometryChange(for: CGFloat.self, of: {
                 // distance from the stack's TOP edge to the PHYSICAL screen
                 // bottom — pages ignore safe areas, so measure in global space
@@ -108,26 +108,26 @@ struct ViewerScreen: View {
     private func topBar(_ asset: Asset) -> some View {
         HStack(alignment: .center) {
             CircleButton(icon: "chevron.backward", label: "Zurück") { close() }
-            VStack(spacing: 1) {
+            Spacer(minLength: 8)
+            VStack(spacing: 0) {
                 Text(places[asset.id] ?? relativeDay(asset.takenAt))
                     .font(.headline)
-                    .foregroundStyle(.primary)
                 if let t = asset.takenAt {
                     Text(places[asset.id] != nil
-                         ? "\(dayAndMonth(t))  \(t.formatted(date: .omitted, time: .shortened))"
+                         ? "\(relativeDay(t))  \(t.formatted(date: .omitted, time: .shortened))"
                          : t.formatted(date: .omitted, time: .shortened))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.footnote)
                 }
             }
+            .foregroundStyle(.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .combine)
-            .frame(maxWidth: .infinity, minHeight: 50)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 24)
+            .frame(minWidth: 158, minHeight: 44)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
-            .padding(.horizontal, 6)
+            Spacer(minLength: 8)
             .task(id: asset.id) { await loadPlace(asset) }
             Menu {
                 Button {
@@ -144,17 +144,16 @@ struct ViewerScreen: View {
             }
             .accessibilityLabel("Mehr")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 6)
+        .padding(.horizontal, 16)
     }
 
     private func bottomBar(_ asset: Asset) -> some View {
         HStack {
-            CircleButton(icon: "square.and.arrow.up", label: "Teilen", nudge: -1.5) { shareCurrent() }
+            CircleButton(icon: "square.and.arrow.up", label: "Teilen", nudge: -1.5, size: 48) { shareCurrent() }
             Spacer()
             // 44-pt hit areas; spacing and padding shrink by the same amount,
             // so the glyphs sit exactly where they did with the bare icons
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Button { toggleFavorite(asset) } label: {
                     barIcon(isFav(asset) ? "heart.fill" : "heart")
                         .foregroundStyle(isFav(asset) ? .red : .primary)
@@ -171,22 +170,22 @@ struct ViewerScreen: View {
                 }
                 .accessibilityLabel("Archivieren")
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 3)
+            .frame(height: 48)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
             Spacer()
-            CircleButton(icon: "trash", label: "Löschen") { confirmTrash = true }
+            CircleButton(icon: "trash", label: "Löschen", size: 48) { confirmTrash = true }
                 .confirmationDialog("Foto löschen?", isPresented: $confirmTrash,
                                     titleVisibility: .visible) {
                     Button("Löschen", role: .destructive) { trashCurrent() }
                 }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 28)
     }
 
     private func barIcon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 20))
+            .font(.system(size: 22))
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
@@ -251,14 +250,8 @@ struct ViewerScreen: View {
     private func loadPlace(_ a: Asset) async {
         guard places[a.id] == nil,
               let info = try? await library.client.assetInfo(a.id), let place = info.place else { return }
-        places[a.id] = place.replacingOccurrences(of: ", ", with: " - ")
-    }
-
-    private func dayAndMonth(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        f.dateFormat = Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? "d. MMMM" : "d. MMMM yyyy"
-        return f.string(from: d)
+        // the locality, like Photos ("Karlsruhe"), not the state after it
+        places[a.id] = place.components(separatedBy: ", ").first ?? place
     }
 
     private func relativeDay(_ d: Date?) -> String {
@@ -266,7 +259,15 @@ struct ViewerScreen: View {
         let cal = Calendar.current
         if cal.isDateInToday(d) { return "Heute" }
         if cal.isDateInYesterday(d) { return "Gestern" }
-        return (cal.isDate(d, equalTo: Date(), toGranularity: .year) ? Self.dayThisYear : Self.dayOtherYear).string(from: d)
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        if let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day,
+           days < 7 {
+            f.dateFormat = "EEEE"
+        } else {
+            f.dateFormat = cal.isDate(d, equalTo: Date(), toGranularity: .year) ? "d. MMMM" : "d. MMMM yyyy"
+        }
+        return f.string(from: d)
     }
 
     private static let dayThisYear: DateFormatter = {
@@ -300,15 +301,16 @@ struct CircleButton: View {
     /// VoiceOver name of the icon-only button.
     let label: String
     var nudge: CGFloat = 0
+    var size: CGFloat = 44
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 21, weight: .medium))
                 .foregroundStyle(.primary)
                 .offset(y: nudge)
-                .frame(width: 44, height: 44)
+                .frame(width: size, height: size)
                 .glassEffect(.regular, in: .circle)   // iOS 26 Liquid Glass
         }
         .accessibilityLabel(label)
@@ -333,8 +335,11 @@ private struct Filmstrip: View {
     @State private var window: Range<Int> = 0..<0
     private static let reach = 400
 
-    private let cell: CGFloat = 36
+    private let cell: CGFloat = 20
+    private let height: CGFloat = 30
     private let gap: CGFloat = 3
+    /// Air on either side of the current photo.
+    private let air: CGFloat = 11
 
     private func recenter(_ i: Int) {
         let lo = max(i - Self.reach, 0), hi = min(i + Self.reach, assets.count)
@@ -350,20 +355,21 @@ private struct Filmstrip: View {
             LazyHStack(spacing: gap) {
                 ForEach(window.clamped(to: 0..<assets.count), id: \.self) { i in
                     Thumb(url: client.thumbURL(assets[i].id, 512))
-                        .frame(width: cell, height: cell)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        // the CENTER item is simply bigger — pure geometry,
-                        // follows finger and momentum with zero lag; neighbors
-                        // fade slightly so the middle one carries the weight
-                        .visualEffect { content, proxy in
+                        .frame(width: cell, height: height)
+                        .clipShape(.rect(cornerRadius: 3, style: .continuous))
+                        // the CENTER item widens to a square and the others
+                        // step aside — pure geometry, follows finger and
+                        // momentum with zero lag
+                        .visualEffect { [cell, gap, air, height] content, proxy in
                             let f = proxy.frame(in: .scrollView(axis: .horizontal))
                             let vis = proxy.bounds(of: .scrollView(axis: .horizontal))
                             let center = vis.map(\.midX) ?? UIScreen.main.bounds.width / 2
-                            let d = abs(f.midX - center)
-                            let t = max(0, 1 - d / 70)
+                            let dx = f.midX - center
+                            let near = min(abs(dx) / (cell + gap), 1)
+                            let push = (air + (height - cell) / 2) * near
                             return content
-                                .scaleEffect(1 + 0.20 * t)
-                                .opacity(0.72 + 0.28 * max(0, 1 - d / 110))
+                                .opacity(near < 0.5 ? 0 : 1)
+                                .offset(x: dx < 0 ? -push : push)
                         }
                         // center wins the overlap — z falls off with distance
                         // so every thumb overlaps its farther neighbor on BOTH sides
@@ -373,7 +379,7 @@ private struct Filmstrip: View {
                 }
             }
             .scrollTargetLayout()
-            .frame(height: 46)
+            .frame(height: height)
         }
         // margins so the first/last thumb can also rest dead-center
         .contentMargins(.horizontal,
@@ -384,7 +390,23 @@ private struct Filmstrip: View {
         // "flywheel" feel of a mechanical lens ring) and still snaps at rest;
         // a slow controlled drag clicks thumb by thumb
         .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByFew))
-        .frame(height: 46)
+        .frame(height: height)
+        // the current photo: a square in the gap the neighbours leave
+        .overlay {
+            if let a = assets[safe: index] {
+                Thumb(url: client.thumbURL(a.id, 512))
+                    .frame(width: height, height: height)
+                    .clipShape(.rect(cornerRadius: 3, style: .continuous))
+                    .allowsHitTesting(false)
+            }
+        }
+        // like Photos: the strip ends 15 pt from the edges and fades out there
+        .mask {
+            LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08),
+                                   .init(color: .black, location: 0.92), .init(color: .clear, location: 1)],
+                           startPoint: .leading, endPoint: .trailing)
+                .padding(.horizontal, 15)
+        }
         // VoiceOver: one adjustable element (swipe up/down = next/previous)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Filmstreifen")
@@ -598,8 +620,8 @@ private struct VideoPlayer: View {
             if chrome, player != nil {
                 controlBar
                     .frame(maxWidth: 560)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, bottomInset - 6)
+                    .padding(.horizontal, 29)
+                    .padding(.bottom, bottomInset)
             }
         }
         .task { await setup() }
@@ -609,12 +631,12 @@ private struct VideoPlayer: View {
     /// Photos-style control bar: one slim glass capsule with play/pause, a
     /// thin progress track and the speaker, right above the filmstrip.
     private var controlBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Button { togglePlay() } label: {
                 Image(systemName: playing ? "pause.fill" : "play.fill")
-                    .font(.title3)
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(.primary)
-                    .frame(width: 32, height: 44)
+                    .frame(width: 18, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -625,16 +647,16 @@ private struct VideoPlayer: View {
                 player?.isMuted = muted
             } label: {
                 Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.3.fill")
-                    .font(.title3)
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 40, height: 44)
+                    .frame(width: 26, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(muted ? "Ton ein" : "Ton aus")
         }
-        .padding(.horizontal, 18)
-        .frame(height: 52)
+        .padding(.horizontal, 16)
+        .frame(height: 48)
         .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
     }
 
@@ -643,10 +665,10 @@ private struct VideoPlayer: View {
         GeometryReader { geo in
             let f = duration > 0 ? min(max(current / duration, 0), 1) : 0
             ZStack(alignment: .leading) {
-                Capsule().fill(.primary.opacity(0.25))
+                Capsule().fill(.primary.opacity(0.5))
                 Capsule().fill(.primary).frame(width: geo.size.width * f)
             }
-            .frame(height: scrubbing ? 10 : 6)
+            .frame(height: scrubbing ? 10 : 7)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
             .gesture(
