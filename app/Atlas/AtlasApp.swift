@@ -120,7 +120,6 @@ struct RootView: View {
                     }
                 }
                 .tabBarMinimizeBehavior(.onScrollDown)
-                .tint(.primary)
                 .onChange(of: tab) { old, new in
                     if new == "search", old != "search" { searchFrom = old }
                 }

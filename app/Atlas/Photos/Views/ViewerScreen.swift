@@ -108,24 +108,27 @@ struct ViewerScreen: View {
     private func topBar(_ asset: Asset) -> some View {
         HStack(alignment: .center) {
             CircleButton(icon: "chevron.backward", label: "Zurück") { close() }
-            Spacer()
             VStack(spacing: 1) {
-                Text(relativeDay(asset.takenAt))
-                    .font(.callout.weight(.semibold))
+                Text(places[asset.id] ?? relativeDay(asset.takenAt))
+                    .font(.headline)
                     .foregroundStyle(.primary)
                 if let t = asset.takenAt {
-                    Text(t.formatted(date: .omitted, time: .shortened))
-                        .font(.caption)
+                    Text(places[asset.id] != nil
+                         ? "\(dayAndMonth(t))  \(t.formatted(date: .omitted, time: .shortened))"
+                         : t.formatted(date: .omitted, time: .shortened))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
             .lineLimit(1)
+            .minimumScaleFactor(0.8)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .combine)
-            .padding(.horizontal, 26)
-            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .padding(.horizontal, 16)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
-            Spacer()
+            .padding(.horizontal, 6)
+            .task(id: asset.id) { await loadPlace(asset) }
             Menu {
                 Button {
                     mutateAndRemove { try await library.client.archive([$0], true) }
@@ -240,6 +243,22 @@ struct ViewerScreen: View {
                 index = newIndex
             }
         }
+    }
+
+    /// Where the photo was taken, as the title of the top pill (like Photos).
+    @State private var places: [String: String] = [:]
+
+    private func loadPlace(_ a: Asset) async {
+        guard places[a.id] == nil,
+              let info = try? await library.client.assetInfo(a.id), let place = info.place else { return }
+        places[a.id] = place.replacingOccurrences(of: ", ", with: " - ")
+    }
+
+    private func dayAndMonth(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? "d. MMMM" : "d. MMMM yyyy"
+        return f.string(from: d)
     }
 
     private func relativeDay(_ d: Date?) -> String {
@@ -579,23 +598,23 @@ private struct VideoPlayer: View {
             if chrome, player != nil {
                 controlBar
                     .frame(maxWidth: 560)
-                    .padding(.horizontal, 26)
-                    .padding(.bottom, bottomInset)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, bottomInset - 6)
             }
         }
         .task { await setup() }
         .onDisappear { teardown() }
     }
 
+    /// Photos-style control bar: one slim glass capsule with play/pause, a
+    /// thin progress track and the speaker, right above the filmstrip.
     private var controlBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 14) {
             Button { togglePlay() } label: {
                 Image(systemName: playing ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.title3)
                     .foregroundStyle(.primary)
-                    // generous 52×44 hit area (icon stays small) so the primary
-                    // control is hard to miss — Apple's 44pt minimum and then some
-                    .frame(width: 52, height: 44)
+                    .frame(width: 32, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -605,34 +624,51 @@ private struct VideoPlayer: View {
                 muted.toggle()
                 player?.isMuted = muted
             } label: {
-                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.3.fill")
+                    .font(.title3)
                     .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 40, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(muted ? "Ton ein" : "Ton aus")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 18)
+        .frame(height: 52)
         .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
     }
 
-    /// Native system slider — the seeker from the very first version.
+    /// Thin track, filled to the playback position; drag anywhere on it to seek.
     private var progressBar: some View {
-        Slider(
-            value: Binding(get: { current }, set: { current = $0 }),
-            in: 0...max(duration, 0.1)
-        ) { editing in
-            scrubbing = editing
-            if !editing {
-                player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
-                             toleranceBefore: .zero, toleranceAfter: .zero)
+        GeometryReader { geo in
+            let f = duration > 0 ? min(max(current / duration, 0), 1) : 0
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.25))
+                Capsule().fill(.primary).frame(width: geo.size.width * f)
             }
+            .frame(height: scrubbing ? 10 : 6)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        scrubbing = true
+                        current = Double(min(max(v.location.x / max(geo.size.width, 1), 0), 1)) * duration
+                        player?.seek(to: CMTime(seconds: current, preferredTimescale: 600),
+                                     toleranceBefore: .zero, toleranceAfter: .zero)
+                    }
+                    .onEnded { _ in scrubbing = false }
+            )
+            .animation(.snappy(duration: 0.2), value: scrubbing)
         }
-        .tint(.primary)
+        .frame(height: 44)
+        .accessibilityElement()
         .accessibilityLabel("Wiedergabeposition")
+        .accessibilityValue("\(Int(current)) von \(Int(duration)) Sekunden")
+        .accessibilityAdjustableAction { dir in
+            current = min(max(current + (dir == .increment ? 5 : -5), 0), duration)
+            player?.seek(to: CMTime(seconds: current, preferredTimescale: 600))
+        }
     }
 
     private func togglePlay() {

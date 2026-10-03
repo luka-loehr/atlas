@@ -227,6 +227,9 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
+        // the status bar coming back after the viewer must not move the grid
+        // under the photo flying home
+        guard presentedViewController == nil, transitionCoordinator == nil else { return }
         if pinnedToBottom { needsBottom = true; view.setNeedsLayout() }
     }
 
@@ -391,9 +394,13 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         let viewer = ViewerScreen(library: config.library, assets: assets, start: asset,
                                   onClose: { [weak self] in self?.dismiss(animated: true) },
                                   onPage: { [weak self] in self?.viewerAssetID = $0.id })
+            // the viewer's chrome is monochrome, like Photos; the rest of the app is system blue
             .tint(.primary)
         let host = UIHostingController(rootView: viewer)
-        host.modalPresentationStyle = .fullScreen
+        // the grid stays in the window under the viewer: on the way back it
+        // is not re-inserted and re-laid out, so the photo lands on a cell
+        // that has not moved and the grid takes touches at once
+        host.modalPresentationStyle = .overFullScreen
         host.modalPresentationCapturesStatusBarAppearance = true
         host.preferredTransition = .zoom { [weak self] _ in self?.zoomSource() }
         present(host, animated: true)
