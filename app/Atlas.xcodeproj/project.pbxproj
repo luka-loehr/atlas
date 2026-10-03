@@ -35,6 +35,7 @@
 		999C72BE2AF36F496E7EAF1C /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D37F62453CBAD3DFE4B4C67 /* Library.swift */; };
 		AA2ADDC1CB2D13712A3F305C /* OriginalCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D93E723FFD82EECF024E551 /* OriginalCache.swift */; };
 		B0A4A57E2EB2B9A0421FBBB3 /* DriveScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */; };
+		B4173225F8E64AE465AFD421 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 83DBAEE08B909D318A2FE16B /* AppIcon.icon */; };
 		B85029BAEE1B9F142B41B626 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8449E3A776DD1F5E760B7D1 /* API.swift */; };
 		BD10D3542F17FDC6DFDA2EAC /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C70FD2BF97D5056CD213BA7 /* SelectionToolbar.swift */; };
 		C81FF5944EA673DD5BD7C1EA /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FB8403E6C13A7DEB9A1B1B /* BackupService.swift */; };
@@ -64,6 +65,7 @@
 		6DBB2D8DA3BA7AA013C6D346 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7BC2208FE202EAF647141675 /* ThumbLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbLoader.swift; sourceTree = "<group>"; };
 		82068608456E732BBB7111BA /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
+		83DBAEE08B909D318A2FE16B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		960D112EC6584D8D0BA84043 /* PhotoMutations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMutations.swift; sourceTree = "<group>"; };
 		A066C7D7B5499412E300C957 /* PhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGrid.swift; sourceTree = "<group>"; };
 		A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScreen.swift; sourceTree = "<group>"; };
@@ -98,6 +100,7 @@
 		071B3FB99E139970DF18CBA2 /* Atlas */ = {
 			isa = PBXGroup;
 			children = (
+				83DBAEE08B909D318A2FE16B /* AppIcon.icon */,
 				AA986E23356244005C7DA505 /* Assets.xcassets */,
 				B039968FC134F8A1AC6E2337 /* AtlasApp.swift */,
 				6DBB2D8DA3BA7AA013C6D346 /* Info.plist */,
@@ -257,6 +260,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B4173225F8E64AE465AFD421 /* AppIcon.icon in Resources */,
 				8D28FE030C7EE76B688E65BB /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
