@@ -5,11 +5,11 @@ itself. SwiftUI, iOS 26, German UI.
 
 | Tab | |
 |---|---|
-| **Fotos** | the timeline, newest at the bottom, with a date scrubber, multi-select and the full-screen viewer (zoom, swipe, video, info sheet with map, people and EXIF) |
+| **Fotos** | the timeline as one grid, newest at the bottom, with pinch zoom, a month scrubber, the system context menu, multi-select and the full-screen viewer (zoom, swipe, video, info sheet with map, people and EXIF) |
 | **Alben** | your albums, people, and the utility folders: locked (Face ID), archive, trash |
 | **Dateien** | the drive: folders, upload, previews, move, rename, trash |
-| **Einstellungen** | iPhone backup, storage, and the server: live status, services, containers, activity, network, power, a terminal (Face ID) |
-| **Suche** | people, places and albums by name, everything else by what is in the picture |
+| **Einstellungen** | backup status, the size of the original cache, and the server: live status, services, containers, activity, network, power, a terminal (Face ID) |
+| **Suche** | from Dateien it searches files; from every other tab people, places and albums by name, everything else by what is in the picture |
 
 ## Build
 
@@ -39,8 +39,19 @@ keychain.
 - **The grid is laid out from an index.** The server sends month keys and
   counts first; the app computes the whole scroll height from that, opens at
   the bottom, and loads only the months on screen, from disk when it has them.
-- **Backup** uploads originals as streams, skips what the server already has
-  by content hash, and continues in a background task.
+- **The grid is a `UICollectionView`** with recycled cells, off-main decoding
+  at cell size and prefetching in the scroll direction.
+- **Backup is a background service** with no button: it runs on launch, on
+  return to the foreground, on photo-library changes and in background tasks.
+  Originals are exported to files and uploaded through a background
+  `URLSession`, so iOS finishes them after the app is closed. The server
+  skips what it already has by content hash.
+- **Every grid thumbnail is kept on the phone.** They are downloaded once in
+  the background (Wi-Fi, not in Low Power Mode) and the grid reads them from
+  disk first.
+- **Original cache.** Viewed originals and previews, and recent photos, stay
+  on the phone up to the size picked under Einstellungen (off to 50 GB),
+  least recently used first out.
 - **Networking** allows plain HTTP only to local addresses and `*.ts.net`
   (the tailnet is already encrypted); see `project.yml`.
 - The UI follows [docs/apple-design-guidelines.md](../docs/apple-design-guidelines.md).
