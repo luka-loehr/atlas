@@ -10,6 +10,7 @@
 //!   atlas start        run what `atlas build` produced for a branch
 //!   atlas secrets      push/list/drop this project's env file on atlas
 //!   atlas deploy       build + install the Atlas services on the server
+//!   atlas connect      print the link that connects the iOS app
 //!   atlas <cmd ...>    run any command on atlas (forwarded to ssh)
 
 mod build;
@@ -52,6 +53,7 @@ fn main() {
         Some("dev") => dev::dev(&args[1..]),
         Some("start") => serve::start(&args[1..]),
         Some("deploy") => deploy::deploy(&args[1..]),
+        Some("connect") => deploy::connect(),
         Some("secrets") => secrets::secrets(&args[1..]),
         Some("ls") => observe::ls(),
         Some("logs") => observe::logs(&args[1..]),
@@ -100,7 +102,8 @@ fn help() {
          atlas dev   [-b B] url|logs|stop\n  \
          atlas start [-b B]         run the BUILT result of this branch\n  \
          atlas start [-b B] status|logs|stop\n  \
-         atlas deploy               build + install atlas-server and atlas-ml  ·  deploy logs|status|stop|restart\n\n\
+         atlas deploy               build + install atlas-server and atlas-ml  ·  deploy logs|status|stop|restart\n  \
+         atlas connect              print the link that connects the iOS app (address + token)\n\n\
          OBSERVE\n  \
          atlas ls                   fleet: every project on atlas — branches, running, URL, disk\n  \
          atlas logs  [-b B] [-f]     docker logs of this project's dev/start container\n  \
