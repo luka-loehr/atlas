@@ -119,6 +119,7 @@ struct RootView: View {
                         }
                     }
                 }
+                .tabBarMinimizeBehavior(.onScrollDown)
                 .tint(.primary)
                 .onChange(of: tab) { old, new in
                     if new == "search", old != "search" { searchFrom = old }
@@ -189,12 +190,12 @@ struct ConnectScreen: View {
                 Section {
                     VStack(spacing: 12) {
                         Image(systemName: "photo.stack")
-                            .font(.system(size: 30, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 78, height: 78)
-                            .glassEffect(.regular, in: Circle())
+                            .font(.largeTitle)
+                            .imageScale(.large)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                         Text("Mit atlas verbinden")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.title2.bold())
                         Text("Deine Fotos und Dateien liegen auf deinem eigenen Server. Gib seine Adresse und das Zugangstoken ein.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -210,7 +211,6 @@ struct ConnectScreen: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .font(.system(size: 15, design: .monospaced))
                         .focused($focus, equals: .address)
                         .submitLabel(.next)
                         .onSubmit { focus = .token }
@@ -230,10 +230,10 @@ struct ConnectScreen: View {
                     Button {
                         connect()
                     } label: {
-                        HStack {
-                            Spacer()
-                            if connecting { ProgressView() } else { Text("Verbinden").fontWeight(.semibold) }
-                            Spacer()
+                        if connecting {
+                            ProgressView().frame(maxWidth: .infinity)
+                        } else {
+                            Text("Verbinden").frame(maxWidth: .infinity)
                         }
                     }
                     .disabled(address.isEmpty || token.isEmpty || connecting)

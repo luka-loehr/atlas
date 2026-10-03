@@ -55,9 +55,7 @@ struct PhotosScreen: View {
                     }
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { showAccount = true } label: {
-                            Image(systemName: "person.crop.circle")
-                        }
+                        Button("Mediathek", systemImage: "person.crop.circle") { showAccount = true }
                     }
                 }
             }
@@ -147,7 +145,7 @@ struct PhotosScreen: View {
             UIAction(title: "Archivieren", image: UIImage(systemName: "archivebox")) { _ in
                 runOne(asset) { try await library.client.archive([$0], true) }
             },
-            UIAction(title: "Ausblenden", image: UIImage(systemName: "eye.slash")) { _ in
+            UIAction(title: "Sperren", image: UIImage(systemName: "lock")) { _ in
                 runOne(asset) { try await library.client.lock([$0], true) }
             },
         ])
@@ -217,7 +215,7 @@ struct PhotosScreen: View {
             if library.online {
                 ProgressView()
             } else {
-                ContentUnavailableView("atlas nicht erreichbar", systemImage: "moon.zzz.fill")
+                ServerUnavailableView()
             }
         }
     }

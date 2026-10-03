@@ -27,6 +27,7 @@ struct SettingsScreen: View {
                             Text(session.info?.hostname ?? "atlas")
                             Spacer()
                             Circle().fill(connected ? .green : .red).frame(width: 8, height: 8)
+                                .accessibilityHidden(true)
                             Text(statusText).foregroundStyle(.secondary)
                         }
                     }
@@ -62,10 +63,16 @@ struct SettingsScreen: View {
                 }
                 Section {
                     Button { confirmTrash = true } label: { row("Papierkorb leeren", "trash.slash", .red) }
+                        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmTrash, titleVisibility: .visible) {
+                            Button("Endgültig löschen", role: .destructive) { onEmptyTrash() }
+                        }
                 }
                 Section {
                     LabeledContent("Version", value: appVersion)
                     Button("Verbindung trennen", role: .destructive) { confirmDisconnect = true }
+                        .confirmationDialog("Verbindung trennen?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+                            Button("Trennen", role: .destructive) { session.disconnect() }
+                        }
                 }
             }
             .navigationTitle("Einstellungen")

@@ -83,11 +83,6 @@ struct ViewerScreen: View {
         .sheet(item: $shareBundle) { b in
             ShareSheet(items: b.urls).presentationDetents([.medium, .large])
         }
-        .confirmationDialog("In den Papierkorb?", isPresented: $confirmTrash,
-                            titleVisibility: .visible) {
-            Button("In Papierkorb", role: .destructive) { trashCurrent() }
-            Button("Abbrechen", role: .cancel) {}
-        }
     }
 
     // MARK: - Chrome (Google-Photos layout)
@@ -112,18 +107,21 @@ struct ViewerScreen: View {
 
     private func topBar(_ asset: Asset) -> some View {
         HStack(alignment: .center) {
-            CircleButton(icon: "chevron.backward") { close() }
+            CircleButton(icon: "chevron.backward", label: "Zurück") { close() }
             Spacer()
             VStack(spacing: 1) {
                 Text(relativeDay(asset.takenAt))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(.primary)
                 if let t = asset.takenAt {
                     Text(t.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+            .lineLimit(1)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .accessibilityElement(children: .combine)
             .padding(.horizontal, 26)
             .padding(.vertical, 7)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
@@ -134,13 +132,14 @@ struct ViewerScreen: View {
                 } label: { Label("Archivieren", systemImage: "archivebox") }
                 Button {
                     mutateAndRemove { try await library.client.lock([$0], true) }
-                } label: { Label("In gesperrten Ordner", systemImage: "lock") }
+                } label: { Label("Sperren", systemImage: "lock") }
                 Button { infoAsset = asset } label: {
                     Label("Details", systemImage: "info.circle")
                 }
             } label: {
-                CircleButton(icon: "ellipsis") {}.allowsHitTesting(false)
+                CircleButton(icon: "ellipsis", label: "Mehr") {}.allowsHitTesting(false)
             }
+            .accessibilityLabel("Mehr")
         }
         .padding(.horizontal, 14)
         .padding(.top, 6)
@@ -148,32 +147,45 @@ struct ViewerScreen: View {
 
     private func bottomBar(_ asset: Asset) -> some View {
         HStack {
-            CircleButton(icon: "square.and.arrow.up", nudge: -1.5) { shareCurrent() }
+            CircleButton(icon: "square.and.arrow.up", label: "Teilen", nudge: -1.5) { shareCurrent() }
             Spacer()
-            HStack(spacing: 34) {
+            // 44-pt hit areas; spacing and padding shrink by the same amount,
+            // so the glyphs sit exactly where they did with the bare icons
+            HStack(spacing: 12) {
                 Button { toggleFavorite(asset) } label: {
-                    Image(systemName: isFav(asset) ? "heart.fill" : "heart")
-                        .font(.system(size: 20))
+                    barIcon(isFav(asset) ? "heart.fill" : "heart")
                         .foregroundStyle(isFav(asset) ? .red : .primary)
                 }
+                .accessibilityLabel(isFav(asset) ? "Kein Favorit" : "Favorit")
                 Button { infoAsset = asset } label: {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 20)).foregroundStyle(.primary)
+                    barIcon("info.circle").foregroundStyle(.primary)
                 }
+                .accessibilityLabel("Details")
                 Button {
                     mutateAndRemove { try await library.client.archive([$0], true) }
                 } label: {
-                    Image(systemName: "archivebox")
-                        .font(.system(size: 20)).foregroundStyle(.primary)
+                    barIcon("archivebox").foregroundStyle(.primary)
                 }
+                .accessibilityLabel("Archivieren")
             }
-            .padding(.horizontal, 30)
-            .padding(.vertical, 15)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 3)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
             Spacer()
-            CircleButton(icon: "trash") { confirmTrash = true }
+            CircleButton(icon: "trash", label: "Löschen") { confirmTrash = true }
+                .confirmationDialog("Foto löschen?", isPresented: $confirmTrash,
+                                    titleVisibility: .visible) {
+                    Button("Löschen", role: .destructive) { trashCurrent() }
+                }
         }
         .padding(.horizontal, 16)
+    }
+
+    private func barIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 20))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
     }
 
     // MARK: - Actions
@@ -266,6 +278,8 @@ struct ViewerScreen: View {
 /// center, so geometric centering makes them sit visibly low in the circle.
 struct CircleButton: View {
     let icon: String
+    /// VoiceOver name of the icon-only button.
+    let label: String
     var nudge: CGFloat = 0
     let action: () -> Void
 
@@ -278,6 +292,7 @@ struct CircleButton: View {
                 .frame(width: 44, height: 44)
                 .glassEffect(.regular, in: .circle)   // iOS 26 Liquid Glass
         }
+        .accessibilityLabel(label)
     }
 }
 
@@ -351,6 +366,17 @@ private struct Filmstrip: View {
         // a slow controlled drag clicks thumb by thumb
         .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByFew))
         .frame(height: 46)
+        // VoiceOver: one adjustable element (swipe up/down = next/previous)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Filmstreifen")
+        .accessibilityValue("\(index + 1) von \(assets.count)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: if index + 1 < assets.count { index += 1 }
+            case .decrement: if index > 0 { index -= 1 }
+            @unknown default: break
+            }
+        }
         // mechanical lens-click on every detent (scrub AND page swipe)
         .sensoryFeedback(.selection, trigger: index)
         .onAppear { recenter(index); pos = index }
@@ -384,6 +410,9 @@ private struct ViewerPage: View {
                 full: library.client.originalURL(asset.id),
                 onTap: onTap
             )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(asset.spokenDescription)
+            .accessibilityAddTraits(.isImage)
         }
     }
 }
@@ -570,6 +599,7 @@ private struct VideoPlayer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(playing ? "Pause" : "Wiedergabe")
             progressBar
             Button {
                 muted.toggle()
@@ -582,6 +612,7 @@ private struct VideoPlayer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(muted ? "Ton ein" : "Ton aus")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -601,6 +632,7 @@ private struct VideoPlayer: View {
             }
         }
         .tint(.primary)
+        .accessibilityLabel("Wiedergabeposition")
     }
 
     private func togglePlay() {

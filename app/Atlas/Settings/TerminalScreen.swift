@@ -29,7 +29,7 @@ struct TerminalScreen: View {
             .navigationTitle("Terminal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Schließen", systemImage: "xmark") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } }
             }
         }
         .preferredColorScheme(.dark)
