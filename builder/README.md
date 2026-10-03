@@ -1,7 +1,7 @@
 # builder — remote build images
 
 One Dockerfile, three targets — the images that
-[`atlas build` and `atlas dev`](../cli/) run on the server. The CLI builds
+[`atlas build` and `atlas dev`](../crates/cli/) run on the server. The CLI builds
 them lazily: on first use it runs
 `ssh <host> "cd ~/atlas && git pull --quiet --ff-only && docker build
 [--target <target>] -t <tag> builder/<context>"`, then reuses the image.

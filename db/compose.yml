@@ -1,5 +1,5 @@
-# Postgres 17 + pgvector — the data foundation for atlas-photos and the
-# knowledge graph.
+# Postgres 17 + pgvector — everything Atlas knows: assets, drive, people,
+# places, vectors and the job queue.
 #
 #   docker compose up -d
 #   docker compose logs -f
