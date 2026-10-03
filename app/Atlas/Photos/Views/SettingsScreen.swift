@@ -29,10 +29,12 @@ struct SettingsScreen: View {
                         }
                     }
                     Button { showTerminal = true } label: { row("Terminal", "terminal.fill", .gray) }
+                        .tint(.primary)
                 }
                 Section("Backup") {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
                     Button { confirmCleanup = true } label: { row("Free Up iPhone Storage", "iphone", .blue) }
+                        .tint(.primary)
                         .disabled(backup.cleaning)
                         .confirmationDialog("Remove Backed-Up Photos from This iPhone?", isPresented: $confirmCleanup,
                                             titleVisibility: .visible) {
