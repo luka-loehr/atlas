@@ -22,6 +22,8 @@ struct PhotoGrid: UIViewControllerRepresentable {
     /// The asset under the top edge, nil when the grid rests at its newest
     /// end. Called when the month (or nil-ness) changes, not every frame.
     var onTop: (Int?) -> Void
+    /// First and last asset on screen; called when either changes its day.
+    var onRange: (Int, Int) -> Void = { _, _ in }
     /// Tap in selection mode.
     var onToggle: (Asset) -> Void
     var menu: (Asset) -> UIMenu
@@ -104,6 +106,14 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         refresh.addTarget(self, action: #selector(pulled), for: .valueChanged)
         collectionView.refreshControl = refresh
         view.addSubview(collectionView)
+        // Photos keeps its large title over the photos instead of folding it
+        // into the bar: the bar tracks this empty scroll view, not the grid,
+        // and a soft shade under the title keeps it readable
+        titleAnchor.isUserInteractionEnabled = false
+        view.addSubview(titleAnchor)
+        shade.colors = [UIColor.black.withAlphaComponent(0.6).cgColor, UIColor.black.withAlphaComponent(0.35).cgColor,
+                        UIColor.black.withAlphaComponent(0).cgColor]
+        view.layer.addSublayer(shade)
 
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
         pinch.delegate = self
@@ -135,7 +145,9 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                     }
                 default:
                     let t0 = CACurrentMediaTime()
-                    self.open(self.assets[self.assets.count - 3])
+                    // ATLAS_OPEN=<asset id> opens that photo (screenshot comparisons)
+                    let want = ProcessInfo.processInfo.environment["ATLAS_OPEN"]
+                    self.open(self.assets.first { $0.id == want } ?? self.assets[self.assets.count - 3])
                     print(String(format: "ATLAS_BENCH open: present() returned after %.1f ms", (CACurrentMediaTime() - t0) * 1000))
                     DispatchQueue.main.async {
                         print(String(format: "ATLAS_BENCH open: first runloop turn after %.1f ms", (CACurrentMediaTime() - t0) * 1000))
@@ -216,8 +228,25 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         }
     }
 
+    private let titleAnchor = UIScrollView(frame: .zero)
+    private let shade = CAGradientLayer()
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        var vc: UIViewController? = self
+        while let c = vc, !(c.parent is UINavigationController) {
+            c.setContentScrollView(titleAnchor, for: .top)
+            vc = c.parent
+        }
+        vc?.setContentScrollView(titleAnchor, for: .top)
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shade.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: (view.window?.safeAreaInsets.top ?? 62) + 100)
+        CATransaction.commit()
         if needsBottom, !assets.isEmpty, collectionView.bounds.height > 0,
            !collectionView.isTracking, !collectionView.isDecelerating {
             scrollToBottom()
@@ -288,7 +317,24 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         return min(row * layout.columns, assets.count - 1)
     }
 
+    private var lastRangeDays: (Int, Int)?
+
+    /// The days of the first and last photo on screen (for the title).
+    private func reportRange() {
+        guard let config, !assets.isEmpty, let top = topIndex else { return }
+        let inset = collectionView.adjustedContentInset
+        let y = collectionView.contentOffset.y + collectionView.bounds.height - inset.bottom
+        let row = Int((max(y, 0) / max(layout.pitch, 1)).rounded(.down))
+        let bottom = min(max((row + 1) * layout.columns - 1, top), assets.count - 1)
+        func day(_ i: Int) -> Int { Int((assets[i].takenAt?.timeIntervalSince1970 ?? 0) / 86_400) }
+        let days = (day(top), day(bottom))
+        if let last = lastRangeDays, last == days { return }
+        lastRangeDays = days
+        config.onRange(top, bottom)
+    }
+
     private func reportTop() {
+        reportRange()
         guard let config, !assets.isEmpty else { return }
         let next: Int? = atBottom ? nil : topIndex
         let month = next.flatMap { config.library.month(at: $0)?.key }
@@ -397,10 +443,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
             // the viewer's chrome is monochrome, like Photos; the rest of the app is system blue
             .tint(.primary)
         let host = UIHostingController(rootView: viewer)
-        // the grid stays in the window under the viewer: on the way back it
-        // is not re-inserted and re-laid out, so the photo lands on a cell
-        // that has not moved and the grid takes touches at once
-        host.modalPresentationStyle = .overFullScreen
+        host.modalPresentationStyle = .fullScreen
         host.modalPresentationCapturesStatusBarAppearance = true
         host.preferredTransition = .zoom { [weak self] _ in self?.zoomSource() }
         present(host, animated: true)
@@ -488,10 +531,10 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
 // MARK: - Layout
 
-/// Square cells, 2 pt apart, edge to edge; every position is arithmetic, so
+/// Square cells, 5 px apart (measured on Photos), edge to edge; every position is arithmetic, so
 /// a layout pass costs the same for 25,000 photos as for 25.
 final class PhotoGridLayout: UICollectionViewLayout {
-    static let spacing: CGFloat = 2
+    static let spacing: CGFloat = 5 / 3
 
     var columns = 5 { didSet { if columns != oldValue { invalidateLayout() } } }
     private(set) var side: CGFloat = 1
@@ -554,7 +597,8 @@ final class PhotoCell: UICollectionViewCell {
 
     private let imageView = UIImageView()
     private let dim = UIView()
-    private let videoBadge = UIImageView(image: PhotoCell.playBadge)
+    /// Videos show their length, bottom right, like Photos.
+    private let duration = UILabel()
     private let checkBadge = UIImageView()
 
     private(set) var assetID: String?
@@ -583,8 +627,14 @@ final class PhotoCell: UICollectionViewCell {
         dim.alpha = 0
         contentView.addSubview(dim)
 
-        videoBadge.isHidden = true
-        contentView.addSubview(videoBadge)
+        duration.font = .systemFont(ofSize: 13, weight: .semibold)
+        duration.textColor = .white
+        duration.layer.shadowColor = UIColor.black.cgColor
+        duration.layer.shadowOpacity = 0.35
+        duration.layer.shadowRadius = 2
+        duration.layer.shadowOffset = .zero
+        duration.isHidden = true
+        contentView.addSubview(duration)
         checkBadge.alpha = 0
         contentView.addSubview(checkBadge)
     }
@@ -594,19 +644,25 @@ final class PhotoCell: UICollectionViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         let b = contentView.bounds
-        for badge in [videoBadge, checkBadge] {
-            let s = badge.image?.size ?? .zero
-            // 5 pt from the corner, like the SwiftUI padding; the badge images
-            // carry their shadow margin, so centre on the glyph
-            badge.bounds = CGRect(origin: .zero, size: s)
-            badge.center = CGPoint(x: b.maxX - 5 - (s.width - PhotoCell.shadowPad * 2) / 2,
-                                   y: b.maxY - 5 - (s.height - PhotoCell.shadowPad * 2) / 2)
-        }
+        let d = duration.intrinsicContentSize
+        duration.frame = CGRect(x: b.maxX - 6 - d.width, y: b.maxY - 4 - d.height, width: d.width, height: d.height)
+        // the check sits 3 pt in from the corner; the image carries its shadow margin
+        let s = checkBadge.image?.size ?? .zero
+        checkBadge.bounds = CGRect(origin: .zero, size: s)
+        checkBadge.center = CGPoint(x: b.maxX - 3 - (s.width - PhotoCell.shadowPad * 2) / 2,
+                                    y: b.maxY - 3 - (s.height - PhotoCell.shadowPad * 2) / 2)
     }
 
     func configure(_ asset: Asset, pixels: Int, single: Bool, selecting: Bool, picked: Bool) {
         let same = asset.id == assetID && pixels == self.pixels
         isVideo = asset.isVideo
+        if let secs = asset.durationS, asset.isVideo {
+            let t = Int(secs.rounded())
+            duration.text = t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
+                                      : String(format: "%d:%02d", t / 60, t % 60)
+        } else {
+            duration.text = nil
+        }
         setSelection(selecting: selecting, picked: picked, animated: false, entering: false)
         guard !same || imageView.image == nil else { return }
         stopLoading()
@@ -657,12 +713,12 @@ final class PhotoCell: UICollectionViewCell {
         self.selecting = selecting
         self.picked = picked
         let apply = {
-            self.imageView.transform = picked ? CGAffineTransform(scaleX: 0.88, y: 0.88) : .identity
-            self.dim.alpha = picked ? 1 : 0
-            self.videoBadge.isHidden = !self.isVideo || picked
-            self.checkBadge.image = picked ? PhotoCell.checkOn : PhotoCell.checkOff
-            self.checkBadge.alpha = selecting ? 1 : 0
-            self.checkBadge.transform = selecting ? .identity : CGAffineTransform(scaleX: 0.5, y: 0.5)
+            // Photos: the picture stays as it is; a picked one gets the blue check,
+            // an unpicked one nothing
+            self.duration.isHidden = !self.isVideo || picked
+            self.checkBadge.image = PhotoCell.checkOn
+            self.checkBadge.alpha = selecting && picked ? 1 : 0
+            self.checkBadge.transform = selecting && picked ? .identity : CGAffineTransform(scaleX: 0.5, y: 0.5)
             self.setNeedsLayout()
         }
         if animated && changed {
@@ -693,7 +749,22 @@ final class PhotoCell: UICollectionViewCell {
         }
     }
 
-    static let playBadge = badge("play.fill", size: 11, weight: .bold, colors: [.white], shadow: 0.33)
-    static let checkOn = badge("checkmark.circle.fill", size: 22, colors: [.white, .systemBlue], shadow: 0.35)
-    static let checkOff = badge("circle", size: 22, colors: [UIColor.white.withAlphaComponent(0.9)], shadow: 0.4)
+    /// White check on a blue disc with a white rim, as in Photos.
+    static let checkOn: UIImage = {
+        let d: CGFloat = 20, pad = shadowPad
+        return UIGraphicsImageRenderer(size: CGSize(width: d + pad * 2, height: d + pad * 2)).image { ctx in
+            let c = ctx.cgContext
+            c.setShadow(offset: .zero, blur: 3, color: UIColor.black.withAlphaComponent(0.25).cgColor)
+            UIColor.white.setFill()
+            c.fillEllipse(in: CGRect(x: pad, y: pad, width: d, height: d))
+            c.setShadow(offset: .zero, blur: 0, color: nil)
+            UIColor.systemBlue.setFill()
+            c.fillEllipse(in: CGRect(x: pad + 1.5, y: pad + 1.5, width: d - 3, height: d - 3))
+            let cfg = UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+            if let check = UIImage(systemName: "checkmark", withConfiguration: cfg)?
+                .withTintColor(.white, renderingMode: .alwaysOriginal) {
+                check.draw(at: CGPoint(x: pad + (d - check.size.width) / 2, y: pad + (d - check.size.height) / 2))
+            }
+        }
+    }()
 }

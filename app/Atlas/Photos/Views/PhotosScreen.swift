@@ -14,6 +14,8 @@ struct PhotosScreen: View {
     /// Asset-Position oben im Bild (nil = ganz unten): benennt den Monat
     /// unter dem Titel und setzt den Griff des Schnellscrollers.
     @State private var topPosition: Int?
+    /// The photos on screen, first and last: the date range under the title.
+    @State private var visible: (Int, Int)?
     @State private var gridProxy = PhotoGridProxy()
 
     var body: some View {
@@ -31,34 +33,71 @@ struct PhotosScreen: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: 16))
                 }
             }
-            .navigationTitle(selection.active ? title : "Fotos")
-            .navigationSubtitle(selection.active ? "" : subtitle)
-            .navigationBarTitleDisplayMode(selection.active ? .inline : .large)
+            .navigationTitle("Fotos")
+            .navigationBarTitleDisplayMode(.inline)
+            // Photos' header: the large title on the row of the buttons, the
+            // dates on screen under it, both over the photos
+            .overlay(alignment: .topLeading) {
+                if !library.assets.isEmpty { header }
+            }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if selection.active {
-                        Button(allSelected ? "Keine" : "Alle") {
-                            withAnimation(.snappy) {
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
+                if selection.active {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu("Mehr", systemImage: "ellipsis") {
+                            Button(allSelected ? "Auswahl aufheben" : "Alle auswählen",
+                                   systemImage: allSelected ? "circle" : "checkmark.circle") {
                                 if allSelected { selection.clear() }
                                 else { selection.selectAll(library.assets.map(\.id)) }
                             }
+                            Section {
+                                Button("Favorit", systemImage: "heart") {
+                                    run(hides: false) { try await library.client.favorite($0, true) }
+                                }
+                                Button("Archivieren", systemImage: "archivebox") {
+                                    run { try await library.client.archive($0, true) }
+                                }
+                                Button("Sperren", systemImage: "lock") {
+                                    run { try await library.client.lock($0, true) }
+                                }
+                            }
+                            .disabled(selection.isEmpty)
                         }
-                    }
-                }
-                if selection.active {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Fertig") { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
-                    }
-                } else {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Auswählen") { withAnimation(.snappy) { selection.enter() } }
                     }
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     ToolbarItem(placement: .topBarTrailing) {
+                        Button("Fertig", systemImage: "xmark") {
+                            withAnimation(.snappy(duration: 0.4)) { selection.exit() }
+                        }
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Teilen", systemImage: "square.and.arrow.up") { share(Array(selection.ids)) }
+                            .disabled(selection.isEmpty)
+                    }
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        Text(title)
+                            .font(.title3.weight(.semibold))
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Löschen", systemImage: "trash") { confirmDelete = true }
+                            .disabled(selection.isEmpty)
+                    }
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Mediathek", systemImage: "person.crop.circle") { showAccount = true }
+                    }
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Auswählen") { withAnimation(.snappy) { selection.enter() } }
                     }
                 }
             }
+            .toolbar(selection.active ? .hidden : .visible, for: .tabBar)
         }
         .sheet(isPresented: $showAccount) {
             AccountSheet(library: library)
@@ -83,21 +122,61 @@ struct PhotosScreen: View {
     }
 
     private var title: String {
-        selection.isEmpty ? "Objekte auswählen" : "\(selection.count) ausgewählt"
+        switch selection.count {
+        case 0: "Objekte auswählen"
+        case 1: "1 Objekt ausgewählt"
+        default: "\(selection.count) Objekte ausgewählt"
+        }
     }
     /// The selection only ever holds ids of the timeline, so counting is enough.
     private var allSelected: Bool { !library.assets.isEmpty && selection.count == library.assets.count }
 
-    /// Der Monat oben im Bild; ganz unten (dem Startpunkt) die Anzahl.
-    private var subtitle: String {
-        guard let top = topPosition, let month = library.month(at: top) else {
-            // at the newest end: the count, and quietly what the backup still has to do
-            let pending = BackupService.shared.pending
-            let count = "\(library.assets.count.formatted()) Objekte"
-            return pending > 0 ? "\(count) · \(pending.formatted()) werden gesichert" : count
+    private var header: some View {
+        VStack(alignment: .leading, spacing: -2) {
+            Text("Fotos")
+                .font(.largeTitle.bold())
+            Text(subtitle)
+                .font(.headline)
+                .lineLimit(1)
         }
-        return month.label
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.25), radius: 6)
+        .padding(.leading, 16)
+        .padding(.top, Self.windowTop + 1)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
+
+    /// Height of the status bar area of the window.
+    private static var windowTop: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.top ?? 62
+    }
+
+    /// Die Tage auf dem Bildschirm, wie in Fotos: „26.–28. Sept. 2026“.
+    private var subtitle: String {
+        guard let (lo, hi) = visible, hi < library.assets.count,
+              let from = library.assets[lo].takenAt ?? library.assets[hi].takenAt,
+              let to = library.assets[hi].takenAt else {
+            return library.assets.isEmpty ? "" : "\(library.assets.count.formatted()) Objekte"
+        }
+        if Calendar.current.isDate(from, inSameDayAs: to) { return Self.day.string(from: to) }
+        return Self.range.string(from: min(from, to), to: max(from, to))
+    }
+
+    private static let range: DateIntervalFormatter = {
+        let f = DateIntervalFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateTemplate = "dMMMyyyy"
+        return f
+    }()
+    private static let day: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.setLocalizedDateFormatFromTemplate("dMMMMyyyy")
+        return f
+    }()
 
     /// The timeline as one grid, oldest first, opened at its newest (bottom)
     /// end — like Apple Photos, without day headers. A UICollectionView (see
@@ -107,6 +186,7 @@ struct PhotosScreen: View {
             PhotoGrid(library: library, assets: library.assets, revision: library.revision,
                       selecting: selection.active, selected: selection.ids, proxy: gridProxy,
                       onTop: { topPosition = $0 },
+                      onRange: { visible = ($0, $1) },
                       onToggle: { asset in withAnimation(.snappy(duration: 0.26, extraBounce: 0.05)) { selection.toggle(asset.id) } },
                       menu: { menu(for: $0) },
                       onRefresh: { await library.refresh() })
@@ -120,12 +200,7 @@ struct PhotosScreen: View {
                              onScrubbing: { library.scrubbing = $0 })
             }
         }
-        .selectionToolbar(selection,
-            onShare:    { share(Array(selection.ids)) },
-            onFavorite: { run(hides: false) { try await library.client.favorite($0, true) } },
-            onArchive:  { run { try await library.client.archive($0, true) } },
-            onLock:     { run { try await library.client.lock($0, true) } },
-            onTrash:    { confirmDelete = true })
+
     }
 
     /// Long press on a photo: the system context menu with a large preview.
