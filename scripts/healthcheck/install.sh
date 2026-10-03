@@ -7,4 +7,4 @@ install_unit atlas-healthcheck.service atlas-healthcheck-resume.service
 sudo systemctl daemon-reload
 sudo systemctl enable atlas-healthcheck.service atlas-healthcheck-resume.service
 echo "Installed. Run now:    sudo systemctl start atlas-healthcheck"
-echo "Last result:           cat ~/atlas-health/status.json"
+echo "Last result:           cat /var/lib/atlas/health/status.json"
