@@ -63,16 +63,10 @@ struct SettingsScreen: View {
                 }
                 Section {
                     Button { confirmTrash = true } label: { row("Papierkorb leeren", "trash.slash", .red) }
-                        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmTrash, titleVisibility: .visible) {
-                            Button("Endgültig löschen", role: .destructive) { onEmptyTrash() }
-                        }
                 }
                 Section {
                     LabeledContent("Version", value: appVersion)
                     Button("Verbindung trennen", role: .destructive) { confirmDisconnect = true }
-                        .confirmationDialog("Verbindung trennen?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-                            Button("Trennen", role: .destructive) { session.disconnect() }
-                        }
                 }
             }
             .navigationTitle("Einstellungen")
