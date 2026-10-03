@@ -2,6 +2,7 @@
 //!
 //!   GET  /v1/server                       who am I talking to
 //!   GET  /v1/stats                        library and storage totals
+//!   GET  /v1/heatmap                      photos per day, last year
 //!   GET  /v1/timeline                     bucket index (month, count, etag)
 //!   GET  /v1/timeline/{month}             one month, columnar
 //!   PUT  /v1/assets                       streaming upload
@@ -49,6 +50,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/server", get(library::server))
         .route("/stats", get(library::stats))
+        .route("/heatmap", get(library::heatmap))
         .route("/timeline", get(timeline::index))
         .route("/timeline/{bucket}", get(timeline::bucket))
         .route("/assets", put(assets::upload))

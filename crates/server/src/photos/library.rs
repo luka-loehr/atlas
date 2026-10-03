@@ -78,6 +78,26 @@ pub async fn stats(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     })))
 }
 
+/// Photos per day over the last year (the library's activity heatmap).
+/// Days are local days in the library timezone.
+pub async fn heatmap(State(app): State<AppState>) -> ApiResult<Json<Value>> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            &format!(
+                "SELECT to_char((taken_at AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS day, count(*)::int
+                 FROM assets
+                 WHERE taken_at > now() - interval '372 days' AND {VISIBLE}
+                 GROUP BY 1 ORDER BY 1"
+            ),
+            &[&app.cfg.tz.name()],
+        )
+        .await?;
+    let items: Vec<Value> =
+        rows.iter().map(|r| json!({ "d": r.get::<_, String>(0), "n": r.get::<_, i32>(1) })).collect();
+    Ok(Json(json!({ "items": items })))
+}
+
 /// The collections next to the timeline. They are mutually exclusive with
 /// it and with each other where it matters: trash wins over everything,
 /// archive excludes locked.
