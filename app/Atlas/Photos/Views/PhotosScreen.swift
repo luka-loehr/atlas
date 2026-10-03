@@ -16,6 +16,9 @@ struct PhotosScreen: View {
     @State private var topPosition: Int?
     /// The photos on screen, first and last: the date range under the title.
     @State private var visible: (Int, Int)?
+    /// The scroll indicator shows while the grid moves and a moment after.
+    @State private var scrolling = false
+    @State private var hideIndicator: Task<Void, Never>?
     @State private var gridProxy = PhotoGridProxy()
 
     var body: some View {
@@ -187,6 +190,18 @@ struct PhotosScreen: View {
                       selecting: selection.active, selected: selection.ids, proxy: gridProxy,
                       onTop: { topPosition = $0 },
                       onRange: { visible = ($0, $1) },
+                      onScrolling: { moving in
+                          hideIndicator?.cancel()
+                          if moving {
+                              withAnimation(.easeOut(duration: 0.15)) { scrolling = true }
+                          } else {
+                              hideIndicator = Task {
+                                  try? await Task.sleep(for: .seconds(1.2))
+                                  guard !Task.isCancelled else { return }
+                                  withAnimation(.easeOut(duration: 0.3)) { scrolling = false }
+                              }
+                          }
+                      },
                       onToggle: { asset in withAnimation(.snappy(duration: 0.26, extraBounce: 0.05)) { selection.toggle(asset.id) } },
                       menu: { menu(for: $0) },
                       onRefresh: { await library.refresh() })
@@ -196,6 +211,7 @@ struct PhotosScreen: View {
             if !selection.active, library.months.count > 1 {
                 TimeScrubber(months: library.months, total: library.assets.count,
                              current: topPosition ?? max(library.assets.count - 1, 0),
+                             visible: scrolling,
                              onJump: { gridProxy.jump(to: $0.first) },
                              onScrubbing: { library.scrubbing = $0 })
             }
@@ -340,6 +356,9 @@ struct TimeScrubber: View {
     let total: Int
     /// Asset position at the top of the screen.
     let current: Int
+    /// The grid is moving: show the slim indicator. At rest nothing shows;
+    /// grabbing the indicator turns it into the full scrubber.
+    var visible = false
     var onJump: (Library.Month) -> Void
     var onScrubbing: (Bool) -> Void = { _ in }
 
@@ -385,6 +404,8 @@ struct TimeScrubber: View {
                 handle
                     .position(x: geo.size.width - 20, y: handleY)
                     .gesture(drag(h: h))
+                    .opacity(dragging || visible ? 1 : 0)
+                    .allowsHitTesting(dragging || visible)
             }
             .coordinateSpace(.named(space))
             .frame(width: geo.size.width, height: h)
@@ -393,16 +414,28 @@ struct TimeScrubber: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var handle: some View {
-        Image(systemName: "chevron.up.chevron.down")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(.primary)
-            .frame(width: 36, height: 46)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .scaleEffect(dragging ? 1.12 : 1)
-            .animation(.snappy(duration: 0.2), value: dragging)
-            .contentShape(Rectangle().inset(by: -12))
-            .opacity(dragging ? 1 : 0.9)
+    /// A standard slim scroll indicator; while dragged, the big handle.
+    @ViewBuilder private var handle: some View {
+        ZStack {
+            if dragging {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 46)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .transition(.scale(scale: 0.3, anchor: .trailing).combined(with: .opacity))
+            } else {
+                Capsule()
+                    .fill(Color.secondary)
+                    .frame(width: 5, height: 40)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 2)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 36, height: 46)
+        .animation(.snappy(duration: 0.2), value: dragging)
+        .contentShape(Rectangle().inset(by: -12))
     }
 
     private func drag(h: CGFloat) -> some Gesture {

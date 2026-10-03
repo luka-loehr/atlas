@@ -333,6 +333,8 @@ private struct Filmstrip: View {
     /// a window around the current photo is instant, and it moves along
     /// when the strip gets near one of its ends.
     @State private var window: Range<Int> = 0..<0
+    /// The thumb under the middle of the strip, fractional while it moves.
+    @State private var centerPos: CGFloat = 0
     private static let reach = 400
 
     private let cell: CGFloat = 20
@@ -354,26 +356,24 @@ private struct Filmstrip: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: gap) {
                 ForEach(window.clamped(to: 0..<assets.count), id: \.self) { i in
+                    // every thumb is a square photo seen through a window: 20 pt
+                    // wide far from the middle, opening to the full 30 pt
+                    // square as it reaches it, while its neighbours step aside.
+                    // Driven by the live scroll position, so it follows the
+                    // finger and the momentum continuously
+                    let dx = CGFloat(i) - centerPos
+                    let near = min(abs(dx), 1)
+                    let open = cell + (height - cell) * (1 - near)
+                    let push = (air + (height - cell) / 2) * near
                     Thumb(url: client.thumbURL(assets[i].id, 512))
-                        .frame(width: cell, height: height)
+                        .frame(width: height, height: height)
+                        .frame(width: open, height: height)
                         .clipShape(.rect(cornerRadius: 3, style: .continuous))
-                        // the CENTER item widens to a square and the others
-                        // step aside — pure geometry, follows finger and
-                        // momentum with zero lag
-                        .visualEffect { [cell, gap, air, height] content, proxy in
-                            let f = proxy.frame(in: .scrollView(axis: .horizontal))
-                            let vis = proxy.bounds(of: .scrollView(axis: .horizontal))
-                            let center = vis.map(\.midX) ?? UIScreen.main.bounds.width / 2
-                            let dx = f.midX - center
-                            let near = min(abs(dx) / (cell + gap), 1)
-                            let push = (air + (height - cell) / 2) * near
-                            return content
-                                .opacity(near < 0.5 ? 0 : 1)
-                                .offset(x: dx < 0 ? -push : push)
-                        }
+                        .frame(width: cell, height: height)
+                        .offset(x: dx < 0 ? -push : push)
                         // center wins the overlap — z falls off with distance
                         // so every thumb overlaps its farther neighbor on BOTH sides
-                        .zIndex(-Double(abs(i - index)))
+                        .zIndex(-Double(abs(dx)))
                         .id(i)
                         .onTapGesture { index = i }
                 }
@@ -391,14 +391,13 @@ private struct Filmstrip: View {
         // a slow controlled drag clicks thumb by thumb
         .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByFew))
         .frame(height: height)
-        // the current photo: a square in the gap the neighbours leave
-        .overlay {
-            if let a = assets[safe: index] {
-                Thumb(url: client.thumbURL(a.id, 512))
-                    .frame(width: height, height: height)
-                    .clipShape(.rect(cornerRadius: 3, style: .continuous))
-                    .allowsHitTesting(false)
-            }
+        // which thumb sits under the middle, as a fraction, every frame
+        .onScrollGeometryChange(for: CGFloat.self, of: { [cell, gap] g in
+            // the content margins put thumb k under the middle at
+            // contentOffset.x == k * pitch - leading inset
+            (g.contentOffset.x + g.contentInsets.leading + g.containerSize.width / 2 - cell / 2) / (cell + gap)
+        }) { _, p in
+            centerPos = p + CGFloat(window.lowerBound)
         }
         // like Photos: the strip ends 15 pt from the edges and fades out there
         .mask {
@@ -420,7 +419,7 @@ private struct Filmstrip: View {
         }
         // mechanical lens-click on every detent (scrub AND page swipe)
         .sensoryFeedback(.selection, trigger: index)
-        .onAppear { recenter(index); pos = index }
+        .onAppear { recenter(index); pos = index; centerPos = CGFloat(index) }
         .onChange(of: index) { _, i in
             recenter(i)
             if pos != i { withAnimation(.snappy) { pos = i } }

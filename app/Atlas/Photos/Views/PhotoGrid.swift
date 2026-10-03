@@ -24,6 +24,8 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var onTop: (Int?) -> Void
     /// First and last asset on screen; called when either changes its day.
     var onRange: (Int, Int) -> Void = { _, _ in }
+    /// The user is scrolling (finger down or the grid still gliding).
+    var onScrolling: (Bool) -> Void = { _ in }
     /// Tap in selection mode.
     var onToggle: (Asset) -> Void
     var menu: (Asset) -> UIMenu
@@ -352,13 +354,20 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         pinnedToBottom = false
         needsBottom = false
+        config?.onScrolling(true)
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if !decelerate { pinnedToBottom = atBottom }
+        if !decelerate {
+            pinnedToBottom = atBottom
+            config?.onScrolling(false)
+        }
     }
 
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { pinnedToBottom = atBottom }
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        pinnedToBottom = atBottom
+        config?.onScrolling(false)
+    }
 
     // MARK: Data source
 
