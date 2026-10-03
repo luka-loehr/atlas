@@ -1,7 +1,7 @@
 # scripts — operational tools
 
-Everything that keeps the box itself alive and honest, plus a few tools around
-the photo stack that don't belong to any one service. Machine-level setup lives
+Everything that keeps the box itself alive and honest, plus the installer of
+the Atlas services. Machine-level setup lives
 in [docs/SETUP.md](../docs/SETUP.md).
 
 Two shapes in here, and the difference is the naming convention:
@@ -25,34 +25,28 @@ Units run the scripts straight out of `~/atlas`, so re-run the relevant
 
 | Path | What it is |
 |---|---|
-| [`healthcheck/`](healthcheck/) | One-shot box health check (`api`/`cli` cargo builds, atlas-api :8787, atlas-photos :8788, docker stack, Postgres) — on boot, on resume, on demand; result in `~/atlas-health/status.json` |
-| [`firewall/`](firewall/) | nftables table confining atlas-api :8787 and atlas-photos :8788 to loopback + tailnet, and the unit that loads it before the network comes up |
+| [`atlas/`](atlas/) | The Atlas services themselves: `atlas-server` and `atlas-ml` units, the env template, `install.sh` (what `atlas deploy` runs) and `models.sh` (llama.cpp + model files) |
+| [`healthcheck/`](healthcheck/) | One-shot box health check (workspace build, atlas-server :8787, atlas-ml :8786, database container, Postgres) — on boot, on resume, on demand; result in `~/atlas-health/status.json` |
+| [`firewall/`](firewall/) | nftables table confining atlas-server :8787 to loopback + tailnet, and the unit that loads it before the network comes up |
 | [`disk-guard/`](disk-guard/) | Five-minute check that root is not filling up — 85/90/95 % thresholds, a burn-rate trend trigger, an 80 G floor below which builds refuse to start, alerts to the journal |
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres` with retention, plus a restore drill that verifies row counts |
-| [`tailnet-dns/`](tailnet-dns/) | Publishes AdGuard as the tailnet's DNS while atlas is up and withdraws it at shutdown, so a sleeping box never blackholes the tailnet's DNS |
-| [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-api can report CPU power |
+| [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-server can report CPU power |
 | [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
 | [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.your-domain.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
 | [`ci-health/`](ci-health/) | Daily recorder for the self-hosted GitHub Actions runners on this box (units only — the checker lives outside this repo) |
-| [`photo-triage/`](photo-triage/) | Keyboard-driven local web UI to review delete candidates (screenshots, blurry, black frames, documents), plus the two scoring scripts that find them |
-| [`vecmap/`](vecmap/) | UMAP layout + sprite-atlas pipeline and two WebGL viewers — the photo library as a 3D point cloud, served at `/map` by atlas-photos |
 | `takeout-transfer.sh` | Mac-side: watches `~/Downloads` and moves finished Google Takeout zip parts to the server |
 | `cargo-dev-profile.sh` | Mac/server one-shot: sets `debug = "line-tables-only"` for dev/test builds machine-wide, refusing to land while any build is live |
-
-`photo-triage/` and `vecmap/` are the only entries that need the
-[atlas-photos](../apps/atlas-photos/) stack running; everything else is about
-the machine.
 
 ## Units at a glance
 
 | Unit | Schedule | Installed by |
 |---|---|---|
+| `atlas-server.service`, `atlas-ml.service` | boot | [`atlas/install.sh`](atlas/install.sh) |
 | `atlas-healthcheck.service` | boot | [`healthcheck/install.sh`](healthcheck/install.sh) |
 | `atlas-healthcheck-resume.service` | resume from suspend | ″ |
 | `atlas-firewall.service` | boot, before the network | [`firewall/install.sh`](firewall/install.sh) |
 | `atlas-disk-guard.timer` | every 5 min | [`disk-guard/install.sh`](disk-guard/install.sh) |
 | `atlas-pg-backup.timer` | nightly 03:30 ± 10 min, `Persistent` | [`pg-backup/install.sh`](pg-backup/install.sh) |
-| `atlas-tailnet-dns.service` | boot + shutdown (`ExecStop` is the point) | [`tailnet-dns/install.sh`](tailnet-dns/install.sh) |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
 | `dairo-ci-health.timer` | daily 12:05 UTC, `Persistent` | [`ci-health/install.sh`](ci-health/install.sh) |
 | `atlas-power-button.service` | boot | by hand — see [`power-button/`](power-button/) |
@@ -63,9 +57,6 @@ powered off whenever it is not needed, and a plain calendar schedule silently
 drops every run that falls into a powered-off window. `atlas-disk-guard.timer`
 is the exception on purpose — it is a monotonic every-5-minutes timer, and a
 catch-up run of a "how full is the disk right now" check is worthless.
-
-The API server's own unit is not here — it ships with the service, in
-[`api/`](../api/), and is installed by `atlas api`.
 
 ## cargo-dev-profile.sh
 

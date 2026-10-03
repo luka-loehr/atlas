@@ -1,5 +1,5 @@
 [Unit]
-Description=Atlas host firewall (confine 8787/8788 to loopback + tailnet)
+Description=Atlas host firewall (confine 8787 to loopback + tailnet)
 Documentation=file:///home/atlas/atlas/scripts/firewall/README.md
 # Load before anything brings an interface up, so there is no window in which
 # the services answer the LAN. DefaultDependencies=no keeps this out of the

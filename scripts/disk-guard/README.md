@@ -44,7 +44,7 @@ picking a rounder number.
 - It is 8.5% of the volume, so the floor and the 90% critical threshold
   (≈94 G free) sit close together on purpose: by the time percent-used says
   critical, the floor is the next thing you hit.
-- Postgres, the pipeline containers and a ~200 MB nightly dump all need to keep
+- Postgres, the ingest workers and a ~200 MB nightly dump all need to keep
   writing while this is true.
 
 ## What fires an alert

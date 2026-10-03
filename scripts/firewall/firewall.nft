@@ -1,14 +1,12 @@
 #!/usr/sbin/nft -f
 #
-# atlas host firewall — confine the private HTTP services to loopback + tailnet.
+# atlas host firewall — confine the private HTTP service to loopback + tailnet.
 #
-#   8787  atlas-api     (metrics, Docker control, power, PTY terminal)
-#   8788  atlas-photos  (timeline, search, originals, drive)
+#   8787  atlas-server  (photos, drive, system status, power, PTY terminal)
 #
-# Both listeners bind 0.0.0.0/[::], so without this every device on the home
-# LAN can read them. The reads are deliberately unauthenticated
-# (ATLAS_PHOTOS_OPEN=1) because the iOS apps rely on that, so the network layer
-# is what has to say no.
+# The listener binds 0.0.0.0/[::], so without this every device on the home
+# LAN can reach it. Every route needs the bearer token, but a shell on the
+# machine is one of those routes: the network layer says no first.
 #
 # Why its own table, and not /etc/nftables.conf:
 #   `ip filter` and `ip6 filter` are managed by iptables-nft on behalf of
@@ -18,7 +16,7 @@
 #   of them is final — so this table needs no cooperation from the others and
 #   survives `tailscale up` and `systemctl restart docker` recreating theirs.
 #
-# Scope is deliberately narrow: only tcp/8787 and tcp/8788 are matched at all.
+# Scope is deliberately narrow: only tcp/8787 is matched at all.
 # Nothing else on this host changes behaviour. The chain policy stays `accept`
 # so a syntax slip cannot lock the box out.
 
@@ -30,7 +28,7 @@ table inet atlas-fw {
 	set private_ports {
 		type inet_service
 		comment "host-private HTTP services"
-		elements = { 8787, 8788 }
+		elements = { 8787 }
 	}
 
 	chain input {
@@ -38,7 +36,7 @@ table inet atlas-fw {
 
 		# lo covers 127.0.0.1, atlas' own LAN and tailnet addresses when it
 		# talks to itself (`ip route get 192.168.1.100` -> dev lo), the
-		# healthcheck probes, and `tailscale serve` proxying to 127.0.0.1:8788.
+		# healthcheck probes, and `tailscale serve` proxying to 127.0.0.1:8787.
 		tcp dport @private_ports iifname "lo" counter accept
 
 		# The tailnet proper: iPhone and MacBook arrive here after WireGuard

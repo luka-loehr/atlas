@@ -33,7 +33,7 @@ while read -r t; do
   live=$(psql_c atlas "SELECT count(*) FROM \"$t\"")
   rest=$(psql_c "$DRILL_DB" "SELECT count(*) FROM \"$t\"")
   mark=""
-  # Live counts can drift while the pipeline writes; flag but don't hard-fail
+  # Live counts can drift while the workers write; flag but don't hard-fail
   # on ingest_jobs, hard-fail on everything else.
   if [ "$live" != "$rest" ]; then
     mark=" MISMATCH"

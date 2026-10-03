@@ -11,9 +11,9 @@ the sleep-when-idle box awake.
 |---|---|
 | `build-api` | `cargo check --locked` in `~/atlas/api` |
 | `build-cli` | `cargo check --locked` in `~/atlas/cli` |
-| `api-http` | `GET 127.0.0.1:8787/api/metrics` → 200 (or 401 when `ATLAS_API_TOKEN` auth is on — server up either way) |
-| `photos-http` | `GET 127.0.0.1:8788/api/albums` → 200/401 |
-| `docker-stack` | `atlas-postgres` running+healthy, `atlas-pipeline-{pipeline-gpu,pipeline-cpu,embed-api}-1` running |
+| `server-http` | `GET 127.0.0.1:8787/health` → 200 (the one route that needs no token) |
+| `ml-http` | `GET 127.0.0.1:8786/health` → 200 (atlas-ml, loopback only) |
+| `docker-stack` | `atlas-postgres` running+healthy |
 | `postgres` | `pg_isready` + `SELECT 1` as user `atlas`, db `atlas`, inside the container |
 
 Service checks retry (default 12 × 10 s under systemd, 3 × 10 s interactive —

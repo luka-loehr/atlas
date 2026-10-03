@@ -2,11 +2,11 @@
 # atlas-healthcheck — one-shot health check for the atlas box.
 #
 # Verifies:
-#   1. api/ and cli/ compile (cargo check --locked)
-#   2. atlas-api HTTP endpoint responds on :8787 (200, or 401 when auth is on)
-#   3. backend docker stack up (atlas-postgres healthy + 3 pipeline containers)
-#   4. Postgres accepts connections and answers SELECT 1
-#   5. atlas-photos HTTP endpoint responds on :8788
+#   1. the workspace compiles (cargo check --locked)
+#   2. atlas-server answers on :8787 (/health is open and returns no data)
+#   3. atlas-ml answers on its loopback port :8786
+#   4. the database container is up and healthy
+#   5. Postgres accepts connections and answers SELECT 1
 #
 # Writes:  ~/atlas-health/status.json   machine-readable result of the last run
 #          ~/atlas-health/last-run.log  full output of the last run
@@ -24,7 +24,7 @@ STATE="${ATLAS_HEALTH_DIR:-$HOME/atlas-health}"
 # the systemd units set 12 (= up to ~2 min), interactive default is 3
 RETRIES="${ATLAS_HEALTH_RETRIES:-3}"
 RETRY_SLEEP="${ATLAS_HEALTH_RETRY_SLEEP:-10}"
-BACKEND_CONTAINERS=(atlas-postgres atlas-pipeline-pipeline-gpu-1 atlas-pipeline-pipeline-cpu-1 atlas-pipeline-embed-api-1)
+BACKEND_CONTAINERS=(atlas-postgres)
 
 mkdir -p "$STATE"
 LOG="$STATE/last-run.log"; : > "$LOG"
@@ -57,15 +57,14 @@ run_check() { # <name> <retries> <fn...>
     return "$rc"
 }
 
-check_cargo() { (cd "$REPO/$1" && cargo check --locked --quiet); }
+check_cargo() { (cd "$REPO" && cargo check --locked --quiet --workspace); }
 
 check_http() { # <port> <path>
     local code
     code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$1$2") \
         || { echo "nothing listening on :$1"; return 1; }
     echo "HTTP $code from :$1$2"
-    # 401 still proves the server is up — it means bearer auth is enforced
-    case "$code" in 200 | 401) return 0 ;; *) return 1 ;; esac
+    case "$code" in 200) return 0 ;; *) return 1 ;; esac
 }
 
 check_containers() {
@@ -87,10 +86,9 @@ check_postgres() {
 }
 
 overall=0 failed=""
-run_check build-api 1 check_cargo api || { overall=1; failed+=" build-api"; }
-run_check build-cli 1 check_cargo cli || { overall=1; failed+=" build-cli"; }
-run_check api-http "$RETRIES" check_http 8787 /api/metrics || { overall=1; failed+=" api-http"; }
-run_check photos-http "$RETRIES" check_http 8788 /api/albums || { overall=1; failed+=" photos-http"; }
+run_check build 1 check_cargo || { overall=1; failed+=" build"; }
+run_check server-http "$RETRIES" check_http 8787 /health || { overall=1; failed+=" server-http"; }
+run_check ml-http "$RETRIES" check_http 8786 /health || { overall=1; failed+=" ml-http"; }
 run_check docker-stack "$RETRIES" check_containers || { overall=1; failed+=" docker-stack"; }
 run_check postgres "$RETRIES" check_postgres || { overall=1; failed+=" postgres"; }
 
