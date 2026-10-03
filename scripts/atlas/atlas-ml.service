@@ -1,0 +1,19 @@
+[Unit]
+Description=Atlas model worker (semantic embeddings, faces)
+After=network-online.target docker.service atlas-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=SET-BY-INSTALLER
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/etc/atlas/atlas.env
+ExecStart=/usr/local/bin/atlas-ml
+Restart=always
+RestartSec=5
+# The embedding model is a child process (llama.cpp); stopping the unit must
+# take it down too and return the GPU memory.
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

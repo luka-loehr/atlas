@@ -1,0 +1,16 @@
+[package]
+name = "atlas-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What atlas-server and atlas-ml share: database setup, migrations and the job queue protocol"
+
+[dependencies]
+anyhow.workspace = true
+deadpool-postgres.workspace = true
+tokio.workspace = true
+tokio-postgres.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+futures-util = "0.3"

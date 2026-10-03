@@ -1,0 +1,31 @@
+[package]
+name = "atlas-ml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Atlas model worker: semantic embeddings and face recognition"
+
+[[bin]]
+name = "atlas-ml"
+path = "src/main.rs"
+
+[dependencies]
+atlas-core = { path = "../core" }
+anyhow.workspace = true
+deadpool-postgres.workspace = true
+image.workspace = true
+pgvector.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-postgres.workspace = true
+tracing.workspace = true
+
+axum = "0.8"
+base64 = "0.22"
+fast_image_resize = "5"
+ndarray = "0.16"
+ort = "2.0.0-rc.10"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+webp = "0.3"
