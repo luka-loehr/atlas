@@ -270,6 +270,16 @@ final class MediaStore: @unchecked Sendable {
     /// Grid thumbnails on the phone.
     var thumbStats: (count: Int, bytes: Int64) { lock.withLock { (thumbs.count, thumbBytes) } }
 
+    /// Bytes of the budgeted part by kind (Settings' storage bar).
+    var bytesByKind: [Kind: Int64] {
+        lock.withLock {
+            indexIfNeeded()
+            var out: [Kind: Int64] = [:]
+            for (key, e) in entries { out[key.kind, default: 0] += e.bytes }
+            return out
+        }
+    }
+
     /// Bytes of the budgeted part (everything but the grid thumbnails).
     var cacheBytes: Int64 { lock.withLock { indexIfNeeded(); return total } }
 

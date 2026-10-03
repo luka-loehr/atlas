@@ -39,7 +39,7 @@ struct SettingsScreen: View {
                             Button("Remove", role: .destructive) { backup.deleteBackedUpFromDevice() }
                         }
                 }
-                Section("iPhone Storage") {
+                Section("On This iPhone") {
                     StorageBar(use: storage)
                 }
             }
@@ -108,17 +108,17 @@ struct SettingsScreen: View {
 
 }
 
-/// What Atlas keeps on this iPhone, next to the rest of the device.
+/// What Atlas keeps on this iPhone, by kind.
 struct StorageUse {
     /// Every grid thumbnail of the library (kept for good).
     var thumbnails: Int64 = 0
-    /// Previews, originals, videos and faces (up to 15 GB, self-trimming).
-    var cache: Int64 = 0
-    var capacity: Int64 = 0
-    var free: Int64 = 0
+    var previews: Int64 = 0
+    var originals: Int64 = 0
+    var videos: Int64 = 0
+    /// Faces and file thumbnails.
+    var other: Int64 = 0
 
-    var other: Int64 { max(capacity - free - cache - thumbnails, 0) }
-    var used: Int64 { max(capacity - free, 0) }
+    var total: Int64 { thumbnails + previews + originals + videos + other }
 
     /// Read off the main thread: walking the caches touches the disk.
     static func measure() async -> StorageUse {
@@ -126,43 +126,42 @@ struct StorageUse {
             var u = StorageUse()
             await MediaStore.shared.loadThumbIndex()
             u.thumbnails = MediaStore.shared.thumbStats.bytes
-            u.cache = MediaStore.shared.cacheBytes
-            let home = URL(fileURLWithPath: NSHomeDirectory())
-            if let v = try? home.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]) {
-                u.capacity = Int64(v.volumeTotalCapacity ?? 0)
-                u.free = v.volumeAvailableCapacityForImportantUsage ?? 0
-            }
+            let kinds = MediaStore.shared.bytesByKind
+            u.previews = kinds[.preview] ?? 0
+            u.originals = kinds[.original] ?? 0
+            u.videos = kinds[.video] ?? 0
+            u.other = (kinds[.face] ?? 0) + (kinds[.driveThumb] ?? 0)
             return u
         }.value
     }
 }
 
-/// One row like Settings › General › iPhone Storage: a horizontal bar of the
-/// whole device with Atlas' share coloured in, and a legend under it.
+/// One row like Settings › General › iPhone Storage, but only for what
+/// Atlas keeps on this iPhone: a horizontal bar split by kind, and a legend.
 struct StorageBar: View {
     var use: StorageUse
 
     private func gb(_ b: Int64) -> String { ByteCountFormatter.string(fromByteCount: b, countStyle: .file) }
 
+    private var parts: [(String, Color, Int64)] {
+        [("Thumbnails", .indigo, use.thumbnails), ("Previews", .blue, use.previews),
+         ("Originals", .teal, use.originals), ("Videos", .orange, use.videos), ("Faces & Files", .pink, use.other)]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("iPhone").font(.headline)
+                Text("Atlas").font(.headline)
                 Spacer()
-                if use.capacity > 0 {
-                    Text("\(gb(use.used)) of \(gb(use.capacity)) used")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text(gb(use.total)).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
             }
             GeometryReader { geo in
-                let total = CGFloat(max(use.capacity, 1))
-                let w = { (b: Int64) in max(geo.size.width * CGFloat(b) / total, b > 0 ? 3 : 0) }
+                let total = CGFloat(max(use.total, 1))
                 HStack(spacing: 1.5) {
-                    Rectangle().fill(.indigo).frame(width: w(use.thumbnails))
-                    Rectangle().fill(.teal).frame(width: w(use.cache))
-                    Rectangle().fill(Color(.systemGray3)).frame(width: w(use.other))
-                    Spacer(minLength: 0)
+                    ForEach(parts.filter { $0.2 > 0 }, id: \.0) { part in
+                        Rectangle().fill(part.1)
+                            .frame(width: max(geo.size.width * CGFloat(part.2) / total - 1.5, 2))
+                    }
                 }
                 .frame(width: geo.size.width, alignment: .leading)
                 .background(Color(.systemGray5))
@@ -170,10 +169,8 @@ struct StorageBar: View {
             }
             .frame(height: 20)
             .accessibilityHidden(true)
-            HStack(spacing: 16) {
-                legend(.indigo, "Thumbnails", use.thumbnails)
-                legend(.teal, "Cache", use.cache)
-                legend(Color(.systemGray3), "Other", use.other)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), alignment: .leading)], alignment: .leading, spacing: 8) {
+                ForEach(parts, id: \.0) { part in legend(part.1, part.0, part.2) }
             }
         }
         .padding(.vertical, 4)
