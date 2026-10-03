@@ -7,6 +7,8 @@ sudo install -m644 firewall.nft /etc/atlas/firewall.nft
 sudo nft -c -f /etc/atlas/firewall.nft          # refuse to install a ruleset that will not parse
 sudo cp atlas-firewall.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now atlas-firewall.service
+sudo systemctl enable --quiet atlas-firewall.service
+# restart, not `enable --now`: an already running unit keeps its old ruleset
+sudo systemctl restart atlas-firewall.service
 echo "Installed. Active rules:  sudo nft list table inet atlas-fw"
 echo "Lift temporarily:         sudo systemctl stop atlas-firewall"
