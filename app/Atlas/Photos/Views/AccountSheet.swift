@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// The library at a glance, from the button on the Fotos tab: counts, the
+/// covered time span and a year of activity. Settings live in their own tab.
 struct AccountSheet: View {
     var library: Library
     @Environment(\.dismiss) private var dismiss
@@ -7,28 +9,43 @@ struct AccountSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 20) {
-                        header
-                        if let s = library.stats {
-                            statsGrid(s)
-                            span(s)
+            List {
+                if let s = library.stats {
+                    Section {
+                        LabeledContent("Fotos", value: (s.total - s.videos).formatted())
+                        LabeledContent("Videos", value: s.videos.formatted())
+                        LabeledContent("Alben", value: s.albums.formatted())
+                        LabeledContent("Größe", value: s.bytes.fileSize)
+                        if let o = s.oldest, let n = s.newest {
+                            LabeledContent("Zeitraum",
+                                           value: "\(o.formatted(.dateTime.month().year())) – \(n.formatted(.dateTime.month().year()))")
                         }
-                        if !heat.isEmpty {
-                            heatmapCard
-                        }
-                        settingsLink
                     }
-                    .padding(20)
+                    .monospacedDigit()
+                } else {
+                    HStack { Spacer(); ProgressView(); Spacer() }
+                        .listRowBackground(Color.clear)
+                }
+                if !heat.isEmpty {
+                    Section("Fotos pro Tag") {
+                        HeatmapGrid(counts: heat)
+                            .frame(height: 64)
+                            .padding(.vertical, 6)
+                            .accessibilityHidden(true)
+                        LabeledContent("Letzte 12 Monate", value: "\(heat.values.reduce(0, +).formatted()) Fotos")
+                        if let top = heatTop, let d = HeatmapGrid.keyFormatter.date(from: top.date) {
+                            LabeledContent("Aktivster Tag",
+                                           value: "\(d.formatted(.dateTime.day().month(.wide).year())) · \(top.n) Fotos")
+                        }
+                    }
+                    .monospacedDigit()
                 }
             }
-            .navigationTitle("atlas Fotos")
+            .navigationTitle("Mediathek")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Fertig") { dismiss() }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(role: .close) { dismiss() }
                 }
             }
         }
@@ -40,109 +57,13 @@ struct AccountSheet: View {
         }
     }
 
-    private var settingsLink: some View {
-        NavigationLink {
-            SettingsScreen(library: library)
-        } label: {
-            HStack {
-                Image(systemName: "gearshape.fill").foregroundStyle(.blue)
-                Text("Einstellungen & iPhone-Sync")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.tertiary)
-            }
-            .padding(14)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    private var header: some View {
-        VStack(spacing: 12) {
-            // Liquid-Glass-Logo statt Farbverlauf — ruhig und material-nativ.
-            Image(systemName: "photo.stack")
-                .font(.system(size: 30, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 78, height: 78)
-                .glassEffect(.regular, in: Circle())
-            Text("Deine Bibliothek")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-        }
-    }
-
-    // MARK: - Aktivitäts-Heatmap (GitHub-Stil, Liquid Glass)
-
     private var heatTop: (date: String, n: Int)? {
         guard let m = heat.max(by: { $0.value < $1.value }) else { return nil }
         return (m.key, m.value)
     }
-
-    private var heatmapCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "square.grid.4x3.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.blue)
-                Text("Aktivität")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text("\(heat.values.reduce(0, +)) Fotos · 12 Monate")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-            HeatmapGrid(counts: heat)
-                .frame(height: 58)
-            if let top = heatTop, let d = HeatmapGrid.keyFormatter.date(from: top.date) {
-                Text("Top-Tag: \(d.formatted(.dateTime.day().month(.wide).year())) · \(top.n) Fotos")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18))
-    }
-
-    private func statsGrid(_ s: LibraryStats) -> some View {
-        HStack(spacing: 12) {
-            stat("\(s.total - s.videos)", "Fotos", "photo")
-            stat("\(s.videos)", "Videos", "video")
-            stat("\(s.albums)", "Alben", "rectangle.stack")
-            stat(bytes(s.bytes), "Größe", "internaldrive")
-        }
-    }
-
-    private func stat(_ value: String, _ label: String, _ icon: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 16)).foregroundStyle(.blue)
-            Text(value).font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
-            Text(label).font(.system(size: 10)).foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func span(_ s: LibraryStats) -> some View {
-        Group {
-            if let o = s.oldest, let n = s.newest {
-                Text("\(o.formatted(.dateTime.month().year())) – \(n.formatted(.dateTime.month().year()))")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func bytes(_ b: Int64) -> String {
-        let gb = Double(b) / 1_073_741_824
-        return gb >= 1 ? String(format: "%.0f GB", gb)
-                       : String(format: "%.0f MB", Double(b) / 1_048_576)
-    }
 }
 
-/// GitHub-Style-Aktivitäts-Heatmap: 53 Wochen × 7 Tage, eine Zelle pro Tag,
+/// Aktivitäts-Heatmap: 53 Wochen × 7 Tage, eine Zelle pro Tag,
 /// Intensität = Fotoanzahl. Als EINE Canvas gezeichnet (~370 Rechtecke +
 /// Monatslabels) statt 370 Views — rendert in einem Draw-Pass.
 struct HeatmapGrid: View {

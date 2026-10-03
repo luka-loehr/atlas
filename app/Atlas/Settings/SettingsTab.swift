@@ -29,6 +29,7 @@ struct ActivityScreen: View {
 
     @Environment(Session.self) private var session
     @State private var report: Report?
+    @State private var loaded = false
 
     var body: some View {
         Form {
@@ -47,13 +48,16 @@ struct ActivityScreen: View {
                     let hours = report.days.reduce(0) { $0 + $1.min } / 60
                     Text("\(hours) Stunden in den letzten \(report.days.count) Tagen, bei \(report.days.reduce(0) { $0 + $1.boots }) Starts.")
                 }
-            } else {
-                ProgressView()
             }
         }
+        .overlay { if report == nil { LoadingOrUnavailable(loaded: loaded) } }
         .navigationTitle("Aktivität")
         .navigationBarTitleDisplayMode(.inline)
-        .task { report = try? await session.api?.get("system/activity") }
+        .task {
+            report = try? await session.api?.get("system/activity")
+            loaded = true
+        }
+        .refreshable { report = try? await session.api?.get("system/activity") }
     }
 }
 
@@ -78,40 +82,67 @@ struct NetworkScreen: View {
 
     @Environment(Session.self) private var session
     @State private var report: Report?
+    @State private var loaded = false
 
     var body: some View {
         Form {
-            if let report {
-                if report.available {
-                    Section("Dieser Server") {
-                        LabeledContent("Name", value: report.`self`.name ?? "")
-                        LabeledContent("Tailnet", value: report.tailnet ?? "")
-                        LabeledContent("Exit Node") {
-                            Text(report.`self`.offers_exit_node == true ? "Angeboten" : "Aus")
-                        }
+            if let report, report.available {
+                Section("Dieser Server") {
+                    LabeledContent("Name", value: report.`self`.name ?? "")
+                    LabeledContent("Tailnet", value: report.tailnet ?? "")
+                    LabeledContent("Exit Node") {
+                        Text(report.`self`.offers_exit_node == true ? "Angeboten" : "Aus")
                     }
-                    Section("Geräte") {
-                        ForEach(report.peers) { peer in
-                            LabeledContent {
-                                StateLabel(healthy: peer.online == true, text: peer.online == true ? "Online" : "Offline")
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(peer.name ?? "")
-                                    Text(peer.os ?? "").font(.footnote).foregroundStyle(.secondary)
-                                }
+                }
+                Section("Geräte") {
+                    ForEach(report.peers) { peer in
+                        LabeledContent {
+                            StateLabel(healthy: peer.online == true, text: peer.online == true ? "Online" : "Offline")
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(peer.name ?? "")
+                                Text(peer.os ?? "").font(.footnote).foregroundStyle(.secondary)
                             }
                         }
                     }
-                } else {
-                    ContentUnavailableView("Kein Tailnet", systemImage: "network.slash",
-                                           description: Text("Tailscale läuft auf dem Server nicht."))
                 }
-            } else {
-                ProgressView()
+            }
+        }
+        .overlay {
+            if let report, !report.available {
+                ContentUnavailableView("Kein Tailnet", systemImage: "network.slash",
+                                       description: Text("Tailscale läuft auf dem Server nicht."))
+            } else if report == nil {
+                LoadingOrUnavailable(loaded: loaded)
             }
         }
         .navigationTitle("Netzwerk")
         .navigationBarTitleDisplayMode(.inline)
-        .task { report = try? await session.api?.get("system/network") }
+        .task {
+            report = try? await session.api?.get("system/network")
+            loaded = true
+        }
+        .refreshable { report = try? await session.api?.get("system/network") }
+    }
+}
+
+/// A spinner while a server screen loads; once the request has failed, the
+/// same message the other server screens show.
+struct LoadingOrUnavailable: View {
+    let loaded: Bool
+    var body: some View {
+        if loaded {
+            ServerUnavailableView()
+        } else {
+            ProgressView()
+        }
+    }
+}
+
+/// The server could not be reached.
+struct ServerUnavailableView: View {
+    var body: some View {
+        ContentUnavailableView("atlas nicht erreichbar", systemImage: "moon.zzz.fill",
+                               description: Text("Prüfe, ob atlas läuft und das iPhone im Tailnet ist."))
     }
 }

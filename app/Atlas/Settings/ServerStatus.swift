@@ -270,8 +270,7 @@ struct ServerStatusScreen: View {
         .overlay {
             if machine.snapshot == nil && machine.latest == nil {
                 if session.reachability == .offline {
-                    ContentUnavailableView("atlas nicht erreichbar", systemImage: "moon.zzz.fill",
-                                           description: Text("im Tailnet? atlas wach?"))
+                    ServerUnavailableView()
                 } else {
                     ProgressView()
                 }

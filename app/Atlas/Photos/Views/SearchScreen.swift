@@ -13,12 +13,14 @@ struct SearchScreen: View {
         NavigationStack {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
-                if query.isEmpty {
+                if query.trimmingCharacters(in: .whitespaces).count < 2 {
                     hint
-                } else if result.items.isEmpty && result.persons.isEmpty && !searching {
-                    Text("nichts gefunden für \(query)")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.tertiary)
+                } else if result.items.isEmpty && result.persons.isEmpty {
+                    if searching {
+                        ProgressView()
+                    } else {
+                        ContentUnavailableView.search(text: query)
+                    }
                 } else {
                     ScrollView {
                         if !result.persons.isEmpty {
@@ -30,6 +32,7 @@ struct SearchScreen: View {
                                     .overlay { Thumb(url: library.client.thumbURL(asset.id, 512)).clipped() }
                                     .clipped()
                                     .onTapGesture { pick = asset }
+                                    .assetAccessibility(asset)
                             }
                         }
                         .padding(.horizontal, 2)
@@ -61,14 +64,16 @@ struct SearchScreen: View {
                             FaceCircle(library: library, person: p)
                                 .frame(width: 64, height: 64)
                             Text(p.displayName)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                            Text("\(p.photos) Fotos")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
+                            Text("\(p.photos) Objekte")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                         .frame(width: 76)
+                        .accessibilityElement(children: .combine)
                     }
                     .buttonStyle(.plain)
                 }
@@ -80,27 +85,18 @@ struct SearchScreen: View {
 
     private func run(_ q: String) async {
         let term = q.trimmingCharacters(in: .whitespaces)
-        guard term.count >= 2 else { result = PhotoClient.SearchResult(); return }
+        guard term.count >= 2 else { result = PhotoClient.SearchResult(); searching = false; return }
         searching = true
         try? await Task.sleep(for: .milliseconds(250))   // debounce
         guard term == query.trimmingCharacters(in: .whitespaces) else { return }
-        result = (try? await library.client.search(term)) ?? PhotoClient.SearchResult()
+        let found = (try? await library.client.search(term)) ?? PhotoClient.SearchResult()
+        guard term == query.trimmingCharacters(in: .whitespaces) else { return }
+        result = found
         searching = false
     }
 
     private var hint: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 34))
-                .foregroundStyle(.tertiary)
-            Text("Suche in deiner Bibliothek")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("Personen, Orte, Dinge — z. B. Mia, Strand, Hund, 2019")
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 40)
+        ContentUnavailableView("Fotos durchsuchen", systemImage: "magnifyingglass",
+                               description: Text("Personen, Orte, Dinge oder ein Jahr"))
     }
 }

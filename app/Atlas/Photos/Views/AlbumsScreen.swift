@@ -29,10 +29,8 @@ struct AlbumsScreen: View {
                         }
                         .padding(16)
                     } else if loaded {
-                        Text("keine Alben")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 40)
+                        ContentUnavailableView("Keine Alben", systemImage: "rectangle.stack")
+                            .padding(.top, 24)
                     }
                 }
                 .scrollIndicators(.hidden)
@@ -63,13 +61,16 @@ struct AlbumsScreen: View {
                     sectionHeader("Personen")
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.tertiary)
                         .padding(.trailing, 16)
                         .padding(.top, 8)
+                        .accessibilityHidden(true)
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
             if !personsPreview.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
@@ -81,7 +82,7 @@ struct AlbumsScreen: View {
                                     FaceCircle(library: library, person: person)
                                         .frame(width: 72, height: 72)
                                     Text(person.displayName)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.caption.weight(.medium))
                                         .foregroundStyle(person.name == nil
                                                          ? .tertiary : .primary)
                                         .lineLimit(1)
@@ -127,14 +128,15 @@ struct AlbumsScreen: View {
                     .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
                     .background(kind.tint.gradient, in: RoundedRectangle(cornerRadius: 9))
+                    .accessibilityHidden(true)
                 Text(kind.title)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.body)
                     .foregroundStyle(.primary)
                 Spacer()
-                if kind == .locked {
-                    Image(systemName: "lock.fill").font(.system(size: 12)).foregroundStyle(.tertiary)
-                }
-                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -149,9 +151,10 @@ struct AlbumsScreen: View {
 
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 20, weight: .bold))
+            .font(.title3.bold())
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
             .padding(.horizontal, 16)
             .padding(.top, 18)
             .padding(.bottom, 10)
@@ -251,11 +254,16 @@ struct SpecialCollectionScreen: View {
                     Button("Auswählen") { withAnimation(.snappy) { selection.enter() } }
                 }
             }
-            if kind == .trash && !assets.isEmpty {
+            if kind == .trash && !assets.isEmpty && !selection.active {
                 ToolbarItem(placement: .bottomBar) {
-                    Button(role: .destructive) { confirmEmpty = true } label: {
-                        Label("Papierkorb leeren", systemImage: "trash.slash")
-                    }
+                    Button("Papierkorb leeren", role: .destructive) { confirmEmpty = true }
+                        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmEmpty, titleVisibility: .visible) {
+                            Button("Endgültig löschen", role: .destructive) {
+                                act { try await library.client.emptyTrash() }
+                            }
+                        } message: {
+                            Text("Alle \(assets.count) Objekte werden endgültig gelöscht.")
+                        }
                 }
             }
         }
@@ -263,14 +271,6 @@ struct SpecialCollectionScreen: View {
         .fullScreenCover(item: $pick) { a in
             ViewerScreen(library: library, assets: assets, start: a)
                 .navigationTransition(.zoom(sourceID: a.id, in: zoom))
-        }
-        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmEmpty, titleVisibility: .visible) {
-            Button("Endgültig löschen", role: .destructive) {
-                act { try await library.client.emptyTrash() }
-            }
-            Button("Abbrechen", role: .cancel) {}
-        } message: {
-            Text("Alle \(assets.count) Objekte werden dauerhaft von atlas entfernt.")
         }
         .confirmationDialog("\(selection.count) Objekte endgültig löschen?",
                             isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -289,6 +289,7 @@ struct SpecialCollectionScreen: View {
                     SelectableThumb(asset: asset,
                                     thumbURL: library.client.thumbURL(asset.id, 512),
                                     selection: selection, namespace: zoom) { pick = asset }
+                        .assetAccessibility(asset, selected: selection.active ? selection.contains(asset.id) : nil)
                 }
             }
             .padding(.horizontal, 2)
@@ -325,13 +326,9 @@ struct SpecialCollectionScreen: View {
     }
 
     private var empty: some View {
-        VStack(spacing: 12) {
-            Image(systemName: kind.icon).font(.system(size: 34)).foregroundStyle(.tertiary)
-            Text(kind == .trash ? "Papierkorb ist leer"
-                 : kind == .archive ? "Archiv ist leer" : "Nichts Gesperrtes")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
+        ContentUnavailableView(kind == .trash ? "Papierkorb ist leer"
+                               : kind == .archive ? "Archiv ist leer" : "Keine gesperrten Objekte",
+                               systemImage: kind.icon)
     }
 
     private func load() async {
@@ -376,13 +373,16 @@ struct AlbumCard: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             Text(album.title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             Text("\(album.count)")
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(album.title)
+        .accessibilityValue("\(album.count) Objekte")
     }
 }
 
@@ -404,6 +404,7 @@ struct AlbumScreen: View {
                             .overlay { Thumb(url: library.client.thumbURL(asset.id, 512)).clipped() }
                             .clipped()
                             .onTapGesture { pick = asset }
+                            .assetAccessibility(asset)
                     }
                 }
                 .padding(.horizontal, 2)

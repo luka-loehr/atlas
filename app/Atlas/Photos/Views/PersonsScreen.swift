@@ -22,7 +22,7 @@ struct PersonsScreen: View {
                                 FaceCircle(library: library, person: person)
                                     .frame(width: 96, height: 96)
                                 Text(person.displayName)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.subheadline.weight(.medium))
                                     .foregroundStyle(person.name == nil
                                                      ? .tertiary : .primary)
                                     .lineLimit(1)
@@ -34,20 +34,9 @@ struct PersonsScreen: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
                 if persons.isEmpty && loaded {
-                    VStack(spacing: 10) {
-                        Image(systemName: "person.crop.circle.dashed")
-                            .font(.system(size: 34))
-                            .foregroundStyle(.tertiary)
-                        Text("Noch keine Personen erkannt")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("Die Pipeline gruppiert Gesichter, sobald sie durchgelaufen ist.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 80)
-                    .padding(.horizontal, 40)
+                    ContentUnavailableView("Keine Personen", systemImage: "person.crop.circle",
+                                           description: Text("Personen erscheinen hier, sobald atlas Gesichter erkannt hat."))
+                        .padding(.top, 60)
                 }
             }
             .scrollIndicators(.hidden)
@@ -76,11 +65,14 @@ struct FaceCircle: View {
                 Thumb(url: library.client.faceCropURL(f))
             } else {
                 Image(systemName: "person.fill")
-                    .font(.system(size: 30))
+                    .resizable()
+                    .scaledToFit()
+                    .padding(22)
                     .foregroundStyle(.tertiary)
             }
         }
         .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }
 
@@ -106,10 +98,11 @@ struct PersonDetailScreen: View {
                     FaceCircle(library: library, person: person)
                         .frame(width: 108, height: 108)
                     Text(person.displayName)
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.title.bold())
                         .foregroundStyle(person.name == nil ? .secondary : .primary)
-                    Text("\(assets.count) Fotos")
-                        .font(.system(size: 15))
+                        .multilineTextAlignment(.center)
+                    Text("\(assets.count) Objekte")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -135,6 +128,7 @@ struct PersonDetailScreen: View {
                             .contentShape(Rectangle())
                             .matchedTransitionSource(id: asset.id, in: zoom)
                             .onTapGesture { pick = asset }
+                            .assetAccessibility(asset)
                     }
                 }
                 .padding(.horizontal, 2)
@@ -145,13 +139,11 @@ struct PersonDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
+                Menu("Mehr", systemImage: "ellipsis") {
                     Button {
                         newName = person.name ?? ""
                         renaming = true
                     } label: { Label("Umbenennen", systemImage: "pencil") }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
                 }
             }
         }

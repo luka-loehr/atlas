@@ -14,12 +14,13 @@ struct SelectionToolbar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            button("Teilen",     "square.and.arrow.up", action: onShare)
-            button("Favorit",    "heart",               action: onFavorite)
-            button("Archiv",     "archivebox",          action: onArchive)
-            button("Sperren",    "lock",                action: onLock)
-            button("Papierkorb", "trash", tint: .red,   action: onTrash)
+            button("Teilen",      "square.and.arrow.up", action: onShare)
+            button("Favorit",     "heart",               action: onFavorite)
+            button("Archivieren", "archivebox",          action: onArchive)
+            button("Sperren",     "lock",                action: onLock)
+            button("Löschen",     "trash", tint: .red,   action: onTrash)
         }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
@@ -35,10 +36,10 @@ struct SelectionToolbar: View {
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Image(systemName: icon).font(.system(size: 20))
-                Text(title).font(.system(size: 10, weight: .medium))
+                Image(systemName: icon).font(.title3)
+                Text(title).font(.caption2.weight(.medium)).lineLimit(1)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .foregroundStyle(tint)
             .contentShape(Rectangle())
         }
@@ -95,10 +96,10 @@ private struct GenericSelectionToolbar: View {
             ForEach(actions) { action in
                 Button(action: action.run) {
                     VStack(spacing: 3) {
-                        Image(systemName: action.icon).font(.system(size: 20))
-                        Text(action.title).font(.system(size: 10, weight: .medium))
+                        Image(systemName: action.icon).font(.title3)
+                        Text(action.title).font(.caption2.weight(.medium)).lineLimit(1)
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .foregroundStyle(action.role == .destructive ? Color.red : .primary)
                     .contentShape(Rectangle())
                 }
@@ -108,6 +109,7 @@ private struct GenericSelectionToolbar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .glassEffect(.regular, in: .capsule)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .padding(.horizontal, 18)
         .padding(.bottom, 6)
         .disabled(selection.isEmpty)
@@ -126,5 +128,17 @@ extension View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: selection.active)
+    }
+}
+
+// MARK: - VoiceOver for photo grid cells
+
+extension View {
+    /// One VoiceOver element per grid cell: kind and date, a button trait,
+    /// and — while selecting (`selected` non-nil) — the selected state.
+    func assetAccessibility(_ asset: Asset, selected: Bool? = nil) -> some View {
+        accessibilityElement(children: .ignore)
+            .accessibilityLabel(asset.spokenDescription)
+            .accessibilityAddTraits(selected == true ? [.isButton, .isSelected] : .isButton)
     }
 }

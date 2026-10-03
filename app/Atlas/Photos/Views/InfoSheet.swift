@@ -49,17 +49,12 @@ struct InfoSheet: View {
     private var dateRow: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(longDate(info?.takenAt ?? asset.takenAt))
-                .font(.system(size: 17, weight: .semibold))
+                .font(.headline)
             if let name = info?.origName {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.icloud")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                    Text(name)
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Label(name, systemImage: "doc")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }
@@ -72,11 +67,11 @@ struct InfoSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(info?.camera ?? "Unbekannte Kamera")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                 Spacer()
                 if !ext.isEmpty {
                     Text(ext == "JPG" ? "JPEG" : ext)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
@@ -86,14 +81,14 @@ struct InfoSheet: View {
 
             if let lens = info?.exif?.lens {
                 Text(lens)
-                    .font(.system(size: 14))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 8)
             }
 
             Text(dimensionLine)
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
@@ -104,8 +99,10 @@ struct InfoSheet: View {
                     ForEach(Array(exifCells.enumerated()), id: \.offset) { i, cell in
                         if i > 0 { Divider().frame(height: 16) }
                         Text(cell)
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -164,15 +161,17 @@ struct InfoSheet: View {
                 }
                 .frame(height: 210)
                 .allowsHitTesting(false)
+                .accessibilityHidden(true)
 
                 Button { openInMaps(coord) } label: {
                     HStack {
                         Text(info?.place ?? String(format: "%.4f, %.4f", lat, lon))
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.primary)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                         Spacer()
                     }
                     .padding(14)
@@ -214,7 +213,7 @@ struct InfoSheet: View {
                             .frame(width: 26, height: 26)
                             .clipShape(Circle())
                             Text(f.displayName)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.footnote.weight(.medium))
                                 .foregroundStyle(f.name == nil ? .secondary : .primary)
                                 .lineLimit(1)   // chip stays one line, truncates
                         }
@@ -228,7 +227,7 @@ struct InfoSheet: View {
                 }
                 ForEach(tags, id: \.self) { tag in
                     Text(tag)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.footnote.weight(.medium))
                         .lineLimit(1)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -266,12 +265,13 @@ struct InfoSheet: View {
                             .clipShape(Circle())
                             Text(done ? "Titelbild von \(f.displayName) aktualisiert"
                                       : "Als Titelbild von \(f.displayName) festlegen")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.subheadline.weight(.medium))
                                 .foregroundStyle(done ? .secondary : .primary)
                             Spacer()
                             Image(systemName: done ? "checkmark.circle.fill"
                                                    : "person.crop.circle.badge.checkmark")
-                                .font(.system(size: 18))
+                                .font(.title3)
+                                .accessibilityHidden(true)
                                 .foregroundStyle(done ? AnyShapeStyle(.green)
                                                       : AnyShapeStyle(.secondary))
                         }
