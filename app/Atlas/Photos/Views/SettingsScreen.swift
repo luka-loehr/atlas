@@ -74,6 +74,11 @@ struct SettingsScreen: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task(id: session.config) { await session.probe() }
+        // start the live stream now, so the server screen is filled when it opens
+        .task(id: session.config) {
+            guard let api = session.api else { return }
+            await Machine.shared.keepLive(api)
+        }
         .task { storage = await StorageUse.measure() }
         .onChange(of: originalsGB) {
             Task {
