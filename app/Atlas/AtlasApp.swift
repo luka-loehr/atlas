@@ -99,16 +99,16 @@ struct RootView: View {
         Group {
             if session.isConnected {
                 TabView(selection: $tab) {
-                    Tab("Fotos", systemImage: "photo.on.rectangle.angled", value: "photos") {
+                    Tab("Library", systemImage: "photo.on.rectangle.angled", value: "photos") {
                         PhotosScreen(library: library)
                     }
-                    Tab("Alben", systemImage: "rectangle.stack", value: "albums") {
+                    Tab("Albums", systemImage: "rectangle.stack", value: "albums") {
                         AlbumsScreen(library: library)
                     }
-                    Tab("Dateien", systemImage: "folder", value: "drive") {
+                    Tab("Files", systemImage: "folder", value: "drive") {
                         DriveScreen(library: library)
                     }
-                    Tab("Einstellungen", systemImage: "gearshape", value: "settings") {
+                    Tab("Settings", systemImage: "gearshape", value: "settings") {
                         SettingsTab(library: library)
                     }
                     Tab(value: "search", role: .search) {
@@ -164,7 +164,7 @@ struct RootView: View {
                 do { try await session.handle(url) } catch { linkError = error.localizedDescription }
             }
         }
-        .alert("Verbindung fehlgeschlagen", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
+        .alert("Connection Failed", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(linkError ?? "")
@@ -193,9 +193,9 @@ struct ConnectScreen: View {
                             .imageScale(.large)
                             .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
-                        Text("Mit atlas verbinden")
+                        Text("Connect to atlas")
                             .font(.title2.bold())
-                        Text("Deine Fotos und Dateien liegen auf deinem eigenen Server. Gib seine Adresse und das Zugangstoken ein.")
+                        Text("Your photos and files live on your own server. Enter its address and access token.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -205,7 +205,7 @@ struct ConnectScreen: View {
                     .listRowBackground(Color.clear)
                 }
                 Section {
-                    TextField("Serveradresse", text: $address, prompt: Text("atlas.your-tailnet.ts.net"))
+                    TextField("Server Address", text: $address, prompt: Text("atlas.your-tailnet.ts.net"))
                         .textContentType(.URL)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
@@ -213,7 +213,7 @@ struct ConnectScreen: View {
                         .focused($focus, equals: .address)
                         .submitLabel(.next)
                         .onSubmit { focus = .token }
-                    SecureField("Zugangstoken", text: $token)
+                    SecureField("Access Token", text: $token)
                         .textContentType(.password)
                         .focused($focus, equals: .token)
                         .submitLabel(.go)
@@ -222,7 +222,7 @@ struct ConnectScreen: View {
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
                     } else {
-                        Text("„atlas connect“ auf dem Mac zeigt einen Link, der beides ausfüllt.")
+                        Text("“atlas connect” on the Mac shows a link that fills in both.")
                     }
                 }
                 Section {
@@ -232,7 +232,7 @@ struct ConnectScreen: View {
                         if connecting {
                             ProgressView().frame(maxWidth: .infinity)
                         } else {
-                            Text("Verbinden").frame(maxWidth: .infinity)
+                            Text("Connect").frame(maxWidth: .infinity)
                         }
                     }
                     .disabled(address.isEmpty || token.isEmpty || connecting)

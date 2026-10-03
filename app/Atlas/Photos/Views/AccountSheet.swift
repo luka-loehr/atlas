@@ -12,12 +12,12 @@ struct AccountSheet: View {
             List {
                 if let s = library.stats {
                     Section {
-                        LabeledContent("Fotos", value: (s.total - s.videos).formatted())
+                        LabeledContent("Photos", value: (s.total - s.videos).formatted())
                         LabeledContent("Videos", value: s.videos.formatted())
-                        LabeledContent("Alben", value: s.albums.formatted())
-                        LabeledContent("Größe", value: s.bytes.fileSize)
+                        LabeledContent("Albums", value: s.albums.formatted())
+                        LabeledContent("Size", value: s.bytes.fileSize)
                         if let o = s.oldest, let n = s.newest {
-                            LabeledContent("Zeitraum",
+                            LabeledContent("Time Span",
                                            value: "\(o.formatted(.dateTime.month().year())) – \(n.formatted(.dateTime.month().year()))")
                         }
                     }
@@ -27,21 +27,21 @@ struct AccountSheet: View {
                         .listRowBackground(Color.clear)
                 }
                 if !heat.isEmpty {
-                    Section("Fotos pro Tag") {
+                    Section("Photos per Day") {
                         HeatmapGrid(counts: heat)
                             .frame(height: 64)
                             .padding(.vertical, 6)
                             .accessibilityHidden(true)
-                        LabeledContent("Letzte 12 Monate", value: "\(heat.values.reduce(0, +).formatted()) Fotos")
+                        LabeledContent("Last 12 Months", value: "\(heat.values.reduce(0, +).formatted()) photos")
                         if let top = heatTop, let d = HeatmapGrid.keyFormatter.date(from: top.date) {
-                            LabeledContent("Aktivster Tag",
-                                           value: "\(d.formatted(.dateTime.day().month(.wide).year())) · \(top.n) Fotos")
+                            LabeledContent("Busiest Day",
+                                           value: "\(d.formatted(.dateTime.day().month(.wide).year())) · \(top.n) photos")
                         }
                     }
                     .monospacedDigit()
                 }
             }
-            .navigationTitle("Mediathek")
+            .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -78,8 +78,8 @@ struct HeatmapGrid: View {
         return f
     }()
 
-    private static let monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
-                                     "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+    private static let monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     var body: some View {
         Canvas { ctx, size in

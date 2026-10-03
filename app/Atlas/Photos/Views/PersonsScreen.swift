@@ -34,15 +34,15 @@ struct PersonsScreen: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
                 if persons.isEmpty && loaded {
-                    ContentUnavailableView("Keine Personen", systemImage: "person.crop.circle",
-                                           description: Text("Personen erscheinen hier, sobald atlas Gesichter erkannt hat."))
+                    ContentUnavailableView("No People", systemImage: "person.crop.circle",
+                                           description: Text("People appear here once atlas has recognized faces."))
                         .padding(.top, 60)
                 }
             }
             .scrollIndicators(.hidden)
             .refreshable { await load() }
         }
-        .navigationTitle("Personen")
+        .navigationTitle("People")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
@@ -101,7 +101,7 @@ struct PersonDetailScreen: View {
                         .font(.title.bold())
                         .foregroundStyle(person.name == nil ? .secondary : .primary)
                         .multilineTextAlignment(.center)
-                    Text("\(assets.count) Objekte")
+                    Text("\(assets.count) \(assets.count == 1 ? "Item" : "Items")")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -139,24 +139,24 @@ struct PersonDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu("Mehr", systemImage: "ellipsis") {
+                Menu("More", systemImage: "ellipsis") {
                     Button {
                         newName = person.name ?? ""
                         renaming = true
-                    } label: { Label("Umbenennen", systemImage: "pencil") }
+                    } label: { Label("Rename", systemImage: "pencil") }
                 }
             }
         }
-        .alert("Person benennen", isPresented: $renaming) {
+        .alert("Name This Person", isPresented: $renaming) {
             TextField("Name", text: $newName)
-            Button("Sichern") {
+            Button("Save") {
                 let name = newName.trimmingCharacters(in: .whitespaces)
                 person.name = name.isEmpty ? nil : name
                 Task { try? await library.client.renamePerson(person.id, name: name) }
             }
-            Button("Abbrechen", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Wie heißt diese Person?")
+            Text("What’s this person’s name?")
         }
         .task { assets = (try? await library.client.personAssets(person.id)) ?? [] }
         .fullScreenCover(item: $pick) { a in

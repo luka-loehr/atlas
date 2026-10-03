@@ -14,10 +14,10 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConnected: "Nicht mit einem Server verbunden."
-        case .unauthorized: "Der Server hat das Zugangstoken abgelehnt."
-        case .unreachable: "Der Server ist nicht erreichbar. Im Tailnet? atlas wach?"
-        case .server(let code): "Der Server meldet einen Fehler (\(code))."
+        case .notConnected: "Not connected to a server."
+        case .unauthorized: "The server rejected the access token."
+        case .unreachable: "The server can’t be reached. On the tailnet? Is atlas awake?"
+        case .server(let code): "The server reported an error (\(code))."
         }
     }
 }

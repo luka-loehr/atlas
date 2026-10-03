@@ -67,7 +67,7 @@ an open port. Details: [SETUP.md, security model](SETUP.md#security-model).
 
 ## Language
 
-Docs and the CLI are English; the app's UI is German.
+Docs, the CLI and the app's UI are English.
 
 ## Systemd units
 

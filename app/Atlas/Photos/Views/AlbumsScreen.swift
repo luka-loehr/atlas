@@ -18,7 +18,7 @@ struct AlbumsScreen: View {
                     peopleRow
                     utilities
                     if !userAlbums.isEmpty {
-                        sectionHeader("Meine Alben")
+                        sectionHeader("My Albums")
                         LazyVGrid(columns: cols, spacing: 18) {
                             ForEach(userAlbums) { album in
                                 Button { openAlbum = album } label: {
@@ -29,14 +29,14 @@ struct AlbumsScreen: View {
                         }
                         .padding(16)
                     } else if loaded {
-                        ContentUnavailableView("Keine Alben", systemImage: "rectangle.stack")
+                        ContentUnavailableView("No Albums", systemImage: "rectangle.stack")
                             .padding(.top, 24)
                     }
                 }
                 .scrollIndicators(.hidden)
                 .refreshable { await load() }
             }
-            .navigationTitle("Alben")
+            .navigationTitle("Albums")
             .navigationDestination(item: $openAlbum) { album in
                 AlbumScreen(library: library, album: album)
             }
@@ -58,7 +58,7 @@ struct AlbumsScreen: View {
                 PersonsScreen(library: library)
             } label: {
                 HStack {
-                    sectionHeader("Personen")
+                    sectionHeader("People")
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.subheadline.weight(.semibold))
@@ -106,7 +106,7 @@ struct AlbumsScreen: View {
 
     private var utilities: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("Dienstprogramme")
+            sectionHeader("Utilities")
             VStack(spacing: 0) {
                 utilityRow(.locked)
                 divider
@@ -172,7 +172,7 @@ struct AlbumsScreen: View {
         guard kind == .locked else { openSpecial = kind; return }
         authing = true
         Task {
-            let ok = await Biometric.authenticate(reason: "Gesperrten Ordner entsperren")
+            let ok = await Biometric.authenticate(reason: "Unlock the Locked album")
             authing = false
             if ok { openSpecial = .locked }
         }
@@ -193,9 +193,9 @@ enum SpecialKind: String, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .locked:  return "Gesperrt"
-        case .archive: return "Archiv"
-        case .trash:   return "Papierkorb"
+        case .locked:  return "Locked"
+        case .archive: return "Archive"
+        case .trash:   return "Recently Deleted"
         }
     }
     var icon: String {
@@ -249,20 +249,20 @@ struct SpecialCollectionScreen: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if selection.active {
-                    Button("Fertig") { withAnimation(.snappy) { selection.exit() } }
+                    Button("Done") { withAnimation(.snappy) { selection.exit() } }
                 } else if !assets.isEmpty {
-                    Button("Auswählen") { withAnimation(.snappy) { selection.enter() } }
+                    Button("Select") { withAnimation(.snappy) { selection.enter() } }
                 }
             }
             if kind == .trash && !assets.isEmpty && !selection.active {
                 ToolbarItem(placement: .bottomBar) {
-                    Button("Papierkorb leeren", role: .destructive) { confirmEmpty = true }
-                        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmEmpty, titleVisibility: .visible) {
-                            Button("Endgültig löschen", role: .destructive) {
+                    Button("Delete All", role: .destructive) { confirmEmpty = true }
+                        .confirmationDialog("Delete All Items?", isPresented: $confirmEmpty, titleVisibility: .visible) {
+                            Button("Delete Permanently", role: .destructive) {
                                 act { try await library.client.emptyTrash() }
                             }
                         } message: {
-                            Text("Alle \(assets.count) Objekte werden endgültig gelöscht.")
+                            Text("All \(assets.count) items will be deleted permanently.")
                         }
                 }
             }
@@ -272,13 +272,13 @@ struct SpecialCollectionScreen: View {
             ViewerScreen(library: library, assets: assets, start: a)
                 .navigationTransition(.zoom(sourceID: a.id, in: zoom))
         }
-        .confirmationDialog("\(selection.count) Objekte endgültig löschen?",
+        .confirmationDialog(selection.count == 1 ? "Delete 1 Item Permanently?" : "Delete \(selection.count) Items Permanently?",
                             isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Endgültig löschen", role: .destructive) {
+            Button("Delete Permanently", role: .destructive) {
                 let ids = Array(selection.ids)
                 act(remove: ids) { try await library.client.deletePermanent(ids) }
             }
-            Button("Abbrechen", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -305,20 +305,20 @@ struct SpecialCollectionScreen: View {
         switch kind {
         case .trash:
             return [
-                .init(title: "Wiederherstellen", icon: "arrow.uturn.backward") {
+                .init(title: "Recover", icon: "arrow.uturn.backward") {
                     let x = ids(); act(remove: x) { try await library.client.restore(x) }
                 },
-                .init(title: "Löschen", icon: "trash", role: .destructive) { confirmDelete = true },
+                .init(title: "Delete", icon: "trash", role: .destructive) { confirmDelete = true },
             ]
         case .archive:
             return [
-                .init(title: "Aus Archiv", icon: "tray.and.arrow.up") {
+                .init(title: "Unarchive", icon: "tray.and.arrow.up") {
                     let x = ids(); act(remove: x) { try await library.client.archive(x, false) }
                 },
             ]
         case .locked:
             return [
-                .init(title: "Entsperren", icon: "lock.open") {
+                .init(title: "Unlock", icon: "lock.open") {
                     let x = ids(); act(remove: x) { try await library.client.lock(x, false) }
                 },
             ]
@@ -326,8 +326,8 @@ struct SpecialCollectionScreen: View {
     }
 
     private var empty: some View {
-        ContentUnavailableView(kind == .trash ? "Papierkorb ist leer"
-                               : kind == .archive ? "Archiv ist leer" : "Keine gesperrten Objekte",
+        ContentUnavailableView(kind == .trash ? "No Recently Deleted Items"
+                               : kind == .archive ? "No Archived Items" : "No Locked Items",
                                systemImage: kind.icon)
     }
 
@@ -382,7 +382,7 @@ struct AlbumCard: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(album.title)
-        .accessibilityValue("\(album.count) Objekte")
+        .accessibilityValue("\(album.count) \(album.count == 1 ? "item" : "items")")
     }
 }
 

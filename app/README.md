@@ -1,7 +1,7 @@
 # Atlas — the iOS app
 
 One app for the whole server: the photo library, the drive, and the machine
-itself. SwiftUI, iOS 26, German UI.
+itself. SwiftUI, iOS 26, English UI.
 
 | Tab | |
 |---|---|

@@ -5,7 +5,7 @@ enum Biometric {
     /// success. Used to gate the Locked Folder.
     static func authenticate(reason: String) async -> Bool {
         let ctx = LAContext()
-        ctx.localizedFallbackTitle = "Code eingeben"
+        ctx.localizedFallbackTitle = "Enter Passcode"
         var err: NSError?
         let policy: LAPolicy = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
             ? .deviceOwnerAuthenticationWithBiometrics

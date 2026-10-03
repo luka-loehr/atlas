@@ -14,11 +14,11 @@ struct SelectionToolbar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            button("Teilen",      "square.and.arrow.up", action: onShare)
-            button("Favorit",     "heart",               action: onFavorite)
-            button("Archivieren", "archivebox",          action: onArchive)
-            button("Sperren",     "lock",                action: onLock)
-            button("Löschen",     "trash", tint: .red,   action: onTrash)
+            button("Share",       "square.and.arrow.up", action: onShare)
+            button("Favorite",    "heart",               action: onFavorite)
+            button("Archive",     "archivebox",          action: onArchive)
+            button("Lock",        "lock",                action: onLock)
+            button("Delete",      "trash", tint: .red,   action: onTrash)
         }
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .padding(.horizontal, 10)

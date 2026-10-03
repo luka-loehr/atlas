@@ -36,22 +36,22 @@ struct ActivityScreen: View {
             if let report {
                 Section {
                     Chart(report.days) { day in
-                        BarMark(x: .value("Tag", day.date, unit: .day), y: .value("Stunden", Double(day.min) / 60))
+                        BarMark(x: .value("Day", day.date, unit: .day), y: .value("Hours", Double(day.min) / 60))
                             .foregroundStyle(Color.orange.gradient)
                     }
-                    .chartYAxisLabel("Stunden")
+                    .chartYAxisLabel("Hours")
                     .frame(height: 200)
                     .padding(.vertical, 8)
                 } header: {
-                    Text("Wachzeit")
+                    Text("Awake Time")
                 } footer: {
                     let hours = report.days.reduce(0) { $0 + $1.min } / 60
-                    Text("\(hours) Stunden in den letzten \(report.days.count) Tagen, bei \(report.days.reduce(0) { $0 + $1.boots }) Starts.")
+                    Text("\(hours) hours in the last \(report.days.count) days, across \(report.days.reduce(0) { $0 + $1.boots }) boots.")
                 }
             }
         }
         .overlay { if report == nil { LoadingOrUnavailable(loaded: loaded) } }
-        .navigationTitle("Aktivität")
+        .navigationTitle("Activity")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             report = try? await session.api?.get("system/activity")
@@ -87,14 +87,14 @@ struct NetworkScreen: View {
     var body: some View {
         Form {
             if let report, report.available {
-                Section("Dieser Server") {
+                Section("This Server") {
                     LabeledContent("Name", value: report.`self`.name ?? "")
                     LabeledContent("Tailnet", value: report.tailnet ?? "")
                     LabeledContent("Exit Node") {
-                        Text(report.`self`.offers_exit_node == true ? "Angeboten" : "Aus")
+                        Text(report.`self`.offers_exit_node == true ? "Offered" : "Off")
                     }
                 }
-                Section("Geräte") {
+                Section("Devices") {
                     ForEach(report.peers) { peer in
                         LabeledContent {
                             StateLabel(healthy: peer.online == true, text: peer.online == true ? "Online" : "Offline")
@@ -110,13 +110,13 @@ struct NetworkScreen: View {
         }
         .overlay {
             if let report, !report.available {
-                ContentUnavailableView("Kein Tailnet", systemImage: "network.slash",
-                                       description: Text("Tailscale läuft auf dem Server nicht."))
+                ContentUnavailableView("No Tailnet", systemImage: "network.slash",
+                                       description: Text("Tailscale isn’t running on the server."))
             } else if report == nil {
                 LoadingOrUnavailable(loaded: loaded)
             }
         }
-        .navigationTitle("Netzwerk")
+        .navigationTitle("Network")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             report = try? await session.api?.get("system/network")
@@ -142,7 +142,7 @@ struct LoadingOrUnavailable: View {
 /// The server could not be reached.
 struct ServerUnavailableView: View {
     var body: some View {
-        ContentUnavailableView("atlas nicht erreichbar", systemImage: "moon.zzz.fill",
-                               description: Text("Prüfe, ob atlas läuft und das iPhone im Tailnet ist."))
+        ContentUnavailableView("atlas Unreachable", systemImage: "moon.zzz.fill",
+                               description: Text("Check that atlas is running and this iPhone is on the tailnet."))
     }
 }

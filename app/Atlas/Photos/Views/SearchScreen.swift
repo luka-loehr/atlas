@@ -40,12 +40,12 @@ struct SearchScreen: View {
                     .scrollIndicators(.hidden)
                 }
             }
-            .navigationTitle("Suche")
+            .navigationTitle("Search")
             .navigationDestination(for: Person.self) { p in
                 PersonDetailScreen(library: library, person: p)
             }
         }
-        .searchable(text: $query, prompt: "Person, Ort, Hund, 2019 …")
+        .searchable(text: $query, prompt: "Person, place, dog, 2019…")
         .onChange(of: query) { _, q in
             Task { await run(q) }
         }
@@ -67,7 +67,7 @@ struct SearchScreen: View {
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                            Text("\(p.photos) Objekte")
+                            Text("\(p.photos) \(p.photos == 1 ? "Item" : "Items")")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -96,7 +96,7 @@ struct SearchScreen: View {
     }
 
     private var hint: some View {
-        ContentUnavailableView("Fotos durchsuchen", systemImage: "magnifyingglass",
-                               description: Text("Personen, Orte, Dinge oder ein Jahr"))
+        ContentUnavailableView("Search Photos", systemImage: "magnifyingglass",
+                               description: Text("People, places, things or a year"))
     }
 }

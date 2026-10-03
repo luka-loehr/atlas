@@ -494,7 +494,7 @@ final class BackupService: NSObject {
                     confirmed.formUnion(try await client.exists(hashes: Array(batch)))
                 }
             } catch {
-                lastError = "atlas nicht erreichbar"
+                lastError = "atlas unreachable"
                 return
             }
             let ids = byHash.filter { confirmed.contains($0.key) }.flatMap(\.value)
@@ -633,17 +633,17 @@ extension BackupService: URLSessionTaskDelegate {
 extension BackupService {
     /// One line for Einstellungen.
     var statusText: String {
-        if cleaning { return "Prüfe …" }
+        if cleaning { return "Checking…" }
         switch phase {
-        case .noAccess: return "Kein Fotozugriff"
-        case .offline: return "atlas nicht erreichbar"
+        case .noAccess: return "No Photo Access"
+        case .offline: return "atlas Unreachable"
         case .failed(let m): return m
-        case .scanning(let done, let total): return "Prüfe \(done.formatted()) / \(total.formatted())"
+        case .scanning(let done, let total): return "Checking \(done.formatted()) / \(total.formatted())"
         case .idle:
             if !scanned { return "…" }
-            if pending == 0 { return failed > 0 ? "\(failed) fehlgeschlagen" : "Alles gesichert" }
+            if pending == 0 { return failed > 0 ? "\(failed) Failed" : "All Backed Up" }
             let bytes = pendingBytes > 0 ? " · " + ByteCountFormatter.string(fromByteCount: pendingBytes, countStyle: .file) : ""
-            return "\(pending.formatted()) offen" + bytes
+            return "\(pending.formatted()) Pending" + bytes
         }
     }
 }

@@ -7,7 +7,7 @@ struct Person: Codable, Sendable, Identifiable, Hashable {
     let coverFace: Int64?
     let photos: Int
 
-    var displayName: String { name ?? "Unbenannt" }
+    var displayName: String { name ?? "Unnamed" }
 
     enum CodingKeys: String, CodingKey {
         case id, name, photos
@@ -22,7 +22,7 @@ struct AssetFace: Codable, Sendable, Identifiable, Hashable {
     let name: String?
 
     var id: Int64 { face }
-    var displayName: String { name ?? "Unbenannt" }
+    var displayName: String { name ?? "Unnamed" }
 
     enum CodingKeys: String, CodingKey {
         case face, name

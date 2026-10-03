@@ -154,12 +154,12 @@ final class Library {
     }
 
     nonisolated private static func monthLabel(_ key: String) -> (Int, String) {
-        if key == undatedID { return (0, "Ohne Datum") }
+        if key == undatedID { return (0, "No Date") }
         let p = key.split(separator: "-")
         let y = Int(p.first ?? "0") ?? 0
         let m = p.count > 1 ? (Int(p[1]) ?? 1) : 1
-        let names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
-                     "August", "September", "Oktober", "November", "Dezember"]
+        let names = ["January", "February", "March", "April", "May", "June", "July",
+                     "August", "September", "October", "November", "December"]
         return (y, "\(names[max(0, min(m - 1, 11))]) \(y)")
     }
 
@@ -278,15 +278,15 @@ extension Date {
     /// DaySection.title). Uses shared cached formatters.
     func sectionTitle() -> String {
         let cal = Calendar.current
-        if cal.isDateInToday(self) { return "Heute" }
-        if cal.isDateInYesterday(self) { return "Gestern" }
+        if cal.isDateInToday(self) { return "Today" }
+        if cal.isDateInYesterday(self) { return "Yesterday" }
         return (cal.isDate(self, equalTo: Date(), toGranularity: .year)
                 ? Date.titleThisYearShared : Date.titleOtherYearShared).string(from: self)
     }
     fileprivate static let titleThisYearShared: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "EEEE, d. MMMM"; return f
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "EEEE, d MMMM"; return f
     }()
     fileprivate static let titleOtherYearShared: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d. MMMM yyyy"; return f
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMMM yyyy"; return f
     }()
 }

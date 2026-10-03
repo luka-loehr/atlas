@@ -267,8 +267,8 @@ final class ThumbFill {
 
     private static func pauseReason() -> String? {
         let info = ProcessInfo.processInfo
-        if info.isLowPowerModeEnabled { return "Stromsparmodus" }
-        if info.thermalState == .serious || info.thermalState == .critical { return "iPhone zu warm" }
+        if info.isLowPowerModeEnabled { return "Low Power Mode" }
+        if info.thermalState == .serious || info.thermalState == .critical { return "iPhone Too Warm" }
         return nil
     }
 
@@ -277,15 +277,15 @@ final class ThumbFill {
         guard let e = error as? URLError else { return nil }
         if let reason = e.networkUnavailableReason {
             switch reason {
-            case .cellular, .expensive: return "Wartet auf WLAN"
-            case .constrained: return "Datensparmodus"
-            default: return "Kein Netz"
+            case .cellular, .expensive: return "Waiting for Wi-Fi"
+            case .constrained: return "Low Data Mode"
+            default: return "No Network"
             }
         }
         switch e.code {
         case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
              .cannotFindHost, .timedOut, .dnsLookupFailed:
-            return "atlas nicht erreichbar"
+            return "atlas Unreachable"
         default:
             return nil
         }
