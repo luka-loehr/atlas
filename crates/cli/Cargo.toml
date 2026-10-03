@@ -1,0 +1,11 @@
+[package]
+name = "atlas-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Control the atlas homelab server: connect, boot, shutdown, restart"
+
+[[bin]]
+name = "atlas"
+path = "src/main.rs"

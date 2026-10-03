@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/server", "crates/ml", "crates/cli"]
+# `cargo build` on the Mac builds the server and the CLI; atlas-ml links
+# llama.cpp with CUDA and is built on the server (`cargo build -p atlas-ml`).
+default-members = ["crates/server", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/luka-loehr/atlas"
+
+[workspace.dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+deadpool-postgres = "0.14"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff"] }
+pgvector = { version = "0.4", features = ["postgres"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
+
+# Decoders and resamplers are the hot path of every thumbnail job; an
+# unoptimized `image`/`fast_image_resize` makes debug runs unusably slow.
+[profile.dev.package."*"]
+opt-level = 2

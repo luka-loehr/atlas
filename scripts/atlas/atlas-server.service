@@ -1,0 +1,22 @@
+[Unit]
+Description=Atlas server (photos, drive and system API, ingest workers)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# install.sh substitutes the installing user. The sentinel is never a valid
+# account on purpose: a hand-copied unit fails with "Unknown user" instead of
+# pointing at a plausible-but-absent one. That account needs the `docker`
+# group for the container overview and passwordless sudo for
+# `systemctl poweroff|reboot` if the power buttons should work.
+User=SET-BY-INSTALLER
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+# ATLAS_TOKEN and the database password live here, not in the unit.
+EnvironmentFile=/etc/atlas/atlas.env
+ExecStart=/usr/local/bin/atlas-server
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
