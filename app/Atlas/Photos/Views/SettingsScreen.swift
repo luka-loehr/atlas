@@ -6,16 +6,14 @@ struct SettingsScreen: View {
     var library: Library
 
     @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
     @AppStorage(OriginalCache.limitKey) private var originalsGB = OriginalCache.defaultGB
 
     @State private var showTerminal = false
-    @State private var confirmDisconnect = false
-    @State private var cacheBytes: Int64 = 0
     @State private var confirmCleanup = false
-    @State private var confirmTrash = false
+    @State private var storage = StorageUse()
 
     private var backup: BackupService { .shared }
-    private var thumbs: ThumbFill { .shared }
 
     var body: some View {
         NavigationStack {
@@ -31,74 +29,59 @@ struct SettingsScreen: View {
                             Text(statusText).foregroundStyle(.secondary)
                         }
                     }
-                    NavigationLink { ActivityScreen() } label: { row("Activity", "chart.bar.fill", .orange) }
-                    NavigationLink { NetworkScreen() } label: { row("Network", "network", .blue) }
                     Button { showTerminal = true } label: { row("Terminal", "terminal.fill", .gray) }
                 }
                 Section("Backup") {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
-                    Button { confirmCleanup = true } label: { row("Remove Backed-Up Items from iPhone", "iphone.slash", .red) }
+                    Button { confirmCleanup = true } label: { row("Free Up iPhone Storage", "iphone", .blue) }
                         .disabled(backup.cleaning)
-                }
-                Section("Storage") {
-                    valueRow("Thumbnails", thumbText, "square.grid.3x3.fill", .indigo)
-                    Picker(selection: $originalsGB) {
-                        ForEach(OriginalCache.choices, id: \.self) { gb in
-                            Text(gb == 0 ? "Off" : "\(gb) GB").tag(gb)
+                        .confirmationDialog("Remove Backed-Up Photos from This iPhone?", isPresented: $confirmCleanup,
+                                            titleVisibility: .visible) {
+                            Button("Remove", role: .destructive) { backup.deleteBackedUpFromDevice() }
                         }
-                    } label: {
-                        row("Keep Originals", "photo.stack.fill", .teal)
-                    }
-                    Button {
-                        Task {
-                            await Task.detached(priority: .userInitiated) {
-                                OriginalCache.shared.clear()
-                                URLCache.shared.removeAllCachedResponses()
-                            }.value
-                            await refreshCacheSize()
-                        }
-                    } label: {
-                        valueRow("Clear Cache", fmtBytes(cacheBytes), "trash", .gray)
-                    }
                 }
                 Section {
-                    Button { confirmTrash = true } label: { row("Empty Recently Deleted", "trash.slash", .red) }
-                }
-                Section {
-                    LabeledContent("Version", value: appVersion)
-                    Button("Disconnect", role: .destructive) { confirmDisconnect = true }
+                    StorageBar(use: storage)
+                } header: {
+                    HStack {
+                        Text("iPhone Storage")
+                        Spacer()
+                        Menu {
+                            Picker("Keep Originals", selection: $originalsGB) {
+                                ForEach(OriginalCache.choices, id: \.self) { gb in
+                                    Text(gb == 0 ? "Off" : "\(gb) GB").tag(gb)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Text(originalsGB == 0 ? "Originals Off" : "Originals up to \(originalsGB) GB")
+                                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
+                            }
+                            .font(.footnote)
+                            .textCase(nil)
+                        }
+                    }
                 }
             }
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done", systemImage: "xmark") { dismiss() }
+                }
+            }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .task(id: session.config) { await session.probe() }
-        // file sizes are read off the main thread, so the tab appears at once
-        .task { await refreshCacheSize() }
+        .task { storage = await StorageUse.measure() }
         .onChange(of: originalsGB) {
             Task {
                 await Task.detached(priority: .utility) { OriginalCache.shared.trim() }.value
-                await refreshCacheSize()
+                storage = await StorageUse.measure()
             }
         }
         .fullScreenCover(isPresented: $showTerminal) { TerminalScreen() }
-        .confirmationDialog("Disconnect from Server?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-            Button("Disconnect", role: .destructive) { session.disconnect() }
-        }
-        .confirmationDialog("Remove Backed-Up Photos from This iPhone?", isPresented: $confirmCleanup, titleVisibility: .visible) {
-            Button("Remove", role: .destructive) { backup.deleteBackedUpFromDevice() }
-        }
-        .confirmationDialog("Empty Recently Deleted?", isPresented: $confirmTrash, titleVisibility: .visible) {
-            Button("Delete Permanently", role: .destructive) {
-                Task { try? await library.client.emptyTrash(); await library.loadStats() }
-            }
-        }
-    }
-
-    private var thumbText: String {
-        guard thumbs.total > 0 else { return "…" }
-        if thumbs.complete { return thumbs.total.formatted() }
-        let count = "\(thumbs.stored.formatted()) / \(thumbs.total.formatted())"
-        return thumbs.paused.map { "\(count) · \($0)" } ?? count
     }
 
     private var connected: Bool { session.reachability == .online || (session.reachability == .unknown && library.online) }
@@ -144,22 +127,84 @@ struct SettingsScreen: View {
         }
     }
 
-    // MARK: - Actions & helpers
+}
 
-    private func refreshCacheSize() async {
-        cacheBytes = await Task.detached(priority: .utility) {
-            OriginalCache.shared.usage + Int64(URLCache.shared.currentDiskUsage)
+/// What Atlas keeps on this iPhone, next to the rest of the device.
+struct StorageUse {
+    var originals: Int64 = 0
+    var thumbnails: Int64 = 0
+    var capacity: Int64 = 0
+    var free: Int64 = 0
+
+    var other: Int64 { max(capacity - free - originals - thumbnails, 0) }
+    var used: Int64 { max(capacity - free, 0) }
+
+    /// Read off the main thread: walking the caches touches the disk.
+    static func measure() async -> StorageUse {
+        await Task.detached(priority: .utility) {
+            var u = StorageUse()
+            u.originals = OriginalCache.shared.usage
+            u.thumbnails = ThumbStore.shared.stats.bytes + Int64(URLCache.shared.currentDiskUsage)
+            let home = URL(fileURLWithPath: NSHomeDirectory())
+            if let v = try? home.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]) {
+                u.capacity = Int64(v.volumeTotalCapacity ?? 0)
+                u.free = v.volumeAvailableCapacityForImportantUsage ?? 0
+            }
+            return u
         }.value
     }
+}
 
-    private func fmtBytes(_ b: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: b, countStyle: .file)
+/// One row like Settings › General › iPhone Storage: a horizontal bar of the
+/// whole device with Atlas' share coloured in, and a legend under it.
+struct StorageBar: View {
+    var use: StorageUse
+
+    private func gb(_ b: Int64) -> String { ByteCountFormatter.string(fromByteCount: b, countStyle: .file) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("iPhone").font(.headline)
+                Spacer()
+                if use.capacity > 0 {
+                    Text("\(gb(use.used)) of \(gb(use.capacity)) used")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            GeometryReader { geo in
+                let total = CGFloat(max(use.capacity, 1))
+                let w = { (b: Int64) in max(geo.size.width * CGFloat(b) / total, b > 0 ? 3 : 0) }
+                HStack(spacing: 1.5) {
+                    Rectangle().fill(.teal).frame(width: w(use.originals))
+                    Rectangle().fill(.indigo).frame(width: w(use.thumbnails))
+                    Rectangle().fill(Color(.systemGray3)).frame(width: w(use.other))
+                    Spacer(minLength: 0)
+                }
+                .frame(width: geo.size.width, alignment: .leading)
+                .background(Color(.systemGray5))
+                .clipShape(.rect(cornerRadius: 4))
+            }
+            .frame(height: 20)
+            .accessibilityHidden(true)
+            HStack(spacing: 16) {
+                legend(.teal, "Originals", use.originals)
+                legend(.indigo, "Thumbnails", use.thumbnails)
+                legend(Color(.systemGray3), "Other", use.other)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary
-        let v = info?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let b = info?["CFBundleVersion"] as? String ?? "1"
-        return "\(v) (\(b))"
+    private func legend(_ color: Color, _ title: String, _ bytes: Int64) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).font(.caption)
+                Text(gb(bytes)).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
     }
 }

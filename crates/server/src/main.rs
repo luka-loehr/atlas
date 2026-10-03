@@ -149,6 +149,25 @@ async fn serve(pool: Pool) -> Result<()> {
 
     jobs::worker::spawn(app.clone());
 
+    // the trash keeps things for 30 days, then they go for good
+    let trash_app = app.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            tick.tick().await;
+            match photos::assets::purge_expired(&trash_app).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("trash: removed {n} photos older than {} days", photos::assets::TRASH_DAYS),
+                Err(e) => tracing::warn!("trash: photo purge failed: {}", e.message()),
+            }
+            match drive::purge_expired(&trash_app).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("trash: removed {n} files older than {} days", photos::assets::TRASH_DAYS),
+                Err(e) => tracing::warn!("trash: file purge failed: {}", e.message()),
+            }
+        }
+    });
+
     let router = Router::new()
         .nest("/v1", photos::routes().merge(drive::routes()).merge(system::routes()))
         .layer(middleware::from_fn_with_state(app.clone(), auth::require_token))

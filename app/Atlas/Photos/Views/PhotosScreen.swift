@@ -3,7 +3,7 @@ import UIKit
 
 struct PhotosScreen: View {
     var library: Library
-    @State private var showAccount = false
+    @State private var showSettings = false
     @State private var selection = Selection()
     @State private var shareBundle: ShareBundle?
     @State private var confirmDelete = false
@@ -92,7 +92,7 @@ struct PhotosScreen: View {
                     }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Library", systemImage: "person.crop.circle") { showAccount = true }
+                        Button("Settings", systemImage: "gearshape") { showSettings = true }
                     }
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     ToolbarItem(placement: .topBarTrailing) {
@@ -102,8 +102,8 @@ struct PhotosScreen: View {
             }
             .toolbar(selection.active ? .hidden : .visible, for: .tabBar)
         }
-        .sheet(isPresented: $showAccount) {
-            AccountSheet(library: library)
+        .sheet(isPresented: $showSettings) {
+            SettingsScreen(library: library)
         }
         .sheet(item: $shareBundle) { bundle in
             ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])

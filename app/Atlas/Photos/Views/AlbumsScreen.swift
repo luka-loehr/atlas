@@ -245,6 +245,8 @@ struct SpecialCollectionScreen: View {
             }
         }
         .navigationTitle(kind.title)
+        // the server removes trashed items for good after 30 days
+        .navigationSubtitle(kind == .trash ? "Deleted permanently after 30 days" : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

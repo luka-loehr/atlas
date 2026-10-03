@@ -361,6 +361,25 @@ pub async fn empty_trash(State(app): State<AppState>) -> ApiResult<Json<Value>> 
     Ok(Json(json!({ "deleted": purge(&app, &ids).await? })))
 }
 
+/// How long trashed photos and files are kept before they are removed for good.
+pub const TRASH_DAYS: i32 = 30;
+
+/// Remove photos that have been in the trash for longer than [`TRASH_DAYS`].
+pub async fn purge_expired(app: &App) -> ApiResult<u64> {
+    let ids: Vec<String> = {
+        let c = app.pool.get().await?;
+        c.query(
+            "SELECT id FROM assets WHERE trashed_at < now() - make_interval(days => $1)",
+            &[&TRASH_DAYS],
+        )
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect()
+    };
+    purge(app, &ids).await
+}
+
 /// Permanent: rows, the original, every derived file. Child rows that carry
 /// no foreign key (edges, embeddings, queue rows) are removed by hand: ids
 /// are content hashes, so anything left behind would silently re-attach to

@@ -27,7 +27,6 @@
 		7D15F5D90011B56EF66C9289 /* PhotoPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FA8269271E3646DC19B40A /* PhotoPager.swift */; };
 		887272BDEBD0A4DB1BA70464 /* ThumbLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC2208FE202EAF647141675 /* ThumbLoader.swift */; };
 		8D28FE030C7EE76B688E65BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA986E23356244005C7DA505 /* Assets.xcassets */; };
-		9056D26ACB4A611D8DC70C34 /* AccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425AE1915BB877FFD7760A66 /* AccountSheet.swift */; };
 		956595182AE767C0B23605C4 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1546EC722323AA2800B2C62F /* Selection.swift */; };
 		97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FBC23EEED736F63F0D8977 /* AssetInfo.swift */; };
 		97F64F47C99747F2D425C52B /* AtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B039968FC134F8A1AC6E2337 /* AtlasApp.swift */; };
@@ -57,7 +56,6 @@
 		30FB6134370D5412613CF36A /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		3D93E723FFD82EECF024E551 /* OriginalCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalCache.swift; sourceTree = "<group>"; };
 		413A56C9FFE04C7BBD65B964 /* Atlas.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Atlas.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		425AE1915BB877FFD7760A66 /* AccountSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSheet.swift; sourceTree = "<group>"; };
 		4D37F62453CBAD3DFE4B4C67 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 		59CB52B2A1E760675C0C27C4 /* ServerStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStatus.swift; sourceTree = "<group>"; };
 		5C518BAA9658596DE7CE9117 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
@@ -159,7 +157,6 @@
 		C6C626DC069F7F42BFA5A48F /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				425AE1915BB877FFD7760A66 /* AccountSheet.swift */,
 				E55F3DEAE678AA67B76984DF /* AlbumsScreen.swift */,
 				A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */,
 				E3856AB17EC39E376E1CC478 /* InfoSheet.swift */,
@@ -273,7 +270,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B85029BAEE1B9F142B41B626 /* API.swift in Sources */,
-				9056D26ACB4A611D8DC70C34 /* AccountSheet.swift in Sources */,
 				D05E91FA9E76123AE8FF0350 /* AlbumsScreen.swift in Sources */,
 				97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */,
 				97F64F47C99747F2D425C52B /* AtlasApp.swift in Sources */,
