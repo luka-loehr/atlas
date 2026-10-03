@@ -100,6 +100,13 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         collectionView.showsVerticalScrollIndicator = false
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.alwaysBounceVertical = true
+        // iOS scrolls the "top" into view when the selected tab is tapped
+        // again (and on a status-bar tap). The top of this grid is the oldest
+        // photo, so that jumped to the undated pictures; Photos goes to the
+        // newest instead, which `scrollToNewest` does
+        collectionView.scrollsToTop = false
+        NotificationCenter.default.addObserver(self, selector: #selector(scrollToNewest),
+                                               name: .atlasScrollToNewest, object: nil)
         collectionView.contentInsetAdjustmentBehavior = .always
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: PhotoCell.reuseID)
         collectionView.dataSource = self
@@ -270,6 +277,15 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         coordinator.animate(alongsideTransition: { _ in
             if self.pinnedToBottom { self.scrollToBottom() } else if let anchor { self.scroll(toItem: anchor) }
         })
+    }
+
+    @objc private func scrollToNewest() {
+        guard isViewLoaded, !assets.isEmpty else { return }
+        collectionView.layoutIfNeeded()
+        let inset = collectionView.adjustedContentInset
+        let y = max(layout.collectionViewContentSize.height + inset.bottom - collectionView.bounds.height, -inset.top)
+        collectionView.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+        pinnedToBottom = true
     }
 
     private func scrollToBottom() {
@@ -776,4 +792,9 @@ final class PhotoCell: UICollectionViewCell {
             }
         }
     }()
+}
+
+extension Notification.Name {
+    /// Re-tap on the Library tab: show the newest photos.
+    static let atlasScrollToNewest = Notification.Name("atlas.scrollToNewest")
 }

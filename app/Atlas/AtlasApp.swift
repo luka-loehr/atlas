@@ -98,7 +98,13 @@ struct RootView: View {
     var body: some View {
         Group {
             if session.isConnected {
-                TabView(selection: $tab) {
+                // a tap on the Library tab while it is open goes to the newest photos
+                TabView(selection: Binding(get: { tab }, set: { new in
+                    if new == "photos", tab == "photos" {
+                        NotificationCenter.default.post(name: .atlasScrollToNewest, object: nil)
+                    }
+                    tab = new
+                })) {
                     Tab("Library", systemImage: "photo.on.rectangle.angled", value: "photos") {
                         PhotosScreen(library: library)
                     }
