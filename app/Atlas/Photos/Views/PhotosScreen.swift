@@ -105,6 +105,10 @@ struct PhotosScreen: View {
         .sheet(isPresented: $showSettings) {
             SettingsScreen(library: library)
         }
+        #if targetEnvironment(simulator)
+        // ATLAS_SETTINGS=1 opens a simulator with the settings sheet up
+        .task { if ProcessInfo.processInfo.environment["ATLAS_SETTINGS"] != nil { showSettings = true } }
+        #endif
         .sheet(item: $shareBundle) { bundle in
             ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])
         }

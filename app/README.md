@@ -8,7 +8,7 @@ itself. SwiftUI, iOS 26, English UI.
 | **Fotos** | the timeline as one grid, newest at the bottom, with pinch zoom, a month scrubber, the system context menu, multi-select and the full-screen viewer (zoom, swipe, video, info sheet with map, people and EXIF) |
 | **Alben** | your albums, people, and the utility folders: locked (Face ID), archive, trash |
 | **Dateien** | the drive: folders, upload, previews, move, rename, trash |
-| **Einstellungen** | backup status, what the phone keeps (thumbnails, cache), and the server: live status, services, containers, activity, network, power, a terminal (Face ID) |
+| **Einstellungen** | backup status, what Atlas keeps on the phone (by kind), and the server: live status, services, containers, activity, network, power, a terminal (Face ID) |
 | **Suche** | from Dateien it searches files; from every other tab people, places and albums by name, everything else by what is in the picture |
 
 ## Build
@@ -57,7 +57,7 @@ keychain.
     slowest, originals fastest), keeps photos of the last two months
     longest, never touches what is playing or was on screen in the last
     minute, and shrinks below the budget when the device runs short of
-    space. Nothing to configure; Settings only shows the sizes.
+    space. Nothing to configure; Settings shows what Atlas stores, by kind.
   - *Downloads* (`MediaFetch`): one queue, visible > near > background,
     one shared job per file, cancelled when nobody wants it any more.
     Background work never uses cellular and waits while the user scrolls
