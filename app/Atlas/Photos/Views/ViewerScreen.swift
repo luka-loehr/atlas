@@ -70,12 +70,15 @@ struct ViewerScreen: View {
         .onAppear {
             pages = assets
             index = assets.firstIndex(of: start) ?? 0
+            ViewerNow.show(pages[safe: index]?.id)
             prefetchNeighbors(of: index)
         }
         .onChange(of: index) { _, new in
             prefetchNeighbors(of: new)
+            ViewerNow.show(pages[safe: new]?.id)
             if let a = pages[safe: new] { onPage?(a) }
         }
+        .onDisappear { ViewerNow.show(nil) }
         .sheet(item: $infoAsset) { a in
             InfoSheet(library: library, asset: a)
                 .presentationDetents([.medium, .large])
@@ -440,7 +443,7 @@ private struct ViewerPage: View {
 
     var body: some View {
         if asset.isVideo {
-            VideoPlayer(url: library.client.streamURL(asset.id),
+            VideoPlayer(id: asset.id, url: library.client.streamURL(asset.id),
                             poster: library.client.thumbURL(asset.id, 512),
                             chrome: chrome, bottomInset: bottomInset, onTap: onTap)
         } else {
@@ -579,7 +582,22 @@ private struct ZoomableScrollView: UIViewRepresentable {
 /// viewer chrome exactly like on photos; play/pause + scrubber are our own
 /// Liquid-Glass controls and appear/disappear WITH the chrome (so share/trash,
 /// the filmstrip and the video controls always hide together).
+/// Which photo the viewer shows. The pager keeps its neighbours alive (and
+/// builds the next one while a swipe is still under way), so a video only
+/// plays while it is the one on screen.
+@MainActor
+enum ViewerNow {
+    private(set) static var id: String?
+    static let changed = Notification.Name("atlas.viewerNow")
+    static func show(_ id: String?) {
+        guard id != self.id else { return }
+        self.id = id
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+}
+
 private struct VideoPlayer: View {
+    let id: String
     let url: URL?
     var poster: URL?
     var chrome: Bool
@@ -624,6 +642,16 @@ private struct VideoPlayer: View {
             }
         }
         .task { await setup() }
+        .onReceive(NotificationCenter.default.publisher(for: ViewerNow.changed)) { _ in
+            guard let player else { return }
+            if ViewerNow.id == id {
+                // swiped back to it: carry on like Photos does
+                if !playing, duration <= 0 || current < duration - 0.05 { player.play(); playing = true }
+            } else if playing {
+                player.pause()
+                playing = false
+            }
+        }
         .onDisappear { teardown() }
     }
 
@@ -716,8 +744,11 @@ private struct VideoPlayer: View {
         let p = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: url, options: AtlasAuth.avAssetOptions)))
         p.isMuted = false
         player = p
-        p.play()
-        playing = true
+        // a page built ahead of a swipe waits until it is on screen
+        if ViewerNow.id == id {
+            p.play()
+            playing = true
+        }
 
         timeObs = p.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
                                             queue: .main) { [weak p] t in
