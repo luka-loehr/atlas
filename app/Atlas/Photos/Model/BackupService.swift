@@ -354,10 +354,10 @@ final class BackupService: NSObject {
             state.hashes[item.id] = .init(h: hash, m: item.modified)
             let isVideo = asset.mediaType == .video
             if let url = client.thumbURL(hash, 512), let img = await Self.localThumb(asset, side: 512) {
-                ThumbLoader.shared.seed(url, image: img)
+                MediaCache.shared.seed(url, image: img)
             }
             if let url = client.thumbURL(hash, 2048), let img = await Self.localThumb(asset, side: 1024) {
-                ThumbLoader.shared.seed(url, image: img)
+                MediaCache.shared.seed(url, image: img)
             }
             library?.insertLocally(Asset(id: hash, type: isVideo ? "video" : "photo", takenAt: asset.creationDate,
                                          width: asset.pixelWidth, height: asset.pixelHeight,
@@ -452,12 +452,12 @@ final class BackupService: NSObject {
             queue.removeAll { $0.hash == ticket.hash }
             pending = queue.count
             saveState()
-            // recently taken: the original stays on the phone (original cache)
+            // recently taken: the original stays on the phone (media cache)
             let recent = ticket.created.map { Date().timeIntervalSince1970 - $0 < 30 * 86400 } ?? false
             let ext = (ticket.file as NSString).pathExtension
             let hash = ticket.hash
             Task.detached(priority: .utility) {
-                if !(recent && OriginalCache.shared.adopt(file, id: hash, kind: .original, ext: ext) != nil) {
+                if !(recent && MediaStore.shared.adopt(file, .init(.original, hash), ext: ext) != nil) {
                     try? FileManager.default.removeItem(at: file)
                 }
             }

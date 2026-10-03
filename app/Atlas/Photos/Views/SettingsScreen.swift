@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// Settings screen: the server and its status, the backup's state, what the
-/// phone keeps (thumbnails, originals), trash and about.
+/// Settings screen: the server and its status, the backup's state, and what
+/// the phone keeps (the media cache manages itself; there is nothing to set).
 struct SettingsScreen: View {
     var library: Library
 
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(OriginalCache.limitKey) private var originalsGB = OriginalCache.defaultGB
 
     @State private var showTerminal = false
     @State private var confirmCleanup = false
@@ -40,27 +39,8 @@ struct SettingsScreen: View {
                             Button("Remove", role: .destructive) { backup.deleteBackedUpFromDevice() }
                         }
                 }
-                Section {
+                Section("iPhone Storage") {
                     StorageBar(use: storage)
-                } header: {
-                    HStack {
-                        Text("iPhone Storage")
-                        Spacer()
-                        Menu {
-                            Picker("Keep Originals", selection: $originalsGB) {
-                                ForEach(OriginalCache.choices, id: \.self) { gb in
-                                    Text(gb == 0 ? "Off" : "\(gb) GB").tag(gb)
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 3) {
-                                Text(originalsGB == 0 ? "Originals Off" : "Originals up to \(originalsGB) GB")
-                                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
-                            }
-                            .font(.footnote)
-                            .textCase(nil)
-                        }
-                    }
                 }
             }
             .navigationTitle("Settings")
@@ -80,12 +60,6 @@ struct SettingsScreen: View {
             await Machine.shared.keepLive(api)
         }
         .task { storage = await StorageUse.measure() }
-        .onChange(of: originalsGB) {
-            Task {
-                await Task.detached(priority: .utility) { OriginalCache.shared.trim() }.value
-                storage = await StorageUse.measure()
-            }
-        }
         .fullScreenCover(isPresented: $showTerminal) { TerminalScreen() }
     }
 
@@ -136,20 +110,23 @@ struct SettingsScreen: View {
 
 /// What Atlas keeps on this iPhone, next to the rest of the device.
 struct StorageUse {
-    var originals: Int64 = 0
+    /// Every grid thumbnail of the library (kept for good).
     var thumbnails: Int64 = 0
+    /// Previews, originals, videos and faces (up to 15 GB, self-trimming).
+    var cache: Int64 = 0
     var capacity: Int64 = 0
     var free: Int64 = 0
 
-    var other: Int64 { max(capacity - free - originals - thumbnails, 0) }
+    var other: Int64 { max(capacity - free - cache - thumbnails, 0) }
     var used: Int64 { max(capacity - free, 0) }
 
     /// Read off the main thread: walking the caches touches the disk.
     static func measure() async -> StorageUse {
         await Task.detached(priority: .utility) {
             var u = StorageUse()
-            u.originals = OriginalCache.shared.usage
-            u.thumbnails = ThumbStore.shared.stats.bytes + Int64(URLCache.shared.currentDiskUsage)
+            await MediaStore.shared.loadThumbIndex()
+            u.thumbnails = MediaStore.shared.thumbStats.bytes
+            u.cache = MediaStore.shared.cacheBytes
             let home = URL(fileURLWithPath: NSHomeDirectory())
             if let v = try? home.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]) {
                 u.capacity = Int64(v.volumeTotalCapacity ?? 0)
@@ -182,8 +159,8 @@ struct StorageBar: View {
                 let total = CGFloat(max(use.capacity, 1))
                 let w = { (b: Int64) in max(geo.size.width * CGFloat(b) / total, b > 0 ? 3 : 0) }
                 HStack(spacing: 1.5) {
-                    Rectangle().fill(.teal).frame(width: w(use.originals))
                     Rectangle().fill(.indigo).frame(width: w(use.thumbnails))
+                    Rectangle().fill(.teal).frame(width: w(use.cache))
                     Rectangle().fill(Color(.systemGray3)).frame(width: w(use.other))
                     Spacer(minLength: 0)
                 }
@@ -194,8 +171,8 @@ struct StorageBar: View {
             .frame(height: 20)
             .accessibilityHidden(true)
             HStack(spacing: 16) {
-                legend(.teal, "Originals", use.originals)
                 legend(.indigo, "Thumbnails", use.thumbnails)
+                legend(.teal, "Cache", use.cache)
                 legend(Color(.systemGray3), "Other", use.other)
             }
         }

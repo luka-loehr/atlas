@@ -286,15 +286,8 @@ struct PhotosScreen: View {
             var urls: [URL] = []
             for id in ids {
                 guard let src = library.client.originalURL(id) else { continue }
-                if let (tmp, resp) = try? await URLSession.shared.download(for: AtlasAuth.request(src, timeoutInterval: 600)) {
-                    let ext = (resp.suggestedFilename as NSString?)?.pathExtension.nilIfEmpty ?? "jpg"
-                    let dest = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("\(id).\(ext)")
-                    try? FileManager.default.removeItem(at: dest)
-                    if (try? FileManager.default.moveItem(at: tmp, to: dest)) != nil {
-                        urls.append(dest)
-                    }
-                }
+                // the cached original when there is one
+                if let file = await MediaCache.shared.shareableOriginal(id, from: src) { urls.append(file) }
             }
             if !urls.isEmpty { shareBundle = ShareBundle(urls: urls) }
             if selection.active { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
@@ -339,13 +332,9 @@ struct ContextPreview: View {
         .clipped()
         .task {
             guard let url = client.thumbURL(asset.id, 2048) else { return }
-            sharp = await ThumbLoader.shared.loadFull(url, maxPixel: 1400)
+            sharp = await MediaCache.shared.loadFull(url, maxPixel: 1400)
         }
     }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 /// Schnellscroller am rechten Rand: Griff ziehen, Monat und Jahre erscheinen,

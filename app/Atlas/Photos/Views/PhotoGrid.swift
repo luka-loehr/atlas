@@ -6,7 +6,7 @@ import UIKit
 /// A SwiftUI grid re-evaluates view bodies, modifiers and gestures for every
 /// row that scrolls in; with 25,000 photos that was the scroll jank. Here a
 /// cell is a recycled UIView: configuring it is a dictionary lookup plus, on
-/// a miss, a request to `ThumbLoader`, whose disk read and decode run off
+/// a miss, a request to `MediaCache`, whose disk read and decode run off
 /// the main thread. Looks and behaves like before: oldest first, opens at
 /// the newest end, pinch steps through 1/3/5/9 columns, tap opens the viewer
 /// with the zoom transition, long press shows the system context menu with
@@ -76,7 +76,9 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     private var lastTop: Int?? = .none
     private var lastTopMonth: String?
     private var pinchBase: CGFloat = 1
-    private var prefetchTickets: [String: ThumbLoader.Ticket] = [:]
+    private var prefetchTickets: [String: MediaCache.Ticket] = [:]
+    /// The first seconds of the videos on screen, fetched when the grid rests.
+    private var headTickets: [String: MediaFetch.Ticket] = [:]
     /// The photo the viewer shows now: where its zoom transition returns to.
     private var viewerAssetID: String?
 
@@ -215,7 +217,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     func apply(_ grid: PhotoGrid) {
         config = grid
-        ThumbLoader.shared.client = grid.library.client
+        MediaCache.shared.client = grid.library.client
         guard isViewLoaded else { return }
         if grid.revision != revision {
             revision = grid.revision
@@ -371,18 +373,43 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         pinnedToBottom = false
         needsBottom = false
         config?.onScrolling(true)
+        MediaFetch.shared.setInteracting(true)
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         if !decelerate {
             pinnedToBottom = atBottom
             config?.onScrolling(false)
+            scrollingEnded()
         }
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         pinnedToBottom = atBottom
         config?.onScrolling(false)
+        scrollingEnded()
+    }
+
+    private func scrollingEnded() {
+        MediaFetch.shared.setInteracting(false)
+        prefetchVideoHeads()
+    }
+
+    /// The grid came to rest: the first seconds of the videos on screen come
+    /// onto the phone (Wi-Fi only), so a tap starts them at once. Videos that
+    /// scrolled away are dropped from the queue.
+    private func prefetchVideoHeads() {
+        let client = MediaCache.shared.client
+        var keep: [String: MediaFetch.Ticket] = [:]
+        for ip in collectionView.indexPathsForVisibleItems where ip.item < assets.count {
+            let asset = assets[ip.item]
+            guard asset.isVideo, let url = client.streamURL(asset.id) else { continue }
+            keep[asset.id] = headTickets[asset.id]
+                ?? VideoCache.shared.prefetchHead(id: asset.id, remote: url, duration: asset.durationS,
+                                                  priority: .near, expensive: false)
+        }
+        for (id, t) in headTickets where keep[id] == nil { t.cancel() }
+        headTickets = keep
     }
 
     // MARK: Data source
@@ -435,8 +462,8 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         for i in order {
             let id = assets[i].id
             keep.insert(id)
-            guard prefetchTickets[id] == nil, ThumbLoader.shared.gridImage(id: id, pixels: px) == nil else { continue }
-            prefetchTickets[id] = ThumbLoader.shared.requestGrid(id: id, pixels: px, urgent: false) { [weak self] _ in
+            guard prefetchTickets[id] == nil, MediaCache.shared.gridImage(id: id, pixels: px) == nil else { continue }
+            prefetchTickets[id] = MediaCache.shared.requestGrid(id: id, pixels: px, urgent: false) { [weak self] _ in
                 self?.prefetchTickets[id] = nil
             }
         }
@@ -629,7 +656,7 @@ final class PhotoCell: UICollectionViewCell {
     private(set) var assetID: String?
     private var isVideo = false
     private var pixels = 0
-    private var ticket: ThumbLoader.Ticket?
+    private var ticket: MediaCache.Ticket?
     private var sharpTask: Task<Void, Never>?
     private var selecting = false
     private var picked = false
@@ -697,24 +724,24 @@ final class PhotoCell: UICollectionViewCell {
         #if targetEnvironment(simulator)
         Self.shown += 1
         #endif
-        if let img = ThumbLoader.shared.gridImage(id: id, pixels: pixels) {
+        if let img = MediaCache.shared.gridImage(id: id, pixels: pixels) {
             imageView.image = img
         } else {
             #if targetEnvironment(simulator)
             Self.blank += 1
             #endif
             imageView.image = nil
-            ticket = ThumbLoader.shared.requestGrid(id: id, pixels: pixels, urgent: true) { [weak self] img in
+            ticket = MediaCache.shared.requestGrid(id: id, pixels: pixels, urgent: true) { [weak self] img in
                 guard let self, self.assetID == id else { return }
                 self.ticket = nil
                 self.imageView.image = img
             }
         }
-        if single, !asset.isVideo, let url = ThumbLoader.shared.client.thumbURL(id, 2048) {
+        if single, !asset.isVideo, let url = MediaCache.shared.client.thumbURL(id, 2048) {
             // one photo per row: the 2048 preview, sharp at full width
             let px = CGFloat(pixels)
             sharpTask = Task { [weak self] in
-                guard let img = await ThumbLoader.shared.load(url, maxPixel: px * 1.5),
+                guard let img = await MediaCache.shared.load(url, maxPixel: px * 1.5),
                       let self, self.assetID == id, !Task.isCancelled else { return }
                 self.imageView.image = img
             }
