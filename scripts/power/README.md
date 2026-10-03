@@ -7,7 +7,7 @@ wake it, and the iOS apps plot how much it draws while it is up.
 | Unit | What it does |
 |---|---|
 | `atlas-wol.service` | `ethtool -s enp4s0 wol g` at boot **and** at shutdown — the NIC keeps MagicPacket wake armed, which is what `atlas boot` sends |
-| `atlas-rapl-readable.service` | `chmod a+r` on the Intel RAPL energy counters, which the kernel keeps root-only — without it `atlas-api` reports `cpu_w` (and with it `system_w`) as `null` |
+| `atlas-rapl-readable.service` | `chmod a+r` on the Intel RAPL energy counters, which the kernel keeps root-only — without it `atlas-server` reports `cpu_w` (and with it `system_w`) as `null` |
 
 ```bash
 ./install.sh
@@ -33,7 +33,7 @@ a unit naming an interface this box does not have.
 
 ## RAPL
 
-`atlas-api`'s `metrics.rs` reads
+`atlas-server`'s `system/metrics.rs` reads
 `/sys/class/powercap/intel-rapl:0/energy_uj` for the energy delta and
 `max_energy_range_uj` to detect counter wrap — both need to be world-readable,
 and both are chmod'ed here. The chmod is per boot: sysfs is recreated every
@@ -44,4 +44,4 @@ stays `null`, which the API and the apps already treat as "not measurable".
 
 The system-power figure the apps show is a calibrated estimate
 (`(cpu_w + gpu_w + baseline) / psu_efficiency`, tuned via `ATLAS_POWER_*` in
-`/etc/atlas-api.env`) — only a wall-plug meter is exact.
+`/etc/atlas/atlas.env`) — only a wall-plug meter is exact.

@@ -1,7 +1,7 @@
 [Unit]
 Description=Atlas health check on boot (builds green, services up)
 Wants=network-online.target
-After=network-online.target docker.service atlas-api.service atlas-photos.service
+After=network-online.target docker.service atlas-server.service atlas-ml.service
 
 [Service]
 Type=oneshot

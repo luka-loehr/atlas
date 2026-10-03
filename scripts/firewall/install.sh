@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install/refresh the atlas host firewall (drops LAN traffic to 8787/8788).
+# Install/refresh the atlas host firewall (drops LAN traffic to 8787).
 set -euo pipefail
 cd "$(dirname "$0")"
 sudo install -d -m755 /etc/atlas

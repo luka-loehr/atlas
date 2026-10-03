@@ -1,25 +1,18 @@
 # atlas host firewall
 
-Confines the two private HTTP services to loopback and the tailnet:
+Confines the private HTTP service to loopback and the tailnet:
 
-| Port | Service | What is exposed without this |
+| Port | Service | What it serves |
 |---|---|---|
-| 8787 | `atlas-api` | metrics, Docker overview, power control (writes are token-gated) |
-| 8788 | `atlas-photos` | the whole 24k-photo library — timeline, search, originals, drive |
+| 8787 | `atlas-server` | the photo library, the drive, machine status, power control and a terminal |
 
-Both listeners bind `0.0.0.0`/`[::]`, and `atlas-photos` runs with
-`ATLAS_PHOTOS_OPEN=1`, which means **GET/HEAD need no token**. That is
-deliberate — the iOS apps depend on it — so the network layer, not the
-application, is what has to say no to the LAN.
+The listener binds `0.0.0.0`, so without this table every device on the home
+LAN could reach it. Every route except `/health` needs the bearer token, but
+one of those routes is a shell on the machine: the network layer says no
+before the application is ever asked.
 
-Without this table, any device on `192.168.1.0/24` can run
-`curl http://192.168.1.100:8788/api/stats` and page the library.
-
-The exposure is IPv4-only, because both services bind `0.0.0.0` rather than
-`[::]` — `ss -ltnp` shows no IPv6 socket for either port, and a request to
-atlas' own globally routable `2001:db8:1::/64` address is refused
-even with the firewall stopped. The rules live in an `inet` table anyway, so
-the day a bind changes to `[::]` the LAN does not silently gain access.
+The rules live in an `inet` table, so the day a bind changes to `[::]` the
+LAN does not silently gain access over IPv6 either.
 
 ## Install
 
@@ -64,7 +57,7 @@ others, and cannot be clobbered by them.
 
 Two deliberate choices keep the blast radius small:
 
-- **Only `tcp dport 8787`/`8788` is matched at all.** No other traffic on this
+- **Only `tcp dport 8787` is matched at all.** No other traffic on this
   host changes behaviour.
 - **`policy accept`.** If the ruleset were ever wrong, it fails open rather
   than locking the box out. The drop is an explicit rule, not a default.
@@ -75,12 +68,8 @@ Two deliberate choices keep the blast radius small:
 
 `lo` is accepted because atlas reaches its own LAN and tailnet addresses
 through it (`ip route get 192.168.1.100` → `dev lo`), which covers the
-healthcheck probes and `tailscale serve` proxying to `127.0.0.1:8788`.
+healthcheck probes and `tailscale serve` proxying to `127.0.0.1:8787`.
 
-Not covered: Art-Net on `0.0.0.0:6454/udp`, which is unauthenticated and
-drives physical hardware. It is left open because the Art-Net source is
-configured as `192.168.1.100` (see `/etc/atlas/lightshow-artnet-host`) —
-closing it means moving the lightshow onto the tailnet first.
 
 Docker-published ports cannot be covered by this table at all. A published
 container port is DNAT'd in `nat/prerouting` and then traverses the `forward`
