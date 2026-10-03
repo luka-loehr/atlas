@@ -1,0 +1,78 @@
+name: Atlas
+options:
+  bundleIdPrefix: com.lukaloehr
+  deploymentTarget:
+    iOS: "26.1"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Signing is the builder's own: pass DEVELOPMENT_TEAM (and allow
+    # provisioning updates) on the xcodebuild command line, see app/README.md.
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    # 1.12 and later ship Metal shaders, which need Xcode's optional Metal
+    # toolchain; this is the newest version that builds without it.
+    exactVersion: "1.11.2"
+
+targets:
+  Atlas:
+    type: application
+    platform: iOS
+    sources:
+      - path: Atlas
+    dependencies:
+      - package: SwiftTerm
+    info:
+      path: Atlas/Info.plist
+      properties:
+        CFBundleDisplayName: Atlas
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleLocalizations: [en, de]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.lukaloehr.Atlas
+            CFBundleURLSchemes: [atlas]
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.lukaloehr.Atlas.backup
+        NSFaceIDUsageDescription: Face ID unlocks your Locked album.
+        NSPhotoLibraryUsageDescription: Atlas backs up your photos and videos to your own server, and can remove backed-up items from this iPhone to free space.
+        NSPhotoLibraryAddUsageDescription: Atlas saves photos and videos from your server to this iPhone.
+        NSLocalNetworkUsageDescription: Atlas connects to your server on your network.
+        # A self-hosted server is reached over a private network: by IP or
+        # local name, or by its tailnet name, where WireGuard already
+        # encrypts the path. Anything else has to be HTTPS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.Atlas
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
