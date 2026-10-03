@@ -181,11 +181,15 @@ struct ServerStatusScreen: View {
                               detail: String(format: "%.1f / %.0f GB", latest.mem_gb, machine.snapshot?.mem_total_gb ?? 0))
                     LabeledContent("Network") {
                         let rate = machine.throughput
-                        Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s").monospacedDigit()
+                        Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s")
+                            .monospacedDigit()
+                            .contentTransition(.numericText(value: rate.down + rate.up))
+                            .animation(.smooth, value: rate.down + rate.up)
                     }
                     LabeledContent("Power") {
                         Text(latest.system_w.map { "\(Int($0)) W" } ?? "–").monospacedDigit()
                             .contentTransition(.numericText(value: latest.system_w ?? 0))
+                            .animation(.smooth, value: latest.system_w ?? 0)
                     }
                 } header: {
                     Text("Live")
@@ -320,16 +324,26 @@ private struct MetricRow: View {
                     .contentTransition(.numericText(value: value))
                     .animation(.smooth, value: value)
             }
-            Chart(samples.suffix(300)) { sample in
-                AreaMark(x: .value("Time", sample.date), y: .value("Load", sample[keyPath: keyPath]))
-                    .foregroundStyle(color.opacity(0.16))
-                LineMark(x: .value("Time", sample.date), y: .value("Load", sample[keyPath: keyPath]))
-                    .foregroundStyle(color)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+            // like the old dashboard: a 60 s window that slides every frame, the
+            // newest value glides in instead of popping
+            TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                let points = LiveChart.points(samples.suffix(160).map { ($0.date, $0[keyPath: keyPath]) },
+                                              frame: context.date, window: LiveChart.window)
+                let head = context.date.addingTimeInterval(-LiveChart.renderDelay)
+                Chart(points.indices, id: \.self) { i in
+                    AreaMark(x: .value("Time", points[i].0), y: .value("Load", points[i].1))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(color.opacity(0.16))
+                    LineMark(x: .value("Time", points[i].0), y: .value("Load", points[i].1))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(color)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5))
+                }
+                .chartXScale(domain: head.addingTimeInterval(-LiveChart.window)...head)
+                .chartYScale(domain: 0...100)
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
             }
-            .chartYScale(domain: 0...100)
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
             .frame(height: 48)
             if !detail.isEmpty {
                 Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
@@ -383,5 +397,38 @@ private struct QueueScreen: View {
         }
         .navigationTitle("Processing")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The math behind the sliding live charts (from the old dashboard).
+enum LiveChart {
+    static let window: TimeInterval = 60
+    /// The newest sample is treated as still arriving: the head of the curve
+    /// is interpolated toward it frame by frame, so values glide.
+    static let renderDelay: TimeInterval = 0.75
+
+    /// Points inside the window, plus one interpolated point pinned to each
+    /// edge, so both ends follow the sliding domain instead of stepping.
+    static func points(_ samples: [(Date, Double)], frame: Date, window: TimeInterval) -> [(Date, Double)] {
+        let head = frame.addingTimeInterval(-renderDelay)
+        let start = head.addingTimeInterval(-window)
+        var out = samples.filter { $0.0 >= start && $0.0 <= head }
+        if let before = samples.last(where: { $0.0 < start }) {
+            let after = out.first ?? samples.first(where: { $0.0 >= start }) ?? before
+            let span = after.0.timeIntervalSince(before.0)
+            if span > 0, after.0 > start {
+                let f = start.timeIntervalSince(before.0) / span
+                out.insert((start, before.1 + (after.1 - before.1) * max(0, min(1, f))), at: 0)
+            }
+        }
+        if let after = samples.first(where: { $0.0 > head }) {
+            let before = out.last ?? samples.last(where: { $0.0 <= head }) ?? after
+            let span = after.0.timeIntervalSince(before.0)
+            if span > 0 {
+                let f = head.timeIntervalSince(before.0) / span
+                out.append((head, before.1 + (after.1 - before.1) * max(0, min(1, f))))
+            }
+        }
+        return out
     }
 }
