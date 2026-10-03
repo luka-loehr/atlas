@@ -66,7 +66,7 @@ struct InfoSheet: View {
         let ext = ((info?.origName as NSString?)?.pathExtension ?? "").uppercased()
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(info?.camera ?? "Unbekannte Kamera")
+                Text(info?.camera ?? "Unknown Camera")
                     .font(.callout.weight(.semibold))
                 Spacer()
                 if !ext.isEmpty {
@@ -184,7 +184,7 @@ struct InfoSheet: View {
 
     private func openInMaps(_ coord: CLLocationCoordinate2D) {
         let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
-        item.name = info?.place ?? "Foto-Ort"
+        item.name = info?.place ?? "Photo Location"
         item.openInMaps()
     }
 
@@ -263,8 +263,8 @@ struct InfoSheet: View {
                             }
                             .frame(width: 34, height: 34)
                             .clipShape(Circle())
-                            Text(done ? "Titelbild von \(f.displayName) aktualisiert"
-                                      : "Als Titelbild von \(f.displayName) festlegen")
+                            Text(done ? "Key photo of \(f.displayName) updated"
+                                      : "Make Key Photo of \(f.displayName)")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(done ? .secondary : .primary)
                             Spacer()
@@ -287,10 +287,10 @@ struct InfoSheet: View {
     }
 
     private func longDate(_ d: Date?) -> String {
-        guard let d else { return "Unbekanntes Datum" }
+        guard let d else { return "Unknown Date" }
         let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        f.dateFormat = "EEEE, d. MMMM yyyy 'um' HH:mm"
+        f.locale = Locale(identifier: "en_US")
+        f.dateFormat = "EEEE, d MMMM yyyy 'at' HH:mm"
         return f.string(from: d)
     }
 }

@@ -47,7 +47,7 @@ enum DriveMoveTarget: Identifiable {
 struct DriveFolderScreen: View {
     let client: DriveClient
     var folder: Int? = nil
-    var title: String = "Dateien"
+    var title: String = "Files"
     var isRoot: Bool = false
     var searchMode: Bool = false
 
@@ -74,12 +74,12 @@ struct DriveFolderScreen: View {
     var body: some View {
         Group {
             if searchMode {
-                content.searchable(text: $searchText, prompt: "In Dateien suchen")
+                content.searchable(text: $searchText, prompt: "Search Files")
             } else {
                 content
             }
         }
-        .navigationTitle(searchMode ? "Suche" : title)
+        .navigationTitle(searchMode ? "Search" : title)
         .navigationBarTitleDisplayMode(isRoot ? .large : .inline)
         .toolbar { if !searchMode { toolbar } }
         .task { if !searchMode { await load() } }
@@ -101,33 +101,33 @@ struct DriveFolderScreen: View {
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item],
                       allowsMultipleSelection: true) { handleImport($0) }
-        .alert("Neuer Ordner", isPresented: $newFolderPrompt) {
+        .alert("New Folder", isPresented: $newFolderPrompt) {
             TextField("Name", text: $newFolderName)
-            Button("Erstellen") {
+            Button("Create") {
                 let name = newFolderName.trimmingCharacters(in: .whitespaces)
                 newFolderName = ""
                 guard !name.isEmpty else { return }
                 Task { try? await client.createFolder(parent: folder, name: name); await load() }
             }
-            Button("Abbrechen", role: .cancel) { newFolderName = "" }
+            Button("Cancel", role: .cancel) { newFolderName = "" }
         }
-        .alert("Umbenennen", isPresented: isRenaming) {
+        .alert("Rename", isPresented: isRenaming) {
             TextField("Name", text: $renameText)
-            Button("Sichern") { applyRename() }
-            Button("Abbrechen", role: .cancel) {}
+            Button("Save") { applyRename() }
+            Button("Cancel", role: .cancel) {}
         }
         .confirmationDialog(
-            "„\(deletingFolder?.name ?? "")“ endgültig löschen?",
+            "Delete “\(deletingFolder?.name ?? "")” Permanently?",
             isPresented: Binding(get: { deletingFolder != nil },
                                  set: { if !$0 { deletingFolder = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Endgültig löschen", role: .destructive) {
+            Button("Delete Permanently", role: .destructive) {
                 guard let f = deletingFolder else { return }
                 Task { try? await client.deleteFolder(f.id); await load() }
             }
         } message: {
-            Text("Der Ordner und \(deletingFolder?.items ?? 0) enthaltene Dateien werden endgültig gelöscht.")
+            Text("The folder and the \(deletingFolder?.items ?? 0) files in it will be deleted permanently.")
         }
     }
 
@@ -156,7 +156,7 @@ struct DriveFolderScreen: View {
                 VStack(spacing: 10) {
                     ProgressView(value: Double(uploadDone), total: Double(uploadTotal))
                         .frame(width: 160)
-                    Text("Hochladen \(min(uploadDone + 1, uploadTotal)) von \(uploadTotal) …")
+                    Text("Uploading \(min(uploadDone + 1, uploadTotal)) of \(uploadTotal)…")
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -165,13 +165,13 @@ struct DriveFolderScreen: View {
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
             } else if searchMode {
                 if searchText.isEmpty {
-                    ContentUnavailableView("Dateien durchsuchen", systemImage: "magnifyingglass",
-                                           description: Text("Namen und Inhalte von Dokumenten"))
+                    ContentUnavailableView("Search Files", systemImage: "magnifyingglass",
+                                           description: Text("Names and contents of documents"))
                 } else if let results, results.folders.isEmpty && results.files.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                 }
             } else if loaded && listing.folders.isEmpty && listing.files.isEmpty {
-                ContentUnavailableView("Keine Dateien", systemImage: "folder")
+                ContentUnavailableView("No Files", systemImage: "folder")
             }
         }
     }
@@ -179,7 +179,7 @@ struct DriveFolderScreen: View {
     @ViewBuilder
     private func searchSections(_ r: DriveListing) -> some View {
         if !r.folders.isEmpty {
-            Section("Ordner") {
+            Section("Folders") {
                 ForEach(r.folders) { f in
                     NavigationLink(value: DriveCrumb(id: f.id, name: f.name)) {
                         Label(f.name, systemImage: "folder.fill")
@@ -188,7 +188,7 @@ struct DriveFolderScreen: View {
             }
         }
         if !r.files.isEmpty {
-            Section("Dateien") {
+            Section("Files") {
                 ForEach(r.files) { f in fileRow(f, showFolder: true) }
             }
         }
@@ -208,7 +208,7 @@ struct DriveFolderScreen: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(f.name)
                         .lineLimit(1)
-                    Text("\(f.items) \(f.items == 1 ? "Objekt" : "Objekte") · \(bytes(f.bytes))")
+                    Text("\(f.items) \(f.items == 1 ? "item" : "items") · \(bytes(f.bytes))")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -216,14 +216,14 @@ struct DriveFolderScreen: View {
         }
         .contextMenu {
             Button { renamingFolder = f; renameText = f.name } label: {
-                Label("Umbenennen", systemImage: "pencil")
+                Label("Rename", systemImage: "pencil")
             }
             Button { moveTarget = .folder(f) } label: {
-                Label("Verschieben", systemImage: "folder")
+                Label("Move", systemImage: "folder")
             }
             Divider()
             Button(role: .destructive) { deletingFolder = f } label: {
-                Label("Endgültig löschen", systemImage: "trash.slash")
+                Label("Delete Permanently", systemImage: "trash.slash")
             }
         }
     }
@@ -261,21 +261,21 @@ struct DriveFolderScreen: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button { share(f) } label: { Label("Teilen", systemImage: "square.and.arrow.up") }
+            Button { share(f) } label: { Label("Share", systemImage: "square.and.arrow.up") }
             Button { renamingFile = f; renameText = f.name } label: {
-                Label("Umbenennen", systemImage: "pencil")
+                Label("Rename", systemImage: "pencil")
             }
             Button { moveTarget = .file(f) } label: {
-                Label("Verschieben", systemImage: "folder")
+                Label("Move", systemImage: "folder")
             }
             Divider()
             Button(role: .destructive) { trash(f) } label: {
-                Label("Löschen", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { trash(f) } label: {
-                Label("Löschen", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
         }
     }
@@ -298,17 +298,17 @@ struct DriveFolderScreen: View {
         if isRoot {
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink(value: DriveTrashRoute()) {
-                    Label("Papierkorb", systemImage: "trash")
+                    Label("Trash", systemImage: "trash")
                 }
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Menu("Hinzufügen", systemImage: "plus") {
+            Menu("Add", systemImage: "plus") {
                 Button { importing = true } label: {
-                    Label("Dateien hochladen", systemImage: "square.and.arrow.up")
+                    Label("Upload Files", systemImage: "square.and.arrow.up")
                 }
                 Button { newFolderPrompt = true } label: {
-                    Label("Neuer Ordner", systemImage: "folder.badge.plus")
+                    Label("New Folder", systemImage: "folder.badge.plus")
                 }
             }
         }
@@ -422,53 +422,53 @@ struct DriveTrashScreen: View {
                 }
                 .swipeActions(edge: .leading) {
                     Button { restore(f) } label: {
-                        Label("Wiederherstellen", systemImage: "arrow.uturn.backward")
+                        Label("Recover", systemImage: "arrow.uturn.backward")
                     }
                     .tint(.blue)
                 }
                 .swipeActions(edge: .trailing) {
                     Button { deleting = f } label: {
-                        Label("Endgültig löschen", systemImage: "trash.slash")
+                        Label("Delete Permanently", systemImage: "trash.slash")
                     }
                     .tint(.red)
                 }
                 .contextMenu {
                     Button { restore(f) } label: {
-                        Label("Wiederherstellen", systemImage: "arrow.uturn.backward")
+                        Label("Recover", systemImage: "arrow.uturn.backward")
                     }
                     Button(role: .destructive) { deleting = f } label: {
-                        Label("Endgültig löschen", systemImage: "trash.slash")
+                        Label("Delete Permanently", systemImage: "trash.slash")
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Papierkorb")
+        .navigationTitle("Trash")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !files.isEmpty {
                 ToolbarItem(placement: .bottomBar) {
-                    Button("Papierkorb leeren", role: .destructive) { confirmEmpty = true }
-                        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmEmpty, titleVisibility: .visible) {
-                            Button("Endgültig löschen", role: .destructive) {
+                    Button("Empty Trash", role: .destructive) { confirmEmpty = true }
+                        .confirmationDialog("Empty Trash?", isPresented: $confirmEmpty, titleVisibility: .visible) {
+                            Button("Delete Permanently", role: .destructive) {
                                 Task { try? await client.emptyTrash(); await load() }
                             }
                         } message: {
-                            Text("Alle \(files.count) Dateien werden endgültig gelöscht.")
+                            Text("All \(files.count) files will be deleted permanently.")
                         }
                 }
             }
         }
         .overlay {
             if files.isEmpty && loaded {
-                ContentUnavailableView("Papierkorb ist leer", systemImage: "trash")
+                ContentUnavailableView("Trash Is Empty", systemImage: "trash")
             }
         }
-        .confirmationDialog("„\(deleting?.name ?? "")“ endgültig löschen?",
+        .confirmationDialog("Delete “\(deleting?.name ?? "")” Permanently?",
                             isPresented: Binding(get: { deleting != nil },
                                                  set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible) {
-            Button("Endgültig löschen", role: .destructive) {
+            Button("Delete Permanently", role: .destructive) {
                 if let f = deleting { delete(f) }
             }
         }
@@ -509,10 +509,10 @@ struct DriveMovePicker: View {
 
     var body: some View {
         NavigationStack {
-            DriveMoveLevel(client: client, target: target, folder: nil, title: "Dateien", move: move)
+            DriveMoveLevel(client: client, target: target, folder: nil, title: "Files", move: move)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Abbrechen") { dismiss() }
+                        Button("Cancel") { dismiss() }
                     }
                 }
                 .navigationDestination(for: DriveCrumb.self) { c in
@@ -560,7 +560,7 @@ private struct DriveMoveLevel: View {
                 if busy {
                     ProgressView()
                 } else {
-                    Button("Verschieben") {
+                    Button("Move") {
                         busy = true
                         Task { await move(folder); busy = false }
                     }

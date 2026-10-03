@@ -143,7 +143,7 @@ final class Machine {
 }
 
 struct ServerStatusScreen: View {
-    private let roleNames = ["atlas-server": "API und Verarbeitung", "atlas-ml": "Suche und Gesichter"]
+    private let roleNames = ["atlas-server": "API and Processing", "atlas-ml": "Search and Faces"]
     @Environment(Session.self) private var session
     @State private var machine = Machine()
     @State private var confirm: PowerAction?
@@ -164,14 +164,14 @@ struct ServerStatusScreen: View {
                                   detail: [gpu.name, "\(Int(latest.gpu_mem_mb).formatted()) / \(Int(gpu.mem_total_mb).formatted()) MB",
                                            latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
                     }
-                    MetricRow(title: "Arbeitsspeicher", value: latest.mem / 100, color: .teal, samples: machine.samples, keyPath: \.mem,
+                    MetricRow(title: "Memory", value: latest.mem / 100, color: .teal, samples: machine.samples, keyPath: \.mem,
                               detail: String(format: "%.1f / %.0f GB", latest.mem_gb, machine.snapshot?.mem_total_gb ?? 0))
-                    LabeledContent("Netzwerk") {
+                    LabeledContent("Network") {
                         let rate = machine.throughput
                         Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s").monospacedDigit()
                     }
                     if let watts = latest.system_w {
-                        LabeledContent("Leistung") {
+                        LabeledContent("Power") {
                             Text("\(Int(watts)) W").monospacedDigit().contentTransition(.numericText(value: watts))
                         }
                     }
@@ -181,11 +181,11 @@ struct ServerStatusScreen: View {
             }
 
             if let snapshot = machine.snapshot {
-                Section("Speicher") {
+                Section("Storage") {
                     ForEach(snapshot.disks) { disk in
                         VStack(alignment: .leading, spacing: 6) {
                             LabeledContent(disk.mount == "/" ? "System" : disk.mount,
-                                           value: "\((disk.total - disk.used).fileSize) frei von \(disk.total.fileSize)")
+                                           value: "\((disk.total - disk.used).fileSize) free of \(disk.total.fileSize)")
                             Gauge(value: disk.fraction) { EmptyView() }
                                 .gaugeStyle(.linearCapacity)
                                 .tint(disk.fraction > 0.9 ? .red : .accentColor)
@@ -197,10 +197,10 @@ struct ServerStatusScreen: View {
             }
 
             if let services = machine.services {
-                Section("Dienste") {
+                Section("Services") {
                     ForEach(services.units) { unit in
                         LabeledContent {
-                            StateLabel(healthy: unit.state == "active", text: unit.state == "active" ? "Aktiv" : "Gestoppt")
+                            StateLabel(healthy: unit.state == "active", text: unit.state == "active" ? "Active" : "Stopped")
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(unit.unit)
@@ -208,12 +208,12 @@ struct ServerStatusScreen: View {
                             }
                         }
                     }
-                    LabeledContent("Datenbank") {
+                    LabeledContent("Database") {
                         Text("Postgres \(services.database.version.split(separator: " ").first.map(String.init) ?? "") · \(services.database.bytes.fileSize)")
                     }
-                    LabeledContent("Suchmodell") {
+                    LabeledContent("Search Model") {
                         if let model = services.ml {
-                            StateLabel(healthy: true, text: model.embedder == "loaded" ? "Geladen" : "Bereit")
+                            StateLabel(healthy: true, text: model.embedder == "loaded" ? "Loaded" : "Ready")
                         } else {
                             StateLabel(healthy: false, text: "Offline")
                         }
@@ -221,8 +221,8 @@ struct ServerStatusScreen: View {
                     NavigationLink {
                         QueueScreen(report: services)
                     } label: {
-                        LabeledContent("Verarbeitung") {
-                            Text(services.pending == 0 ? "Fertig" : "\(services.pending) offen").monospacedDigit()
+                        LabeledContent("Processing") {
+                            Text(services.pending == 0 ? "Done" : "\(services.pending) pending").monospacedDigit()
                         }
                     }
                 }
@@ -244,22 +244,22 @@ struct ServerStatusScreen: View {
             }
 
             if let snapshot = machine.snapshot {
-                Section("Über") {
+                Section("About") {
                     LabeledContent("Name", value: snapshot.hostname)
                     LabeledContent("Atlas", value: snapshot.version)
                     if let os = snapshot.os { LabeledContent("System", value: os) }
-                    LabeledContent("Laufzeit", value: Duration.seconds(snapshot.uptime_s).formatted(.units(allowed: [.days, .hours, .minutes], width: .abbreviated)))
+                    LabeledContent("Uptime", value: Duration.seconds(snapshot.uptime_s).formatted(.units(allowed: [.days, .hours, .minutes], width: .abbreviated)))
                 }
             }
 
             Section {
-                Button("Server neu starten", systemImage: "arrow.clockwise") { confirm = .restart }
-                Button("Server ausschalten", systemImage: "power", role: .destructive) { confirm = .shutdown }
+                Button("Restart Server", systemImage: "arrow.clockwise") { confirm = .restart }
+                Button("Shut Down Server", systemImage: "power", role: .destructive) { confirm = .shutdown }
             }
-            .confirmationDialog(confirm == .restart ? "Server neu starten?" : "Server ausschalten?",
+            .confirmationDialog(confirm == .restart ? "Restart Server?" : "Shut Down Server?",
                                 isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
                 if let action = confirm {
-                    Button(action == .restart ? "Neu starten" : "Ausschalten", role: .destructive) {
+                    Button(action == .restart ? "Restart" : "Shut Down", role: .destructive) {
                         Task { try? await session.api?.send("POST", "system/power/\(action.rawValue)") }
                     }
                 }
@@ -346,8 +346,8 @@ private struct QueueScreen: View {
     let report: ServiceReport
 
     private static let names: [String: String] = [
-        "thumb": "Vorschaubilder", "meta": "Metadaten", "geocode": "Orte", "embed": "Suchindex",
-        "faces": "Gesichter", "preview": "Video-Streams", "drive_text": "Dateitext",
+        "thumb": "Thumbnails", "meta": "Metadata", "geocode": "Places", "embed": "Search Index",
+        "faces": "Faces", "preview": "Video Streams", "drive_text": "File Text",
     ]
 
     var body: some View {
@@ -357,20 +357,20 @@ private struct QueueScreen: View {
                     let counts = report.queue[kind] ?? [:]
                     LabeledContent {
                         let waiting = (counts["pending"] ?? 0) + (counts["running"] ?? 0)
-                        Text(waiting == 0 ? "Fertig" : "\(waiting) offen")
+                        Text(waiting == 0 ? "Done" : "\(waiting) pending")
                             .monospacedDigit()
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(Self.names[kind] ?? kind)
-                            Text("\(counts["done"] ?? 0) erledigt").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                            Text("\(counts["done"] ?? 0) done").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                         }
                     }
                 }
             } footer: {
-                Text("\(report.vectors) Fotos und Videos sind nach Inhalt durchsuchbar.")
+                Text("\(report.vectors) photos and videos are searchable by content.")
             }
             if !report.failed.isEmpty {
-                Section("Fehlgeschlagen") {
+                Section("Failed") {
                     ForEach(report.failed) { job in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(Self.names[job.kind] ?? job.kind)
@@ -380,7 +380,7 @@ private struct QueueScreen: View {
                 }
             }
         }
-        .navigationTitle("Verarbeitung")
+        .navigationTitle("Processing")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

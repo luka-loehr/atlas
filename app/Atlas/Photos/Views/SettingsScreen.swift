@@ -31,23 +31,23 @@ struct SettingsScreen: View {
                             Text(statusText).foregroundStyle(.secondary)
                         }
                     }
-                    NavigationLink { ActivityScreen() } label: { row("Aktivität", "chart.bar.fill", .orange) }
-                    NavigationLink { NetworkScreen() } label: { row("Netzwerk", "network", .blue) }
+                    NavigationLink { ActivityScreen() } label: { row("Activity", "chart.bar.fill", .orange) }
+                    NavigationLink { NetworkScreen() } label: { row("Network", "network", .blue) }
                     Button { showTerminal = true } label: { row("Terminal", "terminal.fill", .gray) }
                 }
                 Section("Backup") {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
-                    Button { confirmCleanup = true } label: { row("Gesicherte vom iPhone löschen", "iphone.slash", .red) }
+                    Button { confirmCleanup = true } label: { row("Remove Backed-Up Items from iPhone", "iphone.slash", .red) }
                         .disabled(backup.cleaning)
                 }
-                Section("Speicher") {
-                    valueRow("Vorschaubilder", thumbText, "square.grid.3x3.fill", .indigo)
+                Section("Storage") {
+                    valueRow("Thumbnails", thumbText, "square.grid.3x3.fill", .indigo)
                     Picker(selection: $originalsGB) {
                         ForEach(OriginalCache.choices, id: \.self) { gb in
-                            Text(gb == 0 ? "Aus" : "\(gb) GB").tag(gb)
+                            Text(gb == 0 ? "Off" : "\(gb) GB").tag(gb)
                         }
                     } label: {
-                        row("Originale behalten", "photo.stack.fill", .teal)
+                        row("Keep Originals", "photo.stack.fill", .teal)
                     }
                     Button {
                         Task {
@@ -58,18 +58,18 @@ struct SettingsScreen: View {
                             await refreshCacheSize()
                         }
                     } label: {
-                        valueRow("Cache leeren", fmtBytes(cacheBytes), "trash", .gray)
+                        valueRow("Clear Cache", fmtBytes(cacheBytes), "trash", .gray)
                     }
                 }
                 Section {
-                    Button { confirmTrash = true } label: { row("Papierkorb leeren", "trash.slash", .red) }
+                    Button { confirmTrash = true } label: { row("Empty Recently Deleted", "trash.slash", .red) }
                 }
                 Section {
                     LabeledContent("Version", value: appVersion)
-                    Button("Verbindung trennen", role: .destructive) { confirmDisconnect = true }
+                    Button("Disconnect", role: .destructive) { confirmDisconnect = true }
                 }
             }
-            .navigationTitle("Einstellungen")
+            .navigationTitle("Settings")
         }
         .task(id: session.config) { await session.probe() }
         // file sizes are read off the main thread, so the tab appears at once
@@ -81,14 +81,14 @@ struct SettingsScreen: View {
             }
         }
         .fullScreenCover(isPresented: $showTerminal) { TerminalScreen() }
-        .confirmationDialog("Verbindung trennen?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-            Button("Trennen", role: .destructive) { session.disconnect() }
+        .confirmationDialog("Disconnect from Server?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+            Button("Disconnect", role: .destructive) { session.disconnect() }
         }
-        .confirmationDialog("Gesicherte Fotos vom iPhone löschen?", isPresented: $confirmCleanup, titleVisibility: .visible) {
-            Button("Löschen", role: .destructive) { backup.deleteBackedUpFromDevice() }
+        .confirmationDialog("Remove Backed-Up Photos from This iPhone?", isPresented: $confirmCleanup, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { backup.deleteBackedUpFromDevice() }
         }
-        .confirmationDialog("Papierkorb leeren?", isPresented: $confirmTrash, titleVisibility: .visible) {
-            Button("Endgültig löschen", role: .destructive) {
+        .confirmationDialog("Empty Recently Deleted?", isPresented: $confirmTrash, titleVisibility: .visible) {
+            Button("Delete Permanently", role: .destructive) {
                 Task { try? await library.client.emptyTrash(); await library.loadStats() }
             }
         }
@@ -105,10 +105,10 @@ struct SettingsScreen: View {
 
     private var statusText: String {
         switch session.reachability {
-        case .online: "Verbunden"
+        case .online: "Connected"
         case .offline: "Offline"
-        case .unauthorized: "Token abgelehnt"
-        case .unknown: library.online ? "Verbunden" : "Offline"
+        case .unauthorized: "Token Rejected"
+        case .unknown: library.online ? "Connected" : "Offline"
         }
     }
 

@@ -36,7 +36,7 @@ struct PhotosScreen: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: 16))
                 }
             }
-            .navigationTitle("Fotos")
+            .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             // Photos' header: the large title on the row of the buttons, the
             // dates on screen under it, both over the photos
@@ -47,20 +47,20 @@ struct PhotosScreen: View {
                 ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
                 if selection.active {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Menu("Mehr", systemImage: "ellipsis") {
-                            Button(allSelected ? "Auswahl aufheben" : "Alle auswählen",
+                        Menu("More", systemImage: "ellipsis") {
+                            Button(allSelected ? "Deselect All" : "Select All",
                                    systemImage: allSelected ? "circle" : "checkmark.circle") {
                                 if allSelected { selection.clear() }
                                 else { selection.selectAll(library.assets.map(\.id)) }
                             }
                             Section {
-                                Button("Favorit", systemImage: "heart") {
+                                Button("Favorite", systemImage: "heart") {
                                     run(hides: false) { try await library.client.favorite($0, true) }
                                 }
-                                Button("Archivieren", systemImage: "archivebox") {
+                                Button("Archive", systemImage: "archivebox") {
                                     run { try await library.client.archive($0, true) }
                                 }
-                                Button("Sperren", systemImage: "lock") {
+                                Button("Lock", systemImage: "lock") {
                                     run { try await library.client.lock($0, true) }
                                 }
                             }
@@ -69,12 +69,12 @@ struct PhotosScreen: View {
                     }
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Fertig", systemImage: "xmark") {
+                        Button("Done", systemImage: "xmark") {
                             withAnimation(.snappy(duration: 0.4)) { selection.exit() }
                         }
                     }
                     ToolbarItem(placement: .bottomBar) {
-                        Button("Teilen", systemImage: "square.and.arrow.up") { share(Array(selection.ids)) }
+                        Button("Share", systemImage: "square.and.arrow.up") { share(Array(selection.ids)) }
                             .disabled(selection.isEmpty)
                     }
                     ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -87,16 +87,16 @@ struct PhotosScreen: View {
                     .sharedBackgroundVisibility(.hidden)
                     ToolbarSpacer(.flexible, placement: .bottomBar)
                     ToolbarItem(placement: .bottomBar) {
-                        Button("Löschen", systemImage: "trash") { confirmDelete = true }
+                        Button("Delete", systemImage: "trash") { confirmDelete = true }
                             .disabled(selection.isEmpty)
                     }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Mediathek", systemImage: "person.crop.circle") { showAccount = true }
+                        Button("Library", systemImage: "person.crop.circle") { showAccount = true }
                     }
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Auswählen") { withAnimation(.snappy) { selection.enter() } }
+                        Button("Select") { withAnimation(.snappy) { selection.enter() } }
                     }
                 }
             }
@@ -108,27 +108,27 @@ struct PhotosScreen: View {
         .sheet(item: $shareBundle) { bundle in
             ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])
         }
-        .confirmationDialog("\(selection.count) Objekte löschen?",
+        .confirmationDialog(selection.count == 1 ? "Delete 1 Item?" : "Delete \(selection.count) Items?",
                             isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Löschen", role: .destructive) { run { try await library.client.trash($0) } }
-            Button("Abbrechen", role: .cancel) {}
+            Button("Delete", role: .destructive) { run { try await library.client.trash($0) } }
+            Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog("Foto löschen?",
+        .confirmationDialog("Delete Photo?",
                             isPresented: Binding(get: { trashOne != nil }, set: { if !$0 { trashOne = nil } }),
                             titleVisibility: .visible) {
-            Button("Löschen", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 guard let a = trashOne else { return }
                 runOne(a) { try await library.client.trash([$0]) }
             }
-            Button("Abbrechen", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         }
     }
 
     private var title: String {
         switch selection.count {
-        case 0: "Objekte auswählen"
-        case 1: "1 Objekt ausgewählt"
-        default: "\(selection.count) Objekte ausgewählt"
+        case 0: "Select Items"
+        case 1: "1 Item Selected"
+        default: "\(selection.count) Items Selected"
         }
     }
     /// The selection only ever holds ids of the timeline, so counting is enough.
@@ -136,7 +136,7 @@ struct PhotosScreen: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: -2) {
-            Text("Fotos")
+            Text("Library")
                 .font(.largeTitle.bold())
             Text(subtitle)
                 .font(.headline)
@@ -162,7 +162,7 @@ struct PhotosScreen: View {
         guard let (lo, hi) = visible, hi < library.assets.count,
               let from = library.assets[lo].takenAt ?? library.assets[hi].takenAt,
               let to = library.assets[hi].takenAt else {
-            return library.assets.isEmpty ? "" : "\(library.assets.count.formatted()) Objekte"
+            return library.assets.isEmpty ? "" : "\(library.assets.count.formatted()) Items"
         }
         if Calendar.current.isDate(from, inSameDayAs: to) { return Self.day.string(from: to) }
         return Self.range.string(from: min(from, to), to: max(from, to))
@@ -170,13 +170,13 @@ struct PhotosScreen: View {
 
     private static let range: DateIntervalFormatter = {
         let f = DateIntervalFormatter()
-        f.locale = Locale(identifier: "de_DE")
+        f.locale = Locale(identifier: "en_GB")
         f.dateTemplate = "dMMMyyyy"
         return f
     }()
     private static let day: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
+        f.locale = Locale(identifier: "en_GB")
         f.setLocalizedDateFormatFromTemplate("dMMMMyyyy")
         return f
     }()
@@ -223,24 +223,24 @@ struct PhotosScreen: View {
     private func menu(for asset: Asset) -> UIMenu {
         let fav = favorites[asset.id] ?? asset.isFavorite
         let first = UIMenu(options: .displayInline, children: [
-            UIAction(title: "Teilen", image: UIImage(systemName: "square.and.arrow.up")) { _ in share([asset.id]) },
-            UIAction(title: fav ? "Kein Favorit" : "Favorit", image: UIImage(systemName: fav ? "heart.slash" : "heart")) { _ in
+            UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in share([asset.id]) },
+            UIAction(title: fav ? "Unfavorite" : "Favorite", image: UIImage(systemName: fav ? "heart.slash" : "heart")) { _ in
                 favorites[asset.id] = !fav
                 Task { try? await library.client.favorite([asset.id], !fav) }
             },
-            UIAction(title: "Auswählen", image: UIImage(systemName: "checkmark.circle")) { _ in
+            UIAction(title: "Select", image: UIImage(systemName: "checkmark.circle")) { _ in
                 withAnimation(.snappy) { selection.enter(with: asset.id) }
             },
         ])
         let second = UIMenu(options: .displayInline, children: [
-            UIAction(title: "Archivieren", image: UIImage(systemName: "archivebox")) { _ in
+            UIAction(title: "Archive", image: UIImage(systemName: "archivebox")) { _ in
                 runOne(asset) { try await library.client.archive([$0], true) }
             },
-            UIAction(title: "Sperren", image: UIImage(systemName: "lock")) { _ in
+            UIAction(title: "Lock", image: UIImage(systemName: "lock")) { _ in
                 runOne(asset) { try await library.client.lock([$0], true) }
             },
         ])
-        let trash = UIAction(title: "Löschen", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
+        let trash = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
             trashOne = asset
         }
         return UIMenu(children: [first, second, trash])

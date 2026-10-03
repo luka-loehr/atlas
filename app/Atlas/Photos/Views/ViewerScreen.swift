@@ -107,7 +107,7 @@ struct ViewerScreen: View {
 
     private func topBar(_ asset: Asset) -> some View {
         HStack(alignment: .center) {
-            CircleButton(icon: "chevron.backward", label: "Zurück") { close() }
+            CircleButton(icon: "chevron.backward", label: "Back") { close() }
             Spacer(minLength: 8)
             VStack(spacing: 0) {
                 Text(places[asset.id] ?? relativeDay(asset.takenAt))
@@ -132,24 +132,24 @@ struct ViewerScreen: View {
             Menu {
                 Button {
                     mutateAndRemove { try await library.client.archive([$0], true) }
-                } label: { Label("Archivieren", systemImage: "archivebox") }
+                } label: { Label("Archive", systemImage: "archivebox") }
                 Button {
                     mutateAndRemove { try await library.client.lock([$0], true) }
-                } label: { Label("Sperren", systemImage: "lock") }
+                } label: { Label("Lock", systemImage: "lock") }
                 Button { infoAsset = asset } label: {
                     Label("Details", systemImage: "info.circle")
                 }
             } label: {
-                CircleButton(icon: "ellipsis", label: "Mehr") {}.allowsHitTesting(false)
+                CircleButton(icon: "ellipsis", label: "More") {}.allowsHitTesting(false)
             }
-            .accessibilityLabel("Mehr")
+            .accessibilityLabel("More")
         }
         .padding(.horizontal, 16)
     }
 
     private func bottomBar(_ asset: Asset) -> some View {
         HStack {
-            CircleButton(icon: "square.and.arrow.up", label: "Teilen", nudge: -1.5, size: 48) { shareCurrent() }
+            CircleButton(icon: "square.and.arrow.up", label: "Share", nudge: -1.5, size: 48) { shareCurrent() }
             Spacer()
             // 44-pt hit areas; spacing and padding shrink by the same amount,
             // so the glyphs sit exactly where they did with the bare icons
@@ -158,7 +158,7 @@ struct ViewerScreen: View {
                     barIcon(isFav(asset) ? "heart.fill" : "heart")
                         .foregroundStyle(isFav(asset) ? .red : .primary)
                 }
-                .accessibilityLabel(isFav(asset) ? "Kein Favorit" : "Favorit")
+                .accessibilityLabel(isFav(asset) ? "Unfavorite" : "Favorite")
                 Button { infoAsset = asset } label: {
                     barIcon("info.circle").foregroundStyle(.primary)
                 }
@@ -168,16 +168,16 @@ struct ViewerScreen: View {
                 } label: {
                     barIcon("archivebox").foregroundStyle(.primary)
                 }
-                .accessibilityLabel("Archivieren")
+                .accessibilityLabel("Archive")
             }
             .padding(.horizontal, 3)
             .frame(height: 48)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
             Spacer()
-            CircleButton(icon: "trash", label: "Löschen", size: 48) { confirmTrash = true }
-                .confirmationDialog("Foto löschen?", isPresented: $confirmTrash,
+            CircleButton(icon: "trash", label: "Delete", size: 48) { confirmTrash = true }
+                .confirmationDialog("Delete Photo?", isPresented: $confirmTrash,
                                     titleVisibility: .visible) {
-                    Button("Löschen", role: .destructive) { trashCurrent() }
+                    Button("Delete", role: .destructive) { trashCurrent() }
                 }
         }
         .padding(.horizontal, 28)
@@ -257,24 +257,24 @@ struct ViewerScreen: View {
     private func relativeDay(_ d: Date?) -> String {
         guard let d else { return "—" }
         let cal = Calendar.current
-        if cal.isDateInToday(d) { return "Heute" }
-        if cal.isDateInYesterday(d) { return "Gestern" }
+        if cal.isDateInToday(d) { return "Today" }
+        if cal.isDateInYesterday(d) { return "Yesterday" }
         let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
+        f.locale = Locale(identifier: "en_US")
         if let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day,
            days < 7 {
             f.dateFormat = "EEEE"
         } else {
-            f.dateFormat = cal.isDate(d, equalTo: Date(), toGranularity: .year) ? "d. MMMM" : "d. MMMM yyyy"
+            f.dateFormat = cal.isDate(d, equalTo: Date(), toGranularity: .year) ? "d MMMM" : "d MMMM yyyy"
         }
         return f.string(from: d)
     }
 
     private static let dayThisYear: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d. MMM"; return f
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMM"; return f
     }()
     private static let dayOtherYear: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d. MMM yyyy"; return f
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMM yyyy"; return f
     }()
 
     /// Warms the 2048 previews of the neighboring pages (±1..3, nearest first)
@@ -408,8 +408,8 @@ private struct Filmstrip: View {
         }
         // VoiceOver: one adjustable element (swipe up/down = next/previous)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Filmstreifen")
-        .accessibilityValue("\(index + 1) von \(assets.count)")
+        .accessibilityLabel("Filmstrip")
+        .accessibilityValue("\(index + 1) of \(assets.count)")
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment: if index + 1 < assets.count { index += 1 }
@@ -639,7 +639,7 @@ private struct VideoPlayer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(playing ? "Pause" : "Wiedergabe")
+            .accessibilityLabel(playing ? "Pause" : "Play")
             progressBar
             Button {
                 muted.toggle()
@@ -652,7 +652,7 @@ private struct VideoPlayer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(muted ? "Ton ein" : "Ton aus")
+            .accessibilityLabel(muted ? "Unmute" : "Mute")
         }
         .padding(.horizontal, 16)
         .frame(height: 48)
@@ -684,8 +684,8 @@ private struct VideoPlayer: View {
         }
         .frame(height: 44)
         .accessibilityElement()
-        .accessibilityLabel("Wiedergabeposition")
-        .accessibilityValue("\(Int(current)) von \(Int(duration)) Sekunden")
+        .accessibilityLabel("Playback Position")
+        .accessibilityValue("\(Int(current)) of \(Int(duration)) seconds")
         .accessibilityAdjustableAction { dir in
             current = min(max(current + (dir == .increment ? 5 : -5), 0), duration)
             player?.seek(to: CMTime(seconds: current, preferredTimescale: 600))

@@ -17,11 +17,11 @@ struct TerminalScreen: View {
                     TerminalBridge(api: api).ignoresSafeArea(.container, edges: .bottom)
                 } else {
                     ContentUnavailableView {
-                        Label("Terminal gesperrt", systemImage: "lock.shield.fill")
+                        Label("Terminal Locked", systemImage: "lock.shield.fill")
                     } description: {
-                        Text("Zugriff auf die atlas-Shell erfordert Face ID.")
+                        Text("Access to the atlas shell requires Face ID.")
                     } actions: {
-                        if failed { Button("Entsperren") { Task { await unlock() } } }
+                        if failed { Button("Unlock") { Task { await unlock() } } }
                     }
                 }
             }
@@ -40,7 +40,7 @@ struct TerminalScreen: View {
         let context = LAContext()
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else { unlocked = true; return }
         let ok = (try? await context.evaluatePolicy(.deviceOwnerAuthentication,
-                                                    localizedReason: "Shell auf atlas öffnen")) ?? false
+                                                    localizedReason: "Open a shell on atlas")) ?? false
         unlocked = ok
         failed = !ok
     }
@@ -105,7 +105,7 @@ private struct TerminalBridge: UIViewRepresentable {
                     self.receive()
                 case .failure:
                     DispatchQueue.main.async {
-                        self.terminal?.feed(text: "\r\n\u{1b}[31m" + "— Verbindung getrennt —" + "\u{1b}[0m\r\n")
+                        self.terminal?.feed(text: "\r\n\u{1b}[31m" + "— Disconnected —" + "\u{1b}[0m\r\n")
                     }
                 }
             }
