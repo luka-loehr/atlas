@@ -9,10 +9,12 @@ import UniformTypeIdentifiers
 /// hochladen, anlegen, umbenennen, verschieben, löschen.
 struct DriveScreen: View {
     var library: Library
+    /// The search tab opened from Dateien: the root becomes a file search.
+    var searchMode = false
 
     var body: some View {
         NavigationStack {
-            DriveFolderScreen(client: DriveClient(host: library.host), isRoot: true)
+            DriveFolderScreen(client: DriveClient(host: library.host), isRoot: true, searchMode: searchMode)
                 .navigationDestination(for: DriveFolder.self) { f in
                     DriveFolderScreen(client: DriveClient(host: library.host),
                                       folder: f.id, title: f.name)
@@ -47,6 +49,7 @@ struct DriveFolderScreen: View {
     var folder: Int? = nil
     var title: String = "Dateien"
     var isRoot: Bool = false
+    var searchMode: Bool = false
 
     @State private var listing = DriveListing()
     @State private var loaded = false
@@ -70,18 +73,18 @@ struct DriveFolderScreen: View {
 
     var body: some View {
         Group {
-            if isRoot {
+            if searchMode {
                 content.searchable(text: $searchText, prompt: "In Dateien suchen")
             } else {
                 content
             }
         }
-        .navigationTitle(title)
+        .navigationTitle(searchMode ? "Suche" : title)
         .navigationBarTitleDisplayMode(isRoot ? .large : .inline)
-        .toolbar { toolbar }
-        .task { await load() }
+        .toolbar { if !searchMode { toolbar } }
+        .task { if !searchMode { await load() } }
         .task(id: searchText) {
-            guard isRoot else { return }
+            guard searchMode else { return }
             guard !searchText.isEmpty else { results = nil; return }
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
@@ -160,7 +163,7 @@ struct DriveFolderScreen: View {
                 }
                 .padding(20)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-            } else if loaded && results == nil && listing.folders.isEmpty && listing.files.isEmpty {
+            } else if !searchMode, loaded && results == nil && listing.folders.isEmpty && listing.files.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "folder").font(.system(size: 34)).foregroundStyle(.tertiary)
                     Text("Keine Dateien")

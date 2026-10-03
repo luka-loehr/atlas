@@ -8,27 +8,25 @@ struct PhotosScreen: View {
     @State private var selection = Selection()
     @State private var shareBundle: ShareBundle?
     @State private var confirmDelete = false
+    @State private var trashOne: Asset?
+    @State private var favorites: [String: Bool] = [:]   // optimistic overrides
     @State private var busy = false
     @Namespace private var zoom
 
     /// Apple-Fotos-Raster-Zoom: Pinch schaltet durch die Spaltenstufen.
     /// Persistiert, damit die App mit der zuletzt gewählten Dichte startet.
     private static let zoomLevels = [1, 3, 5, 9]
-    @AppStorage("photos.gridColumns") private var gridColumns = 3
+    @AppStorage("photos.gridColumns") private var gridColumns = 5
     /// Kumulierter Pinch-Faktor seit dem letzten Stufenwechsel — erlaubt
     /// mehrere Stufen in EINER durchgehenden Pinch-Bewegung.
     @State private var pinchBase: CGFloat = 1
-    /// Id der obersten sichtbaren Tages-Sektion — koppelt Scroll-Position und
-    /// den Jahr/Monat-Schnellscroller (TimeScrubber) bidirektional.
-    @State private var scrolledSectionID: String?
     @State private var position = ScrollPosition()
-    /// Sichtbarer Ausschnitt des Rasters in Inhalts-Koordinaten, auf ganze
-    /// Zeilen gerundet — nur Zeilen in diesem Fenster existieren als Views.
-    @State private var window: ClosedRange<CGFloat> = 0...0
-
-    private var cols: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 2), count: gridColumns)
-    }
+    /// Sichtbarer Ausschnitt des Rasters in Zeilen (mit Vorlauf) — nur Zeilen
+    /// in diesem Fenster existieren als Views.
+    @State private var window = GridWindow()
+    /// Asset-Position oben im Bild: hält die Stelle beim Zoomen und benennt
+    /// den Monat unter dem Titel.
+    @State private var topPosition: Int?
 
     /// Decode target for a grid cell: its pixel size (+ small headroom) so we
     /// never hold a full 512/2048 bitmap for a tiny cell — less decode, less RAM.
@@ -40,18 +38,18 @@ struct PhotosScreen: View {
     /// Eine Zoom-Stufe weiter (in = Zellen größer = weniger Spalten).
     private func stepZoom(in zoomIn: Bool) {
         let levels = Self.zoomLevels
-        guard let i = levels.firstIndex(of: gridColumns) else { gridColumns = 3; return }
+        guard let i = levels.firstIndex(of: gridColumns) else { gridColumns = 5; return }
         let next = zoomIn ? i - 1 : i + 1
         guard levels.indices.contains(next) else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.snappy(duration: 0.32)) { gridColumns = levels[next] }
+        gridColumns = levels[next]
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
-                if library.sections.isEmpty {
+                if library.assets.isEmpty {
                     emptyState
                 } else {
                     grid
@@ -59,10 +57,11 @@ struct PhotosScreen: View {
                 if busy {
                     ProgressView()
                         .padding(20)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
                 }
             }
-            .navigationTitle(selection.active ? title : "Atlas")
+            .navigationTitle(selection.active ? title : "Fotos")
+            .navigationSubtitle(selection.active ? "" : subtitle)
             .navigationBarTitleDisplayMode(selection.active ? .inline : .large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -75,15 +74,18 @@ struct PhotosScreen: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if selection.active {
+                if selection.active {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Fertig") { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
-                    } else {
-                        // Auswahl startet wie bei Apple per Long-Press auf ein
-                        // Bild — oben rechts bleibt nur das Konto. Der „Atlas"-
-                        // Titel steht als großer Titel oben links über dem Raster.
+                    }
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Auswählen") { withAnimation(.snappy) { selection.enter() } }
+                    }
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button { showAccount = true } label: {
-                            Image(systemName: "person.crop.circle").font(.system(size: 22))
+                            Image(systemName: "person.crop.circle")
                         }
                     }
                 }
@@ -99,9 +101,18 @@ struct PhotosScreen: View {
             ViewerScreen(library: library, assets: library.assets, start: asset)
                 .navigationTransition(.zoom(sourceID: asset.id, in: zoom))
         }
-        .confirmationDialog("\(selection.count) Objekte in den Papierkorb?",
+        .confirmationDialog("\(selection.count) Objekte löschen?",
                             isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("In Papierkorb", role: .destructive) { run { try await library.client.trash($0) } }
+            Button("Löschen", role: .destructive) { run { try await library.client.trash($0) } }
+            Button("Abbrechen", role: .cancel) {}
+        }
+        .confirmationDialog("Foto löschen?",
+                            isPresented: Binding(get: { trashOne != nil }, set: { if !$0 { trashOne = nil } }),
+                            titleVisibility: .visible) {
+            Button("Löschen", role: .destructive) {
+                guard let a = trashOne else { return }
+                runOne(a) { try await library.client.trash([$0]) }
+            }
             Button("Abbrechen", role: .cancel) {}
         }
     }
@@ -111,59 +122,73 @@ struct PhotosScreen: View {
     }
     private var allSelected: Bool { selection.allSelected(of: library.assets.map(\.id)) }
 
-    /// The timeline, oldest day first, opened at its newest (bottom) end.
+    /// Der Monat oben im Bild; ganz unten (dem Startpunkt) die Anzahl.
+    private var subtitle: String {
+        guard let top = topPosition, let month = library.month(at: top) else {
+            return "\(library.assets.count.formatted()) Objekte"
+        }
+        return month.label
+    }
+
+    /// The timeline as one grid, oldest first, opened at its newest (bottom)
+    /// end — like Apple Photos, without day headers.
     ///
-    /// The geometry is plain arithmetic — every day section's height follows
-    /// from its photo count, the column count and the width — so the scroll
-    /// view gets a spacer of the exact total height and only the rows inside
-    /// the visible window exist as views. That is what lets it open at the
-    /// bottom of 25,000 photos instantly, and lets the scrubber jump to any
-    /// month in one step, without the lazy stack having to guess heights.
+    /// The geometry is plain arithmetic (rows × pitch), so the scroll view
+    /// gets a spacer of the exact total height and only the rows inside the
+    /// visible window exist as views. That is what lets it open at the bottom
+    /// of 25,000 photos instantly and lets the scrubber jump anywhere in one
+    /// step.
     private var grid: some View {
         GeometryReader { geo in
-            let layout = TimelineLayout(sections: library.sections, columns: gridColumns, width: geo.size.width)
+            let layout = GridLayout(count: library.assets.count, columns: gridColumns, width: geo.size.width)
             ScrollView {
                 ZStack(alignment: .topLeading) {
                     Color.clear.frame(width: geo.size.width, height: layout.total)
-                    ForEach(layout.sections(in: window), id: \.self) { i in
-                        sectionView(library.sections[i], layout: layout, top: layout.offsets[i])
-                            .offset(y: layout.offsets[i])
+                    ForEach(window.rows(limit: layout.rows), id: \.self) { row in
+                        rowView(row, layout: layout)
+                            .offset(y: CGFloat(row) * layout.pitch)
                     }
                 }
             }
             .scrollPosition($position)
             // the timeline runs oldest → newest: open at the newest end
             .defaultScrollAnchor(.bottom, for: .initialOffset)
-            .onScrollGeometryChange(for: ClosedRange<CGFloat>.self, of: { geometry in
-                // one extra screen either side, in whole rows: thumbnails are
-                // on their way before a row scrolls in, and the state only
-                // changes when a row boundary is crossed
+            .onScrollGeometryChange(for: GridWindow.self, of: { geometry in
+                // one screen above and half a screen below, in whole rows:
+                // thumbnails are on their way before a row scrolls in, and
+                // the state only changes when a row boundary is crossed
                 let pitch = max(layout.pitch, 1)
                 let rect = geometry.visibleRect
-                let low = ((rect.minY - rect.height * 0.5) / pitch).rounded(.down) * pitch
-                let high = ((rect.maxY + rect.height * 0.5) / pitch).rounded(.up) * pitch
-                return low...max(high, low)
+                let atBottom = rect.maxY >= geometry.contentSize.height - pitch
+                return GridWindow(low: Int(((rect.minY - rect.height) / pitch).rounded(.down)),
+                                  high: Int(((rect.maxY + rect.height * 0.5) / pitch).rounded(.up)),
+                                  top: Int((max(rect.minY + geo.safeAreaInsets.top, 0) / pitch).rounded(.down)),
+                                  atBottom: atBottom)
             }) { _, new in
                 window = new
-                // the section under the top of the screen drives the scrubber
-                let top = new.lowerBound + (new.upperBound - new.lowerBound) * 0.25
-                let id = layout.sectionID(at: top, in: library.sections)
-                if id != scrolledSectionID { scrolledSectionID = id }
+                let top = min(new.top * layout.columns, max(library.assets.count - 1, 0))
+                let next: Int? = new.atBottom ? nil : top
+                if library.month(at: next ?? -1)?.key != library.month(at: topPosition ?? -1)?.key || (next == nil) != (topPosition == nil) {
+                    topPosition = next
+                }
+                let rowsOnScreen = max(new.high - new.low, 1)
+                library.prefetch(around: top, span: rowsOnScreen * layout.columns)
             }
-            .onChange(of: gridColumns) { _, columns in
-                // keep the day at the top of the screen in place across densities
-                guard let id = scrolledSectionID, let i = library.sections.firstIndex(where: { $0.id == id }) else { return }
-                let next = TimelineLayout(sections: library.sections, columns: columns, width: geo.size.width)
-                position.scrollTo(y: next.offsets[i])
+            .onChange(of: gridColumns) { old, columns in
+                // keep the photo at the top of the screen in place across densities
+                guard let top = topPosition else { return }
+                let next = GridLayout(count: library.assets.count, columns: columns, width: geo.size.width)
+                position.scrollTo(y: CGFloat(top / max(columns, 1)) * next.pitch)
             }
             .overlay(alignment: .trailing) {
-                if !selection.active, !library.scrubIndex.entries.isEmpty {
-                    TimeScrubber(index: library.scrubIndex,
-                                 scrolledID: Binding(get: { scrolledSectionID }, set: { id in
-                                     guard let id, let i = library.sections.firstIndex(where: { $0.id == id }) else { return }
-                                     scrolledSectionID = id
-                                     position.scrollTo(y: min(layout.offsets[i], max(layout.total - geo.size.height * 0.6, 0)))
-                                 }),
+                if !selection.active, library.months.count > 1 {
+                    TimeScrubber(months: library.months, total: library.assets.count,
+                                 current: topPosition ?? max(library.assets.count - 1, 0),
+                                 onJump: { month in
+                                     let row = month.first / max(layout.columns, 1)
+                                     position.scrollTo(y: min(CGFloat(row) * layout.pitch,
+                                                              max(layout.total - geo.size.height * 0.6, 0)))
+                                 },
                                  onScrubbing: { library.scrubbing = $0 })
                 }
             }
@@ -188,7 +213,7 @@ struct PhotosScreen: View {
             )
             .refreshable { await library.refresh() }
             .selectionToolbar(selection,
-                onShare:    { shareSelected() },
+                onShare:    { share(Array(selection.ids)) },
                 onFavorite: { run(hides: false) { try await library.client.favorite($0, true) } },
                 onArchive:  { run { try await library.client.archive($0, true) } },
                 onLock:     { run { try await library.client.lock($0, true) } },
@@ -196,41 +221,52 @@ struct PhotosScreen: View {
         }
     }
 
-    /// One day: its header, then the rows of its grid that are in the window.
-    private func sectionView(_ section: Library.DaySection, layout: TimelineLayout, top: CGFloat) -> some View {
-        let rows = layout.rows(of: section.assets.count, sectionTop: top, in: window)
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(section.title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.top, 14)
-                .padding(.bottom, 4)
-                .frame(maxWidth: .infinity, minHeight: TimelineLayout.header, maxHeight: TimelineLayout.header, alignment: .bottomLeading)
-            ZStack(alignment: .topLeading) {
-                Color.clear.frame(height: layout.gridHeight(section.assets.count))
-                ForEach(Array(rows), id: \.self) { row in
-                    HStack(spacing: 2) {
-                        ForEach(section.assets[(row * gridColumns)..<min((row + 1) * gridColumns, section.assets.count)]) { asset in
-                            SelectableThumb(asset: asset,
-                                            thumbURL: library.client.thumbURL(asset.id, gridColumns == 1 ? 2048 : 512),
-                                            maxPixel: cellMaxPixel,
-                                            selection: selection, namespace: zoom) { pick = asset }
-                                .frame(width: layout.side, height: layout.side)
-                                .task { library.prefetch(around: asset) }
-                        }
-                    }
-                    .offset(y: CGFloat(row) * layout.pitch)
-                }
+    /// One row of the grid.
+    private func rowView(_ row: Int, layout: GridLayout) -> some View {
+        let lo = row * layout.columns
+        let hi = min(lo + layout.columns, library.assets.count)
+        return HStack(spacing: GridLayout.spacing) {
+            ForEach(library.assets[lo..<hi]) { asset in
+                SelectableThumb(asset: asset,
+                                thumbURL: library.client.thumbURL(asset.id, gridColumns == 1 ? 2048 : 512),
+                                maxPixel: cellMaxPixel,
+                                selection: selection, namespace: zoom,
+                                holdToSelect: false) { pick = asset }
+                    .frame(width: layout.side, height: layout.side)
+                    .contextMenu { menu(for: asset) } preview: { ContextPreview(asset: asset, client: library.client) }
             }
-            .padding(.horizontal, 2)
-            .padding(.top, TimelineLayout.gap)
         }
-        .frame(width: layout.width, alignment: .topLeading)
+        .frame(width: layout.width, alignment: .leading)
     }
 
-    // MARK: - batch actions
+    /// Long press on a photo: the system context menu with a large preview.
+    @ViewBuilder
+    private func menu(for asset: Asset) -> some View {
+        let fav = favorites[asset.id] ?? asset.isFavorite
+        Section {
+            Button { share([asset.id]) } label: { Label("Teilen", systemImage: "square.and.arrow.up") }
+            Button {
+                favorites[asset.id] = !fav
+                Task { try? await library.client.favorite([asset.id], !fav) }
+            } label: {
+                Label(fav ? "Kein Favorit" : "Favorit", systemImage: fav ? "heart.slash" : "heart")
+            }
+            Button {
+                withAnimation(.snappy) { selection.enter(with: asset.id) }
+            } label: { Label("Auswählen", systemImage: "checkmark.circle") }
+        }
+        Section {
+            Button { runOne(asset) { try await library.client.archive([$0], true) } } label: {
+                Label("Archivieren", systemImage: "archivebox")
+            }
+            Button { runOne(asset) { try await library.client.lock([$0], true) } } label: {
+                Label("Ausblenden", systemImage: "eye.slash")
+            }
+        }
+        Button(role: .destructive) { trashOne = asset } label: { Label("Löschen", systemImage: "trash") }
+    }
+
+    // MARK: - actions
 
     /// Run a server mutation on the current selection. `hides` = the affected
     /// assets leave the main timeline (archive/lock/trash) → drop them locally.
@@ -251,8 +287,18 @@ struct PhotosScreen: View {
         }
     }
 
-    private func shareSelected() {
-        let ids = Array(selection.ids)
+    /// The same for one photo (context menu); it leaves the timeline.
+    private func runOne(_ asset: Asset, _ op: @escaping (String) async throws -> Void) {
+        Task {
+            do {
+                try await op(asset.id)
+                withAnimation(.snappy) { library.removeLocally([asset.id]) }
+                await library.loadStats()
+            } catch {}
+        }
+    }
+
+    private func share(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         busy = true
         Task {
@@ -271,28 +317,47 @@ struct PhotosScreen: View {
                 }
             }
             if !urls.isEmpty { shareBundle = ShareBundle(urls: urls) }
-            withAnimation(.snappy(duration: 0.4)) { selection.exit() }
+            if selection.active { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        Group {
             if library.online {
                 ProgressView()
-                Text("lade Bibliothek …")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
             } else {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 34))
-                    .foregroundStyle(.tertiary)
-                Text("atlas nicht erreichbar")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("im Tailnet? atlas wach?")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
+                ContentUnavailableView("atlas nicht erreichbar", systemImage: "moon.zzz.fill")
             }
+        }
+    }
+}
+
+/// The large preview of the context menu: the cached grid thumbnail at once,
+/// the sharp 2048 version over it as soon as it is there.
+private struct ContextPreview: View {
+    let asset: Asset
+    let client: PhotoClient
+    @State private var sharp: UIImage?
+
+    private var size: CGSize {
+        let ratio = CGFloat(asset.width ?? 1) / CGFloat(max(asset.height ?? 1, 1))
+        let maxW: CGFloat = 360, maxH: CGFloat = 480
+        return ratio >= maxW / maxH ? CGSize(width: maxW, height: maxW / ratio)
+                                    : CGSize(width: maxH * ratio, height: maxH)
+    }
+
+    var body: some View {
+        ZStack {
+            Thumb(url: client.thumbURL(asset.id, 512))
+            if let sharp {
+                Image(uiImage: sharp).resizable().scaledToFill()
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .task {
+            guard let url = client.thumbURL(asset.id, 2048) else { return }
+            sharp = await ThumbLoader.shared.loadFull(url, maxPixel: 1400)
         }
     }
 }
@@ -301,84 +366,49 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-/// Where every day section of the timeline sits, computed instead of measured.
-struct TimelineLayout {
-    /// Header block: 14 above the title, the 18pt title line, 4 below.
-    static let header: CGFloat = 36
-    /// Between a header and its grid.
-    static let gap: CGFloat = 4
-    /// Between day sections.
-    static let spacing: CGFloat = 6
+/// Which rows of the grid exist as views, in whole rows.
+struct GridWindow: Equatable {
+    var low = 0
+    var high = 0
+    /// The row under the top edge of the screen.
+    var top = 0
+    var atBottom = true
 
-    let columns: Int
-    let width: CGFloat
-    /// Top edge of each section.
-    let offsets: [CGFloat]
-    let total: CGFloat
-
-    /// Cells are square, 2pt apart, with a 2pt margin either side.
-    var side: CGFloat { max((width - 4 - 2 * CGFloat(columns - 1)) / CGFloat(max(columns, 1)), 1) }
-    var pitch: CGFloat { side + 2 }
-
-    init(sections: [Library.DaySection], columns: Int, width: CGFloat) {
-        self.columns = max(columns, 1)
-        self.width = width
-        let side = max((width - 4 - 2 * CGFloat(max(columns, 1) - 1)) / CGFloat(max(columns, 1)), 1)
-        var y: CGFloat = 0
-        var offsets: [CGFloat] = []
-        offsets.reserveCapacity(sections.count)
-        for section in sections {
-            offsets.append(y)
-            let rows = (section.assets.count + max(columns, 1) - 1) / max(columns, 1)
-            y += Self.header + Self.gap + CGFloat(rows) * (side + 2) - 2 + Self.spacing
-        }
-        self.offsets = offsets
-        self.total = max(y - Self.spacing, 0)
-    }
-
-    func gridHeight(_ count: Int) -> CGFloat {
-        let rows = (count + columns - 1) / columns
-        return max(CGFloat(rows) * pitch - 2, 0)
-    }
-
-    /// Index of the last section starting at or above `y`.
-    private func index(at y: CGFloat) -> Int {
-        var low = 0, high = offsets.count - 1
-        while low < high {
-            let mid = (low + high + 1) / 2
-            if offsets[mid] <= y { low = mid } else { high = mid - 1 }
-        }
-        return max(low, 0)
-    }
-
-    /// The sections that intersect a window of the content.
-    func sections(in window: ClosedRange<CGFloat>) -> Range<Int> {
-        guard !offsets.isEmpty else { return 0..<0 }
-        return index(at: window.lowerBound)..<(index(at: window.upperBound) + 1)
-    }
-
-    func sectionID(at y: CGFloat, in sections: [Library.DaySection]) -> String? {
-        guard !offsets.isEmpty, sections.count == offsets.count else { return nil }
-        return sections[index(at: max(y, 0))].id
-    }
-
-    /// The rows of a section's grid that intersect the window.
-    func rows(of count: Int, sectionTop: CGFloat, in window: ClosedRange<CGFloat>) -> Range<Int> {
-        let total = (count + columns - 1) / columns
-        let gridTop = sectionTop + Self.header + Self.gap
-        let first = max(Int(((window.lowerBound - gridTop) / pitch).rounded(.down)), 0)
-        let last = min(Int(((window.upperBound - gridTop) / pitch).rounded(.up)), total)
-        return first..<max(last, first)
+    func rows(limit: Int) -> Range<Int> {
+        let lo = max(low, 0), hi = min(high, limit)
+        return lo..<max(hi, lo)
     }
 }
 
-/// Google-Fotos-Schnellscroller am rechten Rand. Nutzt den PRECOMPUTED
-/// `Library.ScrubIndex` (id→Anteil, Monat→Sektion, Labels), damit der
-/// Scroll-/Drag-Pfad KEINE O(n)-Scans, Calendar- oder DateFormatter-Aufrufe pro
-/// Frame macht — das war die Haupt-Hitzequelle beim schnellen Scrubben.
+/// Where every row of the grid sits, computed instead of measured.
+struct GridLayout {
+    static let spacing: CGFloat = 2
+
+    let columns: Int
+    let width: CGFloat
+    let rows: Int
+    /// Cells are square, 2pt apart, edge to edge.
+    let side: CGFloat
+    var pitch: CGFloat { side + Self.spacing }
+    var total: CGFloat { max(CGFloat(rows) * pitch - Self.spacing, 0) }
+
+    init(count: Int, columns: Int, width: CGFloat) {
+        self.columns = max(columns, 1)
+        self.width = width
+        rows = (count + self.columns - 1) / self.columns
+        side = max((width - Self.spacing * CGFloat(self.columns - 1)) / CGFloat(self.columns), 1)
+    }
+}
+
+/// Schnellscroller am rechten Rand: Griff ziehen, Monat und Jahre erscheinen,
+/// beim Loslassen steht das Raster dort. Alle Werte kommen vorberechnet aus
+/// `Library.months`, im Drag-Pfad wird nur binär gesucht.
 struct TimeScrubber: View {
-    let index: Library.ScrubIndex
-    @Binding var scrolledID: String?
+    let months: [Library.Month]
+    let total: Int
+    /// Asset position at the top of the screen.
+    let current: Int
+    var onJump: (Library.Month) -> Void
     var onScrubbing: (Bool) -> Void = { _ in }
 
     @State private var dragging = false
@@ -387,24 +417,20 @@ struct TimeScrubber: View {
 
     private let space = "scrubTrack"
 
+    private func frac(_ position: Int) -> CGFloat { CGFloat(position) / CGFloat(max(total - 1, 1)) }
+
     private var yearMarks: [(year: Int, frac: CGFloat)] {
         var seen = Set<Int>()
-        var out: [(Int, CGFloat)] = []
-        for e in index.entries where seen.insert(e.year).inserted { out.append((e.year, e.start)) }
-        return out.map { (year: $0.0, frac: $0.1) }
-    }
-
-    private var currentFrac: CGFloat {
-        // nothing scrolled yet = resting at the newest (bottom) end
-        guard let id = scrolledID else { return 1 }
-        return index.fracByID[id] ?? 1
+        return months.compactMap { m in
+            seen.insert(m.year).inserted && m.year > 0 ? (m.year, frac(m.first)) : nil
+        }
     }
 
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
-            let frac = dragging ? dragFrac : currentFrac
-            let handleY = clamp(frac * h, 22, h - 22)
+            let f = dragging ? dragFrac : frac(current)
+            let handleY = clamp(f * h, 22, h - 22)
             ZStack(alignment: .topTrailing) {
                 if dragging {
                     ForEach(yearMarks, id: \.year) { m in
@@ -412,19 +438,17 @@ struct TimeScrubber: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(.regularMaterial, in: Capsule())
+                            .glassEffect(.regular, in: .capsule)
                             .position(x: geo.size.width - 34, y: clamp(m.frac * h, 12, h - 12))
                             .allowsHitTesting(false)
                     }
-                    Text(target(dragFrac).label)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+                    Text(month(at: dragFrac).label)
+                        .font(.system(size: 15, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(.regularMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
+                        .glassEffect(.regular, in: .capsule)
                         .position(x: geo.size.width - 118, y: handleY)
                         .allowsHitTesting(false)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(.opacity)
                 }
                 handle
                     .position(x: geo.size.width - 20, y: handleY)
@@ -442,12 +466,11 @@ struct TimeScrubber: View {
             .font(.system(size: 12, weight: .bold))
             .foregroundStyle(.primary)
             .frame(width: 36, height: 46)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.18), radius: 4, y: 1)
+            .glassEffect(.regular.interactive(), in: .capsule)
             .scaleEffect(dragging ? 1.12 : 1)
             .animation(.snappy(duration: 0.2), value: dragging)
             .contentShape(Rectangle().inset(by: -12))
+            .opacity(dragging ? 1 : 0.9)
     }
 
     private func drag(h: CGFloat) -> some Gesture {
@@ -458,13 +481,12 @@ struct TimeScrubber: View {
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                     onScrubbing(true)
                 }
-                let f = clamp(v.location.y / h, 0, 1)
-                dragFrac = f
-                let t = target(f)
-                if t.month != lastMonth {
-                    lastMonth = t.month
+                dragFrac = clamp(v.location.y / h, 0, 1)
+                let m = month(at: dragFrac)
+                if m.key != lastMonth {
+                    lastMonth = m.key
                     UISelectionFeedbackGenerator().selectionChanged()
-                    if let id = t.id, id != scrolledID { scrolledID = id }
+                    onJump(m)
                 }
             }
             .onEnded { _ in
@@ -473,20 +495,15 @@ struct TimeScrubber: View {
             }
     }
 
-    /// Zielmonat für einen Bahn-Anteil: O(log n) Binärsuche über die Entries,
-    /// dann precomputed Label + Sektions-Id.
-    private func target(_ f: CGFloat) -> (month: String, label: String, id: String?) {
-        let es = index.entries
-        guard !es.isEmpty else { return ("", "", nil) }
-        var lo = 0, hi = es.count - 1, found = es.count - 1
-        while lo <= hi {
-            let mid = (lo + hi) / 2
-            if f < es[mid].start { hi = mid - 1 }
-            else if f >= es[mid].end { lo = mid + 1 }
-            else { found = mid; break }
+    /// The month at a fraction of the track (binary search over start positions).
+    private func month(at f: CGFloat) -> Library.Month {
+        let position = Int(f * CGFloat(max(total - 1, 0)))
+        var lo = 0, hi = months.count - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if months[mid].first <= position { lo = mid } else { hi = mid - 1 }
         }
-        let e = es[clamp(found, 0, es.count - 1)]
-        return (e.month, e.label, index.idByMonth[e.month])
+        return months[lo]
     }
 
     private func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(max(v, lo), hi) }
