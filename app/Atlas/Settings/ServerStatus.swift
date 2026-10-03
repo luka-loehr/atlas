@@ -70,25 +70,38 @@ struct ServiceReport: Decodable {
     var pending: Int { queue.values.reduce(0) { $0 + ($1["pending"] ?? 0) + ($1["running"] ?? 0) } }
 }
 
-struct ContainerList: Decodable {
-    struct Container: Decodable, Identifiable {
-        var name: String
-        var image: String
-        var state: String
-        var status: String
-        var id: String { name }
-    }
-    var containers: [Container]
-}
-
 /// Live machine metrics over the server's WebSocket: ten minutes of history
-/// on connect, then one sample a second, for as long as a screen watches.
+/// on connect, then two samples a second. One shared instance: Settings
+/// starts it when it opens, so the server screen is already filled when it
+/// is pushed, and nothing jumps in.
 @MainActor @Observable
 final class Machine {
+    static let shared = Machine()
+    @ObservationIgnored private var watcher: Task<Void, Never>?
+    @ObservationIgnored private var watchers = 0
+
+    /// Keep the stream (and the snapshot) live while the caller's task runs.
+    func keepLive(_ api: API) async {
+        watchers += 1
+        if watcher == nil {
+            watcher = Task { [weak self] in
+                guard let self else { return }
+                await self.refresh(api)
+                await self.watch(api)
+            }
+        }
+        // wait until the caller goes away
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        watchers -= 1
+        if watchers == 0 {
+            watcher?.cancel()
+            watcher = nil
+        }
+    }
+
     private(set) var samples: [MetricSample] = []
     private(set) var snapshot: SystemSnapshot?
     private(set) var services: ServiceReport?
-    private(set) var containers: [ContainerList.Container] = []
     private(set) var isLive = false
 
     var latest: MetricSample? { samples.last }
@@ -104,10 +117,8 @@ final class Machine {
     func refresh(_ api: API) async {
         async let snapshot = try? api.get("system", as: SystemSnapshot.self)
         async let services = try? api.get("system/services", as: ServiceReport.self)
-        async let containers = try? api.get("system/containers", as: ContainerList.self)
         if let fresh = await snapshot { self.snapshot = fresh }
         if let fresh = await services { self.services = fresh }
-        if let fresh = await containers { self.containers = fresh.containers }
     }
 
     /// Runs until the calling task is cancelled; reconnects on drops.
@@ -128,7 +139,7 @@ final class Machine {
                         samples = history.history
                     } else if let sample = try? JSONDecoder().decode(MetricSample.self, from: data) {
                         samples.append(sample)
-                        if samples.count > 600 { samples.removeFirst(samples.count - 600) }
+                        if samples.count > 1200 { samples.removeFirst(samples.count - 1200) }
                     }
                     isLive = true
                 }
@@ -145,7 +156,7 @@ final class Machine {
 struct ServerStatusScreen: View {
     private let roleNames = ["atlas-server": "API and Processing", "atlas-ml": "Search and Faces"]
     @Environment(Session.self) private var session
-    @State private var machine = Machine()
+    @State private var machine = Machine.shared
     @State private var confirm: PowerAction?
 
     enum PowerAction: String, Identifiable {
@@ -155,11 +166,13 @@ struct ServerStatusScreen: View {
 
     var body: some View {
         Form {
-            if let latest = machine.latest {
-                Section {
+            // always laid out: placeholder values until the first sample, so
+            // the section never pops in under the user's finger
+            let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
+            Section {
                     MetricRow(title: "CPU", value: latest.cpu / 100, color: .blue, samples: machine.samples, keyPath: \.cpu,
                               detail: [machine.snapshot?.cpu.model, latest.cpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
-                    if let gpu = machine.snapshot?.gpu {
+                    if let gpu = machine.snapshot?.gpu ?? (machine.snapshot == nil ? SystemSnapshot.GPU(name: "GPU", mem_total_mb: 0) : nil) {
                         MetricRow(title: "GPU", value: latest.gpu / 100, color: .purple, samples: machine.samples, keyPath: \.gpu,
                                   detail: [gpu.name, "\(Int(latest.gpu_mem_mb).formatted()) / \(Int(gpu.mem_total_mb).formatted()) MB",
                                            latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
@@ -170,15 +183,14 @@ struct ServerStatusScreen: View {
                         let rate = machine.throughput
                         Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s").monospacedDigit()
                     }
-                    if let watts = latest.system_w {
-                        LabeledContent("Power") {
-                            Text("\(Int(watts)) W").monospacedDigit().contentTransition(.numericText(value: watts))
-                        }
+                    LabeledContent("Power") {
+                        Text(latest.system_w.map { "\(Int($0)) W" } ?? "–").monospacedDigit()
+                            .contentTransition(.numericText(value: latest.system_w ?? 0))
                     }
                 } header: {
                     Text("Live")
                 }
-            }
+                .redacted(reason: machine.latest == nil ? .placeholder : [])
 
             if let snapshot = machine.snapshot {
                 Section("Storage") {
@@ -228,21 +240,6 @@ struct ServerStatusScreen: View {
                 }
             }
 
-            if !machine.containers.isEmpty {
-                Section("Container") {
-                    ForEach(machine.containers) { container in
-                        LabeledContent {
-                            StateLabel(healthy: container.state == "running", text: container.status)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(container.name)
-                                Text(container.image).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                    }
-                }
-            }
-
             if let snapshot = machine.snapshot {
                 Section("About") {
                     LabeledContent("Name", value: snapshot.hostname)
@@ -253,8 +250,8 @@ struct ServerStatusScreen: View {
             }
 
             Section {
-                Button("Restart Server", systemImage: "arrow.clockwise") { confirm = .restart }
-                Button("Shut Down Server", systemImage: "power", role: .destructive) { confirm = .shutdown }
+                Button("Restart Server", systemImage: "arrow.clockwise") { Task { await askPower(.restart) } }
+                Button("Shut Down Server", systemImage: "power", role: .destructive) { Task { await askPower(.shutdown) } }
             }
             .confirmationDialog(confirm == .restart ? "Restart Server?" : "Shut Down Server?",
                                 isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
@@ -268,22 +265,26 @@ struct ServerStatusScreen: View {
         .navigationTitle("Server")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if machine.snapshot == nil && machine.latest == nil {
-                if session.reachability == .offline {
-                    ServerUnavailableView()
-                } else {
-                    ProgressView()
-                }
+            if machine.snapshot == nil && machine.latest == nil && session.reachability == .offline {
+                ServerUnavailableView()
             }
         }
         .task(id: session.config) {
             guard let api = session.api else { return }
-            await machine.refresh(api)
-            await machine.watch(api)
+            await machine.keepLive(api)
         }
         .refreshable {
             if let api = session.api { await machine.refresh(api) }
         }
+    }
+}
+
+extension ServerStatusScreen {
+    /// Power actions: Face ID first, then the confirmation.
+    @MainActor func askPower(_ action: PowerAction) async {
+        let reason = action == .restart ? "Restart atlas" : "Shut down atlas"
+        guard await Biometric.authenticate(reason: reason) else { return }
+        confirm = action
     }
 }
 

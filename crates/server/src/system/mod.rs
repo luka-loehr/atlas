@@ -1,7 +1,7 @@
 //! The machine itself: what it is doing, what runs on it, and a way in.
 //!
 //!   GET  /v1/system                    snapshot: load, memory, GPU, disks, power
-//!   GET  /v1/system/live               WebSocket: 10 min of history, then 1 Hz
+//!   GET  /v1/system/live               WebSocket: 10 min of history, then 2 Hz
 //!   GET  /v1/system/services           Atlas services, database, job queue
 //!   GET  /v1/system/containers         Docker containers
 //!   GET  /v1/system/containers/{name}  one container with its recent logs

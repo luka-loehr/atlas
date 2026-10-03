@@ -22,8 +22,8 @@ use tokio::sync::broadcast;
 
 use crate::{AppState, Config};
 
-const TICK: Duration = Duration::from_secs(1);
-const HISTORY: usize = 600;
+const TICK: Duration = Duration::from_millis(500);
+const HISTORY: usize = 1200; // 10 minutes at 2 Hz
 
 #[derive(Clone, Copy, Serialize, Default)]
 pub struct Sample {
