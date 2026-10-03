@@ -114,9 +114,6 @@ struct RootView: View {
                     Tab("Files", systemImage: "folder", value: "drive") {
                         DriveScreen(library: library)
                     }
-                    Tab("Settings", systemImage: "gearshape", value: "settings") {
-                        SettingsTab(library: library)
-                    }
                     Tab(value: "search", role: .search) {
                         if searchFrom == "drive" {
                             DriveScreen(library: library, searchMode: true)

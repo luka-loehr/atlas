@@ -16,6 +16,19 @@ pub enum ApiError {
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
+impl ApiError {
+    /// One line for the log.
+    pub fn message(&self) -> String {
+        match self {
+            ApiError::NotFound => "not found".into(),
+            ApiError::BadRequest(m) | ApiError::Unavailable(m) => (*m).into(),
+            ApiError::Unauthorized => "unauthorized".into(),
+            ApiError::TooLarge => "too large".into(),
+            ApiError::Internal(e) => format!("{e:#}"),
+        }
+    }
+}
+
 impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
         ApiError::Internal(e.into())

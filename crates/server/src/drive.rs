@@ -653,6 +653,23 @@ async fn trash_empty(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     Ok(Json(json!({ "deleted": purge(&app, &ids).await? })))
 }
 
+/// Remove drive files that have been in the trash for longer than the
+/// photo library keeps its trash.
+pub async fn purge_expired(app: &App) -> ApiResult<u64> {
+    let ids: Vec<i64> = {
+        let c = app.pool.get().await?;
+        c.query(
+            "SELECT id FROM drive_files WHERE trashed_at < now() - make_interval(days => $1)",
+            &[&crate::photos::assets::TRASH_DAYS],
+        )
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect()
+    };
+    purge(app, &ids).await
+}
+
 async fn purge(app: &App, ids: &[i64]) -> ApiResult<u64> {
     if ids.is_empty() {
         return Ok(0);
