@@ -6,7 +6,10 @@ import Charts
 struct SettingsTab: View {
     var library: Library
     @State private var sync: DeviceSync?
-    @State private var showSync = false
+    /// The sync the sheet shows. `sheet(item:)` hands the sheet the object it
+    /// was opened for; `sheet(isPresented:)` read `sync` before it was set and
+    /// came up empty.
+    @State private var shown: DeviceSync?
 
     var body: some View {
         SettingsScreen(
@@ -14,14 +17,14 @@ struct SettingsTab: View {
             onSyncNow: { startSync(delete: false) },
             onCleanupDevice: { startSync(delete: true) },
             onEmptyTrash: { Task { try? await library.client.emptyTrash(); await library.loadStats() } })
-        .sheet(isPresented: $showSync) { if let sync { SyncProgressScreen(sync: sync) } }
+        .sheet(item: $shown) { SyncProgressScreen(sync: $0) }
     }
 
     private func startSync(delete: Bool) {
         let sync = sync ?? DeviceSync(client: library.client)
         sync.client = library.client
         self.sync = sync
-        showSync = true
+        shown = sync
         Task {
             guard await sync.requestAccess() else { return }
             await sync.scan()
@@ -136,3 +139,5 @@ struct NetworkScreen: View {
         .task { report = try? await session.api?.get("system/network") }
     }
 }
+
+extension DeviceSync: Identifiable {}

@@ -41,6 +41,9 @@ struct SelectableThumb: View {
     var maxPixel: CGFloat? = nil
     var selection: Selection
     let namespace: Namespace.ID
+    /// Gedrückt halten startet die Auswahl. Aus, wo stattdessen das
+    /// System-Kontextmenü am Bild hängt.
+    var holdToSelect = true
     let onOpen: () -> Void
 
     /// Nach erfolgreichem Long-Press feuert beim Loslassen AUCH der Tap —
@@ -109,7 +112,8 @@ struct SelectableThumb: View {
                         holdFiredAt = Date()
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         withAnimation(selectSpring) { selection.enter(with: asset.id) }
-                    }
+                    },
+                isEnabled: holdToSelect
             )
     }
 }

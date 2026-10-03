@@ -177,8 +177,6 @@ struct ServerStatusScreen: View {
                     }
                 } header: {
                     Text("Live")
-                } footer: {
-                    Text(machine.isLive ? "Aktualisiert jede Sekunde." : "Verbindung wird wiederhergestellt …")
                 }
             }
 
@@ -257,8 +255,6 @@ struct ServerStatusScreen: View {
             Section {
                 Button("Server neu starten", systemImage: "arrow.clockwise") { confirm = .restart }
                 Button("Server ausschalten", systemImage: "power", role: .destructive) { confirm = .shutdown }
-            } footer: {
-                Text("Solange der Server aus ist, sind Fotos, Dateien und Backup nicht erreichbar.")
             }
             .confirmationDialog(confirm == .restart ? "Server neu starten?" : "Server ausschalten?",
                                 isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {

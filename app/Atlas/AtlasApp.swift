@@ -76,6 +76,9 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("photos.autoBackup") private var autoBackup = false
     @State private var tab = "photos"
+    /// The tab the search button was pressed from: Dateien searches files,
+    /// every other tab searches photos.
+    @State private var searchFrom = "photos"
     @State private var linkError: String?
 
     var body: some View {
@@ -95,10 +98,17 @@ struct RootView: View {
                         SettingsTab(library: library)
                     }
                     Tab(value: "search", role: .search) {
-                        SearchScreen(library: library)
+                        if searchFrom == "drive" {
+                            DriveScreen(library: library, searchMode: true)
+                        } else {
+                            SearchScreen(library: library)
+                        }
                     }
                 }
                 .tint(.primary)
+                .onChange(of: tab) { old, new in
+                    if new == "search", old != "search" { searchFrom = old }
+                }
             } else {
                 ConnectScreen()
             }
