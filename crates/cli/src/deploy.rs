@@ -1,5 +1,5 @@
 //! `atlas deploy`: build + install the Atlas services on the server, and
-//! manage their systemd units.
+//! manage their systemd units. `atlas connect`: the link that sets up the app.
 
 use std::os::unix::process::CommandExt;
 use std::process::{Command, exit};
@@ -61,4 +61,31 @@ fn install() {
     if !host.is_empty() {
         println!("  {DIM}server address for the app:{RESET} http://{host}");
     }
+}
+
+/// Print the link that connects the iOS app: the server address and the
+/// token it needs, in one URL the app opens. The token is read from the
+/// server's env file over ssh and never stored on this machine.
+pub(crate) fn connect() {
+    ensure_up();
+    let host = config().server_url.as_str();
+    if host.is_empty() {
+        eprintln!("{RED}no server address:{RESET} set ATLAS_SERVER_URL (or ATLAS_TAILNET_ADDR) in ~/.config/atlas/env");
+        exit(1);
+    }
+    let out = Command::new("ssh")
+        .args([ssh_host(), "sudo sed -n 's/^ATLAS_TOKEN=//p' /etc/atlas/atlas.env"])
+        .output();
+    let token = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => String::new(),
+    };
+    if token.is_empty() {
+        eprintln!("{RED}no ATLAS_TOKEN in /etc/atlas/atlas.env on the server{RESET}");
+        exit(1);
+    }
+    // the address is a URL inside a URL: escape what would end the parameter
+    let address = format!("http://{host}").replace(':', "%3A").replace('/', "%2F");
+    println!("atlas://connect?url={address}&token={token}");
+    eprintln!("{DIM}open this link on the iPhone (AirDrop, Notes, Messages) with Atlas installed{RESET}");
 }

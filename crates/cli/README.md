@@ -4,8 +4,8 @@
 the atlas homelab server from a workstation. It wraps SSH for everyday access,
 manages power via Wake-on-LAN, offloads project builds and dev servers to the
 server's Docker engine, publishes dev servers on the tailnet or on stable
-`your-domain.com` subdomains, and installs the companion control-plane
-[api](../api).
+`your-domain.com` subdomains, and installs the Atlas services
+([atlas-server](../server) and [atlas-ml](../ml)) on the server.
 
 Everything goes over `ssh`. Project source comes from GitHub, not from this
 machine. The binary is Unix-only — a bare `atlas` replaces its own process with
@@ -68,7 +68,8 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 | `atlas dev [-b B] url\|logs\|stop` | print URL / follow dev logs / stop + tear down this project's route |
 | `atlas start [-b B]` | run the BUILT result of this branch (never builds) |
 | `atlas start [-b B] status\|logs\|stop` | inspect / tear down the started app |
-| `atlas api` | build + install the control-plane API · `api logs\|status\|stop\|restart` |
+| `atlas deploy` | build + install atlas-server and atlas-ml on the server · `deploy logs\|status\|stop\|restart` |
+| `atlas connect` | print the `atlas://connect?…` link that connects the iOS app (server address + token) |
 
 ### Observe
 
@@ -147,7 +148,7 @@ Requires a Rust toolchain with edition-2024 support and a Unix OS (the CLI uses
 `exec()`; it does not build on Windows).
 
 ```bash
-cargo install --path cli    # from the repo root — installs `atlas` into ~/.cargo/bin
+cargo install --path crates/cli    # from the repo root — installs `atlas` into ~/.cargo/bin
 ```
 
 Client-side you need `ssh` (a host alias matching `ATLAS_SSH_HOST` with
@@ -168,7 +169,7 @@ profiles and the repo.
 | `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip) |
 | `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until set) |
 | `ATLAS_WOL_BROADCAST` | `192.168.1.255:9` | broadcast `addr:port` for the magic packet |
-| `ATLAS_API_URL` | tailnet host + `:8787` | API server `host:port`, printed after `atlas api` |
+| `ATLAS_SERVER_URL` | tailnet host + `:8787` | atlas-server `host:port`, printed after `atlas deploy` and put into the `atlas connect` link |
 | `ATLAS_DEV_DOMAIN` | *(empty)* | your Cloudflare-managed domain for `atlas dev --public` URLs (`<name>.<domain>`); empty = tailnet dev only. Bring-up: [`scripts/proxy/`](../scripts/proxy/) |
 
 The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
@@ -180,7 +181,7 @@ The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 - a systemd Linux with sshd on port 22 and Wake-on-LAN enabled — see
   [docs/SETUP.md](../docs/SETUP.md)
 - this repository cloned at `~/atlas` with a reachable git remote
-  (`build`/`dev` build images from it; `api` resets it to `origin/main`)
+  (`build`/`dev` build images from it; `deploy` resets it to `origin/main`)
 - Docker Engine, with the SSH user in the `docker` group
 - `git`, and credentials for any private repo you build (the server clones over
   https, so `~/.git-credentials` or a credential helper)
@@ -189,4 +190,4 @@ The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 - for `atlas dev --public`: the dev-subdomain proxy infra (host Caddy + a named
   Cloudflare Tunnel + a `*.your-domain.com` wildcard DNS record), installed once
   by [`scripts/proxy/`](../scripts/proxy/) and verified by `atlas doctor`
-- a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas api`)
+- a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas deploy`)
