@@ -25,7 +25,7 @@ tracing.workspace = true
 axum = "0.8"
 base64 = "0.22"
 fast_image_resize = "5"
-ndarray = "0.16"
+ndarray = "0.17"
 ort = "2.0.0-rc.10"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 webp = "0.3"
