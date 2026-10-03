@@ -23,7 +23,10 @@ final class Library {
     var client: PhotoClient { PhotoClient(host: host) }
 
     /// Oldest first.
-    var assets: [Asset] = []
+    var assets: [Asset] = [] { didSet { revision &+= 1 } }
+    /// Changes with every change of `assets`: the grid compares this instead
+    /// of 25,000 elements.
+    private(set) var revision = 0
     /// Months with their place in `assets`, oldest first: the scale of the
     /// scrubber and the source of the date under the title.
     var months: [Month] = []
@@ -33,8 +36,7 @@ final class Library {
 
     /// O(1) asset-id → position.
     @ObservationIgnored private var indexByID: [String: Int] = [:]
-    /// Set true while the user drags the scrubber — prefetch pauses so the CPU
-    /// doesn't chase thumbnails for every month the finger flies past.
+    /// Set true while the user drags the scrubber.
     @ObservationIgnored var scrubbing = false
 
     /// The index as last seen (newest first, as the server sends it) and the
@@ -126,6 +128,8 @@ final class Library {
         assets = snapshot.assets
         months = snapshot.months
         indexByID = snapshot.indexByID
+        // every grid thumbnail of the library onto the phone, in the background
+        ThumbFill.shared.update(ids: snapshot.assets.map(\.id), host: host)
     }
 
     /// The index lists months newest first, and each month its assets newest
@@ -223,6 +227,7 @@ final class Library {
 
     /// Forget everything (the app was disconnected from its server).
     func reset() {
+        ThumbFill.shared.stop()
         assets = []
         months = []
         stats = nil
@@ -232,25 +237,6 @@ final class Library {
         let directory = Self.directory
         try? FileManager.default.removeItem(at: directory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    }
-
-    // MARK: Prefetch (viewport-tracking)
-
-    @ObservationIgnored private var lastPrefetchIndex = -1_000_000
-
-    /// Warms thumbnails around a position in the timeline. The loader's queue
-    /// is REPLACED (not appended) so work always tracks the finger.
-    func prefetch(around idx: Int, span: Int) {
-        guard !scrubbing, !assets.isEmpty, abs(idx - lastPrefetchIndex) >= span / 4 else { return }
-        lastPrefetchIndex = idx
-        // the timeline is read upwards from its newest end, so the direction
-        // of travel is towards OLDER photos (lower indices): look further that
-        // way so thumbnails are ready BEFORE they scroll in
-        let lo = max(idx - span * 2, 0), hi = min(idx + span, assets.count)
-        guard lo < hi else { return }
-        let ordered = (lo..<idx).reversed().map { $0 } + (idx..<hi).map { $0 }
-        let client = client
-        ThumbLoader.shared.setPrefetchWindow(ordered.compactMap { client.thumbURL(assets[$0].id, 512) })
     }
 
     func refresh() async {

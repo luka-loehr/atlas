@@ -1,37 +1,13 @@
 import SwiftUI
 import Charts
 
-/// The Einstellungen tab: the settings screen, with the iPhone-sync actions
-/// wired to a `DeviceSync` and its progress sheet.
+/// The Einstellungen tab. The backup runs by itself (`BackupService`); the
+/// screen only shows its state.
 struct SettingsTab: View {
     var library: Library
-    @State private var sync: DeviceSync?
-    /// The sync the sheet shows. `sheet(item:)` hands the sheet the object it
-    /// was opened for; `sheet(isPresented:)` read `sync` before it was set and
-    /// came up empty.
-    @State private var shown: DeviceSync?
 
     var body: some View {
-        SettingsScreen(
-            library: library,
-            onSyncNow: { startSync(delete: false) },
-            onCleanupDevice: { startSync(delete: true) },
-            onEmptyTrash: { Task { try? await library.client.emptyTrash(); await library.loadStats() } })
-        .sheet(item: $shown) { SyncProgressScreen(sync: $0) }
-    }
-
-    private func startSync(delete: Bool) {
-        let sync = sync ?? DeviceSync(client: library.client)
-        sync.client = library.client
-        self.sync = sync
-        shown = sync
-        Task {
-            guard await sync.requestAccess() else { return }
-            await sync.scan()
-            if delete { await sync.deleteBackedUpFromDevice() } else { await sync.backupNew() }
-            await library.loadStats()
-            await library.refresh()
-        }
+        SettingsScreen(library: library)
     }
 }
 
@@ -139,5 +115,3 @@ struct NetworkScreen: View {
         .task { report = try? await session.api?.get("system/network") }
     }
 }
-
-extension DeviceSync: Identifiable {}

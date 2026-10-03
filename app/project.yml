@@ -57,8 +57,10 @@ targets:
             CFBundleURLSchemes: [atlas]
         UIBackgroundModes:
           - processing
+          - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - com.lukaloehr.Atlas.backup
+          - com.lukaloehr.Atlas.refresh
         NSFaceIDUsageDescription: Face ID unlocks your Locked album.
         NSPhotoLibraryUsageDescription: Atlas backs up your photos and videos to your own server, and can remove backed-up items from this iPhone to free space.
         NSPhotoLibraryAddUsageDescription: Atlas saves photos and videos from your server to this iPhone.

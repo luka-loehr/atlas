@@ -4,10 +4,12 @@ import BackgroundTasks
 @main
 struct AtlasApp: App {
     static let backupTaskID = "com.lukaloehr.Atlas.backup"
+    static let refreshTaskID = "com.lukaloehr.Atlas.refresh"
 
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var session = Session()
 
-    init() { Self.registerBackupTask() }
+    init() { Self.registerBackgroundTasks() }
 
     var body: some Scene {
         WindowGroup {
@@ -15,56 +17,70 @@ struct AtlasApp: App {
         }
     }
 
-    // MARK: Background backup (BGProcessingTask)
+    // MARK: Background work while the app is closed
 
-    /// The sync driven by the current background task — lets the expiration
-    /// handler cancel it from any queue.
-    @MainActor private static var backgroundSync: DeviceSync?
-
-    private static func registerBackupTask() {
+    private static func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: backupTaskID, using: nil) { task in
             guard let task = task as? BGProcessingTask else { return }
-            handleBackup(task)
+            handle(task, processing: true)
+        }
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshTaskID, using: nil) { task in
+            guard let task = task as? BGAppRefreshTask else { return }
+            handle(task, processing: false)
         }
     }
 
-    /// Asks iOS to run the backup task at a good moment (charging not required,
-    /// network required). Safe to call repeatedly — one pending request per id.
-    static func scheduleBackup() {
-        let request = BGProcessingTaskRequest(identifier: backupTaskID)
-        request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = false
-        try? BGTaskScheduler.shared.submit(request)
+    /// Asks iOS for the next background windows: a short refresh (new photos
+    /// are queued for upload) and a long processing run (backup and the
+    /// thumbnail store). Safe to call repeatedly.
+    static func scheduleBackgroundWork() {
+        let processing = BGProcessingTaskRequest(identifier: backupTaskID)
+        processing.requiresNetworkConnectivity = true
+        processing.requiresExternalPower = false
+        try? BGTaskScheduler.shared.submit(processing)
+        let refresh = BGAppRefreshTaskRequest(identifier: refreshTaskID)
+        refresh.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        try? BGTaskScheduler.shared.submit(refresh)
     }
 
-    private static func handleBackup(_ task: BGProcessingTask) {
+    private static func handle(_ task: BGTask, processing: Bool) {
         task.expirationHandler = {
-            Task { @MainActor in backgroundSync?.cancel() }
+            Task { @MainActor in
+                BackupService.shared.cancelBackgroundWork()
+                ThumbFill.shared.stop()
+            }
         }
         Task { @MainActor in
-            defer {
-                backgroundSync = nil
-                scheduleBackup()   // keep the chain alive for the next window
-            }
-            // without a connected server there is nothing to back up to
+            defer { scheduleBackgroundWork() }   // keep the chain alive
             let session = Session()
-            guard UserDefaults.standard.bool(forKey: "photos.autoBackup"), session.isConnected else {
+            guard session.isConnected else {
                 task.setTaskCompleted(success: true)
                 return
             }
-            let sync = DeviceSync(client: PhotoClient(host: session.base))
-            backgroundSync = sync
-            guard await sync.requestAccess() else {
-                task.setTaskCompleted(success: false)
-                return
+            BackupService.shared.configure(host: session.base)
+            var ok = await BackupService.shared.runInBackground(window: processing ? 64 : 24)
+            if processing {
+                // the timeline from disk and the server, then the thumbnails
+                let library = Library()
+                library.host = session.base
+                await library.start()
+                await ThumbFill.shared.finish()
+                ok = ok && ThumbFill.shared.failed == 0
             }
-            await sync.scan()
-            if case .failed = sync.phase {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            await sync.backupNew()
-            task.setTaskCompleted(success: sync.failed == 0)
+            task.setTaskCompleted(success: ok)
+        }
+    }
+}
+
+/// Hands the background upload session's wake-ups to the backup service.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard identifier == BackupService.sessionID else { completionHandler(); return }
+        MainActor.assumeIsolated {
+            BackupService.shared.backgroundEventsDone = completionHandler
+            let session = Session()
+            if session.isConnected { BackupService.shared.configure(host: session.base) }
         }
     }
 }
@@ -72,9 +88,7 @@ struct AtlasApp: App {
 struct RootView: View {
     @Environment(Session.self) private var session
     @State private var library = Library()
-    @State private var watchSync: DeviceSync?
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("photos.autoBackup") private var autoBackup = false
     @State private var tab = "photos"
     /// The tab the search button was pressed from: Dateien searches files,
     /// every other tab searches photos.
@@ -124,32 +138,25 @@ struct RootView: View {
                 return
             }
             library.host = session.base
-            if autoBackup, watchSync == nil {
-                let sync = DeviceSync(client: library.client)
-                sync.startWatching()
-                watchSync = sync
-            }
+            ThumbLoader.shared.client = library.client
+            // the backup always runs: photos taken while the app was closed
+            // appear in the grid at once and upload behind it
+            BackupService.shared.library = library
+            BackupService.shared.configure(host: session.base)
+            BackupService.shared.foreground()
             await library.start()
         }
         .onChange(of: scenePhase) { _, phase in
             guard session.isConnected else { return }
-            if phase == .background, autoBackup {
-                AtlasApp.scheduleBackup()
-            }
-            if phase == .active {
+            switch phase {
+            case .background:
+                BackupService.shared.background()
+                AtlasApp.scheduleBackgroundWork()
+            case .active:
                 Task { await library.refresh() }
-            }
-            // instant foreground sync: photos taken while the app was closed
-            // appear in the grid within a second (local thumb seeded, upload
-            // runs behind it) — Google-Photos-Gefühl beim Öffnen
-            if phase == .active, autoBackup {
-                Task {
-                    let sync = watchSync ?? DeviceSync(client: library.client)
-                    sync.client = library.client
-                    if watchSync == nil { watchSync = sync }
-                    guard await sync.requestAccess() else { return }
-                    await sync.quickSync(into: library)
-                }
+                BackupService.shared.foreground()
+            default:
+                break
             }
         }
         .onOpenURL { url in
