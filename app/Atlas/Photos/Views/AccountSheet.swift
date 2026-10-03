@@ -3,8 +3,6 @@ import SwiftUI
 struct AccountSheet: View {
     var library: Library
     @Environment(\.dismiss) private var dismiss
-    @State private var sync: DeviceSync?
-    @State private var showSync = false
     @State private var heat: [String: Int] = [:]
 
     var body: some View {
@@ -36,21 +34,15 @@ struct AccountSheet: View {
         }
         .presentationDetents([.medium, .large])
         .task {
-            if sync == nil { sync = DeviceSync(client: library.client) }
             if heat.isEmpty, let days = try? await library.client.heatmap() {
                 heat = Dictionary(days.map { ($0.d, $0.n) }, uniquingKeysWith: { a, _ in a })
             }
         }
-        .sheet(isPresented: $showSync) { if let sync { SyncProgressScreen(sync: sync) } }
     }
 
     private var settingsLink: some View {
         NavigationLink {
-            SettingsScreen(
-                library: library,
-                onSyncNow: { startSync(delete: false) },
-                onCleanupDevice: { startSync(delete: true) },
-                onEmptyTrash: { Task { try? await library.client.emptyTrash(); await library.loadStats() } })
+            SettingsScreen(library: library)
         } label: {
             HStack {
                 Image(systemName: "gearshape.fill").foregroundStyle(.blue)
@@ -62,18 +54,6 @@ struct AccountSheet: View {
             }
             .padding(14)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    private func startSync(delete: Bool) {
-        guard let sync else { return }
-        showSync = true
-        Task {
-            guard await sync.requestAccess() else { return }
-            await sync.scan()
-            if delete { await sync.deleteBackedUpFromDevice() }
-            else { await sync.backupNew() }
-            await library.loadStats()
         }
     }
 

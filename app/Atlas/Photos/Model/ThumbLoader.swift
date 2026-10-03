@@ -1,254 +1,401 @@
 import SwiftUI
 import UIKit
 import ImageIO
+import os
 
-/// Bounds how many image decodes run at once (≈ cores − 1) so a fast fling can't
-/// saturate every core and cook the phone. It only GATES; the decode itself runs
-/// off the actor.
-actor DecodeGate {
-    private let limit: Int
-    private var active = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    init(_ n: Int) { limit = max(1, n) }
-
-    func acquire() async {
-        if active < limit { active += 1; return }
-        await withCheckedContinuation { waiters.append($0) }   // slot handed over on release
-    }
-    func release() {
-        if !waiters.isEmpty { waiters.removeFirst().resume() }   // pass the slot, active unchanged
-        else { active -= 1 }
-    }
-}
-
-/// Two-tier cache for images: decoded bitmaps in RAM (instant re-scroll), bytes
-/// on disk via URLCache + an optional persistent grid store. Fetch AND decode
-/// happen off the main thread and are bounded + cancellable, so recycled cells
-/// stop working the moment they scroll off screen. Grid thumbs are downsampled
-/// to their on-screen size so the main thread never holds a huge bitmap.
+/// The image pipeline of the app.
+///
+/// Where images come from, in order:
+///   • decoded bitmaps in RAM (instant re-scroll),
+///   • 512 grid thumbnails from `ThumbStore` (every one of them ends up on
+///     the phone, see `ThumbFill`),
+///   • 2048 previews and originals from `OriginalCache`,
+///   • the server, whose answer is written to the store or cache on the way.
+///
+/// Reading files and decoding never happen on the main thread: they run on
+/// one bounded operation queue, so a fling cannot saturate every core, and
+/// work for a cell that scrolled away is cancelled before it starts. Grid
+/// thumbnails are decoded at their on-screen pixel size.
 @MainActor
 final class ThumbLoader {
     static let shared = ThumbLoader()
-    private static let gate = DecodeGate(max(2, ProcessInfo.processInfo.activeProcessorCount - 1))
 
-    private let ram = NSCache<NSURL, UIImage>()   // grid thumbs (the hot working set)
-    private let bigRam = NSCache<NSURL, UIImage>() // 2048 previews / full — kept apart so a
-                                                   // few big viewer images can't evict the grid
-    private let session: URLSession
+    /// Grid cells, keyed "id@pixels".
+    private let gridRam = NSCache<NSString, UIImage>()
+    /// Thumbnails asked for by URL (album covers, search, filmstrip, …).
+    private let urlRam = NSCache<NSString, UIImage>()
+    /// 2048 previews and originals, kept apart so a few big viewer images
+    /// cannot evict the grid working set.
+    private let bigRam = NSCache<NSString, UIImage>()
+    /// Local thumbnails of photos just taken on this iPhone, shown until the
+    /// server's own thumbnail is in the store.
+    private var seeds: [String: UIImage] = [:]
+
+    nonisolated static let decodeQueue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "atlas.decode"
+        q.qualityOfService = .userInitiated
+        q.maxConcurrentOperationCount = max(2, ProcessInfo.processInfo.activeProcessorCount - 2)
+        return q
+    }()
+
+    /// Thumbnails and originals are persisted by the store and the original
+    /// cache, so their requests bypass the URL cache; only small other images
+    /// (face crops) use it.
+    nonisolated static let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        cfg.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 256 << 20,
+                                directory: caches.appendingPathComponent("ImageURLCache", isDirectory: true))
+        cfg.requestCachePolicy = .returnCacheDataElseLoad
+        cfg.httpMaximumConnectionsPerHost = 8
+        cfg.timeoutIntervalForRequest = 30
+        return URLSession(configuration: cfg)
+    }()
+
+    nonisolated static let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "Images")
 
     private init() {
-        ram.countLimit = 800
-        // size the decoded-pixel budget to the device instead of a flat 320 MB
-        let budget = Int(ProcessInfo.processInfo.physicalMemory / 6)
-        ram.totalCostLimit = min(budget, 400 << 20)
-        bigRam.countLimit = 8
-        bigRam.totalCostLimit = 160 << 20
-        let cache = URLCache(memoryCapacity: 16 << 20, diskCapacity: 4 << 30, directory: nil)
-        let cfg = URLSessionConfiguration.default
-        cfg.urlCache = cache
-        cfg.requestCachePolicy = .returnCacheDataElseLoad
-        session = URLSession(configuration: cfg)
-        persistentEnabled = UserDefaults.standard.bool(forKey: "thumbs.persistentCache")
-        // drop the working set on memory pressure instead of thrashing toward OOM
+        let budget = Int(ProcessInfo.processInfo.physicalMemory / 8)
+        gridRam.totalCostLimit = min(budget, 320 << 20)
+        gridRam.countLimit = 5000
+        urlRam.totalCostLimit = 96 << 20
+        urlRam.countLimit = 600
+        bigRam.totalCostLimit = 200 << 20
+        bigRam.countLimit = 12
         NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.ram.removeAllObjects()
+                self.gridRam.removeAllObjects()
+                self.urlRam.removeAllObjects()
                 self.bigRam.removeAllObjects()
-                self.session.configuration.urlCache?.removeAllCachedResponses()
             }
+        }
+        // the old pipeline kept up to 4 GB of thumbnails and originals in
+        // the shared URL cache; the store and the original cache replace it
+        if !UserDefaults.standard.bool(forKey: "images.legacyURLCacheCleared") {
+            UserDefaults.standard.set(true, forKey: "images.legacyURLCacheCleared")
+            UserDefaults.standard.removeObject(forKey: "thumbs.persistentCache")
+            Task.detached(priority: .background) { URLCache.shared.removeAllCachedResponses() }
         }
     }
 
-    // MARK: Persistent store (nonisolated: pure FS/string, safe off the MainActor)
+    // MARK: What a URL is
 
-    var persistentEnabled = false
-
-    private static let persistentDir: URL? = {
-        let fm = FileManager.default
-        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        else { return nil }
-        let dir = base.appendingPathComponent("ThumbCache", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }()
-
-    nonisolated private static func persistentPath(_ url: URL) -> URL? {
-        guard let dir = persistentDir else { return nil }
-        let raw = url.path + "?" + (url.query ?? "")
-        let name = String(raw.unicodeScalars.map {
-            CharacterSet.alphanumerics.contains($0) ? Character($0) : "_"
-        })
-        return dir.appendingPathComponent(name + ".thmb")
-    }
-    nonisolated private static func persistentData(_ url: URL) -> Data? {
-        guard let p = persistentPath(url) else { return nil }
-        return try? Data(contentsOf: p)
-    }
-    nonisolated func hasPersistent(_ url: URL) -> Bool {
-        guard let p = Self.persistentPath(url) else { return false }
-        return FileManager.default.fileExists(atPath: p.path)
-    }
-    nonisolated private static func writePersistent(_ url: URL, _ data: Data) {
-        guard let p = persistentPath(url) else { return }
-        try? data.write(to: p, options: .atomic)
+    enum Kind: Sendable {
+        case thumb(String)          // 512, in ThumbStore
+        case preview(String)        // 2048, in OriginalCache
+        case original(String)       // original, in OriginalCache
+        case other
     }
 
-    func ensurePersistent(_ url: URL) async -> Bool {
-        if hasPersistent(url) { return true }
-        guard let data = try? await session.data(for: AtlasAuth.request(url)).0 else { return false }
-        Self.writePersistent(url, data)
-        return true
-    }
-    func clearPersistent() {
-        guard let dir = Self.persistentDir else { return }
-        try? FileManager.default.removeItem(at: dir)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    }
-    func persistentStats() -> (count: Int, bytes: Int64) {
-        guard let dir = Self.persistentDir,
-              let items = try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { return (0, 0) }
-        var bytes: Int64 = 0
-        for f in items { bytes += Int64((try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
-        return (items.count, bytes)
-    }
-    func setPersistentEnabled(_ on: Bool) {
-        persistentEnabled = on
-        UserDefaults.standard.set(on, forKey: "thumbs.persistentCache")
+    /// "/v1/assets/{id}/thumb/512", "/v1/assets/{id}/thumb/2048",
+    /// "/v1/assets/{id}/original".
+    nonisolated static func kind(of url: URL) -> Kind {
+        let p = url.pathComponents
+        guard let i = p.lastIndex(of: "assets"), p.count > i + 2 else { return .other }
+        let id = p[i + 1]
+        switch p[i + 2] {
+        case "thumb" where p.count > i + 3 && p[i + 3] == "512": return .thumb(id)
+        case "thumb" where p.count > i + 3 && p[i + 3] == "2048": return .preview(id)
+        case "original": return .original(id)
+        default: return .other
+        }
     }
 
-    // MARK: Prefetch (viewport-tracking — the window is REPLACED each move)
+    // MARK: Grid (UIKit cells)
 
-    private var prefetchInflight: Set<URL> = []
-    private var prefetchQueue: [URL] = []
-    private var prefetchActive: Set<URL> = []
-    private let prefetchLimit = 6
+    /// A grid thumbnail that is ready now, or nil.
+    func gridImage(id: String, pixels: Int) -> UIImage? {
+        gridRam.object(forKey: Self.gridKey(id, pixels) as NSString) ?? seeds[id]
+    }
 
-    /// Append-style prefetch (used by the viewer for a few neighbours).
+    private static func gridKey(_ id: String, _ pixels: Int) -> String { "\(id)@\(pixels)" }
+
+    private final class GridJob {
+        let key: String
+        let id: String
+        let pixels: Int
+        var waiters: [Int: (UIImage?) -> Void] = [:]
+        var operation: Operation?
+        var network: Task<Void, Never>?
+        var triedNetwork = false
+        init(key: String, id: String, pixels: Int) { self.key = key; self.id = id; self.pixels = pixels }
+    }
+
+    /// Cancels its request when the cell no longer wants the image.
+    final class Ticket {
+        fileprivate let key: String
+        fileprivate let token: Int
+        fileprivate init(key: String, token: Int) { self.key = key; self.token = token }
+        @MainActor func cancel() { ThumbLoader.shared.cancel(self) }
+    }
+
+    private var jobs: [String: GridJob] = [:]
+    private var nextToken = 0
+    var client = PhotoClient(host: "")
+
+    /// Loads a grid thumbnail (store first, then server) decoded to fit a
+    /// square cell of `pixels`. `done` runs on the main thread, unless the
+    /// ticket was cancelled first. Requests for the same image share one job.
+    func requestGrid(id: String, pixels: Int, urgent: Bool,
+                     _ done: @escaping (UIImage?) -> Void) -> Ticket {
+        let key = Self.gridKey(id, pixels)
+        nextToken += 1
+        let token = nextToken
+        if let job = jobs[key] {
+            job.waiters[token] = done
+            if urgent, let op = job.operation, !op.isExecuting { op.queuePriority = .veryHigh }
+        } else {
+            let job = GridJob(key: key, id: id, pixels: pixels)
+            job.waiters[token] = done
+            jobs[key] = job
+            decodeFromStore(job, urgent: urgent)
+        }
+        return Ticket(key: key, token: token)
+    }
+
+    private func cancel(_ ticket: Ticket) {
+        guard let job = jobs[ticket.key] else { return }
+        job.waiters[ticket.token] = nil
+        guard job.waiters.isEmpty else { return }
+        job.operation?.cancel()
+        job.network?.cancel()
+        jobs[ticket.key] = nil
+    }
+
+    private func decodeFromStore(_ job: GridJob, urgent: Bool) {
+        let file = ThumbStore.shared.fileURL(job.id)
+        let pixels = CGFloat(job.pixels)
+        let op = BlockOperation()
+        op.addExecutionBlock { [unowned op] in
+            guard !op.isCancelled else { return }
+            let img = Self.decode(file: file, maxPixel: pixels, fill: true)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { ThumbLoader.shared.decoded(job, img, fromStore: true) }
+            }
+        }
+        op.queuePriority = urgent ? .veryHigh : .low
+        job.operation = op
+        Self.decodeQueue.addOperation(op)
+    }
+
+    private func decoded(_ job: GridJob, _ img: UIImage?, fromStore: Bool) {
+        if let img {
+            gridRam.setObject(img, forKey: job.key as NSString, cost: img.decodedCost)
+            seeds[job.id] = nil
+            finish(job, img)
+            return
+        }
+        guard jobs[job.key] === job else { return }
+        // not in the store (yet): fetch it from the server, store it, decode it
+        guard !job.triedNetwork, let url = client.thumbURL(job.id, 512) else {
+            if !fromStore { Self.log.error("grid thumb \(job.id, privacy: .public) could not be loaded") }
+            finish(job, nil)
+            return
+        }
+        if fromStore, ThumbStore.shared.has(job.id) {
+            // on disk but undecodable: drop it and fetch it again
+            ThumbStore.shared.remove(job.id)
+        }
+        job.triedNetwork = true
+        let id = job.id
+        let pixels = CGFloat(job.pixels)
+        job.network = Task.detached(priority: .userInitiated) {
+            var img: UIImage?
+            do {
+                let data = try await Self.fetchData(url)
+                try? ThumbStore.shared.put(id, data)
+                if !Task.isCancelled {
+                    img = await Self.onDecodeQueue { Self.decode(data: data, maxPixel: pixels, fill: true) }
+                }
+            } catch {
+                if !(error is CancellationError), (error as? URLError)?.code != .cancelled {
+                    Self.log.error("grid thumb \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            let result = img
+            await MainActor.run { ThumbLoader.shared.decoded(job, result, fromStore: false) }
+        }
+    }
+
+    private func finish(_ job: GridJob, _ img: UIImage?) {
+        guard jobs[job.key] === job else { return }
+        jobs[job.key] = nil
+        for done in job.waiters.values { done(img) }
+    }
+
+    // MARK: By URL (SwiftUI views, viewer)
+
+    private var prefetching: Set<URL> = []
+
+    /// Warms images the viewer is about to show (its neighbours).
     func prefetch(_ urls: [URL]) {
-        for url in urls {
-            guard ram.object(forKey: url as NSURL) == nil,
-                  !prefetchInflight.contains(url) else { continue }
-            prefetchInflight.insert(url)
-            prefetchQueue.append(url)
-        }
-        pumpPrefetch()
-    }
-
-    /// Grid prefetch: REPLACE the waiting queue with the current viewport window
-    /// so the CPU never keeps chasing thumbnails the finger already flew past.
-    func setPrefetchWindow(_ urls: [URL]) {
-        let wanted = Set(urls)
-        prefetchQueue.removeAll { !wanted.contains($0) }
-        prefetchInflight = prefetchInflight.filter { wanted.contains($0) || prefetchActive.contains($0) }
-        for url in urls {
-            guard ram.object(forKey: url as NSURL) == nil,
-                  !prefetchInflight.contains(url) else { continue }
-            prefetchInflight.insert(url)
-            prefetchQueue.append(url)
-        }
-        let cap = max(urls.count * 2, 16)
-        if prefetchQueue.count > cap {
-            for u in prefetchQueue[cap...] { prefetchInflight.remove(u) }
-            prefetchQueue.removeLast(prefetchQueue.count - cap)
-        }
-        pumpPrefetch()
-    }
-
-    private func pumpPrefetch() {
-        while prefetchActive.count < prefetchLimit, !prefetchQueue.isEmpty {
-            let url = prefetchQueue.removeFirst()
-            prefetchActive.insert(url)
-            Task(priority: .background) { [weak self] in
-                _ = await self?.fetch(url, maxPixel: 512, persist: true)
-                guard let self else { return }
-                self.prefetchActive.remove(url)
-                self.prefetchInflight.remove(url)
-                self.pumpPrefetch()
+        for url in urls where !prefetching.contains(url) && cached(url) == nil {
+            prefetching.insert(url)
+            Task(priority: .utility) {
+                _ = await load(url)
+                prefetching.remove(url)
             }
         }
     }
 
-    func cached(_ url: URL) -> UIImage? { ram.object(forKey: url as NSURL) }
+    private static func urlKey(_ url: URL, _ maxPixel: CGFloat?) -> NSString {
+        "\(url.absoluteString)#\(Int(maxPixel ?? 0))" as NSString
+    }
 
+    private func ram(for kind: Kind) -> NSCache<NSString, UIImage> {
+        switch kind {
+        case .preview, .original: bigRam
+        case .thumb, .other: urlRam
+        }
+    }
+
+    /// A decoded image for `url` that is ready now.
+    func cached(_ url: URL, maxPixel: CGFloat? = nil) -> UIImage? {
+        let kind = Self.kind(of: url)
+        if let img = ram(for: kind).object(forKey: Self.urlKey(url, maxPixel)) { return img }
+        if case .thumb(let id) = kind { return seeds[id] }
+        return nil
+    }
+
+    /// Puts a locally made thumbnail in place of the server's until that is
+    /// on the phone (photos just taken here).
     func seed(_ url: URL, image: UIImage) {
-        ram.setObject(image, forKey: url as NSURL, cost: image.decodedCost)
+        switch Self.kind(of: url) {
+        case .thumb(let id): seeds[id] = image
+        case let kind: ram(for: kind).setObject(image, forKey: Self.urlKey(url, nil), cost: image.decodedCost)
+        }
     }
 
-    /// Grid thumbnails: downsampled to `maxPixel` (the cell's pixel size) and
-    /// fully decoded off-main. Reads/writes the persistent grid store.
+    /// Thumbnails, downsampled to `maxPixel` (longest side) if given.
     func load(_ url: URL, maxPixel: CGFloat? = nil) async -> UIImage? {
-        await fetch(url, maxPixel: maxPixel, persist: true)
+        await fetch(url, maxPixel: maxPixel)
     }
 
-    /// Full-screen viewer image: downsampled to `maxPixel`, kept in the separate
-    /// big-image cache so it can't evict the grid working set.
+    /// Full-screen viewer image, downsampled to `maxPixel`.
     func loadFull(_ url: URL, maxPixel: CGFloat) async -> UIImage? {
-        await fetch(url, maxPixel: maxPixel, persist: false)
+        await fetch(url, maxPixel: maxPixel)
     }
 
-    private func fetch(_ url: URL, maxPixel: CGFloat?, persist: Bool) async -> UIImage? {
-        let key = url as NSURL
-        if let img = (persist ? ram : bigRam).object(forKey: key) { return img }
+    private func fetch(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {
+        if let img = cached(url, maxPixel: maxPixel) { return img }
         if Task.isCancelled { return nil }
+        let kind = Self.kind(of: url)
+        let img = await Self.produce(url, kind: kind, maxPixel: maxPixel)
+        if let img {
+            ram(for: kind).setObject(img, forKey: Self.urlKey(url, maxPixel), cost: img.decodedCost)
+        }
+        return img
+    }
 
-        // persistent grid store first — read + decode off-main and bounded
-        if persist, hasPersistent(url) {
-            if let img = await decodeGated(maxPixel: maxPixel, { Self.persistentData(url) }) {
-                ram.setObject(img, forKey: key, cost: img.decodedCost)
-                return img
+    /// Off the main thread: local file if there is one, else download (into
+    /// the store or the original cache), then decode.
+    nonisolated private static func produce(_ url: URL, kind: Kind, maxPixel: CGFloat?) async -> UIImage? {
+        do {
+            switch kind {
+            case .thumb(let id):
+                let file = ThumbStore.shared.fileURL(id)
+                if let img = await onDecodeQueue({ decode(file: file, maxPixel: maxPixel, fill: false) }) { return img }
+                let data = try await fetchData(url)
+                try? ThumbStore.shared.put(id, data)
+                return await onDecodeQueue { decode(data: data, maxPixel: maxPixel, fill: false) }
+
+            case .preview(let id), .original(let id):
+                let which: OriginalCache.Kind = if case .preview = kind { .preview } else { .original }
+                if let file = OriginalCache.shared.file(id, which) {
+                    if let img = await onDecodeQueue({ decode(file: file, maxPixel: maxPixel, fill: false) }) { return img }
+                }
+                let (tmp, resp) = try await session.download(for: AtlasAuth.request(url, timeoutInterval: 600))
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                    try? FileManager.default.removeItem(at: tmp)
+                    throw URLError(.badServerResponse)
+                }
+                let ext = (resp.suggestedFilename as NSString?)?.pathExtension ?? ""
+                if let kept = OriginalCache.shared.adopt(tmp, id: id, kind: which, ext: ext) {
+                    return await onDecodeQueue { decode(file: kept, maxPixel: maxPixel, fill: false) }
+                }
+                defer { try? FileManager.default.removeItem(at: tmp) }
+                return await onDecodeQueue { decode(file: tmp, maxPixel: maxPixel, fill: false) }
+
+            case .other:
+                var req = AtlasAuth.request(url)
+                req.cachePolicy = .returnCacheDataElseLoad
+                let (data, resp) = try await session.data(for: req)
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+                return await onDecodeQueue { decode(data: data, maxPixel: maxPixel, fill: false) }
             }
+        } catch {
+            if !(error is CancellationError), (error as? URLError)?.code != .cancelled {
+                log.error("image \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+            return nil
         }
-        guard !Task.isCancelled, let data = try? await session.data(for: AtlasAuth.request(url)).0 else { return nil }
-        if persist, persistentEnabled {
-            Task.detached(priority: .background) { Self.writePersistent(url, data) }
-        }
+    }
+
+    nonisolated static func fetchData(_ url: URL) async throws -> Data {
+        var req = AtlasAuth.request(url, timeoutInterval: 30)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, resp) = try await session.data(for: req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { throw URLError(.badServerResponse) }
+        return data
+    }
+
+    // MARK: Decoding
+
+    nonisolated static func onDecodeQueue(_ work: @escaping @Sendable () -> UIImage?) async -> UIImage? {
         if Task.isCancelled { return nil }
-        guard let img = await decodeGated(maxPixel: maxPixel, { data }) else { return nil }
-        (persist ? ram : bigRam).setObject(img, forKey: key, cost: img.decodedCost)
-        return img
+        return await withCheckedContinuation { cont in
+            decodeQueue.addOperation { cont.resume(returning: work()) }
+        }
     }
 
-    /// Acquire a decode slot, run the (off-actor) decode, always release.
-    private func decodeGated(maxPixel: CGFloat?, _ dataProvider: @escaping @Sendable () -> Data?) async -> UIImage? {
-        await Self.gate.acquire()
-        let img = await Task.detached(priority: .userInitiated) {
-            guard let data = dataProvider() else { return nil as UIImage? }
-            return Self.decode(data, maxPixel: maxPixel)
-        }.value
-        await Self.gate.release()
-        return img
+    nonisolated static func decode(file: URL, maxPixel: CGFloat?, fill: Bool) -> UIImage? {
+        let opts = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let src = CGImageSourceCreateWithURL(file as CFURL, opts) else { return nil }
+        return decode(src, maxPixel: maxPixel, fill: fill)
     }
 
-    /// Off-main decode. With `maxPixel`, ImageIO decodes + downsamples in one
-    /// pass; otherwise the thumb is prepared for display so nothing decodes at
-    /// render time.
-    nonisolated private static func decode(_ data: Data, maxPixel: CGFloat?) -> UIImage? {
+    nonisolated static func decode(data: Data, maxPixel: CGFloat?, fill: Bool) -> UIImage? {
+        let opts = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let src = CGImageSourceCreateWithData(data as CFData, opts) else { return nil }
+        return decode(src, maxPixel: maxPixel, fill: fill)
+    }
+
+    /// One pass: ImageIO decodes and downsamples together, applies the
+    /// orientation, and the result is a finished bitmap, so nothing decodes
+    /// at render time. `fill`: `maxPixel` is the SHORT side (an aspect-fill
+    /// square cell), else the long side.
+    nonisolated static func decode(_ src: CGImageSource, maxPixel: CGFloat?, fill: Bool) -> UIImage? {
+        guard CGImageSourceGetCount(src) > 0 else { return nil }
+        let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        let w = (props?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
+        let h = (props?[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
+        let long = max(w, h), short = max(min(w, h), 1)
+        var target = long > 0 ? long : 4096
         if let maxPixel {
-            let opts: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixel,
-            ]
-            if let src = CGImageSourceCreateWithData(data as CFData, nil),
-               let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) {
-                return UIImage(cgImage: cg)
-            }
+            target = fill ? min(long, (maxPixel * long / short).rounded(.up)) : min(long, maxPixel)
         }
-        return UIImage(data: data)?.preparingForDisplay()
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(target, 1),
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let img = UIImage(cgImage: cg)
+        return img.preparingForDisplay() ?? img
     }
 }
 
-private extension UIImage {
+extension UIImage {
     var decodedCost: Int { (cgImage?.bytesPerRow ?? 0) * (cgImage?.height ?? 0) }
 }
 
-/// A thumbnail cell that shows instantly from cache, else fades in on load.
-/// `maxPixel` downsamples the decode to the on-screen size (grid cells pass it).
+/// A thumbnail that shows at once from memory, else appears when loaded.
+/// `maxPixel` downsamples the decode (longest side).
 struct Thumb: View {
     let url: URL?
     var maxPixel: CGFloat? = nil
@@ -259,6 +406,13 @@ private struct ThumbInner: View {
     let url: URL?
     var maxPixel: CGFloat?
     @State private var image: UIImage?
+
+    init(url: URL?, maxPixel: CGFloat?) {
+        self.url = url
+        self.maxPixel = maxPixel
+        // a cached image is there in the very first frame, no grey flash
+        _image = State(initialValue: url.flatMap { ThumbLoader.shared.cached($0, maxPixel: maxPixel) })
+    }
 
     var body: some View {
         ZStack {
@@ -273,55 +427,11 @@ private struct ThumbInner: View {
         .contentShape(Rectangle())
         .task(id: url) {
             guard let url else { return }
-            if let c = ThumbLoader.shared.cached(url) { image = c; return }
+            if let c = ThumbLoader.shared.cached(url, maxPixel: maxPixel) {
+                if image !== c { image = c }
+                return
+            }
             image = await ThumbLoader.shared.load(url, maxPixel: maxPixel)
         }
-    }
-}
-
-/// Drives the "Offline-Cache" settings: download every grid thumbnail into the
-/// persistent store (with progress), show its size, delete it, top up new ones.
-@MainActor
-@Observable
-final class ThumbCache {
-    var downloading = false
-    var done = 0
-    var total = 0
-    var storedCount = 0
-    var storedBytes: Int64 = 0
-
-    init() { refresh() }
-
-    func refresh() {
-        let s = ThumbLoader.shared.persistentStats()
-        storedCount = s.count
-        storedBytes = s.bytes
-    }
-
-    func downloadAll(urls: [URL]) async {
-        guard !downloading, !urls.isEmpty else { return }
-        ThumbLoader.shared.setPersistentEnabled(true)
-        downloading = true
-        done = 0
-        total = urls.count
-        var i = 0
-        let chunk = 8
-        while i < urls.count {
-            let slice = Array(urls[i ..< min(i + chunk, urls.count)])
-            await withTaskGroup(of: Void.self) { g in
-                for u in slice { g.addTask { _ = await ThumbLoader.shared.ensurePersistent(u) } }
-            }
-            i += slice.count
-            done = i
-            if i % 240 < chunk { refresh() }
-        }
-        downloading = false
-        refresh()
-    }
-
-    func clear() {
-        ThumbLoader.shared.clearPersistent()
-        ThumbLoader.shared.setPersistentEnabled(false)
-        refresh()
     }
 }

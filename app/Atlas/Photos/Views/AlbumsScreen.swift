@@ -46,7 +46,8 @@ struct AlbumsScreen: View {
                 SpecialCollectionScreen(library: library, kind: kind)
             }
         }
-        .task { await load() }
+        // once per launch, not on every tab switch; pull to refresh reloads
+        .task { if !loaded { await load() } }
     }
 
     // MARK: - Personen (horizontal preview row -> PersonsScreen)
@@ -94,7 +95,10 @@ struct AlbumsScreen: View {
                 }
             }
         }
-        .task { personsPreview = (try? await library.client.persons()) ?? [] }
+        .task {
+            guard personsPreview.isEmpty, let people = try? await library.client.persons() else { return }
+            personsPreview = people
+        }
     }
 
     // MARK: - Utilities (Dienstprogramme)
@@ -172,7 +176,8 @@ struct AlbumsScreen: View {
     }
 
     private func load() async {
-        albums = (try? await library.client.albums()) ?? []
+        // a failed reload keeps what is shown; an unchanged list is not reassigned
+        if let fresh = try? await library.client.albums(), fresh != albums { albums = fresh }
         loaded = true
     }
 }

@@ -17,8 +17,17 @@ struct ViewerScreen: View {
     var library: Library
     var assets: [Asset]
     var start: Asset
+    /// Set when the viewer is presented from UIKit (the photo grid), which
+    /// dismisses it itself; else the SwiftUI presentation is dismissed.
+    var onClose: (() -> Void)? = nil
+    /// The photo now shown, for the zoom transition back into the grid.
+    var onPage: ((Asset) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
+    }
     @State private var pages: [Asset] = []
     @State private var index: Int = 0
     @State private var chrome = true
@@ -63,7 +72,10 @@ struct ViewerScreen: View {
             index = assets.firstIndex(of: start) ?? 0
             prefetchNeighbors(of: index)
         }
-        .onChange(of: index) { _, new in prefetchNeighbors(of: new) }
+        .onChange(of: index) { _, new in
+            prefetchNeighbors(of: new)
+            if let a = pages[safe: new] { onPage?(a) }
+        }
         .sheet(item: $infoAsset) { a in
             InfoSheet(library: library, asset: a)
                 .presentationDetents([.medium, .large])
@@ -100,7 +112,7 @@ struct ViewerScreen: View {
 
     private func topBar(_ asset: Asset) -> some View {
         HStack(alignment: .center) {
-            CircleButton(icon: "chevron.backward") { dismiss() }
+            CircleButton(icon: "chevron.backward") { close() }
             Spacer()
             VStack(spacing: 1) {
                 Text(relativeDay(asset.takenAt))
@@ -207,7 +219,7 @@ struct ViewerScreen: View {
             library.removeLocally([a.id])
             await library.loadStats()
             if pages.count <= 1 {
-                dismiss()
+                close()
             } else {
                 var next = pages
                 next.remove(at: index)
@@ -223,12 +235,15 @@ struct ViewerScreen: View {
         let cal = Calendar.current
         if cal.isDateInToday(d) { return "Heute" }
         if cal.isDateInYesterday(d) { return "Gestern" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        f.dateFormat = cal.isDate(d, equalTo: Date(), toGranularity: .year)
-            ? "d. MMM" : "d. MMM yyyy"
-        return f.string(from: d)
+        return (cal.isDate(d, equalTo: Date(), toGranularity: .year) ? Self.dayThisYear : Self.dayOtherYear).string(from: d)
     }
+
+    private static let dayThisYear: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d. MMM"; return f
+    }()
+    private static let dayOtherYear: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "de_DE"); f.dateFormat = "d. MMM yyyy"; return f
+    }()
 
     /// Warms the 2048 previews of the neighboring pages (±1..3, nearest first)
     /// so the next swipe shows a sharp image instantly.
@@ -276,14 +291,30 @@ private struct Filmstrip: View {
     @Binding var index: Int
     let client: PhotoClient
     @State private var pos: Int?
+    /// The part of the timeline the strip holds. A lazy stack over all
+    /// 25,000 photos blocked the main thread for over half a second when the
+    /// viewer opened (it has to place the current photo 25,000 cells in);
+    /// a window around the current photo is instant, and it moves along
+    /// when the strip gets near one of its ends.
+    @State private var window: Range<Int> = 0..<0
+    private static let reach = 400
 
     private let cell: CGFloat = 36
     private let gap: CGFloat = 3
 
+    private func recenter(_ i: Int) {
+        let lo = max(i - Self.reach, 0), hi = min(i + Self.reach, assets.count)
+        if window.isEmpty || i < window.lowerBound + 40 && window.lowerBound > 0
+            || i > window.upperBound - 40 && window.upperBound < assets.count
+            || window.upperBound > assets.count {
+            window = lo..<hi
+        }
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: gap) {
-                ForEach(assets.indices, id: \.self) { i in
+                ForEach(window.clamped(to: 0..<assets.count), id: \.self) { i in
                     Thumb(url: client.thumbURL(assets[i].id, 512))
                         .frame(width: cell, height: cell)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -322,13 +353,15 @@ private struct Filmstrip: View {
         .frame(height: 46)
         // mechanical lens-click on every detent (scrub AND page swipe)
         .sensoryFeedback(.selection, trigger: index)
-        .onAppear { pos = index }
+        .onAppear { recenter(index); pos = index }
         .onChange(of: index) { _, i in
+            recenter(i)
             if pos != i { withAnimation(.snappy) { pos = i } }
         }
         .onChange(of: pos) { _, p in
             if let p, p != index { index = p }   // user scrubbed the strip
         }
+        .onChange(of: assets.count) { recenter(index) }
     }
 }
 
