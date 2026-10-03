@@ -8,6 +8,10 @@ updates:
     directory: /app
     schedule:
       interval: weekly
+    ignore:
+      # pinned in app/project.yml: 1.12 and later need the Metal toolchain
+      # at build time
+      - dependency-name: github.com/migueldeicaza/swiftterm
   - package-ecosystem: docker
     directories:
       - /db
