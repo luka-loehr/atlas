@@ -141,13 +141,14 @@ struct RootView: View {
                 return
             }
             library.host = session.base
-            ThumbLoader.shared.client = library.client
+            MediaCache.shared.client = library.client
             // the backup always runs: photos taken while the app was closed
             // appear in the grid at once and upload behind it
             BackupService.shared.library = library
             BackupService.shared.configure(host: session.base)
             BackupService.shared.foreground()
             await library.start()
+            CacheWarmer.shared.start(library)
         }
         .onChange(of: scenePhase) { _, phase in
             guard session.isConnected else { return }
@@ -155,9 +156,12 @@ struct RootView: View {
             case .background:
                 BackupService.shared.background()
                 AtlasApp.scheduleBackgroundWork()
+                CacheWarmer.shared.stop()
+                MediaStore.shared.scheduleTrim()
             case .active:
                 Task { await library.refresh() }
                 BackupService.shared.foreground()
+                if !library.assets.isEmpty { CacheWarmer.shared.start(library) }
             default:
                 break
             }

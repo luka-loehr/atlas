@@ -15,6 +15,14 @@ struct Person: Codable, Sendable, Identifiable, Hashable {
     }
 }
 
+/// The last people list the server sent (the cache warmer fetches it at
+/// launch), so the People views show their faces in the first frame and
+/// refresh behind it.
+@MainActor
+enum PeopleMemo {
+    static var people: [Person] = []
+}
+
 /// One detected face on an asset, resolved to its person.
 struct AssetFace: Codable, Sendable, Identifiable, Hashable {
     let face: Int64

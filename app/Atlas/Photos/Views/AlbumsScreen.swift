@@ -50,7 +50,8 @@ struct AlbumsScreen: View {
 
     // MARK: - Personen (horizontal preview row -> PersonsScreen)
 
-    @State private var personsPreview: [Person] = []
+    @State private var personsPreview: [Person] = PeopleMemo.people
+    @State private var personsFetched = false
 
     private var peopleRow: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -97,8 +98,10 @@ struct AlbumsScreen: View {
             }
         }
         .task {
-            guard personsPreview.isEmpty, let people = try? await library.client.persons() else { return }
-            personsPreview = people
+            guard !personsFetched, let people = try? await library.client.persons() else { return }
+            personsFetched = true
+            if people != personsPreview { personsPreview = people }
+            PeopleMemo.people = people
         }
     }
 

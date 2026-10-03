@@ -4,8 +4,9 @@ import SwiftUI
 /// (Google-Photos style). Tap -> PersonDetailScreen.
 struct PersonsScreen: View {
     var library: Library
-    @State private var persons: [Person] = []
-    @State private var loaded = false
+    // the last list, faces already on the phone: the screen opens complete
+    @State private var persons: [Person] = PeopleMemo.people
+    @State private var loaded = !PeopleMemo.people.isEmpty
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 18), count: 3)
 
@@ -48,7 +49,10 @@ struct PersonsScreen: View {
     }
 
     private func load() async {
-        persons = (try? await library.client.persons()) ?? []
+        if let fresh = try? await library.client.persons() {
+            persons = fresh
+            PeopleMemo.people = fresh
+        }
         loaded = true
     }
 }

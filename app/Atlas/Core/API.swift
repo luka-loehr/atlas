@@ -27,14 +27,14 @@ enum APIError: LocalizedError {
 struct API: Sendable {
     let config: ServerConfig
 
-    /// One session for everything. Media responses are immutable and carry
-    /// long cache lifetimes, so the URL cache is the thumbnail disk cache.
+    /// One session for the API. Its URL cache holds JSON answers (`cached`);
+    /// media lives in `MediaStore`.
     static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpMaximumConnectionsPerHost = 12
         configuration.timeoutIntervalForRequest = 30
         configuration.waitsForConnectivity = false
-        configuration.urlCache = URLCache(memoryCapacity: 32 << 20, diskCapacity: 4 << 30)
+        configuration.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 64 << 20)
         return URLSession(configuration: configuration)
     }()
 

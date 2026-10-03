@@ -98,6 +98,7 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
         func pageViewController(_ p: UIPageViewController,
                                 willTransitionTo pending: [UIViewController]) {
             transitioning = true
+            MediaFetch.shared.setInteracting(true)
             if let i = (pending.first as? Page)?.pageIndex, parent.index != i {
                 parent.index = i
             }
@@ -107,6 +108,7 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
                                 previousViewControllers _: [UIViewController],
                                 transitionCompleted completed: Bool) {
             transitioning = false
+            MediaFetch.shared.setInteracting(false)
             // completed OR cancelled: sync to whatever is actually visible
             // (a cancelled swipe reverts the eager index from willTransitionTo)
             guard let i = currentIndex(of: p) else { return }

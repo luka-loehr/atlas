@@ -130,6 +130,9 @@ final class Library {
         indexByID = snapshot.indexByID
         // every grid thumbnail of the library onto the phone, in the background
         ThumbFill.shared.update(ids: snapshot.assets.map(\.id), host: host)
+        // the last two months' previews, originals and videos are evicted last
+        let since = Date().addingTimeInterval(-61 * 86400)
+        MediaStore.shared.setRecent(Set(snapshot.assets.reversed().prefix { ($0.takenAt ?? .distantPast) > since }.map(\.id)))
     }
 
     /// The index lists months newest first, and each month its assets newest

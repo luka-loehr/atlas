@@ -71,14 +71,17 @@ struct ViewerScreen: View {
             pages = assets
             index = assets.firstIndex(of: start) ?? 0
             ViewerNow.show(pages[safe: index]?.id)
-            prefetchNeighbors(of: index)
+            MediaCache.shared.viewerFocus(pages, index: index, forward: true)
         }
-        .onChange(of: index) { _, new in
-            prefetchNeighbors(of: new)
+        .onChange(of: index) { old, new in
+            MediaCache.shared.viewerFocus(pages, index: new, forward: new >= old)
             ViewerNow.show(pages[safe: new]?.id)
             if let a = pages[safe: new] { onPage?(a) }
         }
-        .onDisappear { ViewerNow.show(nil) }
+        .onDisappear {
+            ViewerNow.show(nil)
+            MediaCache.shared.viewerClosed()
+        }
         .sheet(item: $infoAsset) { a in
             InfoSheet(library: library, asset: a)
                 .presentationDetents([.medium, .large])
@@ -209,14 +212,9 @@ struct ViewerScreen: View {
         busy = true
         Task {
             defer { busy = false }
-            if let (tmp, resp) = try? await URLSession.shared.download(for: AtlasAuth.request(src, timeoutInterval: 600)) {
-                let ext = (resp.suggestedFilename as NSString?)?.pathExtension
-                let dest = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("\(a.id).\(ext?.isEmpty == false ? ext! : "jpg")")
-                try? FileManager.default.removeItem(at: dest)
-                if (try? FileManager.default.moveItem(at: tmp, to: dest)) != nil {
-                    shareBundle = ShareBundle(urls: [dest])
-                }
+            // the cached original when the viewer already has it
+            if let file = await MediaCache.shared.shareableOriginal(a.id, from: src) {
+                shareBundle = ShareBundle(urls: [file])
             }
         }
     }
@@ -280,19 +278,6 @@ struct ViewerScreen: View {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMM yyyy"; return f
     }()
 
-    /// Warms the 2048 previews of the neighboring pages (±1..3, nearest first)
-    /// so the next swipe shows a sharp image instantly.
-    private func prefetchNeighbors(of i: Int) {
-        var urls: [URL] = []
-        for offset in 1...3 {
-            for j in [i + offset, i - offset] {
-                guard let a = pages[safe: j], !a.isVideo,
-                      let u = library.client.thumbURL(a.id, 2048) else { continue }
-                urls.append(u)
-            }
-        }
-        ThumbLoader.shared.prefetch(urls)
-    }
 }
 
 /// Round floating button (system-background circle, primary icon) — Google-Photos chrome.
@@ -451,6 +436,7 @@ private struct ViewerPage: View {
                 thumb: library.client.thumbURL(asset.id, 512),
                 preview: library.client.thumbURL(asset.id, 2048),
                 full: library.client.originalURL(asset.id),
+                previewPixels: MediaCache.viewerPixels(asset),
                 onTap: onTap
             )
             .accessibilityElement(children: .ignore)
@@ -460,16 +446,32 @@ private struct ViewerPage: View {
     }
 }
 
-/// Loads the 2048 preview instantly (cached from the grid), swaps in the
-/// downsampled original, then hosts it in a UIScrollView for zoom. At zoom 1
+/// Shows the 2048 preview at once (the viewer's look-ahead decoded it before
+/// the swipe; else the grid's thumbnail first), swaps in the downsampled
+/// original, then hosts it in a UIScrollView for zoom. At zoom 1
 /// the scroll view doesn't consume drags, so the pager (horizontal) and the
 /// zoom-transition dismiss (down) keep working — exactly like Apple Photos.
 private struct ZoomablePhoto: View {
     let thumb: URL?      // 512, cached from the grid → instant, offline-safe
     let preview: URL?    // 2048
     let full: URL?       // original
+    /// The size the preview is decoded at, the same as the look-ahead's.
+    var previewPixels: CGFloat
     var onTap: () -> Void = {}
     @State private var image: UIImage?
+
+    init(thumb: URL?, preview: URL?, full: URL?, previewPixels: CGFloat, onTap: @escaping () -> Void = {}) {
+        self.thumb = thumb
+        self.preview = preview
+        self.full = full
+        self.previewPixels = previewPixels
+        self.onTap = onTap
+        // a decoded preview (or the thumbnail) is there in the very first
+        // frame of the page, also while it slides in
+        let cache = MediaCache.shared
+        _image = State(initialValue: preview.flatMap { cache.cached($0, maxPixel: previewPixels) }
+                       ?? thumb.flatMap { cache.cached($0) })
+    }
 
     var body: some View {
         Group {
@@ -486,17 +488,23 @@ private struct ZoomablePhoto: View {
             // 1) the grid's 512 thumb is already cached → show the photo (blurry)
             //    INSTANTLY instead of a grey wait, even on bad internet / offline
             if image == nil, let t = thumb {
-                if let c = ThumbLoader.shared.cached(t) { image = c }
-                else if let img = await ThumbLoader.shared.load(t), image == nil { image = img }
+                if let c = MediaCache.shared.cached(t) { image = c }
+                else if let img = await MediaCache.shared.load(t), image == nil { image = img }
             }
             // 2) sharpen to the 2048 preview
-            if let p = preview, let img = await ThumbLoader.shared.load(p) { image = img }
+            if let p = preview {
+                if let c = MediaCache.shared.cached(p, maxPixel: previewPixels) {
+                    if image !== c { image = c }
+                } else if let img = await MediaCache.shared.load(p, maxPixel: previewPixels) {
+                    image = img
+                }
+            }
             // full quality ONLY when the user actually settles on this photo:
             // while scrubbing through the strip each page lives < 600ms, its
             // task gets cancelled here and no original is ever downloaded
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
-            if let f = full, let img = await ThumbLoader.shared.loadFull(f, maxPixel: 2800) {
+            if let f = full, let img = await MediaCache.shared.loadFull(f, maxPixel: 2800) {
                 image = img
             }
         }
@@ -607,6 +615,7 @@ private struct VideoPlayer: View {
     @State private var player: AVPlayer?
     @State private var timeObs: Any?
     @State private var endObs: Any?
+    @State private var statusObs: NSKeyValueObservation?
     @State private var playing = false
     @State private var current: Double = 0
     @State private var duration: Double = 0
@@ -740,10 +749,26 @@ private struct VideoPlayer: View {
         // play sound even with the ringer/Focus on silent (like Photos/YouTube)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        // AVURLAsset options carry the optional bearer token to the stream endpoint
-        let p = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: url, options: AtlasAuth.avAssetOptions)))
+        // through the media cache: its first seconds are usually on the
+        // phone already (the viewer fetches them ahead), the rest streams
+        let item = AVPlayerItem(asset: VideoCache.shared.asset(id: id, remote: url))
+        let p = AVPlayer(playerItem: item)
         p.isMuted = false
         player = p
+        // should the cached path fail, the player streams straight from the
+        // server as it always did
+        statusObs = item.observe(\.status) { [weak p] item, _ in
+            guard item.status == .failed else { return }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let p, p.currentItem === item else { return }
+                    MediaCache.log.error("video \(id, privacy: .public) via cache failed: \(item.error?.localizedDescription ?? "", privacy: .public); streaming directly")
+                    // AVURLAsset options carry the optional bearer token to the stream endpoint
+                    p.replaceCurrentItem(with: AVPlayerItem(asset: AVURLAsset(url: url, options: AtlasAuth.avAssetOptions)))
+                    if ViewerNow.id == id { p.play() }
+                }
+            }
+        }
         // a page built ahead of a swipe waits until it is on screen
         if ViewerNow.id == id {
             p.play()
@@ -761,8 +786,10 @@ private struct VideoPlayer: View {
         }
         endObs = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification,
-            object: p.currentItem, queue: .main) { _ in
-            MainActor.assumeIsolated { playing = false }
+            object: nil, queue: .main) { [weak p] note in
+            MainActor.assumeIsolated {
+                if let p, (note.object as? AVPlayerItem) === p.currentItem { playing = false }
+            }
         }
     }
 
@@ -771,6 +798,8 @@ private struct VideoPlayer: View {
     private func teardown() {
         if let t = timeObs { player?.removeTimeObserver(t); timeObs = nil }
         if let e = endObs { NotificationCenter.default.removeObserver(e); endObs = nil }
+        statusObs?.invalidate()
+        statusObs = nil
         player?.pause()
         player = nil
         playing = false
