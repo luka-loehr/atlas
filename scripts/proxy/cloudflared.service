@@ -18,7 +18,9 @@ ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
 Restart=on-failure
 RestartSec=5s
 # Hardening: cloudflared needs no privileges beyond outbound network.
-DynamicUser=no
+# A throwaway unprivileged user: the token comes from EnvironmentFile=, which
+# systemd reads as root before dropping to it, and nothing is kept on disk.
+DynamicUser=yes
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

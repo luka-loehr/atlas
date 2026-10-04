@@ -10,6 +10,22 @@ ConditionPathExists=/etc/atlas/caddy.json
 
 [Service]
 Type=notify
+# Never root. The admin API on localhost:2019 has no authentication, so any
+# local process (a dev container runs with --network host) can load a config;
+# as root that config could serve /etc through the tunnel. The `caddy` account
+# comes with the Caddy package (see setup.sh), its home is /var/lib/caddy.
+User=caddy
+Group=caddy
+StateDirectory=caddy
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 # Plain-HTTP reverse proxy on :8080 with the admin API on localhost:2019.
 # TLS is terminated at the Cloudflare edge, so Caddy never provisions certs.
 ExecStart=/usr/bin/caddy run --environ --config /etc/atlas/caddy.json
