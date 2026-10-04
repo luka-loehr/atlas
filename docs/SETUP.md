@@ -401,9 +401,10 @@ zero (10 GB are free). You need a Cloudflare account with R2 enabled once
 (dashboard → R2) and Node.js on the Mac. From the checkout:
 
 ```bash
-atlas share setup     # logs in to Cloudflare, deploys, connects the server
+atlas share setup     # logs in to Cloudflare, asks which domain (atlas-share.<domain>), deploys, connects
 atlas share status    # live? how many links
 atlas share ls        # links, progress, time left · atlas share rm <id>
+atlas share destroy   # removes all of it from Cloudflare again
 ```
 
 Then "Share Link…" appears in album menus and "Share as Link…" for selected

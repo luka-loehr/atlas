@@ -405,13 +405,24 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     let c = app.pool.get().await?;
     let share = c
         .query_opt(
-            "SELECT title, asset_ids, allow_download, password, extract(epoch FROM expires_at)::bigint FROM shares WHERE id = $1",
+            "SELECT title, asset_ids, allow_download, password, extract(epoch FROM expires_at)::bigint, live
+             FROM shares WHERE id = $1",
             &[&id],
         )
         .await?
         .context("share is gone")?;
-    let (title, ids, allow_download, password, expires): (String, Vec<String>, bool, Option<String>, i64) =
-        (share.get(0), share.get(1), share.get(2), share.get(3), share.get(4));
+    let (title, ids, allow_download, password, expires, live): (String, Vec<String>, bool, Option<String>, i64, bool) =
+        (share.get(0), share.get(1), share.get(2), share.get(3), share.get(4), share.get(5));
+    // a new link says "being created" from its first second, not "not found";
+    // a live one keeps showing its current contents while it is updated
+    let announce = |done: i64, total: i64, eta: Option<i64>| {
+        json!({ "title": title, "count": ids.len(), "done_bytes": done.max(0), "total_bytes": total.max(0),
+                "eta_s": eta, "expires_at": expires })
+    };
+    if !live {
+        let first = announce(0, 0, None);
+        with_retries(|| remote.progress(id, &first)).await.context("progress")?;
+    }
     let rows = c
         .query(
             "SELECT id, type, width, height, taken_at, tz_offset_s, duration_s, orig_path, orig_name, size_bytes
@@ -442,12 +453,28 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     // the bytes sent so far reach the database once a second, so the app sees
     // the progress move part by part, not file by file
     let reporting = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let progress_base = announce(0, 0, None);
     tokio::spawn({
         let (app, id, done, total, reporting) = (app.clone(), id.to_string(), done.clone(), total.clone(), reporting.clone());
         async move {
+            let mut speed = Speed::default();
+            let mut tick = 0u32;
             while reporting.load(Ordering::Relaxed) {
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                let _ = set_progress(&app, &id, done.load(Ordering::Relaxed), total.load(Ordering::Relaxed)).await;
+                let (d, t) = (done.load(Ordering::Relaxed), total.load(Ordering::Relaxed));
+                let _ = set_progress(&app, &id, d, t).await;
+                let eta = speed.eta(d, t);
+                tick += 1;
+                // the recipient's page: every 5 s is plenty, and cheap
+                if !live && tick % 5 == 0
+                    && let Some(remote) = Remote::new(&app)
+                {
+                    let mut body = progress_base.clone();
+                    body["done_bytes"] = json!(d.max(0));
+                    body["total_bytes"] = json!(t.max(d).max(0));
+                    body["eta_s"] = json!(eta);
+                    let _ = remote.progress(&id, &body).await;
+                }
             }
         }
     });
@@ -691,6 +718,7 @@ where
 /// share whose files could not be removed (Worker unreachable) is tried again
 /// next time.
 pub async fn purge_expired(app: &App) -> ApiResult<u64> {
+    reconcile(app).await;
     let c = app.pool.get().await?;
     let rows = c.query("SELECT id FROM shares WHERE expires_at <= now()", &[]).await?;
     let mut removed = 0;
@@ -705,6 +733,52 @@ pub async fn purge_expired(app: &App) -> ApiResult<u64> {
         removed += c.execute("DELETE FROM shares WHERE id = $1", &[&id]).await?;
     }
     Ok(removed)
+}
+
+/// Anything in R2 that atlas does not know as a share (a stop whose remote
+/// delete failed, a database restored from backup, a crash at the wrong
+/// moment) is deleted, so no stray link survives.
+async fn reconcile(app: &App) {
+    let Some(remote) = Remote::new(app) else { return };
+    let stored = match remote.ids().await {
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::warn!("share: could not list atlas-share to reconcile: {e:#}");
+            return;
+        }
+    };
+    let Ok(c) = app.pool.get().await else { return };
+    let Ok(rows) = c.query("SELECT id FROM shares", &[]).await else { return };
+    let known: std::collections::HashSet<String> = rows.iter().map(|r| r.get(0)).collect();
+    for id in stored.into_iter().filter(|id| !known.contains(id)) {
+        match remote.delete(&id).await {
+            Ok(()) => tracing::info!("share {id}: removed from atlas-share, atlas no longer knew it"),
+            Err(e) => tracing::warn!("share {id}: stray, removing it failed: {e:#}"),
+        }
+    }
+}
+
+/// Upload speed, smoothed, for the time left the recipient's page shows.
+#[derive(Default)]
+struct Speed {
+    last: Option<(std::time::Instant, i64)>,
+    bytes_per_s: f64,
+}
+
+impl Speed {
+    fn eta(&mut self, done: i64, total: i64) -> Option<i64> {
+        let now = std::time::Instant::now();
+        if let Some((then, before)) = self.last {
+            let dt = now.duration_since(then).as_secs_f64();
+            if dt > 0.0 {
+                let rate = (done - before).max(0) as f64 / dt;
+                // a slow average: parts land in bursts of 16 MiB
+                self.bytes_per_s = if self.bytes_per_s == 0.0 { rate } else { 0.9 * self.bytes_per_s + 0.1 * rate };
+            }
+        }
+        self.last = Some((now, done));
+        (self.bytes_per_s > 1024.0 && total > done).then(|| ((total - done) as f64 / self.bytes_per_s).ceil() as i64)
+    }
 }
 
 // MARK: - The Worker's admin API
@@ -800,6 +874,20 @@ impl Remote {
         Ok(())
     }
 
+    async fn progress(&self, id: &str, body: &Value) -> Result<()> {
+        self.send(self.http.put(format!("{}/api/shares/{id}/progress", self.base)).json(body)).await?;
+        Ok(())
+    }
+
+    /// Every share id atlas-share holds files for.
+    async fn ids(&self) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Ids {
+            ids: Vec<String>,
+        }
+        Ok(self.send(self.http.get(format!("{}/api/shares", self.base))).await?.json::<Ids>().await?.ids)
+    }
+
     async fn manifest(&self, id: &str, manifest: &Value) -> Result<()> {
         self.send(self.http.put(format!("{}/api/shares/{id}", self.base)).json(manifest)).await?;
         Ok(())
@@ -852,6 +940,17 @@ mod tests {
         assert!(!browser_plays(&p("hevc", 1920, 1080, "yuv420p")));
         assert!(!browser_plays(&p("h264", 3840, 2160, "yuv420p")));
         assert!(!browser_plays(&p("h264", 1920, 1080, "yuv420p10le")));
+    }
+
+    #[test]
+    fn time_left_follows_the_speed() {
+        let mut s = Speed::default();
+        assert_eq!(s.eta(0, 1000), None);
+        s.last = Some((std::time::Instant::now() - Duration::from_secs(10), 0));
+        // 10 MB in 10 s = 1 MB/s, 90 MB left
+        let eta = s.eta(10_000_000, 100_000_000).unwrap();
+        assert!((89..=91).contains(&eta), "{eta}");
+        assert_eq!(s.eta(100_000_000, 100_000_000), None);
     }
 
     #[test]
