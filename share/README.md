@@ -38,10 +38,13 @@ item has a download button and "Download all" fetches `/s/<id>/zip`, a ZIP
 of the originals built while it streams. No framework and no build step:
 server-rendered HTML with inline CSS and JS under a per-response CSP nonce.
 
-The ZIP's CRC-32 runs in the Worker (about 1 GB/s), so its CPU time grows
-with the share's size, and it reads one R2 object per item: on the Workers
-Free plan (10 ms CPU, 50 subrequests) only small shares can be zipped; the
-Paid plan's limits cover albums of several GB.
+atlas sends every original's CRC-32 in the manifest, so the Worker writes
+the ZIP headers itself and pipes the files from R2 to the recipient without
+touching their bytes: its CPU time stays tiny whatever the album weighs.
+(Shares without CRCs are checksummed while they stream, which on the Free
+plan's 10 ms CPU limit works for small shares only.) The ZIP reads one R2
+object per item, which counts against the Worker's per-request subrequest
+limit; very large albums may need the Paid plan.
 
 ## Setup
 

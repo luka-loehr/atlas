@@ -565,23 +565,43 @@ async fn prepare(app: &App, r: &tokio_postgres::Row, allow_download: bool) -> Re
     } else {
         files.push(File { kind: "v", asset: id.clone(), source: Source::Path(thumb(2048)), mime: "image/webp".into() });
     }
-    if allow_download {
+    // the original's CRC-32 lets the Worker build "Download all" without
+    // reading a byte of it (its CPU budget is tiny)
+    let crc = if allow_download {
         files.push(File { kind: "o", asset: id.clone(), source: Source::Path(original.clone()), mime: mime_of(&name).into() });
+        let original = original.clone();
+        Some(tokio::task::spawn_blocking(move || crc32_of(&original)).await??)
+    } else {
+        None
+    };
+    let mut json = json!({
+        "id": id,
+        "kind": if is_video { "video" } else { "photo" },
+        "w": r.get::<_, Option<i32>>(2).unwrap_or(0),
+        "h": r.get::<_, Option<i32>>(3).unwrap_or(0),
+        "taken": wall,
+        "duration": duration,
+        "name": name,
+        "bytes": bytes,
+        "view": if is_video { "video/mp4" } else { "image/webp" },
+    });
+    if let Some(crc) = crc {
+        json["crc32"] = json!(crc);
     }
-    Ok(Item {
-        json: json!({
-            "id": id,
-            "kind": if is_video { "video" } else { "photo" },
-            "w": r.get::<_, Option<i32>>(2).unwrap_or(0),
-            "h": r.get::<_, Option<i32>>(3).unwrap_or(0),
-            "taken": wall,
-            "duration": duration,
-            "name": name,
-            "bytes": bytes,
-            "view": if is_video { "video/mp4" } else { "image/webp" },
-        }),
-        files,
-    })
+    Ok(Item { json, files })
+}
+
+fn crc32_of(path: &Path) -> Result<u32> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = crc32fast::Hasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = std::io::Read::read(&mut file, &mut buf)?;
+        if n == 0 {
+            return Ok(hasher.finalize());
+        }
+        hasher.update(&buf[..n]);
+    }
 }
 
 /// H.264 in MP4/MOV, 8 bit, at most 1080p and a sane bitrate plays in every

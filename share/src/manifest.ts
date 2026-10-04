@@ -25,6 +25,8 @@ export interface Item {
   name: string;
   bytes: number;
   view: string;
+  /** CRC-32 of the original, from atlas: lets "Download all" pass bytes through untouched */
+  crc32?: number;
 }
 
 export interface ManifestInput {
@@ -132,6 +134,8 @@ function validateItem(v: unknown, i: number): Item | string {
     return `${at}.name must be 1-${MAX_NAME} characters`;
   if (!isNonNegInt(v.bytes)) return `${at}.bytes must be a non-negative integer`;
   if (typeof v.view !== "string" || !VIEW_TYPES.includes(v.view)) return `${at}.view must be ${VIEW_TYPES.join(" or ")}`;
+  if (v.crc32 !== undefined && (!isNonNegInt(v.crc32) || v.crc32 > 0xffffffff))
+    return `${at}.crc32 must be an unsigned 32-bit integer`;
   return {
     id: v.id,
     kind: v.kind,
@@ -142,6 +146,7 @@ function validateItem(v: unknown, i: number): Item | string {
     name: v.name,
     bytes: v.bytes,
     view: v.view,
+    ...(v.crc32 === undefined ? {} : { crc32: v.crc32 }),
   };
 }
 

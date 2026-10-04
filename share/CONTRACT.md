@@ -89,6 +89,9 @@ every part but the last to be at least 5 MiB.
 - `taken` is unix seconds in the photo's local wall time (shown as is,
   without converting time zones), or null. `duration` is seconds, videos only.
 - `view` is the content type of the `v/` file (`image/webp` or `video/mp4`).
+- `crc32` (optional, with `allow_download`): the original's CRC-32 as an
+  unsigned integer. With it on every item, "Download all" pipes the files
+  from R2 without reading them in the Worker.
 - `bytes` is the original's size; it is shown next to the download button.
 
 - Limits (else `400`): `title` ≤ 200 characters (may be empty), 1–20,000

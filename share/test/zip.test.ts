@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32 as zlibCrc32 } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { crc32, dosDateTime, planZip, uniqueNames, type ZipInput, zipStream } from "../src/zip";
+import { crc32, dosDateTime, planZip, uniqueNames, type ZipInput, zipPipe, zipStream } from "../src/zip";
 
 const hasUnzip = (() => {
   try {
@@ -176,6 +176,23 @@ describe("zip", () => {
         expect(out).toContain("No errors detected");
         expect(unzip(zip, "-p").length).toBeGreaterThan(70_000);
       }
+    });
+  }
+
+  for (const force64 of [false, true]) {
+    it(`pipes bodies through when every CRC is known${force64 ? " (ZIP64 records)" : ""}`, async () => {
+      const plan = planZip(files.map((f) => ({ ...f.input, crc: zlibCrc32(f.data) })), force64);
+      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+      const done = zipPipe(plan, async (i) => streamOf(files[i]!.data), writable);
+      const zip = await collect(readable);
+      await done;
+      expect(zip.length).toBe(plan.size);
+      const p = parseTrailer(zip, 0);
+      p.entries.forEach((e, i) => {
+        expect(e.crc).toBe(zlibCrc32(files[i]!.data));
+        expect(e.flags).toBe(0x0800);
+      });
+      if (hasUnzip) expect(unzip(zip, "-t")).toContain("No errors detected");
     });
   }
 

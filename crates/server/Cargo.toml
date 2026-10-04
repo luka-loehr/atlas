@@ -29,6 +29,7 @@ axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
 bytes = "1"
 chrono-tz = "0.10"
+crc32fast = "1"
 fast_image_resize = "5"
 flate2 = "1"
 futures-util = "0.3"
