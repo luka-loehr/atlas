@@ -174,7 +174,8 @@ struct PersonDetailScreen: View {
         .changeFailedAlert($changeFailed)
         .task { assets = (try? await library.client.personAssets(person.id)) ?? [] }
         .fullScreenCover(item: $pick) { a in
-            ViewerScreen(library: library, assets: assets, start: a)
+            ViewerScreen(library: library, assets: assets, start: a,
+                         onRemoved: { id in assets.removeAll { $0.id == id } })
                 .navigationTransition(.zoom(sourceID: a.id, in: zoom))
         }
     }

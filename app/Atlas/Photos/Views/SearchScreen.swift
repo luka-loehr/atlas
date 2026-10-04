@@ -50,7 +50,8 @@ struct SearchScreen: View {
             Task { await run(q) }
         }
         .fullScreenCover(item: $pick) { a in
-            ViewerScreen(library: library, assets: result.items, start: a)
+            ViewerScreen(library: library, assets: result.items, start: a,
+                         onRemoved: { id in result.items.removeAll { $0.id == id } })
         }
     }
 

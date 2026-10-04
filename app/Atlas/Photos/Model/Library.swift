@@ -30,6 +30,9 @@ final class Library {
     /// scrubber and the source of the date under the title.
     var months: [Month] = []
     var online = true
+    /// The server's timeline has been seen at least once (an empty library
+    /// is then really empty, not still loading).
+    private(set) var loaded = false
 
     /// O(1) asset-id → position.
     @ObservationIgnored private var indexByID: [String: Int] = [:]
@@ -67,12 +70,12 @@ final class Library {
         let client = client
         do {
             let fresh = try await client.timelineIndex()
-            online = true
+            if !online { online = true }
             let known = Dictionary(uniqueKeysWithValues: index.map { ($0.key, $0.etag) })
             let stale = fresh.filter { known[$0.key] != $0.etag || columns[$0.key] == nil }
             // nothing changed: nothing to rebuild
-            if stale.isEmpty, fresh.map(\.key) == index.map(\.key) { return }
-            var loaded: [String: AssetColumns] = [:]
+            if stale.isEmpty, fresh.map(\.key) == index.map(\.key) { if !loaded { loaded = true }; return }
+            var fetched: [String: AssetColumns] = [:]
             await withTaskGroup(of: (String, AssetColumns?).self) { group in
                 var pending = stale.makeIterator()
                 for bucket in stale.prefix(6) {
@@ -80,23 +83,24 @@ final class Library {
                     group.addTask { (bucket.key, try? await client.timelineBucket(bucket.key)) }
                 }
                 for await (key, columns) in group {
-                    if let columns { loaded[key] = columns }
+                    if let columns { fetched[key] = columns }
                     if let bucket = pending.next() {
                         group.addTask { (bucket.key, try? await client.timelineBucket(bucket.key)) }
                     }
                 }
             }
             // a month that failed to load keeps its previous content
-            let complete = fresh.allSatisfy { loaded[$0.key] != nil || (known[$0.key] == $0.etag && columns[$0.key] != nil) }
+            let complete = fresh.allSatisfy { fetched[$0.key] != nil || (known[$0.key] == $0.etag && columns[$0.key] != nil) }
             guard complete else { return }
-            for (key, value) in loaded { columns[key] = value }
+            for (key, value) in fetched { columns[key] = value }
             let keys = Set(fresh.map(\.key))
             columns = columns.filter { keys.contains($0.key) }
             index = fresh
             await apply(Self.build(index: fresh, columns: columns))
-            saveToDisk(index: fresh, changed: loaded)
+            if !loaded { loaded = true }
+            saveToDisk(index: fresh, changed: fetched)
         } catch {
-            online = false
+            if online { online = false }
         }
     }
 
@@ -227,6 +231,7 @@ final class Library {
         index = []
         columns = [:]
         indexByID = [:]
+        loaded = false
         diskLoad = nil
         Self.diskQueue.async {
             let directory = Self.directory
