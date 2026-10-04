@@ -9,6 +9,12 @@
   "workers_dev": true,
   "preview_urls": false,
   "r2_buckets": [{ "binding": "SHARES", "bucket_name": "atlas-share" }],
+  // Password tries: 10 a minute per share and address, 60 a minute per share.
+  // The namespace ids are this account's own numbers, nothing to create.
+  "ratelimits": [
+    { "name": "UNLOCK_LIMIT", "namespace_id": "4710", "simple": { "limit": 10, "period": 60 } },
+    { "name": "UNLOCK_LIMIT_SHARE", "namespace_id": "4711", "simple": { "limit": 60, "period": 60 } }
+  ],
   // Daily sweep of expired shares (03:17 UTC).
   "triggers": { "crons": ["17 3 * * *"] },
   "observability": { "enabled": true }

@@ -299,6 +299,34 @@ describe("public", () => {
     expect((await call(`/s/${ID}/f/t/${A1}`, { headers: { Cookie: tampered } })).status).toBe(404);
   });
 
+  it("slows password guessing per address and per share", async () => {
+    await putManifest({ password: "open sesame" });
+    const counts = new Map<string, number>();
+    const limiter = (max: number) => ({
+      limit: async ({ key }: { key: string }) => {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        return { success: counts.get(key)! <= max };
+      },
+    });
+    env.UNLOCK_LIMIT = limiter(2) as unknown as RateLimit;
+    env.UNLOCK_LIMIT_SHARE = limiter(100) as unknown as RateLimit;
+    const attempt = (pw: string, ip: string) => {
+      const f = new FormData();
+      f.set("password", pw);
+      return call(`/s/${ID}/unlock`, { method: "POST", body: f, headers: { "CF-Connecting-IP": ip }, redirect: "manual" });
+    };
+    expect((await attempt("a", "198.51.100.1")).status).toBe(403);
+    expect((await attempt("b", "198.51.100.1")).status).toBe(403);
+    // the third try from this address is refused, even with the right password
+    const r = await attempt("open sesame", "198.51.100.1");
+    expect(r.status).toBe(429);
+    expect(r.headers.get("Retry-After")).toBe("60");
+    expect(r.headers.get("Set-Cookie")).toBeNull();
+    expect(await r.text()).toContain("Too many tries");
+    // another address still gets in
+    expect((await attempt("open sesame", "198.51.100.2")).status).toBe(303);
+  });
+
   it("fails closed without SESSION_SECRET on a password share", async () => {
     await putManifest({ password: "pw" });
     env.SESSION_SECRET = undefined;

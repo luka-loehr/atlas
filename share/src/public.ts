@@ -20,6 +20,9 @@ function page(html: string, nonce: string, status = 200, extra: Record<string, s
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      // this host only: a custom domain's siblings are not ours to pin
+      "Strict-Transport-Security": "max-age=31536000",
       ...extra,
     },
   });
@@ -167,6 +170,13 @@ async function unlock(request: Request, env: Env, url: URL, id: string): Promise
   if (!m.password_hash) return Response.redirect(back, 303);
   if (!env.SESSION_SECRET) return notice(500);
 
+  // the id is the capability, the password a second lock: guessing it is
+  // slowed per address and per share before any PBKDF2 work is done
+  if (!(await allowTry(request, env, id))) {
+    const nonce = newNonce();
+    return page(gatePage(nonce, id, m.title, "limited"), nonce, 429, { "Retry-After": "60" });
+  }
+
   let password = "";
   try {
     const form = await request.formData();
@@ -192,6 +202,14 @@ async function unlock(request: Request, env: Env, url: URL, id: string): Promise
       "X-Robots-Tag": "noindex, nofollow",
     },
   });
+}
+
+/** A password try is allowed by both rate limits (each skipped when not bound). */
+async function allowTry(request: Request, env: Env, id: string): Promise<boolean> {
+  const address = request.headers.get("CF-Connecting-IP") ?? "";
+  if (env.UNLOCK_LIMIT && !(await env.UNLOCK_LIMIT.limit({ key: `${id}:${address}` })).success) return false;
+  if (env.UNLOCK_LIMIT_SHARE && !(await env.UNLOCK_LIMIT_SHARE.limit({ key: id })).success) return false;
+  return true;
 }
 
 /** `attachment` with an ASCII fallback and the exact name per RFC 5987/6266. */
