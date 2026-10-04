@@ -1,7 +1,8 @@
 import Foundation
 
-/// A link to photos on atlas-share (GET /v1/shares). The files are uploaded
-/// by the server; `url` is known from the start but opens once `ready`.
+/// A link to photos on atlas-share (GET /v1/shares). atlas uploads the files
+/// on its own; the link can be handed out at once (it says "almost ready"
+/// until they are there). An album has one link, which follows the album.
 struct Share: Codable, Sendable, Identifiable, Hashable {
     enum State: String, Codable, Sendable { case uploading, ready, failed }
 
@@ -19,6 +20,10 @@ struct Share: Codable, Sendable, Identifiable, Hashable {
     let allowDownload: Bool
     let hasPassword: Bool
     let error: String?
+    /// The link's password, kept on atlas while the link lives.
+    var password: String? = nil
+    /// The link opens (atlas has finished at least one upload).
+    var live: Bool? = nil
 
     /// 0…1, or nil while the total is not known yet.
     var progress: Double? {
@@ -26,7 +31,7 @@ struct Share: Codable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, url, state, count, cover, error
+        case id, title, url, state, count, cover, error, password, live
         case createdAt = "created_at"
         case expiresAt = "expires_at"
         case doneBytes = "done_bytes"
@@ -72,7 +77,8 @@ extension PhotoClient {
     }
 
     /// Photos by id or a whole album; the server answers at once with the
-    /// share `uploading` and keeps going on its own.
+    /// share `uploading` and keeps going on its own. An album that has a
+    /// link already gets that one back.
     func createShare(title: String, ids: [String]? = nil, album: Int? = nil, days: Int = 7,
                      allowDownload: Bool = false, password: String? = nil) async throws -> Share {
         guard let url = url("/shares") else { throw URLError(.badURL) }

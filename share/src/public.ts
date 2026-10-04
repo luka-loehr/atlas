@@ -24,8 +24,12 @@ function page(html: string, nonce: string, status = 200, extra: Record<string, s
   });
 }
 
-export function notice(status: 404 | 410 | 500 | 405): Response {
+export function notice(status: 202 | 404 | 410 | 500 | 405): Response {
   const nonce = newNonce();
+  // a link handed out while atlas is still uploading looks again on its own
+  if (status === 202) {
+    return page(noticePage(nonce, "Almost ready", "These photos are still on their way. This page opens them as soon as they are."), nonce, 202, { Refresh: "15" });
+  }
   const [title, line] =
     status === 410
       ? ["Link expired", "This link has expired."]
@@ -93,9 +97,15 @@ export async function handlePublic(request: Request, env: Env, url: URL): Promis
   return notice(404);
 }
 
+/** Files under the share's prefix but no manifest yet: atlas is uploading. */
+async function uploading(env: Env, id: string): Promise<boolean> {
+  const listed = await env.SHARES.list({ prefix: `s/${id}/`, limit: 1 });
+  return listed.objects.length > 0;
+}
+
 async function sharePage(request: Request, env: Env, url: URL, id: string, wrong: boolean): Promise<Response> {
   const m = await loadManifest(env.SHARES, id);
-  if (!m) return notice(404);
+  if (!m) return (await uploading(env, id)) ? notice(202) : notice(404);
   if (!isLive(m, now())) return notice(410);
   const access = await unlocked(request, env, id, m);
   if (access === "no-secret") return notice(500);

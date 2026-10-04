@@ -315,11 +315,26 @@ pub async fn favorite(State(app): State<AppState>, Json(b): Json<IdsValue>) -> A
 }
 
 pub async fn archive(State(app): State<AppState>, Json(b): Json<IdsValue>) -> ApiResult<Json<Value>> {
-    set_flag(&app, "archived", &b).await
+    let r = set_flag(&app, "archived", &b).await?;
+    if b.value {
+        hidden(&app, &b.ids).await;
+    }
+    Ok(r)
 }
 
 pub async fn lock(State(app): State<AppState>, Json(b): Json<IdsValue>) -> ApiResult<Json<Value>> {
-    set_flag(&app, "locked", &b).await
+    let r = set_flag(&app, "locked", &b).await?;
+    if b.value {
+        hidden(&app, &b.ids).await;
+    }
+    Ok(r)
+}
+
+/// What leaves the library's view leaves every share link too.
+async fn hidden(app: &AppState, ids: &[String]) {
+    if let Err(e) = crate::share::assets_hidden(app, ids).await {
+        tracing::warn!("share links: dropping hidden photos failed: {e:#}");
+    }
 }
 
 /// `column` is one of three literals above, never client input.
@@ -334,6 +349,7 @@ async fn set_flag(app: &App, column: &str, b: &IdsValue) -> ApiResult<Json<Value
 pub async fn trash(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let n = c.execute("UPDATE assets SET trashed_at = now() WHERE id = ANY($1)", &[&b.ids]).await?;
+    hidden(&app, &b.ids).await;
     Ok(Json(json!({ "updated": n })))
 }
 

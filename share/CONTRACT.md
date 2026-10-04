@@ -54,7 +54,7 @@ answers `500` (never open); errors are `{"error":"…"}`.
 | `PUT /api/shares/<id>` | writes the manifest (input below) → `{"url":"https://…/s/<id>"}` |
 | `DELETE /api/shares/<id>` | deletes every object under `s/<id>/` → `{"deleted":n}` |
 
-atlas-server sends files up to 90 MB as one `PUT`, larger ones as 50 MB parts.
+atlas-server sends files up to 16 MiB as one `PUT`, larger ones as 16 MiB parts, so the progress the app shows moves part by part.
 Every file `PUT` (whole or part) must carry a `Content-Length` (R2 needs the
 length up front): without one it is `411`, above 95 MB `413`. R2 requires
 every part but the last to be at least 5 MiB.
@@ -138,12 +138,26 @@ A share as the API returns it:
   "done_bytes": 1234567, "total_bytes": 98765432,
   "count": 391, "cover": "<asset id>|null",
   "album_id": 30, "allow_download": false, "has_password": false,
-  "error": null
+  "error": null,
+  "password": null, "live": false
 }
 ```
 
-`state` is `uploading`, `ready` (the link works) or `failed` (`error` says
-why). `url` is known from the start but only opens once `ready`.
+`state` is `uploading`, `ready` or `failed` (`error` says why). `live` is
+true once the manifest has been written, i.e. the link opens; before that
+the Worker answers `202` "Almost ready" (it finds files under the prefix but
+no manifest) and the page refreshes itself, so the link can be handed out at
+once. `password` is the link's password (or null), kept for the link's
+lifetime so the owner's app can show it again.
+
+**One link per album.** `POST` with an album that already has a live link
+returns that link (a `failed` one starts uploading again). The link follows
+the album: photos added or removed and a new title re-upload what is new and
+rewrite the manifest, while the link keeps showing the previous contents.
+Deleting the album ends its link. Photos that are archived, locked or
+trashed leave every link that shows them.
+
+Uploading runs on atlas alone; the app only asks and polls.
 
 | route | does |
 |---|---|
