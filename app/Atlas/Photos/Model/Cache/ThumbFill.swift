@@ -24,7 +24,7 @@ final class ThumbFill {
     @ObservationIgnored private var wanted: [String] = []
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
-    @ObservationIgnored private let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "ThumbFill")
+    @ObservationIgnored private let log = Logger(subsystem: "com.lukaloehr.atlas", category: "ThumbFill")
 
     private static let concurrency = 6
 

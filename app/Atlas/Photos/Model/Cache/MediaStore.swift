@@ -83,7 +83,7 @@ final class MediaStore: @unchecked Sendable {
 
     private let trimQueue = DispatchQueue(label: "atlas.media.trim", qos: .utility)
     private var trimScheduled = false
-    private let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "MediaStore")
+    private let log = Logger(subsystem: "com.lukaloehr.atlas", category: "MediaStore")
 
     private init() {
         let fm = FileManager.default

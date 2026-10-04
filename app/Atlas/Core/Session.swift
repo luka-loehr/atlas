@@ -35,7 +35,7 @@ final class Session {
         }
         #if targetEnvironment(simulator)
         // A simulator is connected from the command line instead of by typing:
-        //   SIMCTL_CHILD_ATLAS_URL=... SIMCTL_CHILD_ATLAS_TOKEN=... xcrun simctl launch booted com.lukaloehr.Atlas
+        //   SIMCTL_CHILD_ATLAS_URL=... SIMCTL_CHILD_ATLAS_TOKEN=... xcrun simctl launch booted com.lukaloehr.atlas.ios
         let environment = ProcessInfo.processInfo.environment
         if config == nil, let address = environment["ATLAS_URL"], let url = Self.normalize(address), let token = environment["ATLAS_TOKEN"] {
             config = ServerConfig(url: url, token: token)
@@ -106,7 +106,7 @@ final class Session {
 /// The access token lives in the keychain, not in preferences.
 enum Keychain {
     private static func query(_ key: String) -> [CFString: Any] {
-        [kSecClass: kSecClassGenericPassword, kSecAttrService: "com.lukaloehr.Atlas", kSecAttrAccount: key]
+        [kSecClass: kSecClassGenericPassword, kSecAttrService: "com.lukaloehr.atlas.ios", kSecAttrAccount: key]
     }
 
     static func read(_ key: String) -> String? {

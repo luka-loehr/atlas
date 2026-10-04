@@ -20,7 +20,7 @@ open Atlas.xcodeproj                    # pick your team under Signing, then run
 ```
 
 The app embeds a widget extension (`AtlasWidget`) and shares the App Group
-`group.com.lukaloehr.Atlas` with it, so signing needs a team that can
+`group.com.lukaloehr.atlas.ios` with it, so signing needs a team that can
 register the group: sign in under Xcode > Settings > Accounts, then build
 with `DEVELOPMENT_TEAM=<team> -allowProvisioningUpdates`. A wildcard
 profile cannot carry an App Group.

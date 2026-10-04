@@ -41,7 +41,7 @@ final class VideoCache: NSObject, @unchecked Sendable {
     private var loads: [AVAssetResourceLoadingRequest: Load] = [:]
     private var transfers: [Int: Transfer] = [:]
 
-    private let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "VideoCache")
+    private let log = Logger(subsystem: "com.lukaloehr.atlas", category: "VideoCache")
 
     // MARK: Public
 

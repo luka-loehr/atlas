@@ -41,7 +41,7 @@ targets:
       properties:
         # the Album widget's photos and manifest (see Shared/WidgetData.swift)
         com.apple.security.application-groups:
-          - group.com.lukaloehr.Atlas
+          - group.com.lukaloehr.atlas.ios
     info:
       path: Atlas/Info.plist
       properties:
@@ -61,14 +61,14 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
-          - CFBundleURLName: com.lukaloehr.Atlas
+          - CFBundleURLName: com.lukaloehr.atlas.ios
             CFBundleURLSchemes: [atlas]
         UIBackgroundModes:
           - processing
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
-          - com.lukaloehr.Atlas.backup
-          - com.lukaloehr.Atlas.refresh
+          - com.lukaloehr.atlas.ios.backup
+          - com.lukaloehr.atlas.ios.refresh
         NSFaceIDUsageDescription: Face ID unlocks your Locked album.
         NSPhotoLibraryUsageDescription: Atlas backs up your photos and videos to your own server, and can remove backed-up items from this iPhone to free space.
         NSPhotoLibraryAddUsageDescription: Atlas saves photos and videos from your server to this iPhone.
@@ -84,8 +84,12 @@ targets:
               NSExceptionAllowsInsecureHTTPLoads: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.Atlas
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.atlas.ios
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
 
   AtlasWidget:
     type: app-extension
@@ -97,7 +101,7 @@ targets:
       path: AtlasWidget/AtlasWidget.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.lukaloehr.Atlas
+          - group.com.lukaloehr.atlas.ios
     info:
       path: AtlasWidget/Info.plist
       properties:
@@ -108,5 +112,9 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.Atlas.Widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.atlas.ios.widget
         SKIP_INSTALL: YES
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1

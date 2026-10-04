@@ -3,8 +3,8 @@ import BackgroundTasks
 
 @main
 struct AtlasApp: App {
-    static let backupTaskID = "com.lukaloehr.Atlas.backup"
-    static let refreshTaskID = "com.lukaloehr.Atlas.refresh"
+    static let backupTaskID = "com.lukaloehr.atlas.ios.backup"
+    static let refreshTaskID = "com.lukaloehr.atlas.ios.refresh"
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var session = Session()

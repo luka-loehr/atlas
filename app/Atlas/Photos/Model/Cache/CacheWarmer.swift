@@ -22,7 +22,7 @@ final class CacheWarmer {
     private var generation = 0
     private var wifi = false
     private let monitor = NWPathMonitor()
-    private let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "CacheWarmer")
+    private let log = Logger(subsystem: "com.lukaloehr.atlas", category: "CacheWarmer")
 
     private init() {
         monitor.pathUpdateHandler = { path in

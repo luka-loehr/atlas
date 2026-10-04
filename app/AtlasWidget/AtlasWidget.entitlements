@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.lukaloehr.Atlas</string>
+		<string>group.com.lukaloehr.atlas.ios</string>
 	</array>
 </dict>
 </plist>
