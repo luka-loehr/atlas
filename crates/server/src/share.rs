@@ -393,6 +393,9 @@ enum Source {
     Path(PathBuf),
     /// A video whose H.264 view is made first.
     Transcode { original: PathBuf, duration: Option<f64> },
+    /// A video browsers play as it is: copied into a fresh MP4 without its
+    /// metadata, since the original's carries where it was taken.
+    Remux { original: PathBuf },
 }
 
 struct Item {
@@ -500,7 +503,7 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
                     remote.put_file(id, file.kind, &file.asset, &path, &file.mime, size, &report)
                 })
                 .await;
-                if matches!(file.source, Source::Transcode { .. }) {
+                if matches!(file.source, Source::Transcode { .. } | Source::Remux { .. }) {
                     let _ = tokio::fs::remove_file(&path).await;
                 }
                 result.with_context(|| format!("{} of {}", file.kind, &file.asset[..12]))?;
@@ -557,7 +560,7 @@ async fn prepare(app: &App, r: &tokio_postgres::Row, allow_download: bool) -> Re
             tokio::task::spawn_blocking(move || video::probe(&original)).await??
         };
         let source = if browser_plays(&probe) {
-            Source::Path(original.clone())
+            Source::Remux { original: original.clone() }
         } else {
             Source::Transcode { original: original.clone(), duration }
         };
@@ -617,7 +620,7 @@ fn browser_plays(p: &video::Probe) -> bool {
 /// Bytes a file will have; for a video still to be made, about 6 Mbit/s.
 fn estimate(source: &Source) -> u64 {
     match source {
-        Source::Path(p) => std::fs::metadata(p).map(|m| m.len()).unwrap_or(0),
+        Source::Path(p) | Source::Remux { original: p } => std::fs::metadata(p).map(|m| m.len()).unwrap_or(0),
         Source::Transcode { original, duration } => {
             let size = std::fs::metadata(original).map(|m| m.len()).unwrap_or(0);
             duration.map(|d| ((d * 750_000.0) as u64).min(size.max(1))).unwrap_or(size)
@@ -640,7 +643,38 @@ async fn materialize(app: &App, file: &File) -> Result<PathBuf> {
             tokio::task::spawn_blocking(move || transcode_h264(&source, &out)).await??;
             Ok(dest)
         }
+        Source::Remux { original } => {
+            let dest = app.cfg.previews_dir.join("share").join(format!("{}.mp4", file.asset));
+            let (source, out) = (original.clone(), dest.clone());
+            tokio::task::spawn_blocking(move || remux_clean(&source, &out)).await??;
+            Ok(dest)
+        }
     }
+}
+
+/// The video and first audio stream as they are, in a new MP4 with no
+/// metadata: no location, no camera, no Apple metadata tracks. Audio is made
+/// AAC, which every browser plays and costs next to nothing.
+fn remux_clean(source: &Path, dest: &Path) -> Result<()> {
+    if dest.is_file() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dest.parent().context("no parent directory")?)?;
+    let tmp = dest.with_extension("part.mp4");
+    let output = std::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-y", "-i"])
+        .arg(source)
+        .args(["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
+        .args(["-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart"])
+        .arg(&tmp)
+        .output()
+        .context("ffmpeg is not installed")?;
+    if output.status.success() && std::fs::metadata(&tmp).is_ok_and(|m| m.len() > 0) {
+        std::fs::rename(&tmp, dest)?;
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(&tmp);
+    bail!("ffmpeg could not copy the video: {}", String::from_utf8_lossy(&output.stderr).lines().last().unwrap_or(""))
 }
 
 /// A 1080p H.264 rendition for browsers, which mostly cannot play HEVC. GPU
@@ -971,6 +1005,42 @@ mod tests {
         let eta = s.eta(10_000_000, 100_000_000).unwrap();
         assert!((89..=91).contains(&eta), "{eta}");
         assert_eq!(s.eta(100_000_000, 100_000_000), None);
+    }
+
+    #[test]
+    fn shared_videos_lose_where_they_were_taken() {
+        let ffmpeg = |args: &[&str]| std::process::Command::new("ffmpeg").args(args).output();
+        if ffmpeg(&["-version"]).is_err() {
+            eprintln!("no ffmpeg here, skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(util::temp_name("share-remux"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (src, out) = (dir.join("in.mov"), dir.join("out.mp4"));
+        let made = ffmpeg(&[
+            "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10:duration=1",
+            "-c:v", "libx264", "-metadata", "location=+45.1234+015.6789/",
+            "-metadata", "com.apple.quicktime.make=Apple", "-movflags", "use_metadata_tags",
+            src.to_str().unwrap(),
+        ])
+        .unwrap();
+        if !made.status.success() {
+            eprintln!("this ffmpeg cannot make the sample, skipped");
+            return;
+        }
+        let tags = |p: &Path| {
+            let o = std::process::Command::new("ffprobe")
+                .args(["-v", "error", "-show_entries", "format_tags", "-of", "json"])
+                .arg(p)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&o.stdout).into_owned()
+        };
+        assert!(tags(&src).contains("+45.1234"), "the sample carries a location");
+        remux_clean(&src, &out).unwrap();
+        let after = tags(&out);
+        assert!(!after.contains("45.1234") && !after.contains("Apple"), "{after}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
