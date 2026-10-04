@@ -108,7 +108,9 @@ final class MediaCache {
 
     private static func gridKey(_ id: String, _ pixels: Int) -> String { "\(id)@\(pixels)" }
 
-    private final class GridJob {
+    /// Only touched on the main thread; it rides through the decode queue
+    /// untouched, hence `@unchecked`.
+    private final class GridJob: @unchecked Sendable {
         let key: String
         let id: String
         let pixels: Int
@@ -155,6 +157,9 @@ final class MediaCache {
         job.waiters[ticket.token] = nil
         guard job.waiters.isEmpty else { return }
         job.operation?.cancel()
+        // the operation's block holds the job: let go of it, or the two
+        // keep each other alive forever
+        job.operation = nil
         job.network?.cancel()
         jobs[ticket.key] = nil
     }
@@ -178,6 +183,8 @@ final class MediaCache {
     }
 
     private func decoded(_ job: GridJob, _ img: UIImage?, fromStore: Bool) {
+        // the operation has run; its block (which holds the job) goes with it
+        job.operation = nil
         if let img {
             gridRam.setObject(img, forKey: job.key as NSString, cost: img.decodedCost)
             seeds[job.id] = nil
@@ -328,9 +335,8 @@ final class MediaCache {
     /// look-ahead decodes at this size, and the page asks for the same, so
     /// it finds the decoded image.
     static func viewerPixels(_ asset: Asset) -> CGFloat {
-        let screen = UIScreen.main
-        let long = max(screen.bounds.width, screen.bounds.height) * screen.scale
-        let short = min(screen.bounds.width, screen.bounds.height) * screen.scale
+        let screen = ScreenSize.bounds.size, scale = ScreenSize.scale
+        let long = max(screen.width, screen.height) * scale, short = min(screen.width, screen.height) * scale
         let w = CGFloat(max(asset.width ?? 3, 1)), h = CGFloat(max(asset.height ?? 4, 1))
         let fit = { (sw: CGFloat, sh: CGFloat) in max(w, h) * min(sw / w, sh / h) }
         return min(2048, max(fit(short, long), fit(long, short)).rounded(.up))
@@ -370,21 +376,23 @@ final class MediaCache {
             guard let url = client.thumbURL(id, 2048) else { continue }
             let px = Self.viewerPixels(asset)
             let k = Self.urlKey(url, px)
+            let imageKey = k as String
             let decode = d <= decodeReach
             if decode { wantedImages.insert(k) }
             // a page that comes within decoding reach needs a new request
-            let name = "preview:\(id):\(decode)"
-            if let t = windowTickets[name] {
-                wantedTickets[name] = t
+            let ticketName = "preview:\(id):\(decode)"
+            if let t = windowTickets[ticketName] {
+                wantedTickets[ticketName] = t
             } else if !decode || windowRam[k] == nil {
                 let key = MediaStore.Key(.preview, id)
-                wantedTickets[name] = MediaFetch.shared.ensure(key, from: url, priority: .near) { error in
+                wantedTickets[ticketName] = MediaFetch.shared.ensure(key, from: url, priority: .near) { error in
                     guard error == nil, decode, let file = MediaStore.shared.file(key) else { return }
                     let op = BlockOperation {
                         let img = Self.decode(file: file, maxPixel: px, fill: false)
                         DispatchQueue.main.async {
                             MainActor.assumeIsolated {
                                 let me = MediaCache.shared
+                                let k = imageKey as NSString
                                 if let img, me.windowWanted.contains(k) { me.windowRam[k] = img }
                             }
                         }

@@ -19,6 +19,7 @@ final class CacheWarmer {
 
     private weak var library: Library?
     private var task: Task<Void, Never>?
+    private var generation = 0
     private var wifi = false
     private let monitor = NWPathMonitor()
     private let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "CacheWarmer")
@@ -34,9 +35,12 @@ final class CacheWarmer {
     func start(_ library: Library) {
         self.library = library
         guard task == nil else { return }
+        generation += 1
+        let gen = generation
         task = Task(priority: .utility) { [weak self] in
             await self?.run()
-            self?.task = nil
+            // a stopped run that ends late must not clear its successor
+            if let self, self.generation == gen { self.task = nil }
         }
     }
 
@@ -71,6 +75,7 @@ final class CacheWarmer {
 
     private func run() async {
         try? await Task.sleep(for: .seconds(3))
+        guard !Task.isCancelled else { return }
         await warmFaces()
         while !Task.isCancelled {
             guard await waitUntilIdle(), let library else { return }

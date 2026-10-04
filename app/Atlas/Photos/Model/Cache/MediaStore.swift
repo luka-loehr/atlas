@@ -211,8 +211,10 @@ final class MediaStore: @unchecked Sendable {
     /// A file that failed to decode is removed so it is fetched again.
     func remove(_ key: Key) {
         if key.kind == .thumb {
-            try? FileManager.default.removeItem(at: thumbURL(key.id))
-            lock.withLock { _ = thumbs.remove(key.id) }
+            let url = thumbURL(key.id)
+            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            try? FileManager.default.removeItem(at: url)
+            lock.withLock { if thumbs.remove(key.id) != nil { thumbBytes = max(thumbBytes - size, 0) } }
             return
         }
         let gone: Entry? = lock.withLock {
