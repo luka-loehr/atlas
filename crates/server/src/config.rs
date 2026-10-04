@@ -40,6 +40,11 @@ pub struct Config {
     /// ATLAS_REPO_DIR: checkout whose commits feed the activity heatmap
     /// (default ~/atlas).
     pub repo_dir: PathBuf,
+    /// ATLAS_SHARE_URL / ATLAS_SHARE_TOKEN: the atlas-share Worker and its
+    /// admin token (share/). Link sharing is off unless both are set;
+    /// `atlas share setup` writes them.
+    pub share_url: Option<String>,
+    pub share_token: Option<String>,
 }
 
 impl Config {
@@ -75,7 +80,16 @@ impl Config {
                 .filter(|e: &f64| *e > 0.0)
                 .unwrap_or(0.88),
             repo_dir: PathBuf::from(env("ATLAS_REPO_DIR").unwrap_or(format!("{home}/atlas"))),
+            share_url: env("ATLAS_SHARE_URL")
+                .map(|u| u.trim().trim_end_matches('/').to_string())
+                .filter(|u| u.starts_with("https://") || u.starts_with("http://")),
+            share_token: env("ATLAS_SHARE_TOKEN").filter(|t| t.len() >= 16),
         })
+    }
+
+    /// Link sharing is set up (see `share_url`).
+    pub fn sharing(&self) -> bool {
+        self.share_url.is_some() && self.share_token.is_some()
     }
 
     pub fn originals_dir(&self) -> PathBuf {

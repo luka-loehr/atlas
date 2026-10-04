@@ -19,6 +19,7 @@ pub async fn server(State(app): State<AppState>) -> Json<Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "hostname": crate::system::metrics::hostname(),
         "timezone": app.cfg.tz.name(),
+        "sharing": app.cfg.sharing(),
     }))
 }
 
