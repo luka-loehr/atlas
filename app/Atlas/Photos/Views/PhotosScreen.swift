@@ -11,6 +11,7 @@ struct PhotosScreen: View {
     @State private var busy = false
     @State private var changeFailed = false
     @State private var albumAdd: AlbumAdd?
+    @State private var shareLink: ShareLinkItem?
 
     /// Asset-Position oben im Bild (nil = ganz unten): benennt den Monat
     /// unter dem Titel und setzt den Griff des Schnellscrollers.
@@ -57,6 +58,9 @@ struct PhotosScreen: View {
                             Section {
                                 Button("Add to Album", systemImage: "rectangle.stack.badge.plus") {
                                     albumAdd = AlbumAdd(ids: Array(selection.ids))
+                                }
+                                if library.sharing {
+                                    Button("Share as Link…", systemImage: "link") { shareLink = linkItem(Array(selection.ids)) }
                                 }
                                 Button("Favorite", systemImage: "heart") {
                                     run(hides: false) { ids in
@@ -115,12 +119,19 @@ struct PhotosScreen: View {
         #if targetEnvironment(simulator)
         // ATLAS_SETTINGS=1 opens a simulator with the settings sheet up
         .task { if ProcessInfo.processInfo.environment["ATLAS_SETTINGS"] != nil { showSettings = true } }
+        // ATLAS_SHARE_DEMO=1 (or uploading|ready|failed) opens it with the share link sheet up
+        .task { if ProcessInfo.processInfo.environment["ATLAS_SHARE_DEMO"] != nil { shareLink = ShareLinkItem(title: "Zrmanja Rafting") } }
         #endif
         .sheet(item: $shareBundle) { bundle in
             ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])
         }
         .sheet(item: $albumAdd) { add in
             AddToAlbumSheet(library: library, ids: add.ids) { _ in
+                if selection.active { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
+            }
+        }
+        .sheet(item: $shareLink) { item in
+            ShareLinkSheet(library: library, item: item) {
                 if selection.active { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
             }
         }
@@ -261,11 +272,17 @@ struct PhotosScreen: View {
                 withAnimation(.snappy) { selection.enter(with: asset.id) }
             },
         ])
-        let album = UIMenu(options: .displayInline, children: [
+        var albumActions = [
             UIAction(title: "Add to Album", image: UIImage(systemName: "rectangle.stack.badge.plus")) { _ in
                 albumAdd = AlbumAdd(ids: [asset.id])
             },
-        ])
+        ]
+        if library.sharing {
+            albumActions.append(UIAction(title: "Share as Link…", image: UIImage(systemName: "link")) { _ in
+                shareLink = ShareLinkItem(title: ShareLinkItem.title(for: [asset]), ids: [asset.id])
+            })
+        }
+        let album = UIMenu(options: .displayInline, children: albumActions)
         let second = UIMenu(options: .displayInline, children: [
             UIAction(title: "Archive", image: UIImage(systemName: "archivebox")) { _ in
                 runOne(asset) { try await library.client.archive([$0], true) }
@@ -312,6 +329,12 @@ struct PhotosScreen: View {
                 changeFailed = true
             }
         }
+    }
+
+    /// The selected photos for a share link, named after their days.
+    private func linkItem(_ ids: [String]) -> ShareLinkItem {
+        let assets = ids.compactMap { library.position(of: $0).map { library.assets[$0] } }
+        return ShareLinkItem(title: ShareLinkItem.title(for: assets), ids: ids)
     }
 
     private func share(_ ids: [String]) {

@@ -30,6 +30,11 @@ struct SettingsScreen: View {
                     Button { showTerminal = true } label: { row("Terminal", "terminal.fill", .gray) }
                         .tint(.primary)
                 }
+                if library.sharing {
+                    Section {
+                        NavigationLink { SharedLinksScreen(library: library) } label: { row("Shared Links", "link", .blue) }
+                    }
+                }
                 Section("Backup") {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
                     // backed-up photos older than 30 days leave the iPhone on their own

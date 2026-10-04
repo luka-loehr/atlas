@@ -34,8 +34,10 @@
 		70F79F4B48013DEFCA26029C /* MediaFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DCD414C30D14BACDA77E4C /* MediaFetch.swift */; };
 		71BD9FB440361A58D7CDBB0A /* Biometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = B889991DE1B8C307BA3F6226 /* Biometric.swift */; };
 		739FCA36A39E130CEA6CE2AD /* MediaCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E189ACB18C2FDCA2C246C6 /* MediaCache.swift */; };
+		78DA201665FCAAF4B05BE173 /* ShareLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E4AE35D3606457E9607B926 /* ShareLink.swift */; };
 		7D15F5D90011B56EF66C9289 /* PhotoPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FA8269271E3646DC19B40A /* PhotoPager.swift */; };
 		8D28FE030C7EE76B688E65BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA986E23356244005C7DA505 /* Assets.xcassets */; };
+		9193B9D88BABA79F14CED4A1 /* Shares.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A82F97E9C46A16439690B /* Shares.swift */; };
 		92004BF706F15F721763A159 /* WidgetShelf.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C599A794847EFA1A83D1146 /* WidgetShelf.swift */; };
 		956595182AE767C0B23605C4 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1546EC722323AA2800B2C62F /* Selection.swift */; };
 		97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FBC23EEED736F63F0D8977 /* AssetInfo.swift */; };
@@ -82,6 +84,7 @@
 
 /* Begin PBXFileReference section */
 		08198C651B76F61900E80C9A /* SelectableThumb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableThumb.swift; sourceTree = "<group>"; };
+		0E4AE35D3606457E9607B926 /* ShareLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareLink.swift; sourceTree = "<group>"; };
 		10E51E124262A63CF1F87C27 /* PhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosScreen.swift; sourceTree = "<group>"; };
 		151313760EDC071BADFEF3E8 /* MediaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaStore.swift; sourceTree = "<group>"; };
 		1546EC722323AA2800B2C62F /* Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Selection.swift; sourceTree = "<group>"; };
@@ -111,6 +114,7 @@
 		960D112EC6584D8D0BA84043 /* PhotoMutations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMutations.swift; sourceTree = "<group>"; };
 		967CA86A1914A3E70629D9E9 /* ThumbFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbFill.swift; sourceTree = "<group>"; };
 		A066C7D7B5499412E300C957 /* PhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGrid.swift; sourceTree = "<group>"; };
+		A11A82F97E9C46A16439690B /* Shares.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shares.swift; sourceTree = "<group>"; };
 		A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScreen.swift; sourceTree = "<group>"; };
 		A58780722FD6A34389F60986 /* Persons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persons.swift; sourceTree = "<group>"; };
 		AA986E23356244005C7DA505 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -254,6 +258,7 @@
 				08198C651B76F61900E80C9A /* SelectableThumb.swift */,
 				2C70FD2BF97D5056CD213BA7 /* SelectionToolbar.swift */,
 				5C518BAA9658596DE7CE9117 /* SettingsScreen.swift */,
+				0E4AE35D3606457E9607B926 /* ShareLink.swift */,
 				30FB6134370D5412613CF36A /* ShareSheet.swift */,
 				B3AEE746B4A03F0F81476613 /* ViewerScreen.swift */,
 			);
@@ -273,6 +278,7 @@
 				960D112EC6584D8D0BA84043 /* PhotoMutations.swift */,
 				1546EC722323AA2800B2C62F /* Selection.swift */,
 				E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */,
+				A11A82F97E9C46A16439690B /* Shares.swift */,
 				1C599A794847EFA1A83D1146 /* WidgetShelf.swift */,
 				9BC0BAA70957F4698346E7E8 /* Cache */,
 			);
@@ -413,7 +419,9 @@
 				3E9838524F027148BAD3809E /* SettingsScreen.swift in Sources */,
 				DB2B1460C3B927F81C3D4B9D /* SettingsTab.swift in Sources */,
 				BE61FE9358DB73F98AA3435E /* ShareFiles.swift in Sources */,
+				78DA201665FCAAF4B05BE173 /* ShareLink.swift in Sources */,
 				3BC2C8B6E0E01F03EC233817 /* ShareSheet.swift in Sources */,
+				9193B9D88BABA79F14CED4A1 /* Shares.swift in Sources */,
 				3AE3D053BFB90A4A1E11276E /* TerminalScreen.swift in Sources */,
 				4947046CB18DF93A6874DECE /* ThumbFill.swift in Sources */,
 				BD4B6D15B16103087A7BDB58 /* VideoCache.swift in Sources */,

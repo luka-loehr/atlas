@@ -41,6 +41,7 @@ struct ViewerScreen: View {
     @State private var busy = false
     @State private var changeFailed = false
     @State private var albumAdd: AlbumAdd?
+    @State private var shareLink: ShareLinkItem?
     // measured height of the bottom chrome stack (filmstrip + action bar) —
     // video controls anchor EXACTLY above it, overlap is structurally impossible
     @State private var chromeBottomHeight: CGFloat = 150
@@ -99,6 +100,9 @@ struct ViewerScreen: View {
         }
         .sheet(item: $albumAdd) { add in
             AddToAlbumSheet(library: library, ids: add.ids)
+        }
+        .sheet(item: $shareLink) { item in
+            ShareLinkSheet(library: library, item: item)
         }
         .changeFailedAlert($changeFailed)
     }
@@ -165,6 +169,11 @@ struct ViewerScreen: View {
             Menu {
                 Button { albumAdd = AlbumAdd(ids: [asset.id]) } label: {
                     Label("Add to Album", systemImage: "rectangle.stack.badge.plus")
+                }
+                if library.sharing {
+                    Button { shareLink = ShareLinkItem(title: ShareLinkItem.title(for: [asset]), ids: [asset.id]) } label: {
+                        Label("Share as Link…", systemImage: "link")
+                    }
                 }
                 Button {
                     mutateAndRemove { try await library.client.archive([$0], true) }

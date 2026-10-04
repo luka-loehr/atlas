@@ -33,6 +33,8 @@ final class Library {
     /// The server's timeline has been seen at least once (an empty library
     /// is then really empty, not still loading).
     private(set) var loaded = false
+    /// The server can make share links (atlas-share is set up).
+    var sharing = false
 
     /// O(1) asset-id → position.
     @ObservationIgnored private var indexByID: [String: Int] = [:]
@@ -58,7 +60,14 @@ final class Library {
 
     func start() async {
         if diskLoad == nil { diskLoad = Task { await loadFromDisk() } }
+        async let flags: Void = loadSharing()
         await loadFirst()
+        await flags
+    }
+
+    private func loadSharing() async {
+        guard !host.isEmpty, let on = try? await client.sharingAvailable() else { return }
+        if sharing != on { sharing = on }
     }
 
     /// Fetch the index, then every month that is new or changed.
@@ -232,6 +241,7 @@ final class Library {
         columns = [:]
         indexByID = [:]
         loaded = false
+        sharing = false
         diskLoad = nil
         Self.diskQueue.async {
             let directory = Self.directory
