@@ -224,6 +224,48 @@ describe("public", () => {
     expect(r.headers.get("Content-Type")).toBe("image/heic");
   });
 
+  it("zips every original as one download", async () => {
+    await putManifest({ allow_download: false });
+    expect((await call(`/s/${ID}/zip`)).status).toBe(403);
+    await putManifest({ allow_download: true, title: "Zrmanja Rafting / Grüße" });
+    await putFile("o", A2, "the-video-original", "video/quicktime");
+    let r = await call(`/s/${ID}/zip`, { method: "HEAD" });
+    expect(r.status).toBe(200);
+    const length = Number(r.headers.get("Content-Length"));
+    r = await call(`/s/${ID}/zip`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toBe("application/zip");
+    expect(r.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(r.headers.get("Content-Disposition")).toBe(
+      `attachment; filename="Zrmanja Rafting Gr__e.zip"; filename*=UTF-8''Zrmanja%20Rafting%20Gr%C3%BC%C3%9Fe.zip`,
+    );
+    const body = new Uint8Array(await r.arrayBuffer());
+    // local headers: 2 × 30 + names (13 + 12), data 14 + 18, descriptors 2 × 16;
+    // central: 2 × 46 + names; end record 22
+    expect(length).toBe(30 * 2 + 25 + 14 + 18 + 32 + 46 * 2 + 25 + 22);
+    expect(body.length).toBe(length);
+    const text = new TextDecoder("latin1").decode(body);
+    expect(text).toContain("IMG_0042.HEIC");
+    expect(text).toContain("original-bytes");
+    expect(text).toContain("the-video-original");
+    expect(r.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect((await call(`/s/${ID}/zip`, { method: "POST" })).status).toBe(405);
+  });
+
+  it("zips only what is stored and keeps password shares closed", async () => {
+    await putManifest({ allow_download: true, password: "pw" });
+    expect((await call(`/s/${ID}/zip`)).status).toBe(404);
+    const f = new FormData();
+    f.set("password", "pw");
+    const r = await call(`/s/${ID}/unlock`, { method: "POST", body: f, redirect: "manual" });
+    const cookie = r.headers.get("Set-Cookie")!.split(";")[0]!;
+    const z = await call(`/s/${ID}/zip`, { headers: { Cookie: cookie } });
+    expect(z.status).toBe(200);
+    // A2 has no original in the bucket: only A1 is in the archive.
+    expect(Number(z.headers.get("Content-Length"))).toBe(30 + 13 + 14 + 16 + 46 + 13 + 22);
+    expect((await z.arrayBuffer()).byteLength).toBe(30 + 13 + 14 + 16 + 46 + 13 + 22);
+  });
+
   it("gates a password share", async () => {
     await putManifest({ password: "open sesame" });
     let r = await call(`/s/${ID}`);

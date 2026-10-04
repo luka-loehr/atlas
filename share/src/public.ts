@@ -5,6 +5,7 @@ import { contentSecurityPolicy, creatingPage, galleryPage, gatePage, newNonce, n
 import { ASSET_ID_RE, fileKey, isFileKind, isLive, type Manifest, type Progress, SHARE_ID_RE } from "./manifest";
 import { parseRange } from "./range";
 import { type Env, loadManifest, loadProgress } from "./store";
+import { planZip, zipStream } from "./zip";
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -26,15 +27,15 @@ function page(html: string, nonce: string, status = 200, extra: Record<string, s
 
 export function notice(status: 404 | 410 | 500 | 405): Response {
   const nonce = newNonce();
-  const [title, line] =
+  const [title, line, kind] =
     status === 410
-      ? ["Link expired", "This link has expired."]
+      ? (["Link expired", "This link has expired. Ask the sender for a new one.", "expired"] as const)
       : status === 500
-        ? ["Unavailable", "This link can’t be opened right now."]
+        ? (["Unavailable", "This link can’t be opened right now. Try again later.", "error"] as const)
         : status === 405
-          ? ["Not allowed", "This request isn’t supported."]
-          : ["Not found", "This link doesn’t exist."];
-  return page(noticePage(nonce, title, line), nonce, status);
+          ? (["Not allowed", "This request isn’t supported.", "error"] as const)
+          : (["Link not found", "This link doesn’t exist or was stopped by the sender.", "missing"] as const);
+  return page(noticePage(nonce, title, line, kind), nonce, status);
 }
 
 function fileError(status: number): Response {
@@ -89,6 +90,10 @@ export async function handlePublic(request: Request, env: Env, url: URL): Promis
   if (rest.length === 1 && rest[0] === "unlock") {
     if (method !== "POST") return Response.redirect(`${url.origin}/s/${id}`, 303);
     return unlock(request, env, url, id);
+  }
+  if (rest.length === 1 && rest[0] === "zip") {
+    if (method !== "GET" && method !== "HEAD") return fileError(405);
+    return serveZip(request, env, id);
   }
   if (rest.length === 3 && rest[0] === "f") {
     if (method !== "GET" && method !== "HEAD") return fileError(405);
@@ -270,4 +275,61 @@ async function serveFile(request: Request, env: Env, id: string, kind: string, a
   const obj = await env.SHARES.get(key);
   if (!obj) return fileError(404);
   return new Response(obj.body, { status: 200, headers });
+}
+
+/** "Zrmanja Rafting.zip"; the title without characters no file system takes. */
+export function zipName(title: string): string {
+  const stem = title.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().replace(/^\.+/, "");
+  return `${stem || "Shared photos"}.zip`;
+}
+
+/**
+ * Every original of the share as one ZIP, built while it streams: one R2
+ * read at a time, STORE, CRC-32 on the way through. The sizes come from a
+ * listing of `o/`, so the length is exact and browsers show progress.
+ */
+async function serveZip(request: Request, env: Env, id: string): Promise<Response> {
+  const m = await loadManifest(env.SHARES, id);
+  if (!m || !isLive(m, now())) return fileError(404);
+  const access = await unlocked(request, env, id, m);
+  if (access === "no-secret") return fileError(500);
+  if (!access) return fileError(404);
+  if (m.allow_download !== true) return fileError(403);
+
+  const prefix = `s/${id}/o/`;
+  const sizes = new Map<string, number>();
+  let cursor: string | undefined;
+  do {
+    const page = await env.SHARES.list({ prefix, limit: 1000, cursor });
+    for (const o of page.objects) sizes.set(o.key.slice(prefix.length), o.size);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  const items = m.items.filter((it) => sizes.has(it.id));
+  if (items.length === 0) return fileError(404);
+
+  const plan = planZip(items.map((it) => ({ name: it.name, size: sizes.get(it.id)!, mtime: it.taken ?? m.created_at })));
+  const headers = new Headers({
+    "Content-Type": "application/zip",
+    "Content-Disposition": contentDisposition(zipName(m.title)),
+    "Content-Length": String(plan.size),
+    "Cache-Control": "private, no-store",
+    "X-Robots-Tag": "noindex, nofollow",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    "Referrer-Policy": "no-referrer",
+  });
+  if (request.method === "HEAD") return new Response(null, { status: 200, headers });
+
+  const zip = zipStream(plan, async (i) => {
+    const obj = await env.SHARES.get(fileKey(id, "o", items[i]!.id));
+    return obj ? (obj.body as ReadableStream<Uint8Array>) : null;
+  });
+  // On Cloudflare a streamed body keeps its Content-Length only through a
+  // FixedLengthStream; elsewhere (tests) the stream is sent as is.
+  if (typeof FixedLengthStream === "function") {
+    const fixed = new FixedLengthStream(plan.size);
+    zip.pipeTo(fixed.writable).catch((e) => console.error("zip failed", id, e));
+    return new Response(fixed.readable, { status: 200, headers });
+  }
+  return new Response(zip, { status: 200, headers });
 }

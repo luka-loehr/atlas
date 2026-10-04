@@ -20,10 +20,28 @@ The interfaces (admin API, R2 layout, cookie, expiry rules) are in
 src/index.ts      routing, the daily cron
 src/admin.ts      admin API for atlas-server (bearer SHARE_TOKEN)
 src/public.ts     share page, password gate, files (Range, ETag)
-src/html.ts       the pages: gallery with viewer, gate, notices
+src/html.ts       the pages: gallery (mosaic, viewer), gate, being created, notices
+src/layout.ts     the justified-rows mosaic (embedded in the page as is)
+src/zip.ts        streaming ZIP writer for "Download all"
 src/crypto.ts     token compare, PBKDF2, session cookie
 src/store.ts      R2: manifest, prefix delete, sweep
 ```
+
+## The page
+
+The gallery is a justified mosaic (every item at its aspect ratio, rows
+filling the width, laid out in the page from the manifest's `w`/`h`) with
+lazy thumbnails. A tap opens a full-screen viewer: swipe with the finger,
+flick, swipe down to close, double tap or pinch to zoom, arrow keys and
+Escape on a computer; videos play the `v/` MP4. With `allow_download`, each
+item has a download button and "Download all" fetches `/s/<id>/zip`, a ZIP
+of the originals built while it streams. No framework and no build step:
+server-rendered HTML with inline CSS and JS under a per-response CSP nonce.
+
+The ZIP's CRC-32 runs in the Worker (about 1 GB/s), so its CPU time grows
+with the share's size, and it reads one R2 object per item: on the Workers
+Free plan (10 ms CPU, 50 subrequests) only small shares can be zipped; the
+Paid plan's limits cover albums of several GB.
 
 ## Setup
 
