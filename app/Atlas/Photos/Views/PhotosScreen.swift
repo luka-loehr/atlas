@@ -10,6 +10,7 @@ struct PhotosScreen: View {
     @State private var trashOne: Asset?
     @State private var busy = false
     @State private var changeFailed = false
+    @State private var albumAdd: AlbumAdd?
 
     /// Asset-Position oben im Bild (nil = ganz unten): benennt den Monat
     /// unter dem Titel und setzt den Griff des Schnellscrollers.
@@ -54,6 +55,9 @@ struct PhotosScreen: View {
                                 else { selection.selectAll(library.assets.map(\.id)) }
                             }
                             Section {
+                                Button("Add to Album", systemImage: "rectangle.stack.badge.plus") {
+                                    albumAdd = AlbumAdd(ids: Array(selection.ids))
+                                }
                                 Button("Favorite", systemImage: "heart") {
                                     run(hides: false) { ids in
                                         try await library.client.favorite(ids, true)
@@ -114,6 +118,11 @@ struct PhotosScreen: View {
         #endif
         .sheet(item: $shareBundle) { bundle in
             ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])
+        }
+        .sheet(item: $albumAdd) { add in
+            AddToAlbumSheet(library: library, ids: add.ids) { _ in
+                if selection.active { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
+            }
         }
         .confirmationDialog(selection.count == 1 ? "Delete 1 Item?" : "Delete \(selection.count) Items?",
                             isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -252,6 +261,11 @@ struct PhotosScreen: View {
                 withAnimation(.snappy) { selection.enter(with: asset.id) }
             },
         ])
+        let album = UIMenu(options: .displayInline, children: [
+            UIAction(title: "Add to Album", image: UIImage(systemName: "rectangle.stack.badge.plus")) { _ in
+                albumAdd = AlbumAdd(ids: [asset.id])
+            },
+        ])
         let second = UIMenu(options: .displayInline, children: [
             UIAction(title: "Archive", image: UIImage(systemName: "archivebox")) { _ in
                 runOne(asset) { try await library.client.archive([$0], true) }
@@ -263,7 +277,7 @@ struct PhotosScreen: View {
         let trash = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
             trashOne = asset
         }
-        return UIMenu(children: [first, second, trash])
+        return UIMenu(children: [first, album, second, trash])
     }
 
     // MARK: - actions

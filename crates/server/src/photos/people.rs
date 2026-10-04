@@ -8,10 +8,15 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{COLS, Columns, VISIBLE};
-use crate::{ApiError, ApiResult, AppState, media};
+use crate::{ApiError, ApiResult, App, AppState, media};
 
-/// Everyone with at least one visible photo: named people first, then by
-/// how often they appear.
+/// Unnamed clusters with fewer photos than this stay out of the list:
+/// mostly strangers in the background and odd detections.
+const MIN_UNNAMED_PHOTOS: i64 = 3;
+
+/// Everyone with a visible photo, unnamed clusters only from
+/// [`MIN_UNNAMED_PHOTOS`] on: named people first, then by how often they
+/// appear.
 pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let c = app.pool.get().await?;
     let rows = c
@@ -23,9 +28,10 @@ pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<
                  JOIN assets ON assets.id = f.asset_id
                  WHERE p.merged_into IS NULL AND {VISIBLE}
                  GROUP BY p.id
+                 HAVING p.display_name IS NOT NULL OR count(DISTINCT f.asset_id) >= $1
                  ORDER BY (p.display_name IS NULL), photos DESC, p.id"
             ),
-            &[],
+            &[&MIN_UNNAMED_PHOTOS],
         )
         .await?;
     let people: Vec<Value> = rows.iter().map(person_json).collect();
@@ -148,4 +154,63 @@ pub async fn merge(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Js
 /// the crop is immutable.
 pub async fn face_crop(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
     media::immutable_file(app.cfg.faces_dir().join(format!("{id}.webp")), headers).await
+}
+
+/// Keeps every person showable, run hourly: people left without faces are
+/// removed, and a person whose cover is missing, hidden (archived, locked,
+/// trashed) or has no crop on disk gets their best visible face instead.
+/// A cover the owner chose stays while it is visible. Returns (removed,
+/// covers set).
+pub async fn tidy(app: &App) -> ApiResult<(u64, usize)> {
+    let c = app.pool.get().await?;
+    let removed = c
+        .execute(
+            "DELETE FROM persons p
+             WHERE p.merged_into IS NULL
+               AND NOT EXISTS (SELECT 1 FROM faces WHERE person_id = p.id)
+               AND NOT EXISTS (SELECT 1 FROM persons m WHERE m.merged_into = p.id)
+               AND NOT EXISTS (SELECT 1 FROM edges WHERE dst_type = 'person' AND dst_id = p.id::text)",
+            &[],
+        )
+        .await?;
+    let faces = app.cfg.faces_dir();
+    let has_crop = |id: i64| faces.join(format!("{id}.webp")).is_file();
+    let rows = c
+        .query(
+            &format!(
+                "SELECT p.id, p.cover_face_id,
+                        EXISTS (SELECT 1 FROM faces f JOIN assets ON assets.id = f.asset_id
+                                WHERE f.id = p.cover_face_id AND {VISIBLE})
+                 FROM persons p
+                 WHERE p.merged_into IS NULL"
+            ),
+            &[],
+        )
+        .await?;
+    let mut set = 0;
+    for r in rows {
+        let (person, cover, visible): (i64, Option<i64>, bool) = (r.get(0), r.get(1), r.get(2));
+        if visible && cover.is_some_and(has_crop) {
+            continue;
+        }
+        // the sharpest, largest faces first
+        let candidates = c
+            .query(
+                &format!(
+                    "SELECT f.id FROM faces f JOIN assets ON assets.id = f.asset_id
+                     WHERE f.person_id = $1 AND {VISIBLE}
+                     ORDER BY coalesce(f.quality, 0) * (f.bbox[3] - f.bbox[1]) * (f.bbox[4] - f.bbox[2]) DESC NULLS LAST
+                     LIMIT 20"
+                ),
+                &[&person],
+            )
+            .await?;
+        if let Some(face) = candidates.iter().map(|r| r.get::<_, i64>(0)).find(|&id| has_crop(id))
+            && Some(face) != cover
+        {
+            c.execute("UPDATE persons SET cover_face_id = $2 WHERE id = $1", &[&person, &face]).await?;
+            set += 1;
+        }
+    }
+    Ok((removed, set))
 }

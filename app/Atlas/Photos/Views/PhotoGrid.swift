@@ -19,6 +19,10 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var selecting: Bool
     var selected: Set<String>
     var proxy: PhotoGridProxy
+    /// The dark shade under the Library title over the photos.
+    var titleShade = true
+    /// Long press shows `menu` (off in the photo picker).
+    var contextMenus = true
     /// The asset under the top edge, nil when the grid rests at its newest
     /// end. Called when the month (or nil-ness) changes, not every frame.
     var onTop: (Int?) -> Void
@@ -219,6 +223,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         config = grid
         MediaCache.shared.client = grid.library.client
         guard isViewLoaded else { return }
+        shade.isHidden = !grid.titleShade
         if grid.revision != revision {
             revision = grid.revision
             assets = grid.assets
@@ -533,7 +538,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
                         point: CGPoint) -> UIContextMenuConfiguration? {
-        guard let ip = indexPaths.first, ip.item < assets.count, let config else { return nil }
+        guard let ip = indexPaths.first, ip.item < assets.count, let config, config.contextMenus else { return nil }
         let asset = assets[ip.item]
         let client = config.library.client
         return UIContextMenuConfiguration(identifier: asset.id as NSString, previewProvider: {

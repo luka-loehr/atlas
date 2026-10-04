@@ -74,6 +74,36 @@ extension PhotoClient {
         try await sendRaw("POST", "/library/trash/empty", body: EmptyBody())
     }
 
+    // MARK: - Albums
+
+    private struct TitleBody: Encodable { let title: String }
+    private struct AssetIDsBody: Encodable { let ids: [String] }
+
+    /// A title that exists already returns that album (titles are unique).
+    func createAlbum(_ title: String) async throws -> Album {
+        struct R: Decodable { let id: Int; let title: String }
+        let data = try await sendRaw("POST", "/albums", body: TitleBody(title: title))
+        let r = try Self.decoder.decode(R.self, from: data)
+        return Album(id: r.id, title: r.title, count: 0, cover: nil)
+    }
+
+    func renameAlbum(_ id: Int, to title: String) async throws {
+        try await sendRaw("PATCH", "/albums/\(id)", body: TitleBody(title: title))
+    }
+
+    /// The album only; its photos stay in the library.
+    func deleteAlbum(_ id: Int) async throws {
+        try await sendRaw("DELETE", "/albums/\(id)", body: EmptyBody())
+    }
+
+    func addToAlbum(_ id: Int, _ ids: [String]) async throws {
+        try await sendRaw("POST", "/albums/\(id)/assets", body: AssetIDsBody(ids: ids))
+    }
+
+    func removeFromAlbum(_ id: Int, _ ids: [String]) async throws {
+        try await sendRaw("DELETE", "/albums/\(id)/assets", body: AssetIDsBody(ids: ids))
+    }
+
     // MARK: - Special-album listings
 
     func listArchive() async throws -> [Asset] { try await collection("/library/archive") }

@@ -16,6 +16,7 @@
 		1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		254AA4376A6EA5F72106F70A /* SelectableThumb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08198C651B76F61900E80C9A /* SelectableThumb.swift */; };
 		25503606CD81AC4B04AAE776 /* AlbumWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3564974376000E1F3E6417A3 /* AlbumWidget.swift */; };
+		2735579E00860A7EA740C6E7 /* AlbumPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */; };
 		3000C718B6D51574404EE4C6 /* PhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */; };
 		34AF8E717DCAA36AF2ACB2EF /* MediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151313760EDC071BADFEF3E8 /* MediaStore.swift */; };
 		397EDBCFB247B48ED2896946 /* InfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3856AB17EC39E376E1CC478 /* InfoSheet.swift */; };
@@ -95,6 +96,7 @@
 		36E189ACB18C2FDCA2C246C6 /* MediaCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaCache.swift; sourceTree = "<group>"; };
 		413A56C9FFE04C7BBD65B964 /* Atlas.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Atlas.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4D37F62453CBAD3DFE4B4C67 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPicker.swift; sourceTree = "<group>"; };
 		57DCD414C30D14BACDA77E4C /* MediaFetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaFetch.swift; sourceTree = "<group>"; };
 		59CB52B2A1E760675C0C27C4 /* ServerStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStatus.swift; sourceTree = "<group>"; };
 		5B154AE6158E42E13D7C2129 /* AtlasWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtlasWidget.entitlements; sourceTree = "<group>"; };
@@ -240,6 +242,7 @@
 		C6C626DC069F7F42BFA5A48F /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */,
 				E55F3DEAE678AA67B76984DF /* AlbumsScreen.swift */,
 				A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */,
 				E3856AB17EC39E376E1CC478 /* InfoSheet.swift */,
@@ -378,6 +381,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B85029BAEE1B9F142B41B626 /* API.swift in Sources */,
+				2735579E00860A7EA740C6E7 /* AlbumPicker.swift in Sources */,
 				1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */,
 				D05E91FA9E76123AE8FF0350 /* AlbumsScreen.swift in Sources */,
 				97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */,
@@ -512,7 +516,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -526,7 +530,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.2.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -610,7 +614,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -630,7 +634,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.2.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
