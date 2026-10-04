@@ -256,7 +256,7 @@ struct ShareLinkSheet: View {
     /// ATLAS_SHARE_DEMO=uploading|ready|failed shows the sheet in that state.
     private static func demo() -> Share? {
         guard let state = ProcessInfo.processInfo.environment["ATLAS_SHARE_DEMO"].flatMap(Share.State.init) else { return nil }
-        return Share(id: "4fQ2xV7bLk9TzR1mWc3NaE", title: "Zrmanja Rafting",
+        return Share(id: "4fQ2xV7bLk9TzR1mWc3NaE", title: "Lake Weekend",
                      url: URL(string: "https://atlas-share.example.workers.dev/s/4fQ2xV7bLk9TzR1mWc3NaE")!,
                      createdAt: .now, expiresAt: .now.addingTimeInterval(7 * 86400), state: state,
                      doneBytes: 41_200_000, totalBytes: 98_700_000, count: 39, cover: nil, albumID: nil,

@@ -63,7 +63,7 @@ every part but the last to be at least 5 MiB.
 
 ```json
 {
-  "title": "Zrmanja Rafting",
+  "title": "Lake Weekend",
   "expires_at": 1760000000,
   "allow_download": false,
   "password": null,
@@ -110,7 +110,7 @@ the manifest of an existing share again keeps its `created_at`, and
 |---|---|
 | `GET /s/<id>` | the gallery; the password gate first when the share has one; `404` page when unknown, `410` page when expired |
 | `POST /s/<id>/unlock` | form field `password`; right → sets the cookie, `303` to `/s/<id>`; wrong → the gate again with an error (`403`); more than 10 tries a minute from one address, or 60 from anywhere, on one share → `429` with `Retry-After: 60` before the password is checked |
-| `GET /s/<id>/zip` | every original as one ZIP named after the title (`Zrmanja Rafting.zip`, RFC 5987); same checks as files (`404` unless live and unlocked), then `403` without `allow_download`; `HEAD` too. Streamed from R2 one object at a time: STORE, data descriptors (flag bit 3), UTF-8 names (bit 11), CRC-32 computed on the way, ZIP64 records only where a size, offset or count needs them, names de-duplicated ignoring case (`IMG_1.HEIC`, `IMG_1 (2).HEIC`), MS-DOS times from `taken`. Only originals present in the bucket are included; their sizes come from a listing, so `Content-Length` is exact. `Cache-Control: private, no-store`, no `Range` |
+| `GET /s/<id>/zip` | every original as one ZIP named after the title (`Lake Weekend.zip`, RFC 5987); same checks as files (`404` unless live and unlocked), then `403` without `allow_download`; `HEAD` too. Streamed from R2 one object at a time: STORE, data descriptors (flag bit 3), UTF-8 names (bit 11), CRC-32 computed on the way, ZIP64 records only where a size, offset or count needs them, names de-duplicated ignoring case (`IMG_1.HEIC`, `IMG_1 (2).HEIC`), MS-DOS times from `taken`. Only originals present in the bucket are included; their sizes come from a listing, so `Content-Length` is exact. `Cache-Control: private, no-store`, no `Range` |
 | `GET /s/<id>/f/<t\|v\|o>/<asset>` | the file, with `Range` support (one range: `206`/`416`), `HEAD`, `ETag`/`If-None-Match`; `404` unless the asset is in the manifest, the share is live and (with a password) the cookie is valid; after those checks `o` is `403` without `allow_download`, and is sent as an attachment named `name` (RFC 5987) |
 
 - Cookie `as_<id>`: `HttpOnly; Secure; SameSite=Lax; Path=/s/<id>`, value
@@ -137,7 +137,7 @@ A share as the API returns it:
 
 ```json
 {
-  "id": "…22…", "title": "Zrmanja Rafting",
+  "id": "…22…", "title": "Lake Weekend",
   "url": "https://atlas-share.example.workers.dev/s/…",
   "created_at": "2026-10-04T12:00:00Z", "expires_at": "2026-10-11T12:00:00Z",
   "state": "uploading",

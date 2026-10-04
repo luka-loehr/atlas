@@ -295,7 +295,7 @@ async function serveFile(request: Request, env: Env, id: string, kind: string, a
   return new Response(obj.body, { status: 200, headers });
 }
 
-/** "Zrmanja Rafting.zip"; the title without characters no file system takes. */
+/** "Lake Weekend.zip"; the title without characters no file system takes. */
 export function zipName(title: string): string {
   const stem = title.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().replace(/^\.+/, "");
   return `${stem || "Shared photos"}.zip`;

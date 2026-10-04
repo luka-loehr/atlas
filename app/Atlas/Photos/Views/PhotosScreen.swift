@@ -120,7 +120,7 @@ struct PhotosScreen: View {
         // ATLAS_SETTINGS=1 opens a simulator with the settings sheet up
         .task { if ProcessInfo.processInfo.environment["ATLAS_SETTINGS"] != nil { showSettings = true } }
         // ATLAS_SHARE_DEMO=1 (or uploading|ready|failed) opens it with the share link sheet up
-        .task { if ProcessInfo.processInfo.environment["ATLAS_SHARE_DEMO"] != nil { shareLink = ShareLinkItem(title: "Zrmanja Rafting") } }
+        .task { if ProcessInfo.processInfo.environment["ATLAS_SHARE_DEMO"] != nil { shareLink = ShareLinkItem(title: "Lake Weekend") } }
         #endif
         .sheet(item: $shareBundle) { bundle in
             ShareSheet(items: bundle.urls).presentationDetents([.medium, .large])
