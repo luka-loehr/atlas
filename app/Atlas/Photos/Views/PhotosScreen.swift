@@ -312,10 +312,12 @@ struct PhotosScreen: View {
 
     private var emptyState: some View {
         Group {
-            if library.online {
-                ProgressView()
-            } else {
+            if !library.online {
                 ServerUnavailableView()
+            } else if library.loaded {
+                ContentUnavailableView("No Photos", systemImage: "photo.on.rectangle.angled")
+            } else {
+                ProgressView()
             }
         }
     }

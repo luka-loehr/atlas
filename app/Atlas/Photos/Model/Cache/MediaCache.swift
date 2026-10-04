@@ -64,6 +64,8 @@ final class MediaCache {
                 me.urlRam.removeAllObjects()
                 me.bigRam.removeAllObjects()
                 me.windowRam.removeAll()
+                // photos just taken: their thumbnails come from the server
+                me.seeds.removeAll()
             }
         }
         // the first pipeline kept up to 4 GB of thumbnails and originals in

@@ -274,7 +274,9 @@ struct SpecialCollectionScreen: View {
             }
         }
         .task { await load() }
-        .fullScreenCover(item: $pick) { a in
+        // what the viewer did (archive, lock, delete) may move items in or
+        // out of this collection: it is read again
+        .fullScreenCover(item: $pick, onDismiss: { Task { await load() } }) { a in
             ViewerScreen(library: library, assets: assets, start: a)
                 .navigationTransition(.zoom(sourceID: a.id, in: zoom))
         }
@@ -429,7 +431,8 @@ struct AlbumScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { assets = (try? await library.client.albumAssets(album.id)) ?? [] }
         .fullScreenCover(item: $pick) { a in
-            ViewerScreen(library: library, assets: assets, start: a)
+            ViewerScreen(library: library, assets: assets, start: a,
+                         onRemoved: { id in assets.removeAll { $0.id == id } })
         }
     }
 }
