@@ -1,10 +1,10 @@
 // The recipient's side: the share page, the password gate and the files.
 
 import { sessionExpiry, signSession, verifySession, verifyPassword } from "./crypto";
-import { contentSecurityPolicy, galleryPage, gatePage, newNonce, noticePage } from "./html";
-import { ASSET_ID_RE, fileKey, isFileKind, isLive, type Manifest, SHARE_ID_RE } from "./manifest";
+import { contentSecurityPolicy, creatingPage, galleryPage, gatePage, newNonce, noticePage } from "./html";
+import { ASSET_ID_RE, fileKey, isFileKind, isLive, type Manifest, type Progress, SHARE_ID_RE } from "./manifest";
 import { parseRange } from "./range";
-import { type Env, loadManifest } from "./store";
+import { type Env, loadManifest, loadProgress } from "./store";
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -24,12 +24,8 @@ function page(html: string, nonce: string, status = 200, extra: Record<string, s
   });
 }
 
-export function notice(status: 202 | 404 | 410 | 500 | 405): Response {
+export function notice(status: 404 | 410 | 500 | 405): Response {
   const nonce = newNonce();
-  // a link handed out while atlas is still uploading looks again on its own
-  if (status === 202) {
-    return page(noticePage(nonce, "Almost ready", "These photos are still on their way. This page opens them as soon as they are."), nonce, 202, { Refresh: "15" });
-  }
   const [title, line] =
     status === 410
       ? ["Link expired", "This link has expired."]
@@ -86,6 +82,10 @@ export async function handlePublic(request: Request, env: Env, url: URL): Promis
   if (rest.length === 1 && rest[0] === "") {
     return Response.redirect(`${url.origin}/s/${id}`, 308);
   }
+  if (rest.length === 1 && rest[0] === "status") {
+    if (method !== "GET") return fileError(405);
+    return status(env, id);
+  }
   if (rest.length === 1 && rest[0] === "unlock") {
     if (method !== "POST") return Response.redirect(`${url.origin}/s/${id}`, 303);
     return unlock(request, env, url, id);
@@ -97,15 +97,51 @@ export async function handlePublic(request: Request, env: Env, url: URL): Promis
   return notice(404);
 }
 
-/** Files under the share's prefix but no manifest yet: atlas is uploading. */
-async function uploading(env: Env, id: string): Promise<boolean> {
+/**
+ * A share atlas is still creating: its progress (written every few seconds),
+ * or a bare marker when only files are there yet.
+ */
+async function creating(env: Env, id: string): Promise<Progress | "unknown" | null> {
+  const p = await loadProgress(env.SHARES, id);
+  if (p) return p;
   const listed = await env.SHARES.list({ prefix: `s/${id}/`, limit: 1 });
-  return listed.objects.length > 0;
+  return listed.objects.length > 0 ? "unknown" : null;
+}
+
+/** What the "being created" page polls. `ready` → load the gallery. */
+async function status(env: Env, id: string): Promise<Response> {
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" };
+  const m = await loadManifest(env.SHARES, id);
+  if (m) return new Response(JSON.stringify({ ready: isLive(m, now()) }), { headers });
+  const p = await creating(env, id);
+  if (!p) return new Response(JSON.stringify({ gone: true }), { status: 404, headers });
+  if (p !== "unknown" && !isLive(p, now())) return new Response(JSON.stringify({ gone: true }), { status: 410, headers });
+  return new Response(JSON.stringify(progressView(p)), { headers });
+}
+
+/** The numbers the page shows; a report older than a minute means atlas paused. */
+function progressView(p: Progress | "unknown") {
+  if (p === "unknown") return { ready: false };
+  const stale = now() - p.updated_at > 60;
+  return {
+    ready: false,
+    count: p.count,
+    done: p.done_bytes,
+    total: p.total_bytes,
+    eta_s: stale ? null : p.eta_s,
+    paused: stale,
+  };
 }
 
 async function sharePage(request: Request, env: Env, url: URL, id: string, wrong: boolean): Promise<Response> {
   const m = await loadManifest(env.SHARES, id);
-  if (!m) return (await uploading(env, id)) ? notice(202) : notice(404);
+  if (!m) {
+    const p = await creating(env, id);
+    if (!p) return notice(404);
+    if (p !== "unknown" && !isLive(p, now())) return notice(410);
+    const nonce = newNonce();
+    return page(creatingPage(nonce, id, p === "unknown" ? "" : p.title, progressView(p)), nonce, 202);
+  }
   if (!isLive(m, now())) return notice(410);
   const access = await unlocked(request, env, id, m);
   if (access === "no-secret") return notice(500);

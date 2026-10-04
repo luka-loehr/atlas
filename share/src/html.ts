@@ -32,6 +32,7 @@ export function contentSecurityPolicy(nonce: string): string {
     "default-src 'none'",
     "img-src 'self'",
     "media-src 'self'",
+    "connect-src 'self'",
     `style-src 'nonce-${nonce}'`,
     `script-src 'nonce-${nonce}'`,
     "form-action 'self'",
@@ -149,6 +150,85 @@ export function noticePage(nonce: string, title: string, line: string): string {
     nonce,
     css: "",
     body: `<div class="center"><main><p class="notice">${escapeHtml(line)}</p></main>${FOOTER}</div>`,
+  });
+}
+
+// ---------------------------------------------------------------- being created
+
+const CREATING_CSS = `
+.card{width:100%;max-width:380px;background:var(--card);border-radius:20px;padding:30px 24px 26px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 30px rgba(0,0,0,.08)}
+@media (prefers-color-scheme:dark){.card{box-shadow:none;border:1px solid var(--line)}}
+.card h1{margin:0 0 4px;font-size:22px;font-weight:700;letter-spacing:-.02em;overflow-wrap:anywhere}
+.card .what{margin:0 0 22px;font-size:15px;color:var(--muted)}
+.track{height:6px;border-radius:3px;background:var(--field);overflow:hidden}
+.fill{height:100%;width:0;border-radius:3px;background:var(--accent);transition:width 1s linear}
+.track.indeterminate .fill{width:30%;animation:slide 1.4s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}
+@media (prefers-reduced-motion:reduce){.track.indeterminate .fill{animation:none;width:100%;opacity:.35}}
+.meta{display:flex;justify-content:space-between;gap:12px;margin-top:10px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+`;
+
+export interface CreatingView {
+  ready: boolean;
+  count?: number;
+  done?: number;
+  total?: number;
+  eta_s?: number | null;
+  paused?: boolean;
+}
+
+/** "about 3 minutes left" and the like; "" when there is nothing honest to say. */
+export function formatEta(eta: number | null | undefined, paused?: boolean): string {
+  if (paused) return "Paused, continues when the sender’s server is back";
+  if (eta === null || eta === undefined) return "Working out the time left…";
+  if (eta < 45) return "Less than a minute left";
+  const min = Math.round(eta / 60);
+  if (min < 60) return `About ${min} minute${min === 1 ? "" : "s"} left`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return `About ${h} h${m ? ` ${m} min` : ""} left`;
+}
+
+export function formatBytes(n: number): string {
+  if (n < 1e6) return `${Math.max(1, Math.round(n / 1e3))} KB`;
+  if (n < 1e9) return `${(n / 1e6).toFixed(n < 1e7 ? 1 : 0)} MB`;
+  return `${(n / 1e9).toFixed(1)} GB`;
+}
+
+/**
+ * The page of a link whose photos are still on their way: what it will be,
+ * a live bar and the time left, then the gallery by itself once it is ready.
+ */
+export function creatingPage(nonce: string, id: string, title: string, v: CreatingView): string {
+  const t = title || "Shared photos";
+  const known = v.total !== undefined && v.total > 0;
+  const pct = known ? Math.min(100, (100 * (v.done ?? 0)) / v.total!) : 0;
+  const what = v.count ? `${v.count} ${v.count === 1 ? "item" : "items"} · this link is still being created` : "This link is still being created";
+  return shell({
+    title: t,
+    nonce,
+    css: CREATING_CSS,
+    body: `<div class="center"><main><div class="card">
+<h1>${escapeHtml(t)}</h1>
+<p class="what">${escapeHtml(what)}</p>
+<div class="track${known ? "" : " indeterminate"}" id="track"><div class="fill" id="fill" data-w="${known ? pct.toFixed(1) : ""}"></div></div>
+<div class="meta"><span id="eta">${escapeHtml(formatEta(v.eta_s, v.paused))}</span><span id="bytes">${known ? escapeHtml(`${formatBytes(v.done ?? 0)} of ${formatBytes(v.total!)}`) : ""}</span></div>
+</div></main>${FOOTER}</div>
+<script nonce="${nonce}">
+(function(){
+var url=${scriptJson(`/s/${id}/status`)};
+var f0=document.getElementById("fill");if(f0.dataset.w)f0.style.width=f0.dataset.w+"%";
+function eta(e,p){if(p)return "Paused, continues when the sender’s server is back";if(e==null)return "Working out the time left…";if(e<45)return "Less than a minute left";var m=Math.round(e/60);if(m<60)return "About "+m+" minute"+(m===1?"":"s")+" left";var h=Math.floor(m/60),r=m%60;return "About "+h+" h"+(r?" "+r+" min":"")+" left";}
+function size(n){return n<1e6?Math.max(1,Math.round(n/1e3))+" KB":n<1e9?(n/1e6).toFixed(n<1e7?1:0)+" MB":(n/1e9).toFixed(1)+" GB";}
+function tick(){fetch(url,{cache:"no-store"}).then(function(r){return r.json();}).then(function(s){
+if(s.ready){location.reload();return;}
+if(s.gone){location.reload();return;}
+var track=document.getElementById("track"),fill=document.getElementById("fill");
+if(s.total>0){track.className="track";fill.style.width=Math.min(100,100*s.done/s.total).toFixed(1)+"%";document.getElementById("bytes").textContent=size(s.done)+" of "+size(s.total);}
+document.getElementById("eta").textContent=eta(s.eta_s,s.paused);
+}).catch(function(){}).finally(function(){setTimeout(tick,3000);});}
+setTimeout(tick,3000);
+})();
+</script>`,
   });
 }
 
