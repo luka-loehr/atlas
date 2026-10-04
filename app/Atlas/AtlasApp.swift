@@ -78,9 +78,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      completionHandler: @escaping () -> Void) {
         guard identifier == BackupService.sessionID else { completionHandler(); return }
         MainActor.assumeIsolated {
-            BackupService.shared.backgroundEventsDone = completionHandler
             let session = Session()
-            if session.isConnected { BackupService.shared.configure(host: session.base) }
+            // no server, no session to deliver the events: iOS must not wait
+            guard session.isConnected else { completionHandler(); return }
+            BackupService.shared.backgroundEventsDone = completionHandler
+            BackupService.shared.configure(host: session.base)
         }
     }
 }

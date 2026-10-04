@@ -28,9 +28,18 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ pager: UIPageViewController, context: Context) {
+        if context.coordinator.parent.count != count { context.coordinator.stale = true }
         context.coordinator.parent = self
         // never touch the pager mid-swipe (interactive transition in flight)
         if context.coordinator.transitioning { return }
+        // a photo left the viewer: the neighbours the pager keeps ready were
+        // built for the old order, so the visible page is set afresh, which
+        // drops them (else the next swipe showed the photo just left behind)
+        if context.coordinator.stale {
+            context.coordinator.stale = false
+            pager.setViewControllers([context.coordinator.page(at: index)], direction: .forward, animated: false)
+            return
+        }
         // Re-render the visible page on every SwiftUI update — video pages
         // depend on the parent's `chrome` state for their own controls.
         if let cur = pager.viewControllers?.first as? Coordinator.Page,
@@ -57,6 +66,8 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
         /// true while an interactive swipe/transition is in flight — external
         /// setViewControllers during that window would crash UIPageViewController
         var transitioning = false
+        /// The pages changed under the pager; see `updateUIViewController`.
+        var stale = false
 
         init(_ parent: PhotoPager) { self.parent = parent }
 

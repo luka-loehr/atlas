@@ -8,8 +8,8 @@ struct PhotosScreen: View {
     @State private var shareBundle: ShareBundle?
     @State private var confirmDelete = false
     @State private var trashOne: Asset?
-    @State private var favorites: [String: Bool] = [:]   // optimistic overrides
     @State private var busy = false
+    @State private var changeFailed = false
 
     /// Asset-Position oben im Bild (nil = ganz unten): benennt den Monat
     /// unter dem Titel und setzt den Griff des Schnellscrollers.
@@ -55,7 +55,10 @@ struct PhotosScreen: View {
                             }
                             Section {
                                 Button("Favorite", systemImage: "heart") {
-                                    run(hides: false) { try await library.client.favorite($0, true) }
+                                    run(hides: false) { ids in
+                                        try await library.client.favorite(ids, true)
+                                        library.setFavorite(Set(ids), true)
+                                    }
                                 }
                                 Button("Archive", systemImage: "archivebox") {
                                     run { try await library.client.archive($0, true) }
@@ -126,6 +129,7 @@ struct PhotosScreen: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .changeFailedAlert($changeFailed)
     }
 
     private var title: String {
@@ -216,8 +220,7 @@ struct PhotosScreen: View {
                 TimeScrubber(months: library.months, total: library.assets.count,
                              current: topPosition ?? max(library.assets.count - 1, 0),
                              visible: scrolling,
-                             onJump: { gridProxy.jump(to: $0.first) },
-                             onScrubbing: { library.scrubbing = $0 })
+                             onJump: { gridProxy.jump(to: $0.first) })
             }
         }
 
@@ -225,12 +228,19 @@ struct PhotosScreen: View {
 
     /// Long press on a photo: the system context menu with a large preview.
     private func menu(for asset: Asset) -> UIMenu {
-        let fav = favorites[asset.id] ?? asset.isFavorite
+        // the timeline's own copy: the viewer may have changed it since
+        let fav = library.position(of: asset.id).map { library.assets[$0].isFavorite } ?? asset.isFavorite
         let first = UIMenu(options: .displayInline, children: [
             UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in share([asset.id]) },
             UIAction(title: fav ? "Unfavorite" : "Favorite", image: UIImage(systemName: fav ? "heart.slash" : "heart")) { _ in
-                favorites[asset.id] = !fav
-                Task { try? await library.client.favorite([asset.id], !fav) }
+                Task {
+                    do {
+                        try await library.client.favorite([asset.id], !fav)
+                        library.setFavorite([asset.id], !fav)
+                    } catch {
+                        changeFailed = true
+                    }
+                }
             },
             UIAction(title: "Select", image: UIImage(systemName: "checkmark.circle")) { _ in
                 withAnimation(.snappy) { selection.enter(with: asset.id) }
@@ -265,8 +275,9 @@ struct PhotosScreen: View {
                 if hides {
                     withAnimation(.snappy) { library.removeLocally(Set(ids)) }
                 }
-                await library.loadStats()
-            } catch {}
+            } catch {
+                changeFailed = true
+            }
             withAnimation(.snappy(duration: 0.4)) { selection.exit() }
         }
     }
@@ -277,8 +288,9 @@ struct PhotosScreen: View {
             do {
                 try await op(asset.id)
                 withAnimation(.snappy) { library.removeLocally([asset.id]) }
-                await library.loadStats()
-            } catch {}
+            } catch {
+                changeFailed = true
+            }
         }
     }
 
@@ -353,7 +365,6 @@ struct TimeScrubber: View {
     /// grabbing the indicator turns it into the full scrubber.
     var visible = false
     var onJump: (Library.Month) -> Void
-    var onScrubbing: (Bool) -> Void = { _ in }
 
     @State private var dragging = false
     @State private var dragFrac: CGFloat = 0
@@ -437,7 +448,6 @@ struct TimeScrubber: View {
                 if !dragging {
                     withAnimation(.snappy(duration: 0.2)) { dragging = true }
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                    onScrubbing(true)
                 }
                 dragFrac = clamp(v.location.y / h, 0, 1)
                 let m = month(at: dragFrac)
@@ -448,7 +458,6 @@ struct TimeScrubber: View {
                 }
             }
             .onEnded { _ in
-                onScrubbing(false)
                 withAnimation(.easeOut(duration: 0.25)) { dragging = false }
             }
     }

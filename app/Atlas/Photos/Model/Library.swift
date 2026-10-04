@@ -2,8 +2,7 @@ import Foundation
 import Observation
 import CoreGraphics
 
-/// The photo library: the whole timeline as one flat list, month summary,
-/// stats.
+/// The photo library: the whole timeline as one flat list and its months.
 ///
 /// The timeline runs OLDEST FIRST: the grid opens at its bottom end, on the
 /// newest photos, and scrolling up goes back in time (like Apple Photos).
@@ -30,21 +29,20 @@ final class Library {
     /// Months with their place in `assets`, oldest first: the scale of the
     /// scrubber and the source of the date under the title.
     var months: [Month] = []
-    var stats: LibraryStats?
     var online = true
-    var loading = false
 
     /// O(1) asset-id → position.
     @ObservationIgnored private var indexByID: [String: Int] = [:]
-    /// Set true while the user drags the scrubber.
-    @ObservationIgnored var scrubbing = false
 
     /// The index as last seen (newest first, as the server sends it) and the
     /// months loaded for it.
     @ObservationIgnored private var index: [PhotoClient.TimelineBucket] = []
     @ObservationIgnored private var columns: [String: AssetColumns] = [:]
     @ObservationIgnored private var refreshing = false
-    @ObservationIgnored private var started = false
+    /// Reading the timeline from disk; whoever refreshes waits for it, so
+    /// the refresh compares against what is on disk and fetches only the
+    /// months that changed (not all of them, as against an empty index).
+    @ObservationIgnored private var diskLoad: Task<Void, Never>?
 
     struct Month: Sendable {
         let key: String           // "2024-07" or "undated"
@@ -56,31 +54,16 @@ final class Library {
     }
 
     func start() async {
-        if !started {
-            started = true
-            await loadFromDisk()
-        }
-        async let s: Void = loadStats()
+        if diskLoad == nil { diskLoad = Task { await loadFromDisk() } }
         await loadFirst()
-        _ = await s
-    }
-
-    /// Kept for callers that want "everything is there": the timeline is
-    /// always loaded whole.
-    func loadAll() async {
-        if assets.isEmpty { await loadFirst() }
-    }
-
-    func loadStats() async {
-        stats = try? await client.stats()
     }
 
     /// Fetch the index, then every month that is new or changed.
     func loadFirst() async {
+        await diskLoad?.value
         guard !host.isEmpty, !refreshing else { return }
         refreshing = true
-        loading = true
-        defer { refreshing = false; loading = false }
+        defer { refreshing = false }
         let client = client
         do {
             let fresh = try await client.timelineIndex()
@@ -168,16 +151,24 @@ final class Library {
 
     /// The month an asset position falls in (binary search).
     func month(at position: Int) -> Month? {
-        guard !months.isEmpty else { return nil }
+        months.isEmpty ? nil : months[month(index: position)]
+    }
+
+    /// Index in `months` of the month a position falls in; `months` is not empty.
+    private func month(index position: Int) -> Int {
         var lo = 0, hi = months.count - 1
         while lo < hi {
             let mid = (lo + hi + 1) / 2
             if months[mid].first <= position { lo = mid } else { hi = mid - 1 }
         }
-        return months[lo]
+        return lo
     }
 
     // MARK: Disk cache
+
+    /// Saves and the reset run one after another, so an older save can never
+    /// land after a newer one (or after the reset).
+    nonisolated private static let diskQueue = DispatchQueue(label: "atlas.timeline.disk", qos: .utility)
 
     nonisolated private static var directory: URL {
         let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -208,7 +199,7 @@ final class Library {
 
     private func saveToDisk(index: [PhotoClient.TimelineBucket], changed: [String: AssetColumns]) {
         let keys = Set(index.map(\.key))
-        Task.detached(priority: .utility) {
+        Self.diskQueue.async {
             let directory = Self.directory
             for (key, columns) in changed {
                 if let data = try? JSONEncoder().encode(columns) {
@@ -233,18 +224,20 @@ final class Library {
         ThumbFill.shared.stop()
         assets = []
         months = []
-        stats = nil
         index = []
         columns = [:]
         indexByID = [:]
-        let directory = Self.directory
-        try? FileManager.default.removeItem(at: directory)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        diskLoad = nil
+        Self.diskQueue.async {
+            let directory = Self.directory
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
     }
 
+    /// The same as `start`: whichever comes first reads the disk.
     func refresh() async {
-        await loadStats()
-        await loadFirst()
+        await start()
     }
 
     func position(of id: String) -> Int? { indexByID[id] }
@@ -254,17 +247,47 @@ final class Library {
         let at = asset.takenAt ?? Date()
         let idx = assets.lastIndex { ($0.takenAt ?? .distantPast) <= at }.map { $0 + 1 } ?? 0
         assets.insert(asset, at: idx)
+        // it joins the month of the photo before it (a new month appears
+        // with the next refresh); the months after it move up by one
+        if !months.isEmpty {
+            let owner = month(index: max(idx - 1, 0))
+            months = months.enumerated().map { i, m in
+                i == owner ? Month(key: m.key, year: m.year, label: m.label, first: m.first, count: m.count + 1)
+                    : i > owner ? Month(key: m.key, year: m.year, label: m.label, first: m.first + 1, count: m.count) : m
+            }
+        }
         reindex()
     }
 
     func removeLocally(_ ids: Set<String>) {
-        guard !ids.isEmpty else { return }
+        let gone = ids.compactMap { indexByID[$0] }.sorted()
+        guard !gone.isEmpty else { return }
         assets.removeAll { ids.contains($0.id) }
+        // the months keep matching the positions: each loses what was taken
+        // from it and moves up by what was taken before it
+        var removed = 0, g = 0
+        months = months.compactMap { m in
+            let before = removed
+            while g < gone.count, gone[g] < m.first + m.count { g += 1; removed += 1 }
+            let count = m.count - (removed - before)
+            return count > 0 ? Month(key: m.key, year: m.year, label: m.label, first: m.first - before, count: count) : nil
+        }
         reindex()
     }
 
-    /// After a local insert or removal: positions shift, month boundaries are
-    /// approximate until the next refresh.
+    /// Marks assets as favorites (or not) in place, after the server agreed.
+    func setFavorite(_ ids: Set<String>, _ value: Bool) {
+        var next = assets
+        var changed = false
+        for id in ids {
+            guard let i = indexByID[id], next[i].isFavorite != value else { continue }
+            next[i].favorite = value
+            changed = true
+        }
+        if changed { assets = next }
+    }
+
+    /// After a local insert or removal: positions shift.
     private func reindex() {
         var idx: [String: Int] = [:]
         idx.reserveCapacity(assets.count)
@@ -274,22 +297,4 @@ final class Library {
 
     /// Key of assets without a capture date; they lead the timeline.
     nonisolated static let undatedID = "undated"
-}
-
-extension Date {
-    /// Only for callers outside the hot grid path (the grid uses the precomputed
-    /// DaySection.title). Uses shared cached formatters.
-    func sectionTitle() -> String {
-        let cal = Calendar.current
-        if cal.isDateInToday(self) { return "Today" }
-        if cal.isDateInYesterday(self) { return "Yesterday" }
-        return (cal.isDate(self, equalTo: Date(), toGranularity: .year)
-                ? Date.titleThisYearShared : Date.titleOtherYearShared).string(from: self)
-    }
-    fileprivate static let titleThisYearShared: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "EEEE, d MMMM"; return f
-    }()
-    fileprivate static let titleOtherYearShared: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMMM yyyy"; return f
-    }()
 }

@@ -35,11 +35,8 @@ final class BackupService: NSObject {
     /// Photos and videos of this iPhone whose content is not on atlas yet.
     private(set) var pending = 0
     private(set) var pendingBytes: Int64 = 0
-    /// Uploads handed to iOS right now.
-    private(set) var uploading = 0
-    /// Uploads that failed since launch (they are retried on the next pass).
+    /// Uploads that failed in this pass (they are retried on the next one).
     private(set) var failed = 0
-    private(set) var lastError: String?
     /// True once a pass has seen the whole library.
     private(set) var scanned = false
     private(set) var cleaning = false
@@ -60,6 +57,7 @@ final class BackupService: NSObject {
     @ObservationIgnored private var passTask: Task<Void, Never>?
     @ObservationIgnored private var fillTask: Task<Void, Never>?
     @ObservationIgnored private var passAgain = false
+    @ObservationIgnored private var fillAgain = false
     @ObservationIgnored private var window = 4
     @ObservationIgnored private var watcher: Watcher?
     @ObservationIgnored private var debounce: Task<Void, Never>?
@@ -122,9 +120,12 @@ final class BackupService: NSObject {
         if let loaded { state = loaded }
     }
 
+    /// One write after another: an older state never lands after a newer one.
+    nonisolated private static let diskQueue = DispatchQueue(label: "atlas.backup.state", qos: .utility)
+
     private func saveState() {
         let snapshot = state
-        Task.detached(priority: .utility) {
+        Self.diskQueue.async {
             guard let data = try? JSONEncoder().encode(snapshot) else { return }
             try? data.write(to: Self.stateFile, options: .atomic)
         }
@@ -249,6 +250,9 @@ final class BackupService: NSObject {
         await loadState()
         await recoverTasks()
         let client = PhotoClient(host: host)
+        // what failed before gets another chance
+        failedThisRun = []
+        failed = 0
 
         // 1) the library, off the main thread: local id, modification time, created
         let items = await Task.detached(priority: .utility) { Self.listLibrary() }.value
@@ -388,7 +392,6 @@ final class BackupService: NSObject {
             inflightBytes[ticket.hash] = t.countOfBytesExpectedToSend
             live.insert(ticket.file)
         }
-        uploading = inflight.count
         // exported files whose task is gone
         let fm = FileManager.default
         for name in (try? fm.contentsOfDirectory(atPath: Self.outbox.path)) ?? [] where !live.contains(name) {
@@ -398,45 +401,54 @@ final class BackupService: NSObject {
 
     /// Exports and hands to iOS as many uploads as the window allows.
     private func fill() async {
-        if let fillTask { await fillTask.value; return }
+        if let fillTask {
+            // the running fill may be past its last look at the queue
+            fillAgain = true
+            await fillTask.value
+            return
+        }
         let task = Task {
-            let client = PhotoClient(host: host)
-            // exported files wait on disk until iOS has sent them: keep that bounded
-            while inflight.count < window, outboxBytes < Self.outboxLimit, !Task.isCancelled,
-                  let next = queue.first(where: { !inflight.contains($0.hash) && !failedThisRun.contains($0.hash) }) {
-                guard let asset = Self.fetchAssets([next.localID]).first,
-                      let resource = Self.primaryResource(asset) else {
-                    queue.removeAll { $0.hash == next.hash }
-                    continue
+            repeat {
+                fillAgain = false
+                let client = PhotoClient(host: host)
+                // exported files wait on disk until iOS has sent them: keep that bounded
+                while inflight.count < window, outboxBytes < Self.outboxLimit, !Task.isCancelled,
+                      let next = queue.first(where: { !inflight.contains($0.hash) && !failedThisRun.contains($0.hash) }) {
+                    guard let asset = Self.fetchAssets([next.localID]).first,
+                          let resource = Self.primaryResource(asset) else {
+                        queue.removeAll { $0.hash == next.hash }
+                        continue
+                    }
+                    let ext = (resource.originalFilename as NSString).pathExtension
+                    let name = "\(next.hash).\(ext.isEmpty ? "bin" : ext)"
+                    let file = Self.outbox.appendingPathComponent(name)
+                    do {
+                        try await Self.exportOriginal(resource, to: file)
+                        guard let req = client.uploadRequest(filename: resource.originalFilename,
+                                                             takenAt: asset.creationDate, hash: next.hash) else { break }
+                        let task = session.uploadTask(with: req, fromFile: file)
+                        let ticket = Ticket(hash: next.hash, file: name, created: asset.creationDate?.timeIntervalSince1970)
+                        task.taskDescription = String(data: try JSONEncoder().encode(ticket), encoding: .utf8)
+                        let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                        task.countOfBytesClientExpectsToSend = size
+                        task.resume()
+                        inflightBytes[next.hash] = size
+                        inflight.insert(next.hash)
+                    } catch {
+                        try? FileManager.default.removeItem(at: file)
+                        failedThisRun.insert(next.hash)
+                        failed += 1
+                        log.error("export \(next.hash, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                    }
                 }
-                let ext = (resource.originalFilename as NSString).pathExtension
-                let name = "\(next.hash).\(ext.isEmpty ? "bin" : ext)"
-                let file = Self.outbox.appendingPathComponent(name)
-                do {
-                    try await Self.exportOriginal(resource, to: file)
-                    guard let req = client.uploadRequest(filename: resource.originalFilename,
-                                                         takenAt: asset.creationDate, hash: next.hash) else { break }
-                    let task = session.uploadTask(with: req, fromFile: file)
-                    let ticket = Ticket(hash: next.hash, file: name, created: asset.creationDate?.timeIntervalSince1970)
-                    task.taskDescription = String(data: try JSONEncoder().encode(ticket), encoding: .utf8)
-                    let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-                    task.countOfBytesClientExpectsToSend = size
-                    task.resume()
-                    inflightBytes[next.hash] = size
-                    inflight.insert(next.hash)
-                    uploading = inflight.count
-                } catch {
-                    try? FileManager.default.removeItem(at: file)
-                    failedThisRun.insert(next.hash)
-                    failed += 1
-                    lastError = error.localizedDescription
-                    log.error("export \(next.hash, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
+            } while fillAgain && !Task.isCancelled
+            // cleared here, not by the awaiting caller: a fill asked for
+            // after the loop's last look must start a new one, not wait on
+            // this finished task
+            fillTask = nil
         }
         fillTask = task
         await task.value
-        fillTask = nil
     }
 
     private func finished(_ task: URLSessionTask, error: Error?) {
@@ -444,7 +456,6 @@ final class BackupService: NSObject {
               let ticket = try? JSONDecoder().decode(Ticket.self, from: d) else { return }
         inflight.remove(ticket.hash)
         inflightBytes[ticket.hash] = nil
-        uploading = inflight.count
         let file = Self.outbox.appendingPathComponent(ticket.file)
         let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
         if error == nil, (200..<300).contains(status) {
@@ -466,8 +477,7 @@ final class BackupService: NSObject {
             if (error as? URLError)?.code == .cancelled { return }
             failedThisRun.insert(ticket.hash)
             failed += 1
-            lastError = error?.localizedDescription ?? "HTTP \(status)"
-            log.error("upload \(ticket.hash, privacy: .public) failed: \(self.lastError ?? "", privacy: .public)")
+            log.error("upload \(ticket.hash, privacy: .public) failed: \(error?.localizedDescription ?? "HTTP \(status)", privacy: .public)")
         }
         if queue.isEmpty, inflight.isEmpty { updatePending() }
         Task { await fill() }
@@ -494,7 +504,7 @@ final class BackupService: NSObject {
                     confirmed.formUnion(try await client.exists(hashes: Array(batch)))
                 }
             } catch {
-                lastError = "atlas unreachable"
+                log.error("cleanup: atlas unreachable")
                 return
             }
             let ids = byHash.filter { confirmed.contains($0.key) }.flatMap(\.value)
@@ -507,7 +517,7 @@ final class BackupService: NSObject {
             } catch let error as NSError {
                 // the user saying no in the system dialog is not a failure
                 if !(error.domain == PHPhotosErrorDomain && error.code == PHPhotosError.userCancelled.rawValue) {
-                    lastError = error.localizedDescription
+                    log.error("cleanup failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

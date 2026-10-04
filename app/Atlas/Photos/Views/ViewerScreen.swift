@@ -36,6 +36,7 @@ struct ViewerScreen: View {
     @State private var confirmTrash = false
     @State private var favorites: [String: Bool] = [:]   // optimistic overrides
     @State private var busy = false
+    @State private var changeFailed = false
     // measured height of the bottom chrome stack (filmstrip + action bar) —
     // video controls anchor EXACTLY above it, overlap is structurally impossible
     @State private var chromeBottomHeight: CGFloat = 150
@@ -73,11 +74,7 @@ struct ViewerScreen: View {
             ViewerNow.show(pages[safe: index]?.id)
             MediaCache.shared.viewerFocus(pages, index: index, forward: true)
         }
-        .onChange(of: index) { old, new in
-            MediaCache.shared.viewerFocus(pages, index: new, forward: new >= old)
-            ViewerNow.show(pages[safe: new]?.id)
-            if let a = pages[safe: new] { onPage?(a) }
-        }
+        .onChange(of: index) { old, new in focus(new, forward: new >= old) }
         .onDisappear {
             ViewerNow.show(nil)
             MediaCache.shared.viewerClosed()
@@ -89,12 +86,21 @@ struct ViewerScreen: View {
         .sheet(item: $shareBundle) { b in
             ShareSheet(items: b.urls).presentationDetents([.medium, .large])
         }
+        .changeFailedAlert($changeFailed)
+    }
+
+    /// The page at `i` is the one on screen now.
+    private func focus(_ i: Int, forward: Bool) {
+        MediaCache.shared.viewerFocus(pages, index: i, forward: forward)
+        ViewerNow.show(pages[safe: i]?.id)
+        if let a = pages[safe: i] { onPage?(a) }
     }
 
     // MARK: - Chrome (Google-Photos layout)
 
     @ViewBuilder
     private func chromeOverlay(_ asset: Asset) -> some View {
+        let screenHeight = ScreenSize.bounds.height
         VStack(spacing: 0) {
             topBar(asset)
             Spacer()
@@ -106,7 +112,7 @@ struct ViewerScreen: View {
             .onGeometryChange(for: CGFloat.self, of: {
                 // distance from the stack's TOP edge to the PHYSICAL screen
                 // bottom — pages ignore safe areas, so measure in global space
-                UIScreen.main.bounds.height - $0.frame(in: .global).minY
+                screenHeight - $0.frame(in: .global).minY
             }) { chromeBottomHeight = $0 }
         }
     }
@@ -203,7 +209,15 @@ struct ViewerScreen: View {
     private func toggleFavorite(_ a: Asset) {
         let new = !isFav(a)
         favorites[a.id] = new                       // optimistic
-        Task { try? await library.client.favorite([a.id], new) }
+        Task {
+            do {
+                try await library.client.favorite([a.id], new)
+                library.setFavorite([a.id], new)
+            } catch {
+                favorites[a.id] = !new
+                changeFailed = true
+            }
+        }
     }
 
     private func shareCurrent() {
@@ -230,17 +244,20 @@ struct ViewerScreen: View {
         busy = true
         Task {
             defer { busy = false }
-            do { try await op(a.id) } catch { return }
+            do { try await op(a.id) } catch { changeFailed = true; return }
             library.removeLocally([a.id])
-            await library.loadStats()
+            // the page may have moved on while the server answered
+            guard let at = pages.firstIndex(where: { $0.id == a.id }) else { return }
             if pages.count <= 1 {
                 close()
             } else {
                 var next = pages
-                next.remove(at: index)
-                let newIndex = min(index, next.count - 1)
+                next.remove(at: at)
+                let newIndex = min(at < index ? index - 1 : index, next.count - 1)
                 pages = next
-                index = newIndex
+                if newIndex != index { index = newIndex }
+                // same index, another photo: `onChange(of: index)` stays quiet
+                focus(newIndex, forward: true)
             }
         }
     }
@@ -260,23 +277,22 @@ struct ViewerScreen: View {
         let cal = Calendar.current
         if cal.isDateInToday(d) { return "Today" }
         if cal.isDateInYesterday(d) { return "Yesterday" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US")
+        let f: DateFormatter
         if let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day,
            days < 7 {
-            f.dateFormat = "EEEE"
+            f = Self.weekday
         } else {
-            f.dateFormat = cal.isDate(d, equalTo: Date(), toGranularity: .year) ? "d MMMM" : "d MMMM yyyy"
+            f = cal.isDate(d, equalTo: Date(), toGranularity: .year) ? Self.dayThisYear : Self.dayOtherYear
         }
         return f.string(from: d)
     }
 
-    private static let dayThisYear: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMM"; return f
-    }()
-    private static let dayOtherYear: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "d MMM yyyy"; return f
-    }()
+    private static func formatter(_ format: String) -> DateFormatter {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = format; return f
+    }
+    private static let weekday = formatter("EEEE")
+    private static let dayThisYear = formatter("d MMMM")
+    private static let dayOtherYear = formatter("d MMMM yyyy")
 
 }
 
@@ -371,7 +387,7 @@ private struct Filmstrip: View {
         }
         // margins so the first/last thumb can also rest dead-center
         .contentMargins(.horizontal,
-                        (UIScreen.main.bounds.width - cell) / 2,
+                        (ScreenSize.bounds.width - cell) / 2,
                         for: .scrollContent)
         .scrollPosition(id: $pos, anchor: .center)
         // .never = a fast flick keeps its momentum across MANY thumbs (the
@@ -560,7 +576,8 @@ private struct ZoomableScrollView: UIViewRepresentable {
     }
 
     func updateUIView(_ scroll: UIScrollView, context: Context) {
-        context.coordinator.imageView.image = image
+        // the chrome toggling re-renders every page; only a new image is news
+        if context.coordinator.imageView.image !== image { context.coordinator.imageView.image = image }
         context.coordinator.onSingleTap = onSingleTap
     }
 
@@ -838,3 +855,4 @@ private struct PlayerLayerView: UIViewRepresentable {
 extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
+
