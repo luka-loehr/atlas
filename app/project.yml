@@ -32,8 +32,16 @@ targets:
     platform: iOS
     sources:
       - path: Atlas
+      - path: Shared
     dependencies:
       - package: SwiftTerm
+      - target: AtlasWidget
+    entitlements:
+      path: Atlas/Atlas.entitlements
+      properties:
+        # the Album widget's photos and manifest (see Shared/WidgetData.swift)
+        com.apple.security.application-groups:
+          - group.com.lukaloehr.Atlas
     info:
       path: Atlas/Info.plist
       properties:
@@ -78,3 +86,27 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.Atlas
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+
+  AtlasWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AtlasWidget
+      - path: Shared
+    entitlements:
+      path: AtlasWidget/AtlasWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.lukaloehr.Atlas
+    info:
+      path: AtlasWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Atlas
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.Atlas.Widget
+        SKIP_INSTALL: YES

@@ -228,6 +228,12 @@ struct PhotosScreen: View {
 
     /// Long press on a photo: the system context menu with a large preview.
     private func menu(for asset: Asset) -> UIMenu {
+        // Share from this menu should not wait: the original and its people
+        // are fetched while the menu is open
+        if let o = library.client.originalURL(asset.id) {
+            _ = MediaFetch.shared.ensure(.init(.original, asset.id), from: o, priority: .visible)
+        }
+        ShareFiles.prepare(asset, client: library.client)
         // the timeline's own copy: the viewer may have changed it since
         let fav = library.position(of: asset.id).map { library.assets[$0].isFavorite } ?? asset.isFavorite
         let first = UIMenu(options: .displayInline, children: [
@@ -296,15 +302,15 @@ struct PhotosScreen: View {
 
     private func share(_ ids: [String]) {
         guard !ids.isEmpty else { return }
-        busy = true
+        let assets = ids.map { id in
+            library.position(of: id).map { library.assets[$0] }
+                ?? Asset(id: id, type: "photo", takenAt: nil, width: nil, height: nil, durationS: nil)
+        }
         Task {
             defer { busy = false }
-            var urls: [URL] = []
-            for id in ids {
-                guard let src = library.client.originalURL(id) else { continue }
-                // the cached original when there is one
-                if let file = await MediaCache.shared.shareableOriginal(id, from: src) { urls.append(file) }
-            }
+            // the cached originals when there are; the spinner only when
+            // something has to come from the server
+            let urls = await ShareFiles.files(for: assets, client: library.client) { busy = true }
             if !urls.isEmpty { shareBundle = ShareBundle(urls: urls) }
             if selection.active { withAnimation(.snappy(duration: 0.4)) { selection.exit() } }
         }
