@@ -11,6 +11,8 @@ import UIKit
 struct PhotoPager<Content: View>: UIViewControllerRepresentable {
     @Binding var index: Int
     let count: Int
+    /// Told the pager's position every frame of a swipe (see `PageMotion`).
+    var motion: PageMotion?
     @ViewBuilder let content: (Int) -> Content
 
     func makeUIViewController(context: Context) -> UIPageViewController {
@@ -24,6 +26,7 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
         pager.view.backgroundColor = .clear
         pager.setViewControllers([context.coordinator.page(at: index)],
                                  direction: .forward, animated: false)
+        context.coordinator.observe(pager)
         return pager
     }
 
@@ -70,6 +73,30 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
         var stale = false
 
         init(_ parent: PhotoPager) { self.parent = parent }
+
+        private var offsetObservation: NSKeyValueObservation?
+        private weak var pager: UIPageViewController?
+
+        /// Follows the pager's own scroll view frame by frame: the position
+        /// as a fraction of pages, without touching any SwiftUI state, so the
+        /// filmstrip and the haptic tick move with the finger while the heavy
+        /// work still waits for the landing.
+        func observe(_ pager: UIPageViewController) {
+            self.pager = pager
+            guard let scroll = pager.view.subviews.compactMap({ $0 as? UIScrollView }).first else { return }
+            offsetObservation = scroll.observe(\.contentOffset, options: [.new]) { [weak self] scroll, _ in
+                MainActor.assumeIsolated { self?.moved(scroll) }
+            }
+        }
+
+        private func moved(_ scroll: UIScrollView) {
+            guard let pager, let page = pager.viewControllers?.first as? Page,
+                  let view = page.view, view.window != nil, scroll.bounds.width > 0 else { return }
+            let origin = view.convert(view.bounds, to: scroll).minX
+            let fraction = (scroll.contentOffset.x - origin) / scroll.bounds.width
+            parent.motion?.moved(to: CGFloat(page.pageIndex) + max(-1, min(1, fraction)),
+                                 byUser: scroll.isTracking || scroll.isDecelerating || transitioning)
+        }
 
         /// Hosting controller tagged with its page index.
         final class Page: UIHostingController<AnyView> {
@@ -127,4 +154,27 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
             if parent.index != i { parent.index = i }
         }
     }
+}
+
+/// The pager's live position, shared with the filmstrip. A plain object, not
+/// SwiftUI state: it changes every frame of a swipe and must not re-render
+/// anything but the strip.
+@MainActor
+final class PageMotion {
+    /// The filmstrip that follows the pager.
+    weak var strip: FilmstripView.Coordinator?
+    private var lastPage: Int?
+    private let haptics = UISelectionFeedbackGenerator()
+
+    /// `position` is the page index plus how far the swipe has gone.
+    func moved(to position: CGFloat, byUser: Bool) {
+        strip?.follow(position)
+        let page = Int(position.rounded())
+        // the tick comes the moment the swipe crosses halfway, as in Photos
+        if let last = lastPage, page != last, byUser { haptics.selectionChanged() }
+        lastPage = page
+    }
+
+    /// The page was set from outside (filmstrip scrub, delete): no tick.
+    func reset(to page: Int) { lastPage = page }
 }
