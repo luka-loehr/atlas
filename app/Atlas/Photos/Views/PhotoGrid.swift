@@ -449,13 +449,20 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         let lo = scrollingUp ? firstRow - ahead : firstRow - behind
         let hi = scrollingUp ? lastRow + behind : lastRow + ahead
         let cols = layout.columns
-        let range = max(lo * cols, 0)..<min((hi + 1) * cols, assets.count)
+        let count = assets.count
+        // every bound clamped into 0...count: while the column count changes
+        // or the grid bounces past an end, the rows computed from the offset
+        // can lie outside the library, and an inverted range traps
+        func clamp(_ v: Int) -> Int { min(max(v, 0), count) }
+        let lower = clamp(lo * cols)
+        let range = lower..<max(clamp((hi + 1) * cols), lower)
         guard range != prefetchRange, !range.isEmpty else { return }
         prefetchRange = range
         let px = pixels
         var keep = Set<String>()
         // nearest first: the queue is FIFO within a priority
-        let visible = firstRow * cols..<min((lastRow + 1) * cols, assets.count)
+        let visLower = min(max(clamp(firstRow * cols), range.lowerBound), range.upperBound)
+        let visible = visLower..<min(max(clamp((lastRow + 1) * cols), visLower), range.upperBound)
         let order: [Int] = scrollingUp
             ? Array(range.lowerBound..<max(visible.lowerBound, range.lowerBound)).reversed() + Array(min(visible.upperBound, range.upperBound)..<range.upperBound)
             : Array(min(visible.upperBound, range.upperBound)..<range.upperBound) + Array(range.lowerBound..<max(visible.lowerBound, range.lowerBound)).reversed()

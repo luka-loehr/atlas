@@ -110,9 +110,10 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
                                 willTransitionTo pending: [UIViewController]) {
             transitioning = true
             MediaFetch.shared.setInteracting(true)
-            if let i = (pending.first as? Page)?.pageIndex, parent.index != i {
-                parent.index = i
-            }
+            // the index (and everything hanging off it: look-ahead, place,
+            // filmstrip, video switch) changes when the swipe has landed, not
+            // while the finger is still on the glass: work on the main thread
+            // mid-drag is what makes a swipe snap back
         }
 
         func pageViewController(_ p: UIPageViewController, didFinishAnimating _: Bool,
@@ -121,7 +122,7 @@ struct PhotoPager<Content: View>: UIViewControllerRepresentable {
             transitioning = false
             MediaFetch.shared.setInteracting(false)
             // completed OR cancelled: sync to whatever is actually visible
-            // (a cancelled swipe reverts the eager index from willTransitionTo)
+            // (a cancelled swipe leaves it where it was)
             guard let i = currentIndex(of: p) else { return }
             if parent.index != i { parent.index = i }
         }

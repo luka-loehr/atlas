@@ -52,7 +52,9 @@ final class CacheWarmer {
     private var idle: Bool {
         let info = ProcessInfo.processInfo
         return wifi && !info.isLowPowerModeEnabled
-            && info.thermalState != .serious && info.thermalState != .critical
+            // warming is optional: it stops as soon as the phone is warm at
+            // all, so it can never be the reason the grid stutters later on
+            && info.thermalState == .nominal
             && MediaFetch.shared.calm > 3
             && (!ThumbFill.shared.running || ThumbFill.shared.complete)
     }
