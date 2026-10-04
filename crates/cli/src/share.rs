@@ -472,11 +472,13 @@ fn health(url: &str, token: &str) -> bool {
 // MARK: - status, ls, rm (through the server's API, on the server)
 
 /// Runs `curl` against the local atlas-server on the box with its token, so
-/// the token never leaves it. `rest` follows the URL.
+/// the token never leaves it. `rest` follows the URL. The header reaches curl
+/// on stdin (printf is a shell builtin), so the token is in no process list.
 fn api(method: &str, path: &str, format: &str) -> String {
     ssh_capture(&format!(
         "T=$(sudo sed -n 's/^ATLAS_TOKEN=//p' {ENV_FILE}); \
-         curl -fsS -X {method} -H \"Authorization: Bearer $T\" http://127.0.0.1:8787/v1{path} | python3 -c {}",
+         printf 'Authorization: Bearer %s\\n' \"$T\" | \
+         curl -fsS -X {method} -H @- http://127.0.0.1:8787/v1{path} | python3 -c {}",
         shq(format)
     ))
 }

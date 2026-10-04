@@ -26,6 +26,10 @@ pub(crate) const REMOTE_BASE: &str = "atlas-builds";
 /// Secrets live OUTSIDE the build tree (which gets reset every run): a 0600
 /// file in a 0700 dir, injected as environment variables at run time.
 pub(crate) const SECRETS_BASE: &str = "atlas-secrets";
+/// Ports of atlas' own services on the box (ssh, Caddy and its admin API,
+/// Postgres, llama.cpp, atlas-ml, atlas-server). A project on one of them
+/// would have `atlas dev --public` or `tailscale serve` publish that service.
+const RESERVED_PORTS: [u16; 7] = [22, 2019, 5432, 8080, 8785, 8786, 8787];
 
 pub(crate) struct BuildCfg {
     pub(crate) root: PathBuf,     // dir holding the config (the local checkout)
@@ -448,7 +452,14 @@ pub(crate) fn apply_kv(c: &mut BuildCfg, k: &str, v: &str) {
             c.port = v.parse().unwrap_or_else(|_| {
                 eprintln!("{RED}config: invalid port{RESET} ({v})");
                 exit(1);
-            })
+            });
+            if RESERVED_PORTS.contains(&c.port) {
+                eprintln!(
+                    "{RED}config: port {} belongs to atlas itself{RESET} (a public or tailnet URL would expose it)",
+                    c.port
+                );
+                exit(1);
+            }
         }
         "artifacts" => c.artifacts = v.split_whitespace().map(String::from).collect(),
         _ => {}
