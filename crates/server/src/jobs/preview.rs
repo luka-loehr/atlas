@@ -67,7 +67,7 @@ pub async fn run(app: &AppState, id: &str) -> Result<()> {
 
 /// Target size in stored orientation: short side at most 1080, never
 /// enlarged, both even.
-fn target_size(probe: &Probe) -> (i32, i32) {
+pub fn target_size(probe: &Probe) -> (i32, i32) {
     let (w, h) = (probe.coded_width.max(2), probe.coded_height.max(2));
     let short = w.min(h);
     if short <= MAX_SHORT_SIDE {

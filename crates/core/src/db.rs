@@ -17,6 +17,7 @@ use crate::{env, home};
 const MIGRATIONS: &[(i32, &str)] = &[
     (7, include_str!("../../../db/migrations/0007_baseline.sql")),
     (8, include_str!("../../../db/migrations/0008_unified.sql")),
+    (9, include_str!("../../../db/migrations/0009_shares.sql")),
 ];
 
 /// Connection settings, in order of precedence:

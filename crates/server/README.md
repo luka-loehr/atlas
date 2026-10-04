@@ -29,11 +29,12 @@ Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
 | Collections | `GET /library/{favorites,videos,archive,locked,trash}` · `POST /library/trash/empty` · `/albums…` · `/people…` · `/faces/{id}/crop` · `/places…` |
 | Search | `GET /search?q=` (people, places, albums, then meaning) · `POST /search/warm` |
 | Drive | `GET /drive/folders/{id\|root}` · `PUT /drive/files` · `/drive/blobs/{hash}/{name}` · `/drive/{recent,search,move,trash,restore,delete}` |
+| Shares | `GET/POST /shares` · `GET/DELETE /shares/{id}` (links through [atlas-share](../../share/), 7 days at most) |
 | System | `GET /system` · `WS /system/live` · `/system/{services,containers,network,activity}` · `WS /system/terminal` · `POST /system/power/{shutdown\|restart}` |
 
 The full list with one line each sits at the top of
 [`photos/mod.rs`](src/photos/mod.rs), [`drive.rs`](src/drive.rs) and
-[`system/mod.rs`](src/system/mod.rs).
+[`system/mod.rs`](src/system/mod.rs), [`share.rs`](src/share.rs).
 
 ## How it is built
 
@@ -78,6 +79,7 @@ documented where it is read, in [`config.rs`](src/config.rs).
 | `ATLAS_VIDEO_PREVIEWS` | on | `0` skips video renditions |
 | `ATLAS_MAX_UPLOAD_GB` | `64` | largest accepted upload |
 | `ATLAS_ML_URL` | `http://127.0.0.1:8786` | where query embeddings come from |
+| `ATLAS_SHARE_URL`, `ATLAS_SHARE_TOKEN` | unset | the atlas-share Worker; `atlas share setup` writes both |
 
 External tools the workers call: `ffmpeg`/`ffprobe` (video), `pdftoppm` and
 `pdftotext` (drive previews and text).

@@ -11,6 +11,7 @@
 //!   atlas secrets      push/list/drop this project's env file on atlas
 //!   atlas deploy       build + install the Atlas services on the server
 //!   atlas connect      print the link that connects the iOS app
+//!   atlas share        link sharing: setup, status, ls, rm
 //!   atlas <cmd ...>    run any command on atlas (forwarded to ssh)
 
 mod build;
@@ -25,6 +26,7 @@ mod observe;
 mod project;
 mod secrets;
 mod serve;
+mod share;
 mod ssh;
 mod state;
 mod web;
@@ -54,6 +56,7 @@ fn main() {
         Some("start") => serve::start(&args[1..]),
         Some("deploy") => deploy::deploy(&args[1..]),
         Some("connect") => deploy::connect(),
+        Some("share") => share::share(&args[1..]),
         Some("secrets") => secrets::secrets(&args[1..]),
         Some("ls") => observe::ls(),
         Some("logs") => observe::logs(&args[1..]),
@@ -103,7 +106,8 @@ fn help() {
          atlas start [-b B]         run the BUILT result of this branch\n  \
          atlas start [-b B] status|logs|stop\n  \
          atlas deploy               build + install atlas-server and atlas-ml  ·  deploy logs|status|stop|restart\n  \
-         atlas connect              print the link that connects the iOS app (address + token)\n\n\
+         atlas connect              print the link that connects the iOS app (address + token)\n  \
+         atlas share setup          deploy atlas-share (Cloudflare) for share links  ·  share status|ls|rm <id>\n\n\
          OBSERVE\n  \
          atlas ls                   fleet: every project on atlas — branches, running, URL, disk\n  \
          atlas logs  [-b B] [-f]     docker logs of this project's dev/start container\n  \

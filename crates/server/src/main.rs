@@ -19,6 +19,7 @@ mod import;
 mod jobs;
 mod media;
 mod photos;
+mod share;
 mod system;
 mod util;
 
@@ -148,6 +149,8 @@ async fn serve(pool: Pool) -> Result<()> {
     });
 
     jobs::worker::spawn(app.clone());
+    // links still uploading when atlas stopped carry on
+    tokio::spawn(share::resume(app.clone()));
 
     // the trash keeps things for 30 days, then they go for good
     let trash_app = app.clone();
@@ -165,6 +168,11 @@ async fn serve(pool: Pool) -> Result<()> {
                 Ok(n) => tracing::info!("trash: removed {n} files older than {} days", photos::assets::TRASH_DAYS),
                 Err(e) => tracing::warn!("trash: file purge failed: {}", e.message()),
             }
+            match share::purge_expired(&trash_app).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("share: removed {n} expired links"),
+                Err(e) => tracing::warn!("share: expiry sweep failed: {}", e.message()),
+            }
             match photos::people::tidy(&trash_app).await {
                 Ok((0, 0)) => {}
                 Ok((removed, covers)) => tracing::info!("people: removed {removed} without faces, set {covers} covers"),
@@ -174,7 +182,7 @@ async fn serve(pool: Pool) -> Result<()> {
     });
 
     let router = Router::new()
-        .nest("/v1", photos::routes().merge(drive::routes()).merge(system::routes()))
+        .nest("/v1", photos::routes().merge(drive::routes()).merge(system::routes()).merge(share::routes()))
         .layer(middleware::from_fn_with_state(app.clone(), auth::require_token))
         .route("/health", get(|| async { "ok" }))
         .layer(CompressionLayer::new().compress_when(json_only))
