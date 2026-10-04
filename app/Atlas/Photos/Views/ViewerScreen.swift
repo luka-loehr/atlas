@@ -78,6 +78,8 @@ struct ViewerScreen: View {
             MediaCache.shared.viewerFocus(pages, index: index, forward: true)
         }
         .onChange(of: index) { old, new in focus(new, forward: new >= old) }
+        // a tick on every page change, with or without the chrome
+        .sensoryFeedback(.selection, trigger: index)
         .onDisappear {
             ViewerNow.show(nil)
             MediaCache.shared.viewerClosed()
@@ -124,16 +126,19 @@ struct ViewerScreen: View {
         HStack(alignment: .center) {
             CircleButton(icon: "chevron.backward", label: "Back") { close() }
             Spacer(minLength: 8)
+            let place = placeTitle(asset)
             VStack(spacing: 0) {
-                Text(places[asset.id] ?? relativeDay(asset.takenAt))
+                Text(place ?? relativeDay(asset.takenAt))
                     .font(.headline)
                 if let t = asset.takenAt {
-                    Text(places[asset.id] != nil
+                    Text(place != nil
                          ? "\(relativeDay(t))  \(t.formatted(date: .omitted, time: .shortened))"
                          : t.formatted(date: .omitted, time: .shortened))
                         .font(.footnote)
                 }
             }
+            // a new photo changes the words, never the pill: no fade, no morph
+            .transaction { $0.animation = nil }
             .foregroundStyle(.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -143,7 +148,7 @@ struct ViewerScreen: View {
             .frame(minWidth: 158, minHeight: 44)
             .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
             Spacer(minLength: 8)
-            .task(id: asset.id) { await loadPlace(asset) }
+            .task(id: asset.id) { await loadPlaces(around: asset) }
             Menu {
                 Button {
                     mutateAndRemove { try await library.client.archive([$0], true) }
@@ -266,14 +271,41 @@ struct ViewerScreen: View {
         }
     }
 
-    /// Where the photo was taken, as the title of the top pill (like Photos).
+    /// Where each photo was taken, as the title of the top pill (like
+    /// Photos). `noPlace` holds photos known to have none.
     @State private var places: [String: String] = [:]
+    @State private var noPlace: Set<String> = []
+    /// The place last shown: kept while the next photo's place is still on its
+    /// way, so swiping between photos of one town never flickers.
+    @State private var lastPlace: String?
 
-    private func loadPlace(_ a: Asset) async {
-        guard places[a.id] == nil,
-              let info = try? await library.client.assetInfo(a.id), let place = info.place else { return }
-        // the locality, like Photos ("Karlsruhe"), not the state after it
-        places[a.id] = place.components(separatedBy: ", ").first ?? place
+    private func placeTitle(_ a: Asset) -> String? {
+        if let p = places[a.id] { return p }
+        if noPlace.contains(a.id) { return nil }
+        return lastPlace
+    }
+
+    /// The photo's place, and its neighbours' ahead of the next swipe.
+    private func loadPlaces(around a: Asset) async {
+        if let p = places[a.id] { lastPlace = p } else if noPlace.contains(a.id) { lastPlace = nil }
+        guard let i = pages.firstIndex(of: a) else { return }
+        let ids = ([i] + (1...3).flatMap { [i + $0, i - $0] }).compactMap { pages[safe: $0]?.id }
+            .filter { places[$0] == nil && !noPlace.contains($0) }
+        let client = library.client
+        await withTaskGroup(of: (String, String?, Bool).self) { group in
+            for id in ids {
+                group.addTask {
+                    guard let info = try? await client.assetInfo(id) else { return (id, nil, false) }
+                    // the locality, like Photos ("Karlsruhe"), not the state after it
+                    return (id, info.place.map { $0.components(separatedBy: ", ").first ?? $0 }, true)
+                }
+            }
+            for await (id, place, answered) in group {
+                guard answered else { continue }
+                if let place { places[id] = place } else { noPlace.insert(id) }
+                if id == a.id { lastPlace = place }
+            }
+        }
     }
 
     private func relativeDay(_ d: Date?) -> String {
@@ -352,7 +384,8 @@ private struct Filmstrip: View {
     private let air: CGFloat = 11
 
     private func recenter(_ i: Int) {
-        let lo = max(i - Self.reach, 0), hi = min(i + Self.reach, assets.count)
+        let i = min(max(i, 0), assets.count)
+        let lo = max(i - Self.reach, 0), hi = max(min(i + Self.reach, assets.count), lo)
         if window.isEmpty || i < window.lowerBound + 40 && window.lowerBound > 0
             || i > window.upperBound - 40 && window.upperBound < assets.count
             || window.upperBound > assets.count {
@@ -426,7 +459,7 @@ private struct Filmstrip: View {
             }
         }
         // mechanical lens-click on every detent (scrub AND page swipe)
-        .sensoryFeedback(.selection, trigger: index)
+
         .onAppear { recenter(index); pos = index; centerPos = CGFloat(index) }
         .onChange(of: index) { _, i in
             recenter(i)
