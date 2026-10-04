@@ -115,7 +115,7 @@ dev       = "pnpm dev --host 0.0.0.0 --port 3000"  # dev-server command
 start     = "pnpm start"     # run the BUILT artifact, for `atlas start` (default: detect)
 install   = "pnpm install"   # dep install before dev/start (default: detect from lockfile)
 repo      = "https://..."    # git URL to clone (default: this checkout's origin)
-port      = 3000             # port the server binds (default 3000)
+port      = 3000             # port the server binds (default 3000; not 22, 2019, 5432, 8080, 8785-8787)
 health    = "/api/health"    # path `atlas health` probes (default /)
 ```
 
