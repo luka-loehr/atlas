@@ -40,7 +40,8 @@ prefix delete and the lifecycle rule can expire by prefix:
 ## Worker admin API
 
 Every route takes `Authorization: Bearer <SHARE_TOKEN>`; a missing or wrong
-token is `401`. Bodies are JSON unless noted.
+token is `401`. Bodies are JSON unless noted. A Worker without `SHARE_TOKEN`
+answers `500` (never open); errors are `{"error":"…"}`.
 
 | route | does |
 |---|---|
@@ -54,6 +55,9 @@ token is `401`. Bodies are JSON unless noted.
 | `DELETE /api/shares/<id>` | deletes every object under `s/<id>/` → `{"deleted":n}` |
 
 atlas-server sends files up to 90 MB as one `PUT`, larger ones as 50 MB parts.
+Every file `PUT` (whole or part) must carry a `Content-Length` (R2 needs the
+length up front): without one it is `411`, above 95 MB `413`. R2 requires
+every part but the last to be at least 5 MiB.
 
 ### Manifest input (`PUT /api/shares/<id>`)
 
@@ -87,23 +91,34 @@ atlas-server sends files up to 90 MB as one `PUT`, larger ones as 50 MB parts.
 - `view` is the content type of the `v/` file (`image/webp` or `video/mp4`).
 - `bytes` is the original's size; it is shown next to the download button.
 
+- Limits (else `400`): `title` ≤ 200 characters (may be empty), 1–20,000
+  `items` with distinct `id`s, `name` 1–255 characters, `password` 1–1024
+  characters.
+
 The stored `share.json` is the input with `password` replaced by
-`password_hash` (or null) and a `created_at` added.
+`password_hash` (or null) and a `created_at` (unix seconds) added. Writing
+the manifest of an existing share again keeps its `created_at`, and
+`expires_at` may then also be no more than `MAX_DAYS` days + 5 minutes after
+`created_at`, so a link can never be stretched past a week.
 
 ## Worker public routes
 
 | route | does |
 |---|---|
 | `GET /s/<id>` | the gallery; the password gate first when the share has one; `404` page when unknown, `410` page when expired |
-| `POST /s/<id>/unlock` | form field `password`; right → sets the cookie, `303` to `/s/<id>`; wrong → the gate again with an error |
-| `GET /s/<id>/f/<t\|v\|o>/<asset>` | the file, with `Range` support; `404` unless the asset is in the manifest, the share is live and (with a password) the cookie is valid; `o` is `403` without `allow_download` and is sent as an attachment named `name` |
+| `POST /s/<id>/unlock` | form field `password`; right → sets the cookie, `303` to `/s/<id>`; wrong → the gate again with an error (`403`) |
+| `GET /s/<id>/f/<t\|v\|o>/<asset>` | the file, with `Range` support (one range: `206`/`416`), `HEAD`, `ETag`/`If-None-Match`; `404` unless the asset is in the manifest, the share is live and (with a password) the cookie is valid; after those checks `o` is `403` without `allow_download`, and is sent as an attachment named `name` (RFC 5987) |
 
 - Cookie `as_<id>`: `HttpOnly; Secure; SameSite=Lax; Path=/s/<id>`, value
   `<expiry>.<HMAC-SHA256(SESSION_SECRET, "<id>.<expiry>") b64url>`, expiry the
   earlier of the share's and 24 hours ahead.
 - Every page and file carries `X-Robots-Tag: noindex, nofollow` and pages are
   `Cache-Control: no-store`. Files are `private, max-age=86400`.
-- A daily cron deletes every share whose `expires_at` has passed.
+- A password share on a Worker without `SESSION_SECRET` is a `500`, never
+  open.
+- A daily cron deletes every share whose `expires_at` has passed, and every
+  `s/<id>/` prefix without a manifest whose files are older than `MAX_DAYS`
+  + 1 days (an upload that never finished).
 
 ## atlas-server API (for the app)
 
