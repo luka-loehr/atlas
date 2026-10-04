@@ -32,6 +32,7 @@ final class Session {
         if let text = UserDefaults.standard.string(forKey: "server.url"), let url = URL(string: text),
            let token = Keychain.read("server.token") {
             config = ServerConfig(url: url, token: token)
+            Keychain.pinToDevice("server.token")
         }
         #if targetEnvironment(simulator)
         // A simulator is connected from the command line instead of by typing:
@@ -81,18 +82,31 @@ final class Session {
         }
     }
 
+    /// A connect link, waiting for the owner to confirm it.
+    struct ConnectLink: Identifiable, Equatable {
+        let address: String
+        let token: String
+        var id: String { address }
+        /// The server's host, what the confirmation names.
+        var host: String { Session.normalize(address)?.host() ?? address }
+    }
+
     /// atlas://connect?url=...&token=... — what `atlas connect` prints, so a
-    /// phone is set up by opening one link.
-    func handle(_ link: URL) async throws {
+    /// phone is set up by opening one link. Any web page or QR code can open
+    /// such a link, and the app would then back up the library to whatever
+    /// server it names: it is only parsed here, and connects once the owner
+    /// has confirmed the server (`connect(to:token:)`).
+    static func connectLink(_ link: URL) -> ConnectLink? {
         guard link.scheme == "atlas", link.host() == "connect",
               let items = URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems,
               let address = items.first(where: { $0.name == "url" })?.value,
-              let token = items.first(where: { $0.name == "token" })?.value else { return }
-        try await connect(to: address, token: token)
+              let token = items.first(where: { $0.name == "token" })?.value,
+              normalize(address) != nil else { return nil }
+        return ConnectLink(address: address, token: token)
     }
 
     /// "atlas.example.ts.net" -> http://atlas.example.ts.net:8787
-    static func normalize(_ address: String) -> URL? {
+    nonisolated static func normalize(_ address: String) -> URL? {
         var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         if !text.contains("://") { text = "http://" + text }
@@ -121,8 +135,17 @@ enum Keychain {
         delete(key)
         var query = query(key)
         query[kSecValueData] = Data(value.utf8)
-        query[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
+        query[kSecAttrAccessible] = accessible
         SecItemAdd(query as CFDictionary, nil)
+    }
+
+    /// Readable in the background (uploads run after the first unlock), and
+    /// never carried to another device by a backup or iCloud Keychain.
+    private static let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+    /// Moves an item stored before `accessible` was this device only.
+    static func pinToDevice(_ key: String) {
+        SecItemUpdate(query(key) as CFDictionary, [kSecAttrAccessible: accessible] as CFDictionary)
     }
 
     static func delete(_ key: String) {

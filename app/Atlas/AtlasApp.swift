@@ -97,6 +97,8 @@ struct RootView: View {
     /// every other tab searches photos.
     @State private var searchFrom = "photos"
     @State private var linkError: String?
+    /// A connect link waiting for the owner's yes.
+    @State private var connectLink: Session.ConnectLink?
     /// An album or a photo a link asked for (the Album widget).
     @State private var albumLink: Int?
     @State private var linkedPhoto: LinkedPhoto?
@@ -182,9 +184,26 @@ struct RootView: View {
                 open(link)
                 return
             }
-            Task {
-                do { try await session.handle(url) } catch { linkError = error.localizedDescription }
+            // a link can come from any web page: it connects only once confirmed
+            connectLink = Session.connectLink(url)
+        }
+        .alert(
+            "Connect to \(connectLink?.host ?? "")?",
+            isPresented: Binding(get: { connectLink != nil }, set: { if !$0 { connectLink = nil } }),
+            presenting: connectLink
+        ) { link in
+            Button("Connect") {
+                Task {
+                    do { try await session.connect(to: link.address, token: link.token) } catch {
+                        linkError = error.localizedDescription
+                    }
+                }
             }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text(session.isConnected
+                ? "Atlas would stop using your current server and back up your photos to this one. Only connect if you opened this link with “atlas connect”."
+                : "Atlas will back up your photos to this server. Only connect if you opened this link with “atlas connect”.")
         }
         .fullScreenCover(item: $linkedPhoto) { linked in
             ViewerScreen(library: library, assets: linked.assets, start: linked.start)
