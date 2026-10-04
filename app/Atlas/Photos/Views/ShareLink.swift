@@ -30,9 +30,9 @@ struct ShareLinkItem: Identifiable {
     }()
 }
 
-/// "Share as Link": title, expiry, originals and a password, then the
-/// upload's progress and the link. Closing while it uploads is fine, the
-/// server keeps going (the link is under Settings › Shared Links).
+/// "Share Link": title, expiry, originals and a password, then the link, at
+/// once, while atlas uploads on its own (closing changes nothing). An album
+/// that has a link opens straight to it.
 struct ShareLinkSheet: View {
     var library: Library
     let item: ShareLinkItem
@@ -50,6 +50,9 @@ struct ShareLinkSheet: View {
     @State private var notSetUp = false
     @State private var copied = false
     @State private var sending: LinkSend?
+    /// Looking up the album's existing link.
+    @State private var checking = false
+    @State private var stopping = false
 
     private var cleanTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canCreate: Bool { !cleanTitle.isEmpty && (!protect || !password.isEmpty) && !creating }
@@ -57,7 +60,13 @@ struct ShareLinkSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                if let share { status(share) } else { form }
+                if let share {
+                    status(share)
+                } else if checking {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    form
+                }
             }
             .navigationTitle("Share Link")
             .navigationBarTitleDisplayMode(.inline)
@@ -79,6 +88,7 @@ struct ShareLinkSheet: View {
             }
         }
         .onAppear { if title.isEmpty { title = item.title } }
+        .task { await existing() }
         #if targetEnvironment(simulator)
         .onAppear { share = share ?? Self.demo() }
         #endif
@@ -115,60 +125,94 @@ struct ShareLinkSheet: View {
     }
 
     @ViewBuilder private func status(_ s: Share) -> some View {
+        Section(s.title) {
+            Text(s.url.absoluteString)
+                .foregroundStyle(.tint)
+                .textSelection(.enabled)
+            if let password = s.password {
+                LabeledContent("Password", value: password)
+                    .textSelection(.enabled)
+            }
+            LabeledContent("Expires", value: s.expiresAt.formatted(date: .abbreviated, time: .shortened))
+        }
         switch s.state {
         case .uploading:
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Uploading…")
+                        Text("Uploading on atlas…")
                         Spacer()
                         Text(s.count == 1 ? "1 Item" : "\(s.count.formatted()) Items")
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
+                    // a second of glide between the server's reports: it flows
                     ProgressView(value: s.progress ?? 0)
+                        .animation(.linear(duration: 1), value: s.progress)
                     Text("\(Self.mb(s.doneBytes)) of \(Self.mb(s.totalBytes))")
+                        .contentTransition(.numericText())
+                        .animation(.default, value: s.doneBytes)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
                 .padding(.vertical, 4)
-            } header: {
-                Text(s.title)
             }
         case .ready:
-            Section(s.title) {
-                Text(s.url.absoluteString)
-                    .foregroundStyle(.tint)
-                    .textSelection(.enabled)
-                if s.hasPassword, !password.isEmpty {
-                    LabeledContent("Password", value: password)
-                }
-            }
-            Section {
-                Button(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc") {
-                    UIPasteboard.general.url = s.url
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    withAnimation { copied = true }
-                }
-                Button("Share…", systemImage: "square.and.arrow.up") {
-                    sending = LinkSend(s, password: s.hasPassword ? password : nil)
-                }
-            }
+            EmptyView()
         case .failed:
-            Section(s.title) {
+            Section {
                 Label(s.error ?? "The upload failed.", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
-            }
-            Section {
                 Button { create(replacing: s) } label: {
-                    if creating {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else {
-                        Text("Try Again").frame(maxWidth: .infinity)
-                    }
+                    if creating { ProgressView() } else { Text("Try Again") }
                 }
                 .disabled(creating)
+            }
+        }
+        Section {
+            Button(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                UIPasteboard.general.url = s.url
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                withAnimation { copied = true }
+            }
+            Button("Share…", systemImage: "square.and.arrow.up") {
+                sending = LinkSend(s, password: s.password)
+            }
+        }
+        Section {
+            Button(role: .destructive) { stop(s) } label: {
+                if stopping {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    Text("Stop Sharing").frame(maxWidth: .infinity)
+                }
+            }
+            .disabled(stopping)
+        }
+    }
+
+    /// An album's link, if it has one: shown instead of the form.
+    private func existing() async {
+        guard let album = item.album, share == nil else { return }
+        checking = true
+        defer { checking = false }
+        if let found = try? await library.client.shares().first(where: { $0.albumID == album }) {
+            share = found
+        }
+    }
+
+    /// One tap: the link stops working and its files leave Cloudflare.
+    private func stop(_ s: Share) {
+        stopping = true
+        Task {
+            defer { stopping = false }
+            do {
+                try await library.client.stopSharing(s.id)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
+            } catch {
+                failed = true
             }
         }
     }
@@ -182,12 +226,13 @@ struct ShareLinkSheet: View {
         }
     }
 
-    /// A failed share is removed first, so its leftovers do not wait for the expiry.
+    /// A failed album link is retried in place (the server restarts it); a
+    /// failed link of photos is removed first, so its leftovers do not wait.
     private func create(replacing old: Share? = nil) {
         creating = true
         Task {
             defer { creating = false }
-            if let old { try? await library.client.stopSharing(old.id) }
+            if let old, item.album == nil { try? await library.client.stopSharing(old.id) }
             do {
                 let s = try await library.client.createShare(
                     title: cleanTitle, ids: item.album == nil ? item.ids : nil, album: item.album,
@@ -244,12 +289,12 @@ struct SharedLinksScreen: View {
                 List {
                     ForEach(shares) { share in
                         Menu {
-                            if share.state == .ready {
-                                Button("Copy Link", systemImage: "doc.on.doc") {
-                                    UIPasteboard.general.url = share.url
-                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                }
-                                Button("Share…", systemImage: "square.and.arrow.up") { sending = LinkSend(share) }
+                            Button("Copy Link", systemImage: "doc.on.doc") {
+                                UIPasteboard.general.url = share.url
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            }
+                            Button("Share…", systemImage: "square.and.arrow.up") {
+                                sending = LinkSend(share, password: share.password)
                             }
                             Button("Stop Sharing", systemImage: "xmark.circle", role: .destructive) { stopping = share }
                         } label: {

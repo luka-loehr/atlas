@@ -33,9 +33,10 @@ use crate::{ApiError, ApiResult, App, AppState, util};
 
 /// No link lives longer than this, whatever is asked for.
 pub const MAX_DAYS: i64 = 7;
-/// Files up to this size go up in one request; larger ones in parts.
-const SINGLE_MAX: u64 = 90 << 20;
-const PART: usize = 50 << 20;
+/// Files up to this size go up in one request; larger ones in parts. Small
+/// parts keep the progress the app shows moving (R2's minimum is 5 MiB).
+const SINGLE_MAX: u64 = 16 << 20;
+const PART: usize = 16 << 20;
 /// Files uploaded side by side.
 const PARALLEL: usize = 4;
 const MAX_ITEMS: usize = 5000;
@@ -47,7 +48,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 const SHARE_COLS: &str = "id, title, album_id, asset_ids, allow_download, has_password, state, \
-                          done_bytes, total_bytes, error, created_at, expires_at";
+                          done_bytes, total_bytes, error, created_at, expires_at, password, live";
 
 fn share_json(app: &App, r: &tokio_postgres::Row) -> Value {
     let id: String = r.get(0);
@@ -68,6 +69,10 @@ fn share_json(app: &App, r: &tokio_postgres::Row) -> Value {
         // whole seconds: what the app's ISO 8601 decoder reads
         "created_at": r.get::<_, DateTime<Utc>>(10).to_rfc3339_opts(SecondsFormat::Secs, true),
         "expires_at": r.get::<_, DateTime<Utc>>(11).to_rfc3339_opts(SecondsFormat::Secs, true),
+        // the owner's own app asks; recipients only ever see the Worker
+        "password": r.get::<_, Option<String>>(12),
+        // the link opens (the manifest is there); before that it says "almost ready"
+        "live": r.get::<_, bool>(13),
     })
 }
 
@@ -124,6 +129,27 @@ async fn create(State(app): State<AppState>, Json(b): Json<NewShare>) -> ApiResu
     }
 
     let c = app.pool.get().await?;
+    // an album has one link: asking again returns it (and retries a failed one)
+    if let Some(album) = b.album {
+        let existing = c
+            .query_opt(
+                &format!(
+                    "SELECT {SHARE_COLS} FROM shares WHERE album_id = $1 AND expires_at > now()
+                     ORDER BY created_at DESC LIMIT 1"
+                ),
+                &[&album],
+            )
+            .await?;
+        if let Some(row) = existing {
+            let id: String = row.get(0);
+            if row.get::<_, String>(6) == "failed" {
+                album_changed(&app, album).await?;
+                let row = c.query_one(&format!("SELECT {SHARE_COLS} FROM shares WHERE id = $1"), &[&id]).await?;
+                return Ok(Json(share_json(&app, &row)));
+            }
+            return Ok(Json(share_json(&app, &row)));
+        }
+    }
     let rows = match (&b.ids, b.album) {
         (Some(ids), None) => {
             c.query(
@@ -217,18 +243,142 @@ pub async fn resume(app: AppState) {
     }
 }
 
+/// Shares uploading right now; `true` = changed meanwhile, upload once more.
+static RUNNING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Uploads a share in the background, on atlas: the phone only asks. A share
+/// already uploading runs once more when it is done.
 fn spawn_upload(app: AppState, id: String) {
+    {
+        let mut running = RUNNING.lock().unwrap();
+        if let Some(again) = running.get_mut(&id) {
+            *again = true;
+            return;
+        }
+        running.insert(id.clone(), false);
+    }
     tokio::spawn(async move {
-        if let Err(e) = upload(&app, &id).await {
-            tracing::warn!("share {id}: {e:#}");
-            let message = format!("{e:#}").lines().next().unwrap_or("upload failed").chars().take(300).collect::<String>();
-            if let Ok(c) = app.pool.get().await {
-                let _ = c
-                    .execute("UPDATE shares SET state = 'failed', error = $2 WHERE id = $1 AND state = 'uploading'", &[&id, &message])
-                    .await;
+        loop {
+            run_upload(&app, &id).await;
+            let mut running = RUNNING.lock().unwrap();
+            if running.get(&id) == Some(&true) {
+                running.insert(id.clone(), false);
+            } else {
+                running.remove(&id);
+                break;
             }
         }
     });
+}
+
+async fn run_upload(app: &AppState, id: &str) {
+    let Err(e) = upload(app, id).await else { return };
+    tracing::warn!("share {id}: {e:#}");
+    let message = format!("{e:#}").lines().next().unwrap_or("upload failed").chars().take(300).collect::<String>();
+    if let Ok(c) = app.pool.get().await {
+        let _ = c
+            .execute("UPDATE shares SET state = 'failed', error = $2 WHERE id = $1 AND state = 'uploading'", &[&id, &message])
+            .await;
+    }
+}
+
+/// An album with a live link changed (photos added or removed, renamed): the
+/// link follows it. New files go up, the manifest is written again; the link
+/// keeps working with the old contents meanwhile.
+pub async fn album_changed(app: &AppState, album: i64) -> Result<()> {
+    let c = app.pool.get().await?;
+    let Some(row) = c
+        .query_opt(
+            "SELECT s.id, a.title FROM shares s JOIN albums a ON a.id = s.album_id
+             WHERE s.album_id = $1 AND s.expires_at > now() ORDER BY s.created_at DESC LIMIT 1",
+            &[&album],
+        )
+        .await?
+    else {
+        return Ok(());
+    };
+    let (id, title): (String, String) = (row.get(0), row.get(1));
+    let assets: Vec<String> = c
+        .query(
+            &format!(
+                "SELECT assets.id FROM assets JOIN album_assets aa ON aa.asset_id = assets.id
+                 WHERE aa.album_id = $1 AND {VISIBLE}
+                 ORDER BY assets.taken_at NULLS LAST, assets.id"
+            ),
+            &[&album],
+        )
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    if assets.is_empty() {
+        // nothing left to show: the link goes
+        c.execute("DELETE FROM shares WHERE id = $1", &[&id]).await?;
+        if let Some(remote) = Remote::new(app) {
+            let _ = remote.delete(&id).await;
+        }
+        return Ok(());
+    }
+    c.execute(
+        "UPDATE shares SET asset_ids = $2, title = $3, state = 'uploading', error = NULL WHERE id = $1",
+        &[&id, &assets, &title],
+    )
+    .await?;
+    spawn_upload(app.clone(), id);
+    Ok(())
+}
+
+/// The album is being deleted: its link ends with it.
+pub async fn album_removed(app: &AppState, album: i64) -> Result<()> {
+    let c = app.pool.get().await?;
+    let ids: Vec<String> =
+        c.query("DELETE FROM shares WHERE album_id = $1 RETURNING id", &[&album]).await?.iter().map(|r| r.get(0)).collect();
+    if let Some(remote) = Remote::new(app) {
+        for id in ids {
+            if let Err(e) = remote.delete(&id).await {
+                tracing::warn!("share {id}: removing its files failed, the Worker's cron will: {e:#}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Assets left the library's view (archived, locked, trashed, deleted): they
+/// leave every link that shows them, at once.
+pub async fn assets_hidden(app: &AppState, ids: &[String]) -> Result<()> {
+    let c = app.pool.get().await?;
+    let rows = c
+        .query(
+            "SELECT id, album_id FROM shares WHERE asset_ids && $1 AND expires_at > now()",
+            &[&ids],
+        )
+        .await?;
+    for r in rows {
+        let (id, album): (String, Option<i64>) = (r.get(0), r.get(1));
+        if let Some(album) = album {
+            album_changed(app, album).await?;
+            continue;
+        }
+        let left = c
+            .query_one(
+                "UPDATE shares SET asset_ids = array(SELECT x FROM unnest(asset_ids) x WHERE x <> ALL($2)),
+                                   state = 'uploading', error = NULL
+                 WHERE id = $1 RETURNING cardinality(asset_ids)",
+                &[&id, &ids],
+            )
+            .await?
+            .get::<_, i32>(0);
+        if left == 0 {
+            c.execute("DELETE FROM shares WHERE id = $1", &[&id]).await?;
+            if let Some(remote) = Remote::new(app) {
+                let _ = remote.delete(&id).await;
+            }
+        } else {
+            spawn_upload(app.clone(), id);
+        }
+    }
+    Ok(())
 }
 
 /// One file of a share.
@@ -289,7 +439,19 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     let manifest_items: Vec<Value> = items.iter().map(|i| i.json.clone()).collect();
     let files: Vec<File> = items.into_iter().flat_map(|i| i.files).collect();
     let total = Arc::new(AtomicI64::new(total));
-    stream::iter(files.into_iter().map(Ok::<_, anyhow::Error>))
+    // the bytes sent so far reach the database once a second, so the app sees
+    // the progress move part by part, not file by file
+    let reporting = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    tokio::spawn({
+        let (app, id, done, total, reporting) = (app.clone(), id.to_string(), done.clone(), total.clone(), reporting.clone());
+        async move {
+            while reporting.load(Ordering::Relaxed) {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let _ = set_progress(&app, &id, done.load(Ordering::Relaxed), total.load(Ordering::Relaxed)).await;
+            }
+        }
+    });
+    let sent = stream::iter(files.into_iter().map(Ok::<_, anyhow::Error>))
         .try_for_each_concurrent(PARALLEL, |file| {
             let (remote, done, total) = (&remote, done.clone(), total.clone());
             async move {
@@ -300,16 +462,29 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
                 let path = materialize(app, &file).await?;
                 let size = tokio::fs::metadata(&path).await?.len();
                 total.fetch_add(size as i64 - estimated, Ordering::Relaxed);
-                let result = with_retries(|| remote.put_file(id, file.kind, &file.asset, &path, &file.mime, size)).await;
+                // what this file has added to `done`; a retry starts it over
+                let credited = AtomicI64::new(0);
+                let report = |n: u64| {
+                    credited.fetch_add(n as i64, Ordering::Relaxed);
+                    done.fetch_add(n as i64, Ordering::Relaxed);
+                };
+                let result = with_retries(|| {
+                    done.fetch_sub(credited.swap(0, Ordering::Relaxed), Ordering::Relaxed);
+                    remote.put_file(id, file.kind, &file.asset, &path, &file.mime, size, &report)
+                })
+                .await;
                 if matches!(file.source, Source::Transcode { .. }) {
                     let _ = tokio::fs::remove_file(&path).await;
                 }
                 result.with_context(|| format!("{} of {}", file.kind, &file.asset[..12]))?;
-                let now = done.fetch_add(size as i64, Ordering::Relaxed) + size as i64;
-                set_progress(app, id, now, total.load(Ordering::Relaxed)).await
+                done.fetch_add(size as i64 - credited.load(Ordering::Relaxed), Ordering::Relaxed);
+                Ok(())
             }
         })
-        .await?;
+        .await;
+    reporting.store(false, Ordering::Relaxed);
+    sent?;
+    set_progress(app, id, done.load(Ordering::Relaxed), total.load(Ordering::Relaxed)).await?;
 
     if !still_wanted(app, id).await? {
         return Ok(());
@@ -323,7 +498,7 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     });
     with_retries(|| remote.manifest(id, &manifest)).await.context("manifest")?;
     let c = app.pool.get().await?;
-    c.execute("UPDATE shares SET state = 'ready', password = NULL, error = NULL WHERE id = $1", &[&id]).await?;
+    c.execute("UPDATE shares SET state = 'ready', live = true, error = NULL WHERE id = $1", &[&id]).await?;
     tracing::info!("share {id}: live, {} items", manifest_items.len());
     Ok(())
 }
@@ -564,7 +739,18 @@ impl Remote {
     }
 
     /// Stores one file, skipping one already there at the same size.
-    async fn put_file(&self, id: &str, kind: &str, asset: &str, path: &Path, mime: &str, size: u64) -> Result<()> {
+    /// `sent` hears the bytes of every part as it lands.
+    #[allow(clippy::too_many_arguments)]
+    async fn put_file(
+        &self,
+        id: &str,
+        kind: &str,
+        asset: &str,
+        path: &Path,
+        mime: &str,
+        size: u64,
+        sent: &(dyn Fn(u64) + Sync),
+    ) -> Result<()> {
         let url = self.file_url(id, kind, asset);
         let head = self.http.head(&url).bearer_auth(&self.token).send().await?;
         if head.status().is_success() && head.content_length() == Some(size) {
@@ -600,6 +786,7 @@ impl Remote {
             })
             .await?;
             parts.push(json!({ "part": n, "etag": part.etag }));
+            sent(read as u64);
             if read < PART {
                 break;
             }

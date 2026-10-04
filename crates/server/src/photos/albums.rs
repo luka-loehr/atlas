@@ -99,11 +99,15 @@ pub async fn rename(State(app): State<AppState>, Path(id): Path<i64>, Json(b): J
     if n == 0 {
         return Err(ApiError::NotFound);
     }
+    follow(&app, id).await;
     Ok(Json(json!({ "id": id, "title": title })))
 }
 
 /// Deletes the album only; its assets stay in the library.
 pub async fn remove(State(app): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    if let Err(e) = crate::share::album_removed(&app, id).await {
+        tracing::warn!("album {id}: ending its share link failed: {e:#}");
+    }
     let c = app.pool.get().await?;
     let n = c.execute("DELETE FROM albums WHERE id = $1", &[&id]).await?;
     Ok(Json(json!({ "deleted": n })))
@@ -122,6 +126,7 @@ pub async fn add_assets(State(app): State<AppState>, Path(id): Path<i64>, Json(b
             &[&id, &b.ids],
         )
         .await?;
+    follow(&app, id).await;
     Ok(Json(json!({ "added": n })))
 }
 
@@ -130,5 +135,13 @@ pub async fn remove_assets(State(app): State<AppState>, Path(id): Path<i64>, Jso
     let n = c
         .execute("DELETE FROM album_assets WHERE album_id = $1 AND asset_id = ANY($2)", &[&id, &b.ids])
         .await?;
+    follow(&app, id).await;
     Ok(Json(json!({ "removed": n })))
+}
+
+/// The album's share link, if it has one, follows the change.
+async fn follow(app: &AppState, album: i64) {
+    if let Err(e) = crate::share::album_changed(app, album).await {
+        tracing::warn!("album {album}: updating its share link failed: {e:#}");
+    }
 }

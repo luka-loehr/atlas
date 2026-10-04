@@ -84,16 +84,18 @@ fn setup(args: &[String]) {
         _ => fail("could not create the R2 bucket (is R2 enabled on the account? dash.cloudflare.com → R2)"),
     }
     // the backstop for the 7-day rule: whatever is left in s/ goes after 8 days
-    let rule = wrangler(&[
+    let rules = wrangler(&["r2", "bucket", "lifecycle", "list", BUCKET]).output();
+    if rules.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("expire-shares")) {
+        println!("  lifecycle rule exists");
+    } else if wrangler(&[
         "r2", "bucket", "lifecycle", "add", BUCKET, "expire-shares", "s/", "--expire-days", "8", "--force",
     ])
-    .output();
-    match rule {
-        Ok(o) if o.status.success() => println!("  lifecycle: files expire after 8 days"),
-        Ok(o) if String::from_utf8_lossy(&[o.stdout.as_slice(), o.stderr.as_slice()].concat()).contains("already exists") => {
-            println!("  lifecycle rule exists")
-        }
-        _ => fail("could not add the R2 lifecycle rule"),
+    .output()
+    .is_ok_and(|o| o.status.success())
+    {
+        println!("  lifecycle: files expire after 8 days");
+    } else {
+        fail("could not add the R2 lifecycle rule");
     }
 
     // deploy before the secrets: `secret put` on a Worker that does not exist

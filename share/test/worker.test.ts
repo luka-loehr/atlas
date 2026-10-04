@@ -144,8 +144,13 @@ describe("public", () => {
     expect(html).toContain(`<script nonce="${nonce}">`);
   });
 
-  it("404 for unknown, 410 for expired", async () => {
-    expect((await call(`/s/${ID}`)).status).toBe(404);
+  it("404 for unknown, 202 while uploading, 410 for expired", async () => {
+    const other = "Zz9" + ID.slice(3);
+    expect((await call(`/s/${other}`)).status).toBe(404);
+    await bucket.put(`s/${other}/t/${A1}`, "thumb");
+    const r = await call(`/s/${other}`);
+    expect(r.status).toBe(202);
+    expect(r.headers.get("Refresh")).toBe("15");
     expect((await call(`/s/short`)).status).toBe(404);
     const now = Math.floor(Date.now() / 1000);
     await bucket.put(`s/${ID}/share.json`, JSON.stringify({ ...manifest(), password_hash: null, expires_at: now - 1, created_at: now - 100 }));
