@@ -5,7 +5,7 @@ import { contentSecurityPolicy, creatingPage, galleryPage, gatePage, newNonce, n
 import { ASSET_ID_RE, fileKey, isFileKind, isLive, type Manifest, type Progress, SHARE_ID_RE } from "./manifest";
 import { parseRange } from "./range";
 import { type Env, loadManifest, loadProgress } from "./store";
-import { planZip, zipStream } from "./zip";
+import { planZip, zipPipe, zipStream } from "./zip";
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -307,7 +307,9 @@ async function serveZip(request: Request, env: Env, id: string): Promise<Respons
   const items = m.items.filter((it) => sizes.has(it.id));
   if (items.length === 0) return fileError(404);
 
-  const plan = planZip(items.map((it) => ({ name: it.name, size: sizes.get(it.id)!, mtime: it.taken ?? m.created_at })));
+  const plan = planZip(
+    items.map((it) => ({ name: it.name, size: sizes.get(it.id)!, mtime: it.taken ?? m.created_at, crc: it.crc32 })),
+  );
   const headers = new Headers({
     "Content-Type": "application/zip",
     "Content-Disposition": contentDisposition(zipName(m.title)),
@@ -320,10 +322,18 @@ async function serveZip(request: Request, env: Env, id: string): Promise<Respons
   });
   if (request.method === "HEAD") return new Response(null, { status: 200, headers });
 
-  const zip = zipStream(plan, async (i) => {
+  const open = async (i: number) => {
     const obj = await env.SHARES.get(fileKey(id, "o", items[i]!.id));
     return obj ? (obj.body as ReadableStream<Uint8Array>) : null;
-  });
+  };
+  // atlas sends every original's CRC: the bytes go from R2 to the recipient
+  // untouched; without them (older shares) they are checksummed on the way
+  if (typeof FixedLengthStream === "function" && plan.entries.every((e) => e.crc !== undefined)) {
+    const fixed = new FixedLengthStream(plan.size);
+    zipPipe(plan, open, fixed.writable).catch((e) => console.error("zip failed", id, e));
+    return new Response(fixed.readable, { status: 200, headers });
+  }
+  const zip = zipStream(plan, open);
   // On Cloudflare a streamed body keeps its Content-Length only through a
   // FixedLengthStream; elsewhere (tests) the stream is sent as is.
   if (typeof FixedLengthStream === "function") {

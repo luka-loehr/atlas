@@ -184,6 +184,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "clap",
+ "crc32fast",
  "deadpool-postgres",
  "fast_image_resize",
  "flate2",

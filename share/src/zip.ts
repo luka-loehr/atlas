@@ -101,6 +101,8 @@ export interface ZipInput {
   size: number;
   /** wall time in unix seconds, or null (1980-01-01) */
   mtime: number | null;
+  /** known CRC-32: the header carries it and no data descriptor follows */
+  crc?: number;
 }
 
 export interface ZipEntry {
@@ -114,6 +116,8 @@ export interface ZipEntry {
   /** the central directory's zip64 extra carries the sizes / the offset */
   size64: boolean;
   offset64: boolean;
+  /** CRC known before the data: in the local header, no descriptor */
+  crc?: number;
 }
 
 export interface ZipPlan {
@@ -132,7 +136,8 @@ export interface ZipPlan {
 const enc = new TextEncoder();
 
 const localLength = (e: ZipEntry) => 30 + e.name.length + (e.big ? 20 : 0);
-const descriptorLength = (e: ZipEntry) => (e.big ? 24 : 16);
+const descriptorLength = (e: ZipEntry) => (e.crc !== undefined ? 0 : e.big ? 24 : 16);
+const flags = (e: ZipEntry) => (e.crc !== undefined ? FLAGS & ~0x0008 : FLAGS);
 const centralFields = (e: ZipEntry) => (e.size64 ? 2 : 0) + (e.offset64 ? 1 : 0);
 function centralLength(e: ZipEntry): number {
   const f = centralFields(e);
@@ -159,6 +164,7 @@ export function planZip(inputs: ZipInput[], force64 = false): ZipPlan {
       big,
       size64: big,
       offset64: force64 || offset >= MAX32,
+      ...(input.crc === undefined ? {} : { crc: input.crc >>> 0 }),
     };
     offset += localLength(e) + e.size + descriptorLength(e);
     return e;
@@ -212,13 +218,20 @@ function localHeader(e: ZipEntry): Uint8Array {
   const w = new Writer(localLength(e));
   w.u32(0x04034b50);
   w.u16(e.big || e.offset64 ? 45 : 20);
-  w.u16(FLAGS);
+  w.u16(flags(e));
   w.u16(0); // STORE
   w.u16(e.time);
   w.u16(e.date);
-  w.u32(0); // CRC, sizes: in the data descriptor (bit 3)
-  w.u32(e.big ? MAX32 : 0);
-  w.u32(e.big ? MAX32 : 0);
+  if (e.crc !== undefined) {
+    // known up front: CRC and sizes right here, no descriptor
+    w.u32(e.crc);
+    w.u32(e.big ? MAX32 : e.size);
+    w.u32(e.big ? MAX32 : e.size);
+  } else {
+    w.u32(0); // CRC, sizes: in the data descriptor (bit 3)
+    w.u32(e.big ? MAX32 : 0);
+    w.u32(e.big ? MAX32 : 0);
+  }
   w.u16(e.name.length);
   w.u16(e.big ? 20 : 0);
   w.raw(e.name);
@@ -253,7 +266,7 @@ export function zipTrailer(plan: ZipPlan, crcs: ArrayLike<number>): Uint8Array {
     w.u32(0x02014b50);
     w.u16(MADE_BY);
     w.u16(fields || e.big ? 45 : 20);
-    w.u16(FLAGS);
+    w.u16(flags(e));
     w.u16(0); // STORE
     w.u16(e.time);
     w.u16(e.date);
@@ -369,4 +382,33 @@ export function zipStream(
     },
     { highWaterMark: 0 },
   );
+}
+
+/**
+ * The archive written into `out` when every CRC is known: headers from here,
+ * the files piped straight from R2 into the output. No byte of a photo passes
+ * through JavaScript, so a multi-GB album costs the Worker almost no CPU
+ * (the Free plan allows 10 ms per request).
+ */
+export async function zipPipe(
+  plan: ZipPlan,
+  open: (index: number) => Promise<ReadableStream<Uint8Array> | null>,
+  out: WritableStream<Uint8Array>,
+): Promise<void> {
+  const write = async (b: Uint8Array) => {
+    const w = out.getWriter();
+    await w.write(b);
+    w.releaseLock();
+  };
+  for (let i = 0; i < plan.entries.length; i++) {
+    const e = plan.entries[i]!;
+    if (e.crc === undefined) throw new Error("zip: zipPipe needs every CRC");
+    await write(localHeader(e));
+    const body = await open(i);
+    if (!body) throw new Error(`zip: entry ${i} is missing`);
+    await body.pipeTo(out, { preventClose: true });
+  }
+  const w = out.getWriter();
+  await w.write(zipTrailer(plan, plan.entries.map((e) => e.crc!)));
+  await w.close();
 }
