@@ -33,3 +33,9 @@ Secrets.swift
 .env.*
 !.env.example
 *.local
+
+# atlas-share (Cloudflare Worker): dependencies, local wrangler state and
+# local secrets for `wrangler dev`.
+share/node_modules/
+.wrangler/
+.dev.vars*

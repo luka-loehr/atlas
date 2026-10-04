@@ -1,0 +1,15 @@
+// atlas-share. No account id here: wrangler uses the account you are logged
+// in to. Secrets (SHARE_TOKEN, SESSION_SECRET) are set with
+// `npx wrangler secret put`, never in this file.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "atlas-share",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "r2_buckets": [{ "binding": "SHARES", "bucket_name": "atlas-share" }],
+  // Daily sweep of expired shares (03:17 UTC).
+  "triggers": { "crons": ["17 3 * * *"] },
+  "observability": { "enabled": true }
+}
