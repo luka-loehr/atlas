@@ -165,6 +165,11 @@ async fn serve(pool: Pool) -> Result<()> {
                 Ok(n) => tracing::info!("trash: removed {n} files older than {} days", photos::assets::TRASH_DAYS),
                 Err(e) => tracing::warn!("trash: file purge failed: {}", e.message()),
             }
+            match photos::people::tidy(&trash_app).await {
+                Ok((0, 0)) => {}
+                Ok((removed, covers)) => tracing::info!("people: removed {removed} without faces, set {covers} covers"),
+                Err(e) => tracing::warn!("people: tidy failed: {}", e.message()),
+            }
         }
     });
 

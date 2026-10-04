@@ -16,6 +16,10 @@ struct AlbumsScreen: View {
     @State private var openAlbum: Album?
     @State private var openSpecial: SpecialKind?
     @State private var authing = false
+    @State private var naming = false
+    @State private var renaming: Album?
+    @State private var deleting: Album?
+    @State private var changeFailed = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +36,11 @@ struct AlbumsScreen: View {
             .background(Color(.systemBackground))
             .refreshable { await load(); await loadCounts() }
             .navigationTitle("Albums")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("New Album", systemImage: "plus") { naming = true }
+                }
+            }
             .navigationDestination(item: $openAlbum) { album in
                 AlbumScreen(library: library, album: album)
             }
@@ -56,6 +65,57 @@ struct AlbumsScreen: View {
             guard let id else { return }
             Task { await follow(id) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .atlasAlbumsChanged)) { _ in
+            Task { await load() }
+        }
+        .albumNameAlert("New Album", isPresented: $naming) { title in
+            Task {
+                do {
+                    let album = try await library.client.createAlbum(title)
+                    await load()
+                    openSpecial = nil
+                    openAlbum = albums.first { $0.id == album.id } ?? album
+                } catch {
+                    changeFailed = true
+                }
+            }
+        }
+        .albumNameAlert("Rename Album", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }),
+                        initial: renaming?.title ?? "") { title in
+            guard let album = renaming, title != album.title else { return }
+            change { try await library.client.renameAlbum(album.id, to: title) }
+        }
+        .confirmationDialog("Delete “\(deleting?.title ?? "")”?",
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete Album", role: .destructive) {
+                guard let album = deleting else { return }
+                change { try await library.client.deleteAlbum(album.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The photos stay in your library.")
+        }
+        .changeFailedAlert($changeFailed)
+    }
+
+    /// An album change from this screen; the list is read again after it.
+    private func change(_ op: @escaping () async throws -> Void) {
+        Task {
+            do {
+                try await op()
+                await load()
+            } catch {
+                changeFailed = true
+            }
+        }
+    }
+
+    /// Long press on an album: rename or delete it.
+    @ViewBuilder
+    private func albumMenu(_ album: Album) -> some View {
+        Button("Rename", systemImage: "pencil") { renaming = album }
+        Button("Delete Album", systemImage: "trash", role: .destructive) { deleting = album }
     }
 
     // MARK: - Albums
@@ -75,7 +135,7 @@ struct AlbumsScreen: View {
         }
         if list.isEmpty {
             if loaded {
-                Text("Albums from your server appear here.")
+                Text("Tap + to make an album.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 20)
@@ -84,7 +144,7 @@ struct AlbumsScreen: View {
                 AlbumCarousel(library: library, albums: [], placeholders: 4) { _ in }
             }
         } else {
-            AlbumCarousel(library: library, albums: list) { openAlbum = $0 }
+            AlbumCarousel(library: library, albums: list, menu: { AnyView(albumMenu($0)) }) { openAlbum = $0 }
         }
     }
 
@@ -227,6 +287,7 @@ private struct AlbumCarousel: View {
     var library: Library
     var albums: [Album]
     var placeholders = 0
+    var menu: ((Album) -> AnyView)? = nil
     var open: (Album) -> Void
 
     private var rows: Int { albums.count > 4 || placeholders > 2 ? 2 : 1 }
@@ -242,6 +303,7 @@ private struct AlbumCarousel: View {
                             if let album = albums[safe: i] {
                                 Button { open(album) } label: { AlbumTile(library: library, album: album) }
                                     .buttonStyle(.plain)
+                                    .contextMenu { menu?(album) }
                             } else {
                                 AlbumTile.placeholder
                             }
@@ -645,51 +707,144 @@ struct SpecialCollectionScreen: View {
     }
 }
 
-/// One album's photos (reuses the grid + viewer).
+/// One album's photos, with adding, removing, renaming and deleting.
 struct AlbumScreen: View {
     var library: Library
     var album: Album
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
     @State private var assets: [Asset] = []
+    @State private var loaded = false
     @State private var pick: Asset?
+    @State private var selection = Selection()
+    @State private var picking = false
+    @State private var renaming = false
+    @State private var confirmDelete = false
+    @State private var busy = false
+    @State private var changeFailed = false
     @Namespace private var zoom
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            ScrollView {
-                LazyVGrid(columns: cols, spacing: 2) {
-                    ForEach(assets) { asset in
-                        Color.clear.aspectRatio(1, contentMode: .fill)
-                            .overlay { Thumb(url: library.client.thumbURL(asset.id, 512)).clipped() }
-                            .clipped()
-                            .overlay(alignment: .bottomTrailing) {
-                                if asset.isVideo {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .shadow(radius: 2)
-                                        .padding(5)
-                                }
+            if assets.isEmpty && loaded {
+                ContentUnavailableView {
+                    Label("No Photos", systemImage: "photo.on.rectangle")
+                } actions: {
+                    Button("Add Photos") { picking = true }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: cols, spacing: 2) {
+                        ForEach(assets) { asset in
+                            SelectableThumb(asset: asset,
+                                            thumbURL: library.client.thumbURL(asset.id, 512),
+                                            selection: selection, namespace: zoom) { pick = asset }
+                                .assetAccessibility(asset, selected: selection.active ? selection.contains(asset.id) : nil)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+                .scrollIndicators(.hidden)
+                .refreshable { await load() }
+                .selectionToolbar(selection, actions: [
+                    .init(title: "Remove from Album", icon: "minus.circle", role: .destructive) { removeSelected() },
+                ])
+            }
+            if busy {
+                ProgressView().padding(20)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
+        .navigationTitle(title.isEmpty ? album.title : title)
+        .navigationSubtitle(loaded ? (assets.count == 1 ? "1 Item" : "\(assets.count.formatted()) Items")
+                                   : (album.count == 1 ? "1 Item" : "\(album.count.formatted()) Items"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if selection.active {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { withAnimation(.snappy) { selection.exit() } }
+                }
+            } else {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Add Photos", systemImage: "plus") { picking = true }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu("More", systemImage: "ellipsis") {
+                        if !assets.isEmpty {
+                            Button("Select", systemImage: "checkmark.circle") {
+                                withAnimation(.snappy) { selection.enter() }
                             }
-                            .contentShape(Rectangle())
-                            .matchedTransitionSource(id: asset.id, in: zoom)
-                            .onTapGesture { pick = asset }
-                            .assetAccessibility(asset)
+                        }
+                        Button("Rename", systemImage: "pencil") { renaming = true }
+                        Button("Delete Album", systemImage: "trash", role: .destructive) { confirmDelete = true }
                     }
                 }
-                .padding(.horizontal, 2)
             }
-            .scrollIndicators(.hidden)
         }
-        .navigationTitle(album.title)
-        .navigationSubtitle(album.count == 1 ? "1 Item" : "\(album.count.formatted()) Items")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { assets = (try? await library.client.albumAssets(album.id)) ?? [] }
+        .task { await load() }
         .fullScreenCover(item: $pick) { a in
             ViewerScreen(library: library, assets: assets, start: a,
                          onRemoved: { id in assets.removeAll { $0.id == id } })
                 .navigationTransition(.zoom(sourceID: a.id, in: zoom))
+        }
+        .sheet(isPresented: $picking) {
+            PhotoPickerSheet(library: library, title: "Add to “\(title.isEmpty ? album.title : title)”") { ids in
+                act { try await library.client.addToAlbum(album.id, ids) }
+            }
+        }
+        .albumNameAlert("Rename Album", isPresented: $renaming, initial: title.isEmpty ? album.title : title) { new in
+            act {
+                try await library.client.renameAlbum(album.id, to: new)
+                title = new
+            }
+        }
+        .confirmationDialog("Delete “\(title.isEmpty ? album.title : title)”?", isPresented: $confirmDelete,
+                            titleVisibility: .visible) {
+            Button("Delete Album", role: .destructive) {
+                act {
+                    try await library.client.deleteAlbum(album.id)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The photos stay in your library.")
+        }
+        .changeFailedAlert($changeFailed)
+    }
+
+    private func load() async {
+        // a failed reload keeps what is shown
+        if let fresh = try? await library.client.albumAssets(album.id) { assets = fresh }
+        loaded = true
+    }
+
+    private func removeSelected() {
+        let ids = Array(selection.ids)
+        guard !ids.isEmpty else { return }
+        act {
+            try await library.client.removeFromAlbum(album.id, ids)
+            let gone = Set(ids)
+            withAnimation(.snappy) { assets.removeAll { gone.contains($0.id) } }
+            withAnimation(.snappy) { selection.exit() }
+        }
+    }
+
+    /// A change to this album, then the album and the Albums tab read again.
+    private func act(_ op: @escaping () async throws -> Void) {
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                try await op()
+                NotificationCenter.default.post(name: .atlasAlbumsChanged, object: nil)
+                await load()
+            } catch {
+                changeFailed = true
+            }
         }
     }
 }

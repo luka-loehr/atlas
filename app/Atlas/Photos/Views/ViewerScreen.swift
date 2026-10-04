@@ -40,6 +40,7 @@ struct ViewerScreen: View {
     @State private var favorites: [String: Bool] = [:]   // optimistic overrides
     @State private var busy = false
     @State private var changeFailed = false
+    @State private var albumAdd: AlbumAdd?
     // measured height of the bottom chrome stack (filmstrip + action bar) —
     // video controls anchor EXACTLY above it, overlap is structurally impossible
     @State private var chromeBottomHeight: CGFloat = 150
@@ -95,6 +96,9 @@ struct ViewerScreen: View {
         }
         .sheet(item: $shareBundle) { b in
             ShareSheet(items: b.urls).presentationDetents([.medium, .large])
+        }
+        .sheet(item: $albumAdd) { add in
+            AddToAlbumSheet(library: library, ids: add.ids)
         }
         .changeFailedAlert($changeFailed)
     }
@@ -159,6 +163,9 @@ struct ViewerScreen: View {
             Spacer(minLength: 8)
             .task(id: asset.id) { await loadPlaces(around: asset) }
             Menu {
+                Button { albumAdd = AlbumAdd(ids: [asset.id]) } label: {
+                    Label("Add to Album", systemImage: "rectangle.stack.badge.plus")
+                }
                 Button {
                     mutateAndRemove { try await library.client.archive([$0], true) }
                 } label: { Label("Archive", systemImage: "archivebox") }

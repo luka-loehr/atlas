@@ -86,15 +86,13 @@ struct AlbumWidgetView: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             if let image = WidgetImage.load(entry.file, fill: entry.size, scale: scale) {
-                // the photo fills the widget without widening the layout,
-                // so the caption stays inside it
-                Color.clear
-                    .overlay {
-                        Image(uiImage: image)
-                            .resizable()
-                            .widgetAccentedRenderingMode(.accentedDesaturated)
-                            .scaledToFill()
-                    }
+                // already cut to the widget's shape, so filling cannot leave
+                // bars, in any Home Screen look (tinted and clear included)
+                Image(uiImage: image)
+                    .resizable()
+                    .widgetAccentedRenderingMode(.accentedDesaturated)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                     .accessibilityLabel(label)
             } else {
@@ -174,7 +172,7 @@ struct AlbumWidgetView: View {
 }
 
 /// Widgets have little memory: an image is decoded straight to the pixel
-/// size it fills, never at its full size.
+/// size it fills, never at its full size, and cut to the widget's shape.
 enum WidgetImage {
     static func load(_ url: URL?, fill size: CGSize, scale: CGFloat) -> UIImage? {
         guard let url, size.width > 0, size.height > 0,
@@ -192,6 +190,25 @@ enum WidgetImage {
             kCGImageSourceThumbnailMaxPixelSize: max(target, 1),
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
-        return UIImage(cgImage: cg)
+        return UIImage(cgImage: crop(cg, to: size.width / size.height) ?? cg)
+    }
+
+    /// The largest part of the image with the widget's aspect ratio:
+    /// centred across, a little above the middle on tall photos, where faces
+    /// usually are.
+    static func crop(_ image: CGImage, to aspect: CGFloat) -> CGImage? {
+        let w = CGFloat(image.width), h = CGFloat(image.height)
+        guard w > 0, h > 0, aspect > 0 else { return nil }
+        var rect = CGRect(x: 0, y: 0, width: w, height: h)
+        if w / h > aspect {
+            rect.size.width = (h * aspect).rounded()
+            rect.origin.x = ((w - rect.width) / 2).rounded()
+        } else if w / h < aspect {
+            rect.size.height = (w / aspect).rounded()
+            rect.origin.y = ((h - rect.height) * 0.4).rounded()
+        } else {
+            return image
+        }
+        return image.cropping(to: rect)
     }
 }
