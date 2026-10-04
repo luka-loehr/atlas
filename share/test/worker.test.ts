@@ -23,7 +23,7 @@ const admin = (path: string, init: RequestInit = {}) =>
 function manifest(over: Record<string, unknown> = {}) {
   const now = Math.floor(Date.now() / 1000);
   return {
-    title: "Zrmanja <Rafting>",
+    title: "Lake <Weekend>",
     expires_at: now + 3600,
     allow_download: false,
     password: null,
@@ -145,8 +145,8 @@ describe("public", () => {
     const r = await call(`/s/${ID}`);
     expect(r.status).toBe(200);
     const html = await r.text();
-    expect(html).toContain("Zrmanja &lt;Rafting&gt;");
-    expect(html).not.toContain("<Rafting>");
+    expect(html).toContain("Lake &lt;Weekend&gt;");
+    expect(html).not.toContain("<Weekend>");
     expect(html).toContain("1 photo, 1 video");
     expect(r.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     expect(r.headers.get("Cache-Control")).toBe("no-store");
@@ -164,7 +164,7 @@ describe("public", () => {
     const exp = Math.floor(Date.now() / 1000) + 3600;
     r = await admin(`/api/shares/${other}/progress`, {
       method: "PUT",
-      body: JSON.stringify({ title: "Rafting", count: 12, done_bytes: 50, total_bytes: 200, eta_s: 90, expires_at: exp }),
+      body: JSON.stringify({ title: "Weekend", count: 12, done_bytes: 50, total_bytes: 200, eta_s: 90, expires_at: exp }),
     });
     expect(r.status).toBe(200);
     r = await call(`/s/${other}/status`);
@@ -227,7 +227,7 @@ describe("public", () => {
   it("zips every original as one download", async () => {
     await putManifest({ allow_download: false });
     expect((await call(`/s/${ID}/zip`)).status).toBe(403);
-    await putManifest({ allow_download: true, title: "Zrmanja Rafting / Grüße" });
+    await putManifest({ allow_download: true, title: "Lake Weekend / Grüße" });
     await putFile("o", A2, "the-video-original", "video/quicktime");
     let r = await call(`/s/${ID}/zip`, { method: "HEAD" });
     expect(r.status).toBe(200);
@@ -237,7 +237,7 @@ describe("public", () => {
     expect(r.headers.get("Content-Type")).toBe("application/zip");
     expect(r.headers.get("Cache-Control")).toBe("private, no-store");
     expect(r.headers.get("Content-Disposition")).toBe(
-      `attachment; filename="Zrmanja Rafting Gr__e.zip"; filename*=UTF-8''Zrmanja%20Rafting%20Gr%C3%BC%C3%9Fe.zip`,
+      `attachment; filename="Lake Weekend Gr__e.zip"; filename*=UTF-8''Lake%20Weekend%20Gr%C3%BC%C3%9Fe.zip`,
     );
     const body = new Uint8Array(await r.arrayBuffer());
     // local headers: 2 × 30 + names (13 + 12), data 14 + 18, descriptors 2 × 16;
