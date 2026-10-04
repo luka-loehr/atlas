@@ -21,7 +21,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use futures_util::{TryStreamExt, stream};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -65,8 +65,9 @@ fn share_json(app: &App, r: &tokio_postgres::Row) -> Value {
         "done_bytes": r.get::<_, i64>(7),
         "total_bytes": r.get::<_, i64>(8),
         "error": r.get::<_, Option<String>>(9),
-        "created_at": r.get::<_, DateTime<Utc>>(10),
-        "expires_at": r.get::<_, DateTime<Utc>>(11),
+        // whole seconds: what the app's ISO 8601 decoder reads
+        "created_at": r.get::<_, DateTime<Utc>>(10).to_rfc3339_opts(SecondsFormat::Secs, true),
+        "expires_at": r.get::<_, DateTime<Utc>>(11).to_rfc3339_opts(SecondsFormat::Secs, true),
     })
 }
 
