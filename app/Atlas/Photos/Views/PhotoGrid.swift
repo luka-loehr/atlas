@@ -796,19 +796,6 @@ final class PhotoCell: UICollectionViewCell {
 
     fileprivate static let shadowPad: CGFloat = 4
 
-    private static func badge(_ name: String, size: CGFloat, weight: UIImage.SymbolWeight = .regular,
-                              colors: [UIColor], shadow: CGFloat) -> UIImage {
-        let cfg = UIImage.SymbolConfiguration(pointSize: size, weight: weight)
-            .applying(UIImage.SymbolConfiguration(paletteColors: colors))
-        let symbol = UIImage(systemName: name, withConfiguration: cfg) ?? UIImage()
-        let pad = shadowPad
-        let canvas = CGSize(width: symbol.size.width + pad * 2, height: symbol.size.height + pad * 2)
-        return UIGraphicsImageRenderer(size: canvas).image { ctx in
-            ctx.cgContext.setShadow(offset: .zero, blur: 3, color: UIColor.black.withAlphaComponent(shadow).cgColor)
-            symbol.draw(at: CGPoint(x: pad, y: pad))
-        }
-    }
-
     /// White check on a blue disc with a white rim, as in Photos.
     static let checkOn: UIImage = {
         let d: CGFloat = 20, pad = shadowPad

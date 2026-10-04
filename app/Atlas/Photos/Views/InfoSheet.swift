@@ -30,10 +30,10 @@ struct InfoSheet: View {
         }
         .presentationDragIndicator(.visible)
         .task {
-            async let i = library.client.assetInfo(asset.id)
-            async let f = library.client.assetFaces(asset.id)
-            info = try? await i
-            faces = (try? await f) ?? []
+            // one request: the detail carries the faces
+            guard let fresh = try? await library.client.assetInfo(asset.id) else { return }
+            info = fresh
+            faces = fresh.people
         }
     }
 
@@ -183,7 +183,7 @@ struct InfoSheet: View {
     }
 
     private func openInMaps(_ coord: CLLocationCoordinate2D) {
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
+        let item = MKMapItem(location: CLLocation(latitude: coord.latitude, longitude: coord.longitude), address: nil)
         item.name = info?.place ?? "Photo Location"
         item.openInMaps()
     }
@@ -288,11 +288,15 @@ struct InfoSheet: View {
 
     private func longDate(_ d: Date?) -> String {
         guard let d else { return "Unknown Date" }
+        return Self.longDateFormat.string(from: d)
+    }
+
+    private static let longDateFormat: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US")
         f.dateFormat = "EEEE, d MMMM yyyy 'at' HH:mm"
-        return f.string(from: d)
-    }
+        return f
+    }()
 }
 
 /// Minimal flow layout (wraps children like text). Children are proposed the

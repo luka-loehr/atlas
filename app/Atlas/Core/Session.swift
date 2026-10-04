@@ -65,7 +65,6 @@ final class Session {
         config = nil
         info = nil
         reachability = .unknown
-        API.session.configuration.urlCache?.removeAllCachedResponses()
     }
 
     /// Ask the server who it is; the answer is the app's idea of "online".
@@ -79,14 +78,6 @@ final class Session {
         } catch is CancellationError {
         } catch {
             reachability = .offline
-        }
-    }
-
-    func noteFailure(_ error: Error) {
-        switch error {
-        case APIError.unreachable: reachability = .offline
-        case APIError.unauthorized: reachability = .unauthorized
-        default: break
         }
     }
 

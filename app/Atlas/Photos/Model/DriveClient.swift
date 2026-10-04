@@ -175,9 +175,6 @@ struct DriveClient: Sendable {
         return url("/blobs/\(f.hash)/\(n)")
     }
 
-    /// A small preview of an image or of a PDF's first page.
-    func thumbURL(_ f: DriveFile) -> URL? { url("/files/\(f.id)/thumb") }
-
     /// Download into a per-hash temp dir named with the display name (QuickLook
     /// picks type + title from it). Cached by hash — a re-tap is instant.
     func download(_ f: DriveFile) async throws -> URL {

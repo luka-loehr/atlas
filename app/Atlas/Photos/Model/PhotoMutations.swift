@@ -88,30 +88,4 @@ extension PhotoClient {
         let data = try await sendRaw("POST", "/assets/exists", body: HashesBody(hashes: hashes))
         return Set(try Self.decoder.decode(R.self, from: data).have)
     }
-
-    // MARK: - Upload (PUT /v1/assets, the file as the body)
-
-    /// Uploads one asset straight from its exported file: the body is streamed
-    /// from disk, so a multi-gigabyte video costs no memory. `hash` is the
-    /// SHA-256 the phone computed; the server hashes what it receives and
-    /// refuses the upload if the two differ.
-    func upload(file: URL, filename: String, takenAt: Date?, hash: String) async throws {
-        guard let url = url("/assets") else { throw URLError(.badURL) }
-        var req = URLRequest(url: url, timeoutInterval: 3600)
-        req.httpMethod = "PUT"
-        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        AtlasAuth.apply(to: &req)
-        // header values travel as latin-1: names with umlauts are percent-encoded
-        let name = filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._"))) ?? "upload"
-        req.setValue(name, forHTTPHeaderField: "X-Filename")
-        req.setValue(hash, forHTTPHeaderField: "X-Content-Hash")
-        req.setValue("iphone", forHTTPHeaderField: "X-Source")
-        if let takenAt {
-            req.setValue(String(Int(takenAt.timeIntervalSince1970)), forHTTPHeaderField: "X-Taken-At")
-        }
-        let (_, resp) = try await URLSession.shared.upload(for: req, fromFile: file)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
 }

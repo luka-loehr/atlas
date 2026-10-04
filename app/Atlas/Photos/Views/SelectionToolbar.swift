@@ -1,82 +1,11 @@
 import SwiftUI
 
-/// Schwebende Aktions-Pille unten (Apple-Fotos-Stil, iOS-26 Liquid Glass).
-/// Teilen / Favorit / Archiv / Sperren / Papierkorb. Aktionen sind deaktiviert,
-/// solange nichts ausgewählt ist. Die Ein-/Ausblend-Animation liefert der
-/// `.selectionToolbar(…)`-Modifier weiter unten.
-struct SelectionToolbar: View {
-    var selection: Selection
-    var onShare: () -> Void
-    var onFavorite: () -> Void
-    var onArchive: () -> Void
-    var onLock: () -> Void
-    var onTrash: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            button("Share",       "square.and.arrow.up", action: onShare)
-            button("Favorite",    "heart",               action: onFavorite)
-            button("Archive",     "archivebox",          action: onArchive)
-            button("Lock",        "lock",                action: onLock)
-            button("Delete",      "trash", tint: .red,   action: onTrash)
-        }
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)      // iOS 26 Liquid Glass
-        .padding(.horizontal, 18)
-        .padding(.bottom, 6)
-        .disabled(selection.isEmpty)
-        .opacity(selection.isEmpty ? 0.5 : 1)
-        .animation(.snappy(duration: 0.3), value: selection.isEmpty)
-    }
-
-    private func button(_ title: String, _ icon: String,
-                        tint: Color = .primary,
-                        action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: icon).font(.title3)
-                Text(title).font(.caption2.weight(.medium)).lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .foregroundStyle(tint)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-extension View {
-    /// Blendet die `SelectionToolbar` als unteren Safe-Area-Inset ein, sobald
-    /// `selection.active` ist — sanftes Feder-Slide-in von unten (Apple-Ton).
-    /// Legt sich um den Grid-Container (schiebt Content sauber hoch).
-    func selectionToolbar(_ selection: Selection,
-                          onShare: @escaping () -> Void,
-                          onFavorite: @escaping () -> Void,
-                          onArchive: @escaping () -> Void,
-                          onLock: @escaping () -> Void,
-                          onTrash: @escaping () -> Void) -> some View {
-        safeAreaInset(edge: .bottom) {
-            if selection.active {
-                SelectionToolbar(selection: selection,
-                                 onShare: onShare,
-                                 onFavorite: onFavorite,
-                                 onArchive: onArchive,
-                                 onLock: onLock,
-                                 onTrash: onTrash)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: selection.active)
-    }
-}
-
 // MARK: - Generic action toolbar (Dienstprogramme: Wiederherstellen/Löschen …)
 
 /// Eine frei definierbare Auswahl-Aktion für `.selectionToolbar(_:actions:)`.
 struct SelectionAction: Identifiable {
-    let id = UUID()
+    /// The title: stable across renders, so the buttons are not rebuilt.
+    var id: String { title }
     let title: String
     let icon: String
     var role: ButtonRole? = nil
