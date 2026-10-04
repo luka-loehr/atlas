@@ -70,7 +70,7 @@
 #        umask 077
 #        cat > ~/atlas-secrets/cloudflare.env <<'EOF'
 #        CLOUDFLARE_API_TOKEN=<token with the permissions above>
-#        CF_ZONE_ID=579eafcb03283fdb369881f8040f7049
+#        CF_ZONE_ID=<the zone id from the domain's Overview page>
 #        CF_ZONE=your-domain.com
 #        # CF_ACCOUNT_ID=<optional; else resolved from the zone via Zone:Read>
 #        EOF
