@@ -6,6 +6,10 @@ export interface Env {
   SHARES: R2Bucket;
   SHARE_TOKEN?: string;
   SESSION_SECRET?: string;
+  /** Password tries per share and address (wrangler.jsonc); absent in tests. */
+  UNLOCK_LIMIT?: RateLimit;
+  /** Password tries per share from anywhere, against guessing from many addresses. */
+  UNLOCK_LIMIT_SHARE?: RateLimit;
 }
 
 export async function loadManifest(bucket: R2Bucket, id: string): Promise<Manifest | null> {

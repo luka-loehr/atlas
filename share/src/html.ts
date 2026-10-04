@@ -272,8 +272,9 @@ const GATE_CSS = `
 
 const ICON_LOCK = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.8"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>`;
 
-export function gatePage(nonce: string, id: string, title: string, wrong: boolean): string {
+export function gatePage(nonce: string, id: string, title: string, wrong: boolean | "limited"): string {
   const t = title || "Shared photos";
+  const err = wrong === "limited" ? "Too many tries. Wait a minute, then try again." : "Wrong password. Try again.";
   return shell({
     title: t,
     nonce,
@@ -284,7 +285,7 @@ export function gatePage(nonce: string, id: string, title: string, wrong: boolea
 <p class="line">Enter the password to view.</p>
 <form method="post" action="/s/${id}/unlock">
 <input type="password" name="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required autofocus>
-<button type="submit">View</button>${wrong ? `\n<p class="err" role="alert">Wrong password. Try again.</p>` : ""}
+<button type="submit">View</button>${wrong ? `\n<p class="err" role="alert">${err}</p>` : ""}
 </form>
 </div></main>${FOOTER}</div>`,
   });
