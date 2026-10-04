@@ -74,6 +74,8 @@ struct ViewerScreen: View {
         .statusBarHidden(!chrome)
         .preferredColorScheme(chrome ? nil : .dark)
         .onAppear {
+            // ready before the first video page needs it
+            PlaybackAudio.activate()
             pages = assets
             index = assets.firstIndex(of: start) ?? 0
             ViewerNow.show(pages[safe: index]?.id)
@@ -984,9 +986,10 @@ private struct VideoPlayer: View {
     @MainActor
     private func setup() async {
         guard player == nil, let url else { return }
-        // play sound even with the ringer/Focus on silent (like Photos/YouTube)
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // play sound even with the ringer/Focus on silent (like Photos/YouTube);
+        // activating the audio session can block for most of a second, so it
+        // never happens on the main thread, and only once
+        PlaybackAudio.activate()
         // through the media cache: its first seconds are usually on the
         // phone already (the viewer fetches them ahead), the rest streams
         let item = AVPlayerItem(asset: VideoCache.shared.asset(id: id, remote: url))
@@ -1069,3 +1072,21 @@ extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
+
+/// The audio session for video playback, set up once, off the main thread.
+/// `setActive(true)` talks to the audio server and can block the caller for
+/// hundreds of milliseconds; on the main thread that froze the swipe onto a
+/// video (iOS reported a ~1 s hang).
+enum PlaybackAudio {
+    private static let queue = DispatchQueue(label: "atlas.audio", qos: .userInitiated)
+
+    /// Cheap when the session is already active; the system may deactivate
+    /// it while the app is in the background, so it is simply asked again.
+    static func activate() {
+        queue.async {
+            let session = AVAudioSession.sharedInstance()
+            if session.category != .playback { try? session.setCategory(.playback, mode: .moviePlayback) }
+            try? session.setActive(true)
+        }
+    }
+}
