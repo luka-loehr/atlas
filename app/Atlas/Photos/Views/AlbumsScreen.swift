@@ -722,6 +722,7 @@ struct AlbumScreen: View {
     @State private var confirmDelete = false
     @State private var busy = false
     @State private var changeFailed = false
+    @State private var shareLink: ShareLinkItem?
     @Namespace private var zoom
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
@@ -778,6 +779,11 @@ struct AlbumScreen: View {
                                 withAnimation(.snappy) { selection.enter() }
                             }
                         }
+                        if library.sharing, !assets.isEmpty {
+                            Button("Share Link…", systemImage: "link") {
+                                shareLink = ShareLinkItem(title: title.isEmpty ? album.title : title, album: album.id)
+                            }
+                        }
                         Button("Rename", systemImage: "pencil") { renaming = true }
                         Button("Delete Album", systemImage: "trash", role: .destructive) { confirmDelete = true }
                     }
@@ -794,6 +800,9 @@ struct AlbumScreen: View {
             PhotoPickerSheet(library: library, title: "Add to “\(title.isEmpty ? album.title : title)”") { ids in
                 act { try await library.client.addToAlbum(album.id, ids) }
             }
+        }
+        .sheet(item: $shareLink) { item in
+            ShareLinkSheet(library: library, item: item)
         }
         .albumNameAlert("Rename Album", isPresented: $renaming, initial: title.isEmpty ? album.title : title) { new in
             act {
