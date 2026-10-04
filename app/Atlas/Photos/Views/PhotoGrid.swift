@@ -497,7 +497,15 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         let host = UIHostingController(rootView: viewer)
         host.modalPresentationStyle = .fullScreen
         host.modalPresentationCapturesStatusBarAppearance = true
-        host.preferredTransition = .zoom { [weak self] _ in self?.zoomSource() }
+        // swipe-down-to-close only for a clearly downward drag: a sideways
+        // swipe to the next photo must never be read as "close", whatever
+        // state the neighbouring page is in
+        let options = UIViewController.Transition.ZoomOptions()
+        options.interactiveDismissShouldBegin = { context in
+            let v = context.velocity
+            return context.willBegin && v.dy > 0 && v.dy > abs(v.dx) * 1.5
+        }
+        host.preferredTransition = .zoom(options: options) { [weak self] _ in self?.zoomSource() }
         present(host, animated: true)
     }
 

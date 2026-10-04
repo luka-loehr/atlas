@@ -553,6 +553,9 @@ private struct ZoomableScrollView: UIViewRepresentable {
         scroll.addGestureRecognizer(st)
 
         context.coordinator.onSingleTap = onSingleTap
+        // at zoom 1 the photo's own pan stays out of the way: the pager (left,
+        // right) and swipe-to-close (down) get every drag at once
+        scroll.panGestureRecognizer.isEnabled = false
         return scroll
     }
 
@@ -568,6 +571,11 @@ private struct ZoomableScrollView: UIViewRepresentable {
         var onSingleTap: () -> Void = {}
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            // panning around only makes sense while zoomed in
+            scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > 1.01
+        }
 
         @objc func singleTap(_ g: UITapGestureRecognizer) { onSingleTap() }
 
