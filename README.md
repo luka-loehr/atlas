@@ -14,6 +14,7 @@
 - **Search by content** "dog in the snow" finds it: one embedding model for photos, videos and text, scanned exactly in memory
 - **Faces** detection and recognition group photos into people you can name and merge
 - **Backup** the iPhone uploads originals, deduplicated by content hash, and can clear backed-up items off the phone
+- **Share links** albums or a few photos as a link (optional password), served from your own Cloudflare account so links work while the server sleeps, and gone after 7 days at the latest
 - **Drive** folders over content-addressed files, with previews, full-text search and a trash
 - **One app** Fotos, Alben, Dateien and Einstellungen, with live server status, power control and a terminal
 - **Built to feel instant** precomputed and compressed timeline, immutable media URLs, streaming uploads, video renditions on the GPU

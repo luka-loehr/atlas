@@ -391,6 +391,24 @@ atlas connect               # prints an atlas://connect?... link
 Open the link on the iPhone (or type the address and token on the app's
 first screen). Details: [app/README.md](../app/README.md).
 
+## 7b. Share links (optional)
+
+Share links let the app send an album or a few photos to anyone as a link.
+The files go to a Cloudflare Worker and R2 bucket on your own Cloudflare
+account ([share/](../share/)), so links work while the server is asleep, and
+each link expires after 7 days at the latest, which keeps the R2 bill near
+zero (10 GB are free). You need a Cloudflare account with R2 enabled once
+(dashboard → R2) and Node.js on the Mac. From the checkout:
+
+```bash
+atlas share setup     # logs in to Cloudflare, deploys, connects the server
+atlas share status    # live? how many links
+atlas share ls        # links, progress, time left · atlas share rm <id>
+```
+
+Then "Share Link…" appears in album menus and "Share as Link…" for selected
+photos in the app. Details in [share/README.md](../share/README.md).
+
 ## 8. Dev-subdomain proxy (optional — only for `atlas dev --public`)
 
 `atlas build` / `atlas dev` over the tailnet need nothing beyond the CLI

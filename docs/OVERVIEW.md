@@ -13,6 +13,7 @@
 | [`crates/core/`](../crates/core/) | What the two share: database setup, migrations, the job queue protocol |
 | [`crates/cli/`](../crates/cli/) | `atlas`, the CLI for the Mac: `boot` (Wake-on-LAN) \| `shutdown` \| `status` \| `deploy` \| `connect` \| `build` \| `dev` \| `secrets` \| any remote command. Full table in its [README](../crates/cli/README.md) |
 | [`app/`](../app/) | **Atlas**, the iOS app (SwiftUI): Fotos, Alben, Dateien, Einstellungen, search |
+| [`share/`](../share/) | `atlas-share`: the optional Cloudflare Worker + R2 bucket behind share links. atlas-server uploads a link's files, the Worker serves the page; every link expires within 7 days |
 | [`db/`](../db/) | Postgres 17 + pgvector in Docker, and the schema migrations |
 | [`builder/`](../builder/) | The images `atlas build` / `atlas dev` run in: one [universal Dockerfile](../builder/universal/Dockerfile) with three targets (`build`, `dev`, `mobile`), base-pinned |
 | [`proxy/`](../proxy/) | Base configs for the dev-subdomain proxy (host Caddy + named Cloudflare Tunnel) behind `atlas dev --public` URLs; installed by [`scripts/proxy/`](../scripts/proxy/) |
@@ -31,6 +32,9 @@
                   │ atlas-ml :8786  embeddings, faces (GPU)  │
  Internet ───CF──▶│ Caddy :8080 ← Cloudflare Tunnel (dev)    │
                   └──────────────────────────────────────────┘
+                         │ uploads share links
+                         ▼
+ Recipients ──────▶ atlas-share (Cloudflare Worker + R2), optional
 ```
 
 Everything meets on your private tailnet, except `atlas dev --public` URLs,

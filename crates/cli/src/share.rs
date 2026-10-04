@@ -96,6 +96,20 @@ fn setup(args: &[String]) {
         _ => fail("could not add the R2 lifecycle rule"),
     }
 
+    // deploy before the secrets: `secret put` on a Worker that does not exist
+    // yet stops to ask whether to make it
+    step("deploying the Worker");
+    let record = std::env::temp_dir().join(format!("atlas-share-deploy-{}.ndjson", std::process::id()));
+    let ok = run_inherit(wrangler(&["deploy"]).env("WRANGLER_OUTPUT_FILE_PATH", &record));
+    let printed = std::fs::read_to_string(&record).unwrap_or_default();
+    let _ = std::fs::remove_file(&record);
+    if !ok {
+        fail("wrangler deploy failed (a first deploy may ask you to pick a workers.dev subdomain in the dashboard)");
+    }
+    let url = custom_url.or_else(|| workers_dev_url(&printed)).unwrap_or_else(|| {
+        fail("deployed, but no workers.dev address was found; run again with --url https://…")
+    });
+
     step("secrets");
     // keep the server's token when there is one, so re-running changes nothing
     let existing = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_TOKEN=//p' {ENV_FILE}"));
@@ -106,17 +120,6 @@ fn setup(args: &[String]) {
     if !secrets.unwrap_or_default().contains("SESSION_SECRET") {
         put_secret(&dir, "SESSION_SECRET", &random_hex());
     }
-
-    step("deploying the Worker");
-    let out = wrangler(&["deploy"]).stderr(Stdio::inherit()).output().unwrap_or_else(|_| fail("wrangler deploy failed"));
-    let printed = String::from_utf8_lossy(&out.stdout).into_owned();
-    print!("{DIM}{printed}{RESET}");
-    if !out.status.success() {
-        fail("wrangler deploy failed");
-    }
-    let url = custom_url.or_else(|| workers_dev_url(&printed)).unwrap_or_else(|| {
-        fail("deployed, but no workers.dev address was printed; run again with --url https://…")
-    });
 
     step("connecting atlas");
     let script = format!(
@@ -188,9 +191,10 @@ fn random_hex() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// `https://atlas-share.<subdomain>.workers.dev` from wrangler's output.
+/// `https://atlas-share.<subdomain>.workers.dev` from wrangler's output
+/// record (one JSON object per line; the deploy entry lists its targets).
 fn workers_dev_url(printed: &str) -> Option<String> {
-    printed.split_whitespace().find_map(|word| {
+    printed.split(|c: char| c.is_whitespace() || c == '"' || c == ',' || c == '[' || c == ']').find_map(|word| {
         let word = word.trim_matches(|c: char| !c.is_ascii_graphic() || c == '(' || c == ')');
         (word.starts_with("https://") && word.ends_with(".workers.dev")).then(|| word.to_string())
     })
@@ -281,6 +285,8 @@ mod tests {
 
     #[test]
     fn finds_the_workers_dev_address() {
+        let record = r#"{"type":"deploy","version":1,"worker_name":"atlas-share","targets":["https://atlas-share.someone.workers.dev"]}"#;
+        assert_eq!(workers_dev_url(record).as_deref(), Some("https://atlas-share.someone.workers.dev"));
         let out = "Uploaded atlas-share (3.1 sec)\nDeployed atlas-share triggers (0.4 sec)\n  https://atlas-share.someone.workers.dev\n  schedule: 0 4 * * *";
         assert_eq!(workers_dev_url(out).as_deref(), Some("https://atlas-share.someone.workers.dev"));
         assert_eq!(workers_dev_url("nothing here"), None);
