@@ -102,7 +102,7 @@ final class Machine {
     private(set) var samples: [MetricSample] = []
     private(set) var snapshot: SystemSnapshot?
     private(set) var services: ServiceReport?
-    private(set) var isLive = false
+    @ObservationIgnored private let decoder = JSONDecoder()
 
     var latest: MetricSample? { samples.last }
 
@@ -135,21 +135,17 @@ final class Machine {
             do {
                 while !Task.isCancelled {
                     guard case .string(let text) = try await socket.receive(), let data = text.data(using: .utf8) else { continue }
-                    if let history = try? JSONDecoder().decode(History.self, from: data) {
+                    if let history = try? decoder.decode(History.self, from: data) {
                         samples = history.history
-                    } else if let sample = try? JSONDecoder().decode(MetricSample.self, from: data) {
+                    } else if let sample = try? decoder.decode(MetricSample.self, from: data) {
                         samples.append(sample)
                         if samples.count > 1200 { samples.removeFirst(samples.count - 1200) }
                     }
-                    isLive = true
                 }
-            } catch {
-                isLive = false
-            }
+            } catch {}
             socket.cancel(with: .goingAway, reason: nil)
             try? await Task.sleep(for: .seconds(3))
         }
-        isLive = false
     }
 }
 

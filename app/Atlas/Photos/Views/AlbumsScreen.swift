@@ -230,6 +230,7 @@ struct SpecialCollectionScreen: View {
     @State private var confirmEmpty = false
     @State private var confirmDelete = false
     @State private var busy = false
+    @State private var changeFailed = false
     @Namespace private var zoom
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
@@ -285,6 +286,7 @@ struct SpecialCollectionScreen: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .changeFailedAlert($changeFailed)
     }
 
     private var grid: some View {
@@ -337,29 +339,36 @@ struct SpecialCollectionScreen: View {
     }
 
     private func load() async {
+        // a failed reload keeps what is shown
         do {
             switch kind {
             case .locked:  assets = try await library.client.listLocked()
             case .archive: assets = try await library.client.listArchive()
             case .trash:   assets = try await library.client.listTrash()
             }
-        } catch { assets = [] }
+        } catch {}
         loaded = true
     }
 
-    /// Run a mutation, optionally drop `remove` ids from the local grid, refresh.
+    /// Run a mutation, then drop `remove` ids from the local grid (or reload
+    /// it), and refresh the timeline the items return to.
     private func act(remove: [String] = [], _ op: @escaping () async throws -> Void) {
         busy = true
         Task {
             defer { busy = false }
-            do { try await op() } catch {}
-            if remove.isEmpty {
-                await load()               // e.g. empty-trash: reload the (now empty) set
-            } else {
-                let gone = Set(remove)
-                withAnimation(.snappy) { assets.removeAll { gone.contains($0.id) } }
+            do {
+                try await op()
+                if remove.isEmpty {
+                    await load()               // e.g. empty-trash: reload the (now empty) set
+                } else {
+                    let gone = Set(remove)
+                    withAnimation(.snappy) { assets.removeAll { gone.contains($0.id) } }
+                }
+                // recovered, unarchived and unlocked items are back in the library
+                if kind != .trash || !remove.isEmpty { await library.refresh() }
+            } catch {
+                changeFailed = true
             }
-            await library.loadStats()
             withAnimation(.snappy) { selection.exit() }
         }
     }

@@ -67,6 +67,7 @@ struct DriveFolderScreen: View {
     @State private var importing = false
     @State private var uploadDone = 0
     @State private var uploadTotal = 0
+    @State private var changeFailed = false
 
     @State private var searchText = ""
     @State private var results: DriveListing?
@@ -107,7 +108,7 @@ struct DriveFolderScreen: View {
                 let name = newFolderName.trimmingCharacters(in: .whitespaces)
                 newFolderName = ""
                 guard !name.isEmpty else { return }
-                Task { try? await client.createFolder(parent: folder, name: name); await load() }
+                change { try await client.createFolder(parent: folder, name: name) }
             }
             Button("Cancel", role: .cancel) { newFolderName = "" }
         }
@@ -124,11 +125,12 @@ struct DriveFolderScreen: View {
         ) {
             Button("Delete Permanently", role: .destructive) {
                 guard let f = deletingFolder else { return }
-                Task { try? await client.deleteFolder(f.id); await load() }
+                change { try await client.deleteFolder(f.id) }
             }
         } message: {
             Text("The folder and the \(deletingFolder?.items ?? 0) files in it will be deleted permanently.")
         }
+        .changeFailedAlert($changeFailed)
     }
 
     private var content: some View {
@@ -328,9 +330,16 @@ struct DriveFolderScreen: View {
         renamingFile = nil
         renamingFolder = nil
         guard !name.isEmpty else { return }
+        change {
+            if let file { try await client.renameFile(file.id, to: name) }
+            if let dir { try await client.renameFolder(dir.id, to: name) }
+        }
+    }
+
+    /// A change on the server, then the folder as it is now.
+    private func change(_ op: @escaping () async throws -> Void) {
         Task {
-            if let file { try? await client.renameFile(file.id, to: name) }
-            if let dir { try? await client.renameFolder(dir.id, to: name) }
+            do { try await op() } catch { changeFailed = true }
             await load()
         }
     }
@@ -354,9 +363,13 @@ struct DriveFolderScreen: View {
 
     private func trash(_ f: DriveFile) {
         Task {
-            try? await client.trashFiles([f.id])
-            withAnimation(.snappy) { listing.files.removeAll { $0.id == f.id } }
-            results?.files.removeAll { $0.id == f.id }
+            do {
+                try await client.trashFiles([f.id])
+                withAnimation(.snappy) { listing.files.removeAll { $0.id == f.id } }
+                results?.files.removeAll { $0.id == f.id }
+            } catch {
+                changeFailed = true
+            }
         }
     }
 
@@ -365,29 +378,35 @@ struct DriveFolderScreen: View {
         Task {
             uploadDone = 0
             uploadTotal = urls.count
+            var failed = false
             for url in urls {
-                let scoped = url.startAccessingSecurityScopedResource()
                 // Kopie in tmp, damit der Upload nach Ende des Security-Scope
-                // noch aus der Datei streamen kann
+                // noch aus der Datei streamen kann; kopiert wird abseits des
+                // Main-Threads (ein Video sind Gigabytes)
                 let tmp = FileManager.default.temporaryDirectory
                     .appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
                 do {
-                    try FileManager.default.copyItem(at: url, to: tmp)
-                    if scoped { url.stopAccessingSecurityScopedResource() }
+                    try await Task.detached(priority: .userInitiated) {
+                        let scoped = url.startAccessingSecurityScopedResource()
+                        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                        try FileManager.default.copyItem(at: url, to: tmp)
+                    }.value
                     try await client.upload(file: tmp, name: url.lastPathComponent, folder: folder)
                 } catch {
-                    if scoped { url.stopAccessingSecurityScopedResource() }
+                    failed = true
                 }
                 try? FileManager.default.removeItem(at: tmp)
                 uploadDone += 1
             }
             uploadTotal = 0
+            if failed { changeFailed = true }
             await load()
         }
     }
 
     private func load() async {
-        listing = (try? await client.list(folder: folder)) ?? DriveListing()
+        // a failed reload keeps what is shown
+        if let fresh = try? await client.list(folder: folder) { listing = fresh }
         loaded = true
     }
 }
@@ -400,6 +419,7 @@ struct DriveTrashScreen: View {
     @State private var loaded = false
     @State private var confirmEmpty = false
     @State private var deleting: DriveFile?
+    @State private var changeFailed = false
 
     var body: some View {
         List {
@@ -451,7 +471,10 @@ struct DriveTrashScreen: View {
                     Button("Empty Trash", role: .destructive) { confirmEmpty = true }
                         .confirmationDialog("Empty Trash?", isPresented: $confirmEmpty, titleVisibility: .visible) {
                             Button("Delete Permanently", role: .destructive) {
-                                Task { try? await client.emptyTrash(); await load() }
+                                Task {
+                                    do { try await client.emptyTrash() } catch { changeFailed = true }
+                                    await load()
+                                }
                             }
                         } message: {
                             Text("All \(files.count) files will be deleted permanently.")
@@ -474,24 +497,32 @@ struct DriveTrashScreen: View {
         }
         .task { await load() }
         .refreshable { await load() }
+        .changeFailedAlert($changeFailed)
     }
 
     private func restore(_ f: DriveFile) {
-        Task {
-            try? await client.restore([f.id])
-            withAnimation(.snappy) { files.removeAll { $0.id == f.id } }
-        }
+        remove(f) { try await client.restore([f.id]) }
     }
 
     private func delete(_ f: DriveFile) {
+        remove(f) { try await client.deletePermanent([f.id]) }
+    }
+
+    /// The file leaves the trash once the server agreed.
+    private func remove(_ f: DriveFile, _ op: @escaping () async throws -> Void) {
         Task {
-            try? await client.deletePermanent([f.id])
-            withAnimation(.snappy) { files.removeAll { $0.id == f.id } }
+            do {
+                try await op()
+                withAnimation(.snappy) { files.removeAll { $0.id == f.id } }
+            } catch {
+                changeFailed = true
+            }
         }
     }
 
     private func load() async {
-        files = (try? await client.trash()) ?? []
+        // a failed reload keeps what is shown
+        if let fresh = try? await client.trash() { files = fresh }
         loaded = true
     }
 }
@@ -506,6 +537,7 @@ struct DriveMovePicker: View {
     var onDone: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var moveFailed = false
 
     var body: some View {
         NavigationStack {
@@ -520,12 +552,18 @@ struct DriveMovePicker: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .changeFailedAlert($moveFailed)
     }
 
     private func move(to folder: Int?) async {
-        switch target {
-        case .file(let f): try? await client.move(files: [f.id], to: folder)
-        case .folder(let d): try? await client.move(folders: [d.id], to: folder)
+        do {
+            switch target {
+            case .file(let f): try await client.move(files: [f.id], to: folder)
+            case .folder(let d): try await client.move(folders: [d.id], to: folder)
+            }
+        } catch {
+            moveFailed = true
+            return
         }
         onDone()
         dismiss()

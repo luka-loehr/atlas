@@ -90,6 +90,7 @@ struct PersonDetailScreen: View {
     @State private var pick: Asset?
     @State private var renaming = false
     @State private var newName = ""
+    @State private var changeFailed = false
     @Namespace private var zoom
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
@@ -155,13 +156,22 @@ struct PersonDetailScreen: View {
             TextField("Name", text: $newName)
             Button("Save") {
                 let name = newName.trimmingCharacters(in: .whitespaces)
+                let old = person.name
                 person.name = name.isEmpty ? nil : name
-                Task { try? await library.client.renamePerson(person.id, name: name) }
+                Task {
+                    do {
+                        try await library.client.renamePerson(person.id, name: name)
+                    } catch {
+                        person.name = old
+                        changeFailed = true
+                    }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("What’s this person’s name?")
         }
+        .changeFailedAlert($changeFailed)
         .task { assets = (try? await library.client.personAssets(person.id)) ?? [] }
         .fullScreenCover(item: $pick) { a in
             ViewerScreen(library: library, assets: assets, start: a)
