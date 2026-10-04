@@ -27,14 +27,15 @@ enum APIError: LocalizedError {
 struct API: Sendable {
     let config: ServerConfig
 
-    /// One session for the API. Its URL cache holds JSON answers (`cached`);
-    /// media lives in `MediaStore`.
+    /// One session for the API: server status and power, and the live
+    /// streams. Its answers are live, so nothing is cached; media lives in
+    /// `MediaStore`.
     static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpMaximumConnectionsPerHost = 12
         configuration.timeoutIntervalForRequest = 30
         configuration.waitsForConnectivity = false
-        configuration.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 64 << 20)
+        configuration.urlCache = nil
         return URLSession(configuration: configuration)
     }()
 
@@ -58,15 +59,6 @@ struct API: Sendable {
         if !query.isEmpty { components.queryItems = query }
         return components.url!
     }
-
-    /// For players that cannot attach a header: the token rides in the query.
-    func playerURL(_ path: String, query: [URLQueryItem] = []) -> URL {
-        url(path, query: query + [URLQueryItem(name: "token", value: config.token)])
-    }
-
-    func thumbURL(_ id: String, size: Int) -> URL { url("assets/\(id)/thumb/\(size)") }
-    func originalURL(_ id: String) -> URL { url("assets/\(id)/original") }
-    func faceURL(_ face: Int) -> URL { url("faces/\(face)/crop") }
 
     func request(_ url: URL, method: String = "GET") -> URLRequest {
         var request = URLRequest(url: url)
@@ -105,82 +97,7 @@ struct API: Sendable {
         return try Self.decoder.decode(T.self, from: data)
     }
 
-    /// The last answer the URL cache holds for this GET, without touching the
-    /// network: what a screen shows while the fresh answer is on its way, or
-    /// when the server is asleep.
-    func cached<T: Decodable>(_ path: String, query: [URLQueryItem] = [], as type: T.Type = T.self) -> T? {
-        var request = request(url(path, query: query))
-        request.cachePolicy = .returnCacheDataDontLoad
-        guard let hit = Self.session.configuration.urlCache?.cachedResponse(for: request) else { return nil }
-        return try? Self.decoder.decode(T.self, from: hit.data)
-    }
-
-    @discardableResult
-    func send<Body: Encodable, T: Decodable>(_ method: String, _ path: String, body: Body, as type: T.Type = T.self) async throws -> T {
-        var request = request(url(path), method: method)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
-        return try Self.decoder.decode(T.self, from: try await data(for: request))
-    }
-
     func send(_ method: String, _ path: String) async throws {
         try await data(for: request(url(path), method: method))
     }
-
-    /// Stream a file to the server as a request body; nothing is read into
-    /// memory. `progress` reports the fraction sent.
-    func upload(file: URL, to path: String, headers: [String: String], progress: (@Sendable (Double) -> Void)? = nil) async throws -> Data {
-        var request = request(url(path), method: "PUT")
-        request.timeoutInterval = 3600
-        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
-        let delegate = progress.map(UploadProgress.init)
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await Self.session.upload(for: request, fromFile: file, delegate: delegate)
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
-        } catch is URLError {
-            throw APIError.unreachable
-        }
-        try Self.check(response)
-        return data
-    }
-
-    /// Download to a temporary file that carries `name`, for Quick Look and
-    /// the share sheet. Served from the URL cache when it was fetched before.
-    func download(_ url: URL, named name: String) async throws -> URL {
-        let (temporary, response): (URL, URLResponse)
-        do {
-            (temporary, response) = try await Self.session.download(for: request(url))
-        } catch is URLError {
-            throw APIError.unreachable
-        }
-        try Self.check(response)
-        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let destination = directory.appending(path: name.isEmpty ? "file" : name)
-        try FileManager.default.moveItem(at: temporary, to: destination)
-        return destination
-    }
 }
-
-private final class UploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
-    let report: @Sendable (Double) -> Void
-    init(_ report: @escaping @Sendable (Double) -> Void) { self.report = report }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
-                    totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-        guard totalBytesExpectedToSend > 0 else { return }
-        report(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
-    }
-}
-
-/// Header values travel as latin-1: names with umlauts are percent-encoded.
-func headerEncoded(_ name: String) -> String {
-    name.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._"))) ?? "file"
-}
-
-struct Updated: Decodable { var updated: Int? }
-struct Empty: Decodable {}
-struct IDs<ID: Encodable>: Encodable { var ids: [ID] }
-struct IDsValue: Encodable { var ids: [String]; var value: Bool }

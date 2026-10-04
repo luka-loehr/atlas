@@ -24,17 +24,8 @@ struct SelectionBadge: View {
     }
 }
 
-/// Fertige, auswählbare Foto-Zelle für die Raster (PhotosScreen, Dienstprogramme).
+/// Fertige, auswählbare Foto-Zelle für die Raster der Dienstprogramme.
 /// Rendert Thumb + Video-Badge + Auswahl-Häkchen und behandelt Tap/Zoom-Quelle.
-/// Die Paginierung (`loadMoreIfNeeded`) bleibt Aufgabe des Aufrufers via `.task`.
-///
-/// Nutzung:
-/// ```
-/// SelectableThumb(asset: asset,
-///                 thumbURL: library.client.thumbURL(asset.id, 512),
-///                 selection: selection, namespace: zoom) { pick = asset }
-///     .task { await library.loadMoreIfNeeded(current: asset) }
-/// ```
 struct SelectableThumb: View {
     let asset: Asset
     let thumbURL: URL?

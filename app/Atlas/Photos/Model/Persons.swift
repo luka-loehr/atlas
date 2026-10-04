@@ -54,13 +54,6 @@ extension PhotoClient {
         try await sendRaw("PATCH", "/people/\(id)", body: Body(name: name))
     }
 
-    /// The faces on one asset come with the asset's detail.
-    func assetFaces(_ assetId: String) async throws -> [AssetFace] {
-        struct R: Codable { let people: [AssetFace] }
-        let r: R = try await get("/assets/\(assetId)")
-        return r.people
-    }
-
     /// Make one concrete face crop the person's avatar everywhere.
     func setPersonCover(_ personId: Int64, faceId: Int64) async throws {
         struct Body: Encodable { let cover_face: Int64 }

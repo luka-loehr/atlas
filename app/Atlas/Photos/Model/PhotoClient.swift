@@ -51,26 +51,11 @@ struct AssetColumns: Codable, Sendable {
     }
 }
 
-struct MonthBucket: Codable, Sendable, Identifiable {
-    let month: String            // "2024-07"
-    let count: Int
-    var id: String { month }
-}
-
 struct Album: Codable, Sendable, Identifiable, Hashable {
     let id: Int
     let title: String
     let count: Int
     let cover: String?
-}
-
-struct LibraryStats: Codable, Sendable {
-    let total: Int
-    let videos: Int
-    let bytes: Int64
-    let oldest: Date?
-    let newest: Date?
-    let albums: Int
 }
 
 /// Bearer-token auth for the Atlas server. The token lives in the keychain
@@ -126,23 +111,6 @@ struct PhotoClient: Sendable {
         return try Self.decoder.decode(T.self, from: data)
     }
 
-    func stats() async throws -> LibraryStats {
-        struct R: Codable {
-            struct Photos: Codable {
-                let photos: Int
-                let videos: Int
-                let bytes: Int64
-                let oldest: Date?
-                let newest: Date?
-                let albums: Int
-            }
-            let photos: Photos
-        }
-        let r: R = try await get("/stats")
-        return LibraryStats(total: r.photos.photos + r.photos.videos, videos: r.photos.videos, bytes: r.photos.bytes,
-                            oldest: r.photos.oldest, newest: r.photos.newest, albums: r.photos.albums)
-    }
-
     // MARK: Timeline (month buckets)
 
     /// One month of the timeline as the index names it. `etag` changes exactly
@@ -185,18 +153,6 @@ struct PhotoClient: Sendable {
         return r.assets.assets
     }
 
-    struct DayCount: Codable {
-        let d: String   // "yyyy-MM-dd"
-        let n: Int
-    }
-
-    /// GitHub-Style-Aktivität: Fotos pro Tag, letzte ~53 Wochen.
-    func heatmap() async throws -> [DayCount] {
-        struct R: Codable { let items: [DayCount] }
-        let r: R = try await get("/heatmap")
-        return r.items
-    }
-
     struct SearchResult {
         var persons: [Person] = []
         var items: [Asset] = []
@@ -214,15 +170,6 @@ struct PhotoClient: Sendable {
         let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(.init(charactersIn: "&+="))) ?? q
         let r: R = try await get("/search?q=\(enc)")
         return SearchResult(persons: r.people ?? [], items: r.assets.assets, semantic: r.semantic != "unavailable")
-    }
-
-    /// Load the search model now, so the first query does not wait for it.
-    func warmSearch() async {
-        guard let url = url("/search/warm") else { return }
-        var req = URLRequest(url: url, timeoutInterval: 60)
-        req.httpMethod = "POST"
-        AtlasAuth.apply(to: &req)
-        _ = try? await URLSession.shared.data(for: req)
     }
 
     // content-addressed, immutable URLs — safe to cache forever
