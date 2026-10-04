@@ -66,9 +66,9 @@ final class BackupService: NSObject {
     /// background uploads; called once their events are delivered.
     @ObservationIgnored var backgroundEventsDone: (() -> Void)?
 
-    @ObservationIgnored private let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "Backup")
+    @ObservationIgnored private let log = Logger(subsystem: "com.lukaloehr.atlas", category: "Backup")
 
-    static let sessionID = "com.lukaloehr.Atlas.upload"
+    static let sessionID = "com.lukaloehr.atlas.ios.upload"
 
     @ObservationIgnored private var madeSession: URLSession?
     private var session: URLSession {
@@ -153,7 +153,31 @@ final class BackupService: NSObject {
             guard await requestAccess() else { phase = .noAccess; return }
             startWatching()
             kick()
+            await passTask?.value
+            autoCleanIfDue()
         }
+    }
+
+    // MARK: Automatic housekeeping
+
+    /// How long photos stay on the iPhone after they are safely on atlas.
+    static let keepDays = 30
+    /// Fewer than this many old, backed-up items are not worth a prompt.
+    private static let minBatch = 25
+    private static let lastCleanKey = "backup.lastAutoClean"
+    private static let freedKey = "backup.freedBytes"
+
+    /// Bytes this iPhone got back from automatic and manual cleanups.
+    var freedBytes: Int64 { Int64(UserDefaults.standard.integer(forKey: Self.freedKey)) }
+
+    /// Once a day at most: photos older than `keepDays` that atlas holds
+    /// byte for byte go from the iPhone in one batch. iOS always asks before
+    /// an app deletes photos; that one system prompt is the only step left.
+    func autoCleanIfDue() {
+        let last = UserDefaults.standard.object(forKey: Self.lastCleanKey) as? Date ?? .distantPast
+        guard Date().timeIntervalSince(last) > 20 * 3600, !cleaning, scanned, phase == .idle else { return }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.keepDays, to: Date()) ?? Date()
+        deleteBackedUpFromDevice(olderThan: cutoff, minimum: Self.minBatch)
     }
 
     /// The app goes away: hand iOS a bigger batch of uploads so they carry on
@@ -487,7 +511,7 @@ final class BackupService: NSObject {
 
     /// Deletes every photo and video of this iPhone whose content atlas has,
     /// re-checked with the server right before. iOS asks for confirmation.
-    func deleteBackedUpFromDevice() {
+    func deleteBackedUpFromDevice(olderThan cutoff: Date? = nil, minimum: Int = 1) {
         guard !cleaning else { return }
         cleaning = true
         Task {
@@ -508,12 +532,19 @@ final class BackupService: NSObject {
                 return
             }
             let ids = byHash.filter { confirmed.contains($0.key) }.flatMap(\.value)
-            let assets = Self.fetchAssets(ids).filter { $0.canPerform(.delete) }
-            guard !assets.isEmpty else { return }
+            let assets = Self.fetchAssets(ids).filter { asset in
+                asset.canPerform(.delete)
+                    && (cutoff == nil || (asset.creationDate ?? .distantFuture) < cutoff!)
+            }
+            guard assets.count >= minimum else { return }
+            let bytes = Self.estimatedBytes(assets)
+            // asked once per day at most, whatever the answer
+            if cutoff != nil { UserDefaults.standard.set(Date(), forKey: Self.lastCleanKey) }
             do {
                 try await PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.deleteAssets(assets as NSArray)
                 }
+                UserDefaults.standard.set(Int(freedBytes + bytes), forKey: Self.freedKey)
             } catch let error as NSError {
                 // the user saying no in the system dialog is not a failure
                 if !(error.domain == PHPhotosErrorDomain && error.code == PHPhotosError.userCancelled.rawValue) {
@@ -642,6 +673,12 @@ extension BackupService: URLSessionTaskDelegate {
 
 extension BackupService {
     /// One line for Einstellungen.
+    /// The housekeeping line in Settings.
+    var cleanupText: String {
+        let freed = freedBytes
+        return freed > 0 ? ByteCountFormatter.string(fromByteCount: freed, countStyle: .file) + " Freed" : "On"
+    }
+
     var statusText: String {
         if cleaning { return "Checking…" }
         switch phase {

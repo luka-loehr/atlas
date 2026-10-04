@@ -9,7 +9,6 @@ struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showTerminal = false
-    @State private var confirmCleanup = false
     @State private var storage = StorageUse()
 
     private var backup: BackupService { .shared }
@@ -33,15 +32,10 @@ struct SettingsScreen: View {
                 }
                 Section("Backup") {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
-                    Button { confirmCleanup = true } label: { row("Free Up iPhone Storage", "iphone", .blue) }
-                        .tint(.primary)
-                        .disabled(backup.cleaning)
-                        .confirmationDialog("Remove Backed-Up Photos from This iPhone?", isPresented: $confirmCleanup,
-                                            titleVisibility: .visible) {
-                            Button("Remove", role: .destructive) { backup.deleteBackedUpFromDevice() }
-                        }
+                    // backed-up photos older than 30 days leave the iPhone on their own
+                    valueRow("Keep Last \(BackupService.keepDays) Days", backup.cleanupText, "iphone", .blue)
                 }
-                Section("On This iPhone") {
+                Section("Dynamic Cache") {
                     StorageBar(use: storage)
                 }
             }

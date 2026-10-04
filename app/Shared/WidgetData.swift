@@ -8,7 +8,7 @@ import Foundation
 ///   Widget/p-<id>.jpg      a photo of a set, about 1000 px on its short side
 ///   Widget/c-<id>.jpg      an album cover, shown until its set is there
 enum WidgetData {
-    static let group = "group.com.lukaloehr.Atlas"
+    static let group = "group.com.lukaloehr.atlas.ios"
     static let kind = "AlbumWidget"
     /// The set of the newest photos, for a widget with no album chosen.
     static let recents = "recents"

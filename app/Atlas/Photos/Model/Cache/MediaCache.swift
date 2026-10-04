@@ -43,7 +43,7 @@ final class MediaCache {
         return q
     }()
 
-    nonisolated static let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "Images")
+    nonisolated static let log = Logger(subsystem: "com.lukaloehr.atlas", category: "Images")
 
     var client = PhotoClient(host: "")
 

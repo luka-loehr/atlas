@@ -67,7 +67,7 @@ final class MediaFetch: @unchecked Sendable {
     private var nextToken = 0
     private var interacting = false
     private var calmSince = Date.distantPast
-    let log = Logger(subsystem: "com.lukaloehr.Atlas", category: "MediaFetch")
+    let log = Logger(subsystem: "com.lukaloehr.atlas", category: "MediaFetch")
 
     // MARK: Interaction
 

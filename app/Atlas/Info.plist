@@ -4,8 +4,8 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.lukaloehr.Atlas.backup</string>
-		<string>com.lukaloehr.Atlas.refresh</string>
+		<string>com.lukaloehr.atlas.ios.backup</string>
+		<string>com.lukaloehr.atlas.ios.refresh</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
@@ -31,7 +31,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.lukaloehr.Atlas</string>
+			<string>com.lukaloehr.atlas.ios</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>atlas</string>

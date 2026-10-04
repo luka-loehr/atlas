@@ -329,9 +329,11 @@
 				TargetAttributes = {
 					0E5E9C2F23538AC927F8B9D1 = {
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = "[\"com.apple.ApplicationGroups.iOS\": [\"enabled\": 1]]";
 					};
 					BEE0910772920D84B133CC47 = {
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = "[\"com.apple.ApplicationGroups.iOS\": [\"enabled\": 1]]";
 					};
 				};
 			};
@@ -450,7 +452,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.Atlas;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.atlas.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -466,7 +468,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.Atlas.Widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.atlas.ios.widget;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -546,7 +548,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.Atlas.Widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.atlas.ios.widget;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -565,7 +567,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.Atlas;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.atlas.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
