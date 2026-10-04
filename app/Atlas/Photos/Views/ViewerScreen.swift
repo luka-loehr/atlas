@@ -319,7 +319,7 @@ struct ViewerScreen: View {
             for id in ids {
                 group.addTask {
                     guard let info = try? await client.assetInfo(id) else { return (id, nil, false) }
-                    // the locality, like Photos ("Karlsruhe"), not the state after it
+                    // the locality, like Photos ("Munich"), not the state after it
                     return (id, info.place.map { $0.components(separatedBy: ", ").first ?? $0 }, true)
                 }
             }
