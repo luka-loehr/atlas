@@ -17,12 +17,8 @@ final class ThumbFill {
     /// Thumbnails on the phone, and how many the library has.
     private(set) var stored = 0
     private(set) var total = 0
-    private(set) var storedBytes: Int64 = 0
     /// Thumbnails that failed in this run (they are retried on the next).
     private(set) var failed = 0
-    private(set) var lastError: String?
-    /// Why the fill is waiting, if it is.
-    private(set) var paused: String?
 
     @ObservationIgnored private var host = ""
     @ObservationIgnored private var wanted: [String] = []
@@ -60,7 +56,6 @@ final class ThumbFill {
         let client = PhotoClient(host: host)
         let ids = wanted
         failed = 0
-        lastError = nil
         task = Task(priority: .utility) { [weak self] in
             await MediaStore.shared.loadThumbIndex()
             await self?.run(ids: ids, client: client, generation: gen)
@@ -69,24 +64,24 @@ final class ThumbFill {
     }
 
     private func refreshCounts() {
-        let s = MediaStore.shared.thumbStats
-        storedBytes = s.bytes
-        stored = min(s.count, total)
+        stored = min(MediaStore.shared.thumbStats.count, total)
     }
 
     private func run(ids: [String], client: PhotoClient, generation gen: Int) async {
-        let store = MediaStore.shared
-        var missing = ids.filter { !store.contains(.init(.thumb, $0)) }
+        // 25,000 lookups: off the main thread
+        let missing = await Task.detached(priority: .utility) {
+            ids.filter { !MediaStore.shared.contains(.init(.thumb, $0)) }
+        }.value
         refreshCounts()
         log.info("thumb fill: \(missing.count) of \(ids.count) missing")
-        while !missing.isEmpty, !Task.isCancelled {
+        var next = 0
+        while next < missing.count, !Task.isCancelled {
             if let reason = Self.pauseReason() {
-                paused = reason
+                log.info("thumb fill paused: \(reason, privacy: .public)")
                 try? await Task.sleep(for: .seconds(30))
                 continue
             }
-            paused = nil
-            let batch = Array(missing.prefix(Self.concurrency * 8))
+            let batch = missing[next..<min(next + Self.concurrency * 8, missing.count)]
             var networkDown: String?
             await withTaskGroup(of: (String, Error?).self) { group in
                 var it = batch.makeIterator()
@@ -107,7 +102,6 @@ final class ThumbFill {
                         if let reason = Self.unavailable(error) { networkDown = reason; group.cancelAll() }
                         else if !MediaCache.isCancellation(error) {
                             failed += 1
-                            lastError = error.localizedDescription
                             log.error("thumb \(id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                         }
                     }
@@ -117,18 +111,16 @@ final class ThumbFill {
             guard !Task.isCancelled, generation == gen else { return }
             refreshCounts()
             if let networkDown {
-                paused = networkDown
+                log.info("thumb fill paused: \(networkDown, privacy: .public)")
+                // the same batch again; what came in meanwhile is a store hit
                 try? await Task.sleep(for: .seconds(60))
-                missing = missing.filter { !store.contains(.init(.thumb, $0)) }
                 continue
             }
             // what is still missing after this batch failed; it is retried on
             // the next refresh instead of hammering the server now
-            let done = Set(batch)
-            missing.removeAll { done.contains($0) }
+            next = batch.endIndex
         }
         refreshCounts()
-        paused = nil
         log.info("thumb fill finished: \(self.stored)/\(self.total), \(self.failed) failed")
     }
 
