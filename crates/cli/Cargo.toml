@@ -9,3 +9,6 @@ description = "Control the atlas homelab server: connect, boot, shutdown, restar
 [[bin]]
 name = "atlas"
 path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true

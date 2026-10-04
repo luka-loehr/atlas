@@ -44,6 +44,46 @@ export interface Manifest {
   created_at: number;
 }
 
+/**
+ * How far atlas is with a share that is still being created; written every
+ * few seconds while it uploads, read by the "being created" page.
+ */
+export interface Progress {
+  title: string;
+  count: number;
+  done_bytes: number;
+  total_bytes: number;
+  /** seconds left at the current upload speed, or null while unknown */
+  eta_s: number | null;
+  expires_at: number;
+  updated_at: number;
+}
+
+export function progressKey(id: string): string {
+  return `s/${id}/progress.json`;
+}
+
+/** A progress body from atlas, or why it is refused. */
+export function parseProgress(v: unknown, now: number): Progress | string {
+  if (!isObj(v)) return "progress must be an object";
+  const title = typeof v.title === "string" ? v.title.slice(0, 200) : "";
+  const nums = ["count", "done_bytes", "total_bytes", "expires_at"] as const;
+  for (const k of nums) if (!isNonNegInt(v[k])) return `${k} must be a non-negative integer`;
+  const eta = v.eta_s === null || v.eta_s === undefined ? null : v.eta_s;
+  if (eta !== null && !isNonNegInt(eta)) return "eta_s must be a non-negative integer or null";
+  const expiry = expiryError(v.expires_at as number, now);
+  if (expiry) return expiry;
+  return {
+    title,
+    count: v.count as number,
+    done_bytes: v.done_bytes as number,
+    total_bytes: v.total_bytes as number,
+    eta_s: eta,
+    expires_at: v.expires_at as number,
+    updated_at: now,
+  };
+}
+
 export function shareKey(id: string): string {
   return `s/${id}/share.json`;
 }

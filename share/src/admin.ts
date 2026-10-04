@@ -8,11 +8,13 @@ import {
   isFileKind,
   type Manifest,
   MAX_DAYS,
+  parseProgress,
+  progressKey,
   SHARE_ID_RE,
   shareKey,
   validateInput,
 } from "./manifest";
-import { deleteShare, type Env, loadManifest } from "./store";
+import { deleteEverything, deleteShare, type Env, listShareIds, loadManifest } from "./store";
 
 /** Largest single PUT or part. Workers accept 100 MB request bodies. */
 export const MAX_BODY = 95 * 1024 * 1024;
@@ -66,6 +68,35 @@ export async function handleAdmin(request: Request, env: Env, url: URL): Promise
   if (path === "/api/health") {
     if (method !== "GET") return error(405, "method not allowed");
     return json({ ok: true, version: pkg.version, max_days: MAX_DAYS });
+  }
+
+  // `atlas share destroy`: every object goes, so the bucket can be deleted
+  if (path === "/api/everything") {
+    if (method !== "DELETE") return error(405, "method not allowed");
+    return json(await deleteEverything(env.SHARES));
+  }
+
+  // atlas reconciles: anything stored here that it does not know is removed
+  if (path === "/api/shares") {
+    if (method !== "GET") return error(405, "method not allowed");
+    return json({ ids: await listShareIds(env.SHARES) });
+  }
+
+  const progress = /^\/api\/shares\/([^/]+)\/progress$/.exec(path);
+  if (progress) {
+    const id = progress[1] ?? "";
+    if (!SHARE_ID_RE.test(id)) return error(404, "not found");
+    if (method !== "PUT") return error(405, "method not allowed");
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return error(400, "invalid JSON");
+    }
+    const parsed = parseProgress(body, Math.floor(Date.now() / 1000));
+    if (typeof parsed === "string") return error(400, parsed);
+    await env.SHARES.put(progressKey(id), JSON.stringify(parsed), { httpMetadata: { contentType: "application/json" } });
+    return json({ ok: true });
   }
 
   const file = /^\/api\/shares\/([^/]+)\/files\/([^/]+)\/([^/]+)$/.exec(path);
@@ -189,5 +220,7 @@ async function putManifest(request: Request, env: Env, url: URL, id: string): Pr
   await env.SHARES.put(shareKey(id), JSON.stringify(manifest), {
     httpMetadata: { contentType: "application/json" },
   });
+  // the link is complete: the "being created" state is over
+  await env.SHARES.delete(progressKey(id));
   return json({ url: `${url.origin}/s/${id}` });
 }

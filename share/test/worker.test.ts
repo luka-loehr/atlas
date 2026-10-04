@@ -86,6 +86,16 @@ describe("files and manifest", () => {
     expect(typeof stored.created_at).toBe("number");
   });
 
+  it("empties the bucket for destroy", async () => {
+    await putFile("t", A1, "x");
+    await putManifest();
+    const r = await admin("/api/everything", { method: "DELETE" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ more: false });
+    expect((await bucket.list({})).objects.length).toBe(0);
+    expect((await call("/api/everything", { method: "DELETE" })).status).toBe(401);
+  });
+
   it("rejects a manifest that expires too late", async () => {
     const r = await putManifest({ expires_at: Math.floor(Date.now() / 1000) + 8 * 86400 });
     expect(r.status).toBe(400);
@@ -148,9 +158,19 @@ describe("public", () => {
     const other = "Zz9" + ID.slice(3);
     expect((await call(`/s/${other}`)).status).toBe(404);
     await bucket.put(`s/${other}/t/${A1}`, "thumb");
-    const r = await call(`/s/${other}`);
+    let r = await call(`/s/${other}`);
     expect(r.status).toBe(202);
-    expect(r.headers.get("Refresh")).toBe("15");
+    expect(await r.text()).toContain("still being created");
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    r = await admin(`/api/shares/${other}/progress`, {
+      method: "PUT",
+      body: JSON.stringify({ title: "Rafting", count: 12, done_bytes: 50, total_bytes: 200, eta_s: 90, expires_at: exp }),
+    });
+    expect(r.status).toBe(200);
+    r = await call(`/s/${other}/status`);
+    expect(await r.json()).toMatchObject({ ready: false, count: 12, done: 50, total: 200, eta_s: 90 });
+    expect(await (await call(`/s/${other}`)).text()).toContain("About 2 minutes left");
+    expect((await admin("/api/shares")).status).toBe(200);
     expect((await call(`/s/short`)).status).toBe(404);
     const now = Math.floor(Date.now() / 1000);
     await bucket.put(`s/${ID}/share.json`, JSON.stringify({ ...manifest(), password_hash: null, expires_at: now - 1, created_at: now - 100 }));
