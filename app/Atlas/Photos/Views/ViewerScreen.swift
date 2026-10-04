@@ -80,6 +80,7 @@ struct ViewerScreen: View {
             index = assets.firstIndex(of: start) ?? 0
             ViewerNow.show(pages[safe: index]?.id)
             MediaCache.shared.viewerFocus(pages, index: index, forward: true)
+            if let a = pages[safe: index] { ShareFiles.prepare(a, client: library.client) }
         }
         .onChange(of: index) { old, new in focus(new, forward: new >= old) }
         // the tick when a swipe crosses halfway comes from `motion`, with or
@@ -102,7 +103,10 @@ struct ViewerScreen: View {
     private func focus(_ i: Int, forward: Bool) {
         MediaCache.shared.viewerFocus(pages, index: i, forward: forward)
         ViewerNow.show(pages[safe: i]?.id)
-        if let a = pages[safe: i] { onPage?(a) }
+        if let a = pages[safe: i] {
+            onPage?(a)
+            ShareFiles.prepare(a, client: library.client)
+        }
     }
 
     // MARK: - Chrome (Google-Photos layout)
@@ -234,15 +238,13 @@ struct ViewerScreen: View {
     }
 
     private func shareCurrent() {
-        guard let a = pages[safe: index],
-              let src = library.client.originalURL(a.id) else { return }
-        busy = true
+        guard let a = pages[safe: index] else { return }
         Task {
             defer { busy = false }
-            // the cached original when the viewer already has it
-            if let file = await MediaCache.shared.shareableOriginal(a.id, from: src) {
-                shareBundle = ShareBundle(urls: [file])
-            }
+            // the original the viewer fetched when the page appeared; the
+            // spinner only when it is not on the phone yet
+            let files = await ShareFiles.files(for: [a], client: library.client) { busy = true }
+            if !files.isEmpty { shareBundle = ShareBundle(urls: files) }
         }
     }
 

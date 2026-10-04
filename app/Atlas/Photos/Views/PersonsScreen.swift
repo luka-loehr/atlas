@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// "Personen und Haustiere" — 3-column grid of round face crops with names
-/// (Google-Photos style). Tap -> PersonDetailScreen.
+/// Everyone atlas recognized: a three-column grid of round faces with
+/// names and photo counts. Tap -> PersonDetailScreen.
 struct PersonsScreen: View {
     var library: Library
     // the last list, faces already on the phone: the screen opens complete
     @State private var persons: [Person] = PeopleMemo.people
     @State private var loaded = !PeopleMemo.people.isEmpty
 
-    private let cols = Array(repeating: GridItem(.flexible(), spacing: 18), count: 3)
+    private let cols = Array(repeating: GridItem(.flexible(), spacing: 20), count: 3)
 
     var body: some View {
         ZStack {
@@ -19,17 +19,27 @@ struct PersonsScreen: View {
                         NavigationLink {
                             PersonDetailScreen(library: library, person: person)
                         } label: {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 2) {
                                 FaceCircle(library: library, person: person)
-                                    .frame(width: 96, height: 96)
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .padding(.bottom, 6)
                                 Text(person.displayName)
-                                    .font(.subheadline.weight(.medium))
+                                    .font(.subheadline)
                                     .foregroundStyle(person.name == nil
-                                                     ? .tertiary : .primary)
+                                                     ? .secondary : .primary)
                                     .lineLimit(1)
+                                Text(person.photos, format: .number)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(person.displayName)
+                        .accessibilityValue("\(person.photos) \(person.photos == 1 ? "photo" : "photos")")
+                        .accessibilityAddTraits(.isButton)
                     }
                 }
                 .padding(.horizontal, 20)

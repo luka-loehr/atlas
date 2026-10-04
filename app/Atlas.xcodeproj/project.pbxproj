@@ -10,9 +10,12 @@
 		015F9EBA2130CB1431092FEE /* PhotoGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = A066C7D7B5499412E300C957 /* PhotoGrid.swift */; };
 		066FF6329A9FAD91ADC83732 /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC37520A62D1CF278BDCD199 /* Format.swift */; };
 		0AAF8EEA58074547751EEC43 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */; };
+		1199662680F239C8749F4521 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
 		13B202226C6C504C57AE1D1A /* CacheWarmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F88F25AE39FEF329CB1452 /* CacheWarmer.swift */; };
 		18BEEEACB08EA2B44D58288C /* ViewerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3AEE746B4A03F0F81476613 /* ViewerScreen.swift */; };
+		1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		254AA4376A6EA5F72106F70A /* SelectableThumb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08198C651B76F61900E80C9A /* SelectableThumb.swift */; };
+		25503606CD81AC4B04AAE776 /* AlbumWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3564974376000E1F3E6417A3 /* AlbumWidget.swift */; };
 		3000C718B6D51574404EE4C6 /* PhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */; };
 		34AF8E717DCAA36AF2ACB2EF /* MediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151313760EDC071BADFEF3E8 /* MediaStore.swift */; };
 		397EDBCFB247B48ED2896946 /* InfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3856AB17EC39E376E1CC478 /* InfoSheet.swift */; };
@@ -24,6 +27,7 @@
 		4622714ECEDD97E29275232B /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0BBA486E6F66F89D14D5F5 /* Session.swift */; };
 		4871A0C4CED7FE5C29402A94 /* PhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E51E124262A63CF1F87C27 /* PhotosScreen.swift */; };
 		4947046CB18DF93A6874DECE /* ThumbFill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967CA86A1914A3E70629D9E9 /* ThumbFill.swift */; };
+		654B65372B48D8EC7413AB02 /* AtlasWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		67FA2CB8826FFED9471D8DE9 /* DriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DFCE51C82D8ACBDDF63B5E /* DriveClient.swift */; };
 		6A4BD7467FAA1D79D86CECA1 /* Persons.swift in Sources */ = {isa = PBXBuildFile; fileRef = A58780722FD6A34389F60986 /* Persons.swift */; };
 		70F79F4B48013DEFCA26029C /* MediaFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DCD414C30D14BACDA77E4C /* MediaFetch.swift */; };
@@ -31,21 +35,49 @@
 		739FCA36A39E130CEA6CE2AD /* MediaCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E189ACB18C2FDCA2C246C6 /* MediaCache.swift */; };
 		7D15F5D90011B56EF66C9289 /* PhotoPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FA8269271E3646DC19B40A /* PhotoPager.swift */; };
 		8D28FE030C7EE76B688E65BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA986E23356244005C7DA505 /* Assets.xcassets */; };
+		92004BF706F15F721763A159 /* WidgetShelf.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C599A794847EFA1A83D1146 /* WidgetShelf.swift */; };
 		956595182AE767C0B23605C4 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1546EC722323AA2800B2C62F /* Selection.swift */; };
 		97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FBC23EEED736F63F0D8977 /* AssetInfo.swift */; };
 		97F64F47C99747F2D425C52B /* AtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B039968FC134F8A1AC6E2337 /* AtlasApp.swift */; };
 		999C72BE2AF36F496E7EAF1C /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D37F62453CBAD3DFE4B4C67 /* Library.swift */; };
+		A875DD7D05C7CE69D0D7F973 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
 		B0A4A57E2EB2B9A0421FBBB3 /* DriveScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */; };
 		B4173225F8E64AE465AFD421 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 83DBAEE08B909D318A2FE16B /* AppIcon.icon */; };
 		B85029BAEE1B9F142B41B626 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8449E3A776DD1F5E760B7D1 /* API.swift */; };
 		BD10D3542F17FDC6DFDA2EAC /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C70FD2BF97D5056CD213BA7 /* SelectionToolbar.swift */; };
 		BD4B6D15B16103087A7BDB58 /* VideoCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A45EAFCDD0B1C7478C265C /* VideoCache.swift */; };
+		BE61FE9358DB73F98AA3435E /* ShareFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */; };
 		C81FF5944EA673DD5BD7C1EA /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FB8403E6C13A7DEB9A1B1B /* BackupService.swift */; };
 		D05E91FA9E76123AE8FF0350 /* AlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55F3DEAE678AA67B76984DF /* AlbumsScreen.swift */; };
+		D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		D901D1E788DE2D393F94F8B2 /* PersonsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEB5B58011D88AE26D3A5AB /* PersonsScreen.swift */; };
 		DB2B1460C3B927F81C3D4B9D /* SettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8BF73F40019E22A25A2605 /* SettingsTab.swift */; };
 		DE50E3876F2ABD874355448A /* ServerStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CB52B2A1E760675C0C27C4 /* ServerStatus.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A0F9B04AE03E840CCF27A103 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 43D55555CA7BCC7C87E44A39 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0E5E9C2F23538AC927F8B9D1;
+			remoteInfo = AtlasWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		86DB789F949E53C846CB6D28 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				654B65372B48D8EC7413AB02 /* AtlasWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		08198C651B76F61900E80C9A /* SelectableThumb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableThumb.swift; sourceTree = "<group>"; };
@@ -56,18 +88,24 @@
 		16FBC23EEED736F63F0D8977 /* AssetInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetInfo.swift; sourceTree = "<group>"; };
 		17A45EAFCDD0B1C7478C265C /* VideoCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCache.swift; sourceTree = "<group>"; };
 		1A7B1632A1AF2D6DBB360FE9 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
+		1C599A794847EFA1A83D1146 /* WidgetShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShelf.swift; sourceTree = "<group>"; };
 		2C70FD2BF97D5056CD213BA7 /* SelectionToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionToolbar.swift; sourceTree = "<group>"; };
 		30FB6134370D5412613CF36A /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		3564974376000E1F3E6417A3 /* AlbumWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumWidget.swift; sourceTree = "<group>"; };
 		36E189ACB18C2FDCA2C246C6 /* MediaCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaCache.swift; sourceTree = "<group>"; };
 		413A56C9FFE04C7BBD65B964 /* Atlas.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Atlas.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4D37F62453CBAD3DFE4B4C67 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 		57DCD414C30D14BACDA77E4C /* MediaFetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaFetch.swift; sourceTree = "<group>"; };
 		59CB52B2A1E760675C0C27C4 /* ServerStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStatus.swift; sourceTree = "<group>"; };
+		5B154AE6158E42E13D7C2129 /* AtlasWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtlasWidget.entitlements; sourceTree = "<group>"; };
 		5C518BAA9658596DE7CE9117 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
 		6A0BBA486E6F66F89D14D5F5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6DBB2D8DA3BA7AA013C6D346 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		714D740CD26629737AAC5401 /* Atlas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Atlas.entitlements; sourceTree = "<group>"; };
 		82068608456E732BBB7111BA /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
+		83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumWidgetIntent.swift; sourceTree = "<group>"; };
 		83DBAEE08B909D318A2FE16B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = AtlasWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		960D112EC6584D8D0BA84043 /* PhotoMutations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMutations.swift; sourceTree = "<group>"; };
 		967CA86A1914A3E70629D9E9 /* ThumbFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbFill.swift; sourceTree = "<group>"; };
 		A066C7D7B5499412E300C957 /* PhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGrid.swift; sourceTree = "<group>"; };
@@ -78,14 +116,17 @@
 		B3AEE746B4A03F0F81476613 /* ViewerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerScreen.swift; sourceTree = "<group>"; };
 		B8449E3A776DD1F5E760B7D1 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		B889991DE1B8C307BA3F6226 /* Biometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Biometric.swift; sourceTree = "<group>"; };
+		C46DFF7D27408F7CD27FB8C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CF8BF73F40019E22A25A2605 /* SettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTab.swift; sourceTree = "<group>"; };
 		D2F88F25AE39FEF329CB1452 /* CacheWarmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheWarmer.swift; sourceTree = "<group>"; };
 		DC37520A62D1CF278BDCD199 /* Format.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Format.swift; sourceTree = "<group>"; };
 		DEEB5B58011D88AE26D3A5AB /* PersonsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonsScreen.swift; sourceTree = "<group>"; };
 		E2FB8403E6C13A7DEB9A1B1B /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
+		E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareFiles.swift; sourceTree = "<group>"; };
 		E3856AB17EC39E376E1CC478 /* InfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoSheet.swift; sourceTree = "<group>"; };
 		E55F3DEAE678AA67B76984DF /* AlbumsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsScreen.swift; sourceTree = "<group>"; };
 		E6DFCE51C82D8ACBDDF63B5E /* DriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveClient.swift; sourceTree = "<group>"; };
+		E76871E3F07CC864F93E10B7 /* WidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetData.swift; sourceTree = "<group>"; };
 		F1FA8269271E3646DC19B40A /* PhotoPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -106,6 +147,7 @@
 			children = (
 				83DBAEE08B909D318A2FE16B /* AppIcon.icon */,
 				AA986E23356244005C7DA505 /* Assets.xcassets */,
+				714D740CD26629737AAC5401 /* Atlas.entitlements */,
 				B039968FC134F8A1AC6E2337 /* AtlasApp.swift */,
 				6DBB2D8DA3BA7AA013C6D346 /* Info.plist */,
 				44A02563B8C83C856C9C4CF0 /* Core */,
@@ -113,6 +155,15 @@
 				4AA493CE1D4A264DBCA528CE /* Settings */,
 			);
 			path = Atlas;
+			sourceTree = "<group>";
+		};
+		3B3106ED08A6E5F1AD6BB3E6 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */,
+				E76871E3F07CC864F93E10B7 /* WidgetData.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		44A02563B8C83C856C9C4CF0 /* Core */ = {
@@ -139,14 +190,27 @@
 			isa = PBXGroup;
 			children = (
 				071B3FB99E139970DF18CBA2 /* Atlas */,
+				817CD939E900F99C7F912848 /* AtlasWidget */,
+				3B3106ED08A6E5F1AD6BB3E6 /* Shared */,
 				8BC05A2DCB0F814BEC46CBFF /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		817CD939E900F99C7F912848 /* AtlasWidget */ = {
+			isa = PBXGroup;
+			children = (
+				3564974376000E1F3E6417A3 /* AlbumWidget.swift */,
+				5B154AE6158E42E13D7C2129 /* AtlasWidget.entitlements */,
+				C46DFF7D27408F7CD27FB8C0 /* Info.plist */,
+			);
+			path = AtlasWidget;
 			sourceTree = "<group>";
 		};
 		8BC05A2DCB0F814BEC46CBFF /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				413A56C9FFE04C7BBD65B964 /* Atlas.app */,
+				8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -205,6 +269,8 @@
 				160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */,
 				960D112EC6584D8D0BA84043 /* PhotoMutations.swift */,
 				1546EC722323AA2800B2C62F /* Selection.swift */,
+				E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */,
+				1C599A794847EFA1A83D1146 /* WidgetShelf.swift */,
 				9BC0BAA70957F4698346E7E8 /* Cache */,
 			);
 			path = Model;
@@ -213,6 +279,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0E5E9C2F23538AC927F8B9D1 /* AtlasWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F8377F7D537D8D809C19813B /* Build configuration list for PBXNativeTarget "AtlasWidget" */;
+			buildPhases = (
+				9CA0A2C23B9696F8EDD7DE2B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AtlasWidget;
+			packageProductDependencies = (
+			);
+			productName = AtlasWidget;
+			productReference = 8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		BEE0910772920D84B133CC47 /* Atlas */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 22181CD7CED82AE7DBD59B1A /* Build configuration list for PBXNativeTarget "Atlas" */;
@@ -220,10 +303,12 @@
 				5F00E980EC462CB5A8421B1C /* Sources */,
 				AEB035FE95E36701E46D468A /* Resources */,
 				3089F3CC24F02E74734F05DE /* Frameworks */,
+				86DB789F949E53C846CB6D28 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				39C589942E311693AE895270 /* PBXTargetDependency */,
 			);
 			name = Atlas;
 			packageProductDependencies = (
@@ -242,6 +327,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					0E5E9C2F23538AC927F8B9D1 = {
+						ProvisioningStyle = Automatic;
+					};
 					BEE0910772920D84B133CC47 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -265,6 +353,7 @@
 			projectRoot = "";
 			targets = (
 				BEE0910772920D84B133CC47 /* Atlas */,
+				0E5E9C2F23538AC927F8B9D1 /* AtlasWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -287,6 +376,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B85029BAEE1B9F142B41B626 /* API.swift in Sources */,
+				1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */,
 				D05E91FA9E76123AE8FF0350 /* AlbumsScreen.swift in Sources */,
 				97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */,
 				97F64F47C99747F2D425C52B /* AtlasApp.swift in Sources */,
@@ -316,21 +406,43 @@
 				4622714ECEDD97E29275232B /* Session.swift in Sources */,
 				3E9838524F027148BAD3809E /* SettingsScreen.swift in Sources */,
 				DB2B1460C3B927F81C3D4B9D /* SettingsTab.swift in Sources */,
+				BE61FE9358DB73F98AA3435E /* ShareFiles.swift in Sources */,
 				3BC2C8B6E0E01F03EC233817 /* ShareSheet.swift in Sources */,
 				3AE3D053BFB90A4A1E11276E /* TerminalScreen.swift in Sources */,
 				4947046CB18DF93A6874DECE /* ThumbFill.swift in Sources */,
 				BD4B6D15B16103087A7BDB58 /* VideoCache.swift in Sources */,
 				18BEEEACB08EA2B44D58288C /* ViewerScreen.swift in Sources */,
+				A875DD7D05C7CE69D0D7F973 /* WidgetData.swift in Sources */,
+				92004BF706F15F721763A159 /* WidgetShelf.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9CA0A2C23B9696F8EDD7DE2B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				25503606CD81AC4B04AAE776 /* AlbumWidget.swift in Sources */,
+				D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */,
+				1199662680F239C8749F4521 /* WidgetData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		39C589942E311693AE895270 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0E5E9C2F23538AC927F8B9D1 /* AtlasWidget */;
+			targetProxy = A0F9B04AE03E840CCF27A103 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0357C3208ED930145396B664 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Atlas/Atlas.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = Atlas/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
@@ -343,6 +455,23 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		12D79E06C06310D0BA9243EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AtlasWidget/AtlasWidget.entitlements;
+				INFOPLIST_FILE = AtlasWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.Atlas.Widget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		6C075FD071D9C4DB3D554A55 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -407,10 +536,28 @@
 			};
 			name = Release;
 		};
+		6ED4A310DCC6E73BF7EFA6CC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AtlasWidget/AtlasWidget.entitlements;
+				INFOPLIST_FILE = AtlasWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.Atlas.Widget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		804FE0C9BF065A009759B8FF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Atlas/Atlas.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = Atlas/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
@@ -511,6 +658,15 @@
 			buildConfigurations = (
 				8D21ED53AFB54A8F40E5E443 /* Debug */,
 				6C075FD071D9C4DB3D554A55 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F8377F7D537D8D809C19813B /* Build configuration list for PBXNativeTarget "AtlasWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				12D79E06C06310D0BA9243EE /* Debug */,
+				6ED4A310DCC6E73BF7EFA6CC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

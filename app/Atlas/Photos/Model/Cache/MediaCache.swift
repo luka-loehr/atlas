@@ -246,10 +246,13 @@ final class MediaCache {
         "\(url.absoluteString)#\(Int(maxPixel ?? 0))" as NSString
     }
 
-    private func ram(for key: MediaStore.Key?) -> NSCache<NSString, UIImage> {
+    /// Small decodes of big files (album covers) are small images: they go
+    /// with the other small ones, not into the few slots of the viewer's.
+    private func ram(for key: MediaStore.Key?, maxPixel: CGFloat? = nil) -> NSCache<NSString, UIImage> {
+        if let maxPixel, maxPixel <= 1024 { return urlRam }
         switch key?.kind {
-        case .preview, .original: bigRam
-        default: urlRam
+        case .preview, .original: return bigRam
+        default: return urlRam
         }
     }
 
@@ -258,7 +261,7 @@ final class MediaCache {
         let k = Self.urlKey(url, maxPixel)
         if let img = windowRam[k] { return img }
         let key = Self.key(of: url)
-        if let img = ram(for: key).object(forKey: k) { return img }
+        if let img = ram(for: key, maxPixel: maxPixel).object(forKey: k) { return img }
         if let key, key.kind == .thumb { return seeds[key.id] }
         return nil
     }
@@ -287,7 +290,7 @@ final class MediaCache {
         let key = Self.key(of: url)
         let img = await Self.produce(url, key: key, maxPixel: maxPixel, priority: priority)
         if let img {
-            ram(for: key).setObject(img, forKey: Self.urlKey(url, maxPixel), cost: img.decodedCost)
+            ram(for: key, maxPixel: maxPixel).setObject(img, forKey: Self.urlKey(url, maxPixel), cost: img.decodedCost)
         }
         return img
     }
@@ -363,6 +366,13 @@ final class MediaCache {
         var wantedTickets: [String: MediaFetch.Ticket] = [:]
         var wantedImages: Set<NSString> = []
         var originals: [(String, URL)] = []
+        // the page on screen: its original (a video's too) first of all, so
+        // Share finds the file on the phone
+        if let current = pages[safe: index], let o = client.originalURL(current.id) {
+            let name = "current:\(current.id)"
+            wantedTickets[name] = windowTickets[name]
+                ?? MediaFetch.shared.ensure(.init(.original, current.id), from: o, priority: .visible)
+        }
         for (i, d) in order {
             guard let asset = pages[safe: i] else { continue }
             let id = asset.id
@@ -428,14 +438,16 @@ final class MediaCache {
 
     // MARK: Originals for sharing
 
-    /// The original of `id` as a file named "<id>.<ext>" in the temporary
-    /// directory (the share sheet shows the name): the cached copy when
-    /// there is one, else downloaded into the cache first.
-    nonisolated func shareableOriginal(_ id: String, from url: URL) async -> URL? {
+    /// The original of `id` as a file called `name` (plus its extension) in
+    /// `folder` (the share sheet shows the name): the cached copy when there
+    /// is one, else downloaded into the cache first.
+    nonisolated func shareableOriginal(_ id: String, from url: URL, named name: String,
+                                       in folder: URL, video: Bool) async -> URL? {
         do {
             let file = try await MediaFetch.shared.file(.init(.original, id), from: url, priority: .visible)
-            let ext = file.pathExtension == "bin" || file.pathExtension.isEmpty ? "jpg" : file.pathExtension
-            let dest = FileManager.default.temporaryDirectory.appendingPathComponent("\(id).\(ext)")
+            let raw = file.pathExtension.lowercased()
+            let ext = raw == "bin" || raw.isEmpty ? (video ? "mov" : "jpg") : raw
+            let dest = folder.appendingPathComponent("\(name).\(ext)")
             try? FileManager.default.removeItem(at: dest)
             // a clone on APFS: no second copy of the bytes
             try FileManager.default.copyItem(at: file, to: dest)

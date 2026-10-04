@@ -64,6 +64,7 @@ struct AtlasApp: App {
                 let library = Library()
                 library.host = session.base
                 await library.start()
+                await WidgetShelf.shared.refresh(library: library, force: true)
                 await ThumbFill.shared.finish()
                 ok = ok && ThumbFill.shared.failed == 0
             }
@@ -96,6 +97,9 @@ struct RootView: View {
     /// every other tab searches photos.
     @State private var searchFrom = "photos"
     @State private var linkError: String?
+    /// An album or a photo a link asked for (the Album widget).
+    @State private var albumLink: Int?
+    @State private var linkedPhoto: LinkedPhoto?
 
     var body: some View {
         Group {
@@ -111,7 +115,7 @@ struct RootView: View {
                         PhotosScreen(library: library)
                     }
                     Tab("Albums", systemImage: "rectangle.stack", value: "albums") {
-                        AlbumsScreen(library: library)
+                        AlbumsScreen(library: library, link: $albumLink)
                     }
                     Tab("Files", systemImage: "folder", value: "drive") {
                         DriveScreen(library: library)
@@ -151,6 +155,8 @@ struct RootView: View {
             BackupService.shared.foreground()
             await library.start()
             CacheWarmer.shared.start(library)
+            // the Album widgets' photos, for albums chosen while the app was closed
+            await WidgetShelf.shared.refresh(library: library, force: true)
         }
         .onChange(of: scenePhase) { _, phase in
             guard session.isConnected else { return }
@@ -161,7 +167,10 @@ struct RootView: View {
                 CacheWarmer.shared.stop()
                 MediaStore.shared.scheduleTrim()
             case .active:
-                Task { await library.refresh() }
+                Task {
+                    await library.refresh()
+                    await WidgetShelf.shared.refresh(library: library)
+                }
                 BackupService.shared.foreground()
                 if !library.assets.isEmpty { CacheWarmer.shared.start(library) }
             default:
@@ -169,9 +178,16 @@ struct RootView: View {
             }
         }
         .onOpenURL { url in
+            if session.isConnected, let link = WidgetLink(url) {
+                open(link)
+                return
+            }
             Task {
                 do { try await session.handle(url) } catch { linkError = error.localizedDescription }
             }
+        }
+        .fullScreenCover(item: $linkedPhoto) { linked in
+            ViewerScreen(library: library, assets: linked.assets, start: linked.start)
         }
         .alert("Connection Failed", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -179,6 +195,72 @@ struct RootView: View {
             Text(linkError ?? "")
         }
     }
+}
+
+extension RootView {
+    /// atlas://photo/<id>?album=<key> opens the photo in the viewer, among
+    /// the album's photos (or the library's); atlas://album/<id> opens the
+    /// album; atlas://open just the app.
+    fileprivate func open(_ link: WidgetLink) {
+        switch link {
+        case .open:
+            break
+        case .album(let id):
+            linkedPhoto = nil
+            tab = "albums"
+            albumLink = id
+        case .photo(let id, let album):
+            tab = album == nil ? "photos" : "albums"
+            Task {
+                var assets: [Asset] = []
+                if let album {
+                    assets = (try? await library.client.albumAssets(album)) ?? []
+                } else {
+                    // a cold start: the timeline comes from the disk first
+                    for _ in 0..<50 where library.assets.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+                    assets = library.assets
+                }
+                guard let start = assets.first(where: { $0.id == id }) else {
+                    // gone from the album since the widget got it: the album
+                    if let album { albumLink = album }
+                    return
+                }
+                linkedPhoto = LinkedPhoto(assets: assets, start: start)
+            }
+        }
+    }
+}
+
+/// What a link from the Album widget asks for.
+enum WidgetLink {
+    case open
+    case album(Int)
+    case photo(String, album: Int?)
+
+    init?(_ url: URL) {
+        guard url.scheme == "atlas" else { return nil }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        switch url.host() {
+        case "open":
+            self = .open
+        case "album":
+            guard let id = parts.first.flatMap({ Int($0) }) else { return nil }
+            self = .album(id)
+        case "photo":
+            guard let id = parts.first else { return nil }
+            let key = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "album" }?.value
+            self = .photo(id, album: key.flatMap(WidgetData.albumID(of:)))
+        default:
+            return nil
+        }
+    }
+}
+
+struct LinkedPhoto: Identifiable {
+    let assets: [Asset]
+    let start: Asset
+    var id: String { start.id }
 }
 
 /// Erster Start: Wo steht der Server, und wie lautet das Zugangstoken.
