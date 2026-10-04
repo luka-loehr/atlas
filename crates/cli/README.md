@@ -70,6 +70,9 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 | `atlas start [-b B] status\|logs\|stop` | inspect / tear down the started app |
 | `atlas deploy` | build + install atlas-server and atlas-ml on the server · `deploy logs\|status\|stop\|restart` |
 | `atlas connect` | print the `atlas://connect?…` link that connects the iOS app (server address + token) |
+| `atlas share setup` | deploy [atlas-share](../../share/) to your Cloudflare account for share links; asks which of your domains links live on (`atlas-share.<domain>`) or uses workers.dev. `--domain D`, `--workers-dev`, `--url U` skip the question |
+| `atlas share status \| ls \| rm <id>` | is it live · live links with progress and time left · stop a link |
+| `atlas share destroy` | remove everything setup made from Cloudflare (links, bucket, Worker with its cron, secrets and domains) and disconnect the server; `--yes` skips the question |
 
 ### Observe
 

@@ -10,6 +10,8 @@ struct SettingsScreen: View {
 
     @State private var showTerminal = false
     @State private var storage = StorageUse()
+    /// Live share links, for the count on their row.
+    @State private var links: Int?
 
     private var backup: BackupService { .shared }
 
@@ -32,7 +34,9 @@ struct SettingsScreen: View {
                 }
                 if library.sharing {
                     Section {
-                        NavigationLink { SharedLinksScreen(library: library) } label: { row("Shared Links", "link", .blue) }
+                        NavigationLink { SharedLinksScreen(library: library) } label: {
+                            valueRow("Shared Links", links.map { $0 == 0 ? "None" : "\($0)" } ?? "", "link", .blue)
+                        }
                     }
                 }
                 Section("Backup") {
@@ -61,6 +65,10 @@ struct SettingsScreen: View {
             await Machine.shared.keepLive(api)
         }
         .task { storage = await StorageUse.measure() }
+        .task {
+            guard library.sharing else { return }
+            links = (try? await library.client.shares())?.count
+        }
         .fullScreenCover(isPresented: $showTerminal) { TerminalScreen() }
     }
 
