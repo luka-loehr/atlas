@@ -1,0 +1,27 @@
+[Unit]
+Description=Mirror /srv/bulk to the USB backup disk and snapshot it
+# Pulls in both mounts and orders after them. If the USB disk is unplugged the
+# mount fails and so does this unit, instead of rsyncing onto the root disk.
+RequiresMountsFor=/srv/bulk /srv/bulk-backup
+After=atlas-pg-backup.service
+
+[Service]
+Type=oneshot
+# root: ownership/ACLs must survive and the snapshots are btrfs ioctls. The
+# script is a root-owned copy in /usr/local/sbin, not the checkout, so a
+# writable file in ~/atlas never runs as root.
+ExecStart=/usr/local/sbin/atlas-bulk-backup
+StateDirectory=atlas-bulk-backup
+Nice=19
+IOSchedulingClass=idle
+# The first run copies everything (~650 G onto a 4800 rpm USB disk).
+TimeoutStartSec=12h
+ProtectSystem=strict
+ReadWritePaths=/srv/bulk-backup
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes

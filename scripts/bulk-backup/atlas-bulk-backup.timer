@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up /srv/bulk to the USB disk every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+# atlas is powered off whenever it is not needed; catch up after the next boot
+# instead of waiting for the next full hour.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
