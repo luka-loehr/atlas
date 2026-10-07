@@ -21,15 +21,16 @@ versions of it.
     bulk/                  = /srv/bulk   (without lost+found)
     backups/               = /srv/backups
   snapshots/
-    2026-10-07T1405/       read-only, one per successful run
+    2026-10-07T1405/       read-only, one per run that changed something
     …
 ```
 
 btrfs snapshots share every unchanged block with `current/`, so a version costs
 only what changed since the one before. A snapshot is only taken after every
-rsync succeeded, so an interrupted run never becomes a version. btrfs also
-checksums every block, so a rotting backup disk shows up as read errors
-instead of silently wrong photos.
+rsync succeeded, so an interrupted run never becomes a version, and only when
+rsync created, changed or deleted something — an hour without changes adds no
+version. btrfs also checksums every block, so a rotting backup disk shows up
+as read errors instead of silently wrong photos.
 
 ## Retention
 

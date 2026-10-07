@@ -12,7 +12,8 @@
 #
 # Snapshots share every unchanged extent with current/, so a version costs only
 # what changed since the previous one. A snapshot is taken only after every
-# rsync succeeded, so a half-finished run never becomes a version.
+# rsync succeeded, so a half-finished run never becomes a version, and only if
+# rsync changed something, so an idle hour adds no version.
 #
 # Retention keeps the newest snapshot per bucket: KEEP_HOURLY hours,
 # KEEP_DAILY days, KEEP_WEEKLY ISO weeks, KEEP_MONTHLY months. If the disk
@@ -62,7 +63,7 @@ mkdir -p "$DEST/snapshots" "$STATE_DIR"
 
 snapshots() {
   find "$DEST/snapshots" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-    | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{4}$' | sort
+    | { grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{4}$' || true; } | sort
 }
 
 used_pct() { df --output=pcent "$DEST" | tail -n1 | tr -dc '0-9'; }
@@ -94,13 +95,17 @@ make_room
 # --- mirror ----------------------------------------------------------------
 
 start=$(date +%s)
+# rsync itemizes every created, updated or deleted entry here, one per line.
+# An empty list means nothing changed and no new version is needed.
+changes=$(mktemp)
+trap 'rm -f "$changes"' EXIT
 for s in "${SOURCES[@]}"; do
   name=$(basename "$s")
   echo "mirroring $s -> $DEST/current/$name"
   rc=0
   rsync -aHAX --numeric-ids --delete --delete-excluded \
-        --exclude=/lost+found --info=stats1 \
-        "$s/" "$DEST/current/$name/" || rc=$?
+        --exclude=/lost+found --out-format='%i %n' \
+        "$s/" "$DEST/current/$name/" >> "$changes" || rc=$?
   # 24 = files vanished while rsync ran (the server deletes or moves files
   # all the time). The copy is still consistent for everything that stayed.
   [ "$rc" = 0 ] || [ "$rc" = 24 ] || die "rsync of $s failed with exit $rc"
@@ -113,17 +118,22 @@ for d in "$DEST/current"/*/; do
   name=$(basename "$d")
   keep=0
   for s in "${SOURCES[@]}"; do [ "$(basename "$s")" = "$name" ] && keep=1; done
-  [ "$keep" = 1 ] || { echo "removing stale mirror current/$name"; rm -rf --one-file-system "$d"; }
+  [ "$keep" = 1 ] || { echo "removing stale mirror current/$name"; echo "*deleting $name/" >> "$changes"; rm -rf --one-file-system "$d"; }
 done
+n_changes=$(wc -l < "$changes")
 
 # --- snapshot --------------------------------------------------------------
 
 stamp=$(date +%Y-%m-%dT%H%M)
-if [ -e "$DEST/snapshots/$stamp" ]; then
+latest=$(snapshots | tail -n1)
+if [ "$n_changes" = 0 ] && [ -n "$latest" ]; then
+  echo "no changes since snapshot $latest, not taking another"
+  stamp=$latest
+elif [ -e "$DEST/snapshots/$stamp" ]; then
   echo "snapshot $stamp already exists, not taking another"
 else
   btrfs -q subvolume snapshot -r "$DEST/current" "$DEST/snapshots/$stamp"
-  echo "snapshot $stamp taken"
+  echo "snapshot $stamp taken ($n_changes changed entries)"
 fi
 
 # --- retention -------------------------------------------------------------
@@ -164,8 +174,8 @@ avail=$(df --output=avail -B1 "$DEST" | tail -n1 | tr -dc '0-9')
 took=$(( $(date +%s) - start ))
 
 cat > "$STATE_DIR/status.json.part" <<EOF
-{"last_ok":"$(date -Is)","snapshot":"$stamp","snapshots":$count,"oldest":"$oldest","used_pct":$(used_pct),"avail_bytes":$avail,"took_s":$took}
+{"last_ok":"$(date -Is)","snapshot":"$stamp","snapshots":$count,"oldest":"$oldest","used_pct":$(used_pct),"avail_bytes":$avail,"changes":$n_changes,"took_s":$took}
 EOF
 mv "$STATE_DIR/status.json.part" "$STATE_DIR/status.json"
 
-echo "backup ok: snapshot $stamp in ${took}s, $count snapshots (oldest $oldest), disk $(used_pct)% used"
+echo "backup ok: $n_changes changes, snapshot $stamp in ${took}s, $count snapshots (oldest $oldest), disk $(used_pct)% used"
