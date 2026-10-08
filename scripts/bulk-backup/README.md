@@ -52,7 +52,8 @@ roughly 100 GB a year against 3 TB free.
 If the disk has less than 10 % free, the oldest snapshots go first, but never
 one younger than 30 days, never fewer than 2, at most 8 per run, and it stops
 as soon as a drop frees less than 1 % (then `current/` itself is what fills the
-disk, and deleting history would not help): recent history is not traded for
+disk, and deleting history would not help; it then prunes nothing more for
+space until usage is back under the threshold): recent history is not traded for
 space, the check mails at 85 % instead. Retention refuses to drop more
 than 48 snapshots in one run (a config or clock mistake, not ageing). Weekly
 and monthly tiers exist but are redundant while daily has no limit. All of

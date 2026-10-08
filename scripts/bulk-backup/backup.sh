@@ -123,6 +123,17 @@ drop() {
 make_room() {
   local s cutoff before n=0
   cutoff=$(date -u -d "-$MIN_AGE_DAYS days" +%Y-%m-%dT%H%MZ)
+  if [ "$(used_pct)" -le $((100 - MIN_FREE_PCT)) ]; then
+    rm -f "$STATE_DIR/room-futile"
+    return
+  fi
+  # A drop that freed nothing means current/ itself fills the disk. Dropping
+  # one more every hour would slowly eat the whole history for no space, so
+  # stop pruning until usage is back under the threshold; the check mails.
+  if [ -e "$STATE_DIR/room-futile" ]; then
+    echo "<4>bulk-backup: $DEST is $(used_pct)% full and pruning did not help ($(cat "$STATE_DIR/room-futile")); not pruning, needs a bigger disk or less data" >&2
+    return
+  fi
   while [ "$(used_pct)" -gt $((100 - MIN_FREE_PCT)) ]; do
     if [ "$n" -ge "$MAX_SPACE_PRUNE" ]; then
       echo "<4>bulk-backup: $DEST is $(used_pct)% full after pruning $n snapshots this run; stopping here" >&2
@@ -140,8 +151,10 @@ make_room() {
     # Space comes back only once the cleaner has run; without waiting, df
     # still reads full and the loop would take the next snapshot too.
     btrfs -q subvolume sync "$DEST"
+    btrfs -q filesystem sync "$DEST"   # df lags until the transaction commits
     if [ $((before - $(used_pct))) -lt 1 ]; then
-      echo "<4>bulk-backup: dropping $s freed less than 1 %; current/ itself fills $DEST, not the history — stopping" >&2
+      echo "dropping $s at $(date -Is) freed less than 1 %" > "$STATE_DIR/room-futile"
+      echo "<4>bulk-backup: dropping $s freed less than 1 %; current/ itself fills $DEST, not the history — no more pruning for space until usage drops" >&2
       return
     fi
   done
