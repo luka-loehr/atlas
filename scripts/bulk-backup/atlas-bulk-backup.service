@@ -4,6 +4,8 @@ Description=Mirror /srv/bulk to the USB backup disk and snapshot it
 # mount fails and so does this unit, instead of rsyncing onto the root disk.
 RequiresMountsFor=/srv/bulk /srv/bulk-backup
 After=atlas-pg-backup.service
+# Any failure (including a missing mount) mails Luka, see ../alerts.
+OnFailure=atlas-alert@%n.service
 
 [Service]
 Type=oneshot
@@ -21,7 +23,22 @@ ReadWritePaths=/srv/bulk-backup
 ProtectHome=yes
 PrivateTmp=yes
 PrivateNetwork=yes
+PrivateDevices=yes
 NoNewPrivileges=yes
 ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
 RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# What rsync -aHAX needs to recreate any owner, mode, ACL and file capability,
+# plus CAP_SYS_ADMIN for the btrfs subvolume ioctls.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_SETFCAP CAP_SYS_ADMIN CAP_MKNOD

@@ -1,0 +1,16 @@
+[Unit]
+Description=Read and verify every block on the USB backup disk (btrfs scrub)
+RequiresMountsFor=/srv/bulk-backup
+OnFailure=atlas-alert@%n.service
+
+[Service]
+Type=oneshot
+# The data profile is single, so scrub finds rot but cannot repair it; finding
+# it is the point: a bad old snapshot otherwise shows up only during a restore.
+# -B waits, and the exit status is non-zero when errors were found; the stats
+# check catches anything scrub itself did not report.
+ExecStart=/usr/bin/btrfs scrub start -B -d /srv/bulk-backup
+ExecStart=/usr/bin/btrfs device stats --check /srv/bulk-backup
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=24h

@@ -1,0 +1,12 @@
+[Unit]
+Description=Check the backup jobs and disks, mail Luka about problems
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# root: smartctl, btrfs device stats and the job state directories.
+ExecStart=/usr/local/sbin/atlas-backup-check
+LoadCredential=lmail:/etc/atlas/credentials/lmail-alerts
+StateDirectory=atlas-alerts
+TimeoutStartSec=15min

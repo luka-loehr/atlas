@@ -4,6 +4,8 @@ Description=Nightly pg_dump of the atlas database
 # without the daemon there is nothing to dump and the run should not start.
 After=docker.service
 Requires=docker.service
+# Mails Luka on failure, see ../alerts.
+OnFailure=atlas-alert@%n.service
 
 [Service]
 Type=oneshot

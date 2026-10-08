@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the backups every hour
+
+[Timer]
+# Half past, between two bulk-backup runs. OnBootSec covers a box that was off.
+OnCalendar=*-*-* *:30:00
+OnBootSec=20min
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Mail Luka that %i failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/atlas-alert --unit %i
+LoadCredential=lmail:/etc/atlas/credentials/lmail-alerts
+StateDirectory=atlas-alerts
+TimeoutStartSec=5min
