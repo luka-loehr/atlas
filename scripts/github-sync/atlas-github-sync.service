@@ -1,0 +1,26 @@
+[Unit]
+Description=Mirror every GitHub repo into /srv/bulk/github
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/bulk
+# No timer of its own: the [Install] section below hooks it into the hourly
+# bulk backup, which then waits for it, so each hour's snapshot on the USB disk
+# holds that hour's repos. A failed sync does not stop the backup.
+Before=atlas-bulk-backup.service
+
+[Service]
+Type=oneshot
+# The user gh is logged in as; git authenticates through gh.
+User=SET-BY-INSTALLER
+ExecStart=/usr/local/bin/atlas-github-sync
+StateDirectory=atlas-github-sync
+Nice=10
+IOSchedulingClass=idle
+# The first run clones everything (~6 GB).
+TimeoutStartSec=1h
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=atlas-bulk-backup.service

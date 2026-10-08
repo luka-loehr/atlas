@@ -23,6 +23,7 @@ also checks hourly that the backup is fresh, not held and the disks are healthy.
 /srv/bulk-backup/
   current/                 subvolume, latest state
     bulk/                  = /srv/bulk   (without lost+found)
+      github/              every GitHub repo, see ../github-sync (runs first, each hour)
     backups/               = /srv/backups
   snapshots/
     2026-10-07T1405Z/      read-only, stamp in UTC
