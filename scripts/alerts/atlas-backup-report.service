@@ -1,0 +1,11 @@
+[Unit]
+Description=Mail Luka the weekly backup report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/atlas-backup-check --weekly
+LoadCredential=lmail:/etc/atlas/credentials/lmail-alerts
+StateDirectory=atlas-alerts
+TimeoutStartSec=15min

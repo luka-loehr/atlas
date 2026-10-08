@@ -1,0 +1,11 @@
+[Unit]
+Description=Scrub the USB backup disk monthly
+
+[Timer]
+OnCalendar=*-*-01 11:00:00
+RandomizedDelaySec=2h
+# atlas is often off on the 1st; catch up after the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

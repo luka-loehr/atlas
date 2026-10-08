@@ -1,0 +1,46 @@
+[Unit]
+Description=Mirror /srv/bulk to the USB backup disk and snapshot it
+# Pulls in both mounts and orders after them. If the USB disk is unplugged the
+# mount fails and so does this unit, instead of rsyncing onto the root disk.
+RequiresMountsFor=/srv/bulk /srv/bulk-backup
+After=atlas-pg-backup.service
+# A failed run mails Luka, see ../alerts. A missing mount is a dependency
+# failure, which does not trigger OnFailure=; the hourly check mails that.
+OnFailure=atlas-alert@%n.service
+
+[Service]
+Type=oneshot
+# root: ownership/ACLs must survive and the snapshots are btrfs ioctls. The
+# script is a root-owned copy in /usr/local/sbin, not the checkout, so a
+# writable file in ~/atlas never runs as root.
+ExecStart=/usr/local/sbin/atlas-bulk-backup
+StateDirectory=atlas-bulk-backup
+Nice=19
+IOSchedulingClass=idle
+# The first run copies everything (~650 G onto a 4800 rpm USB disk).
+TimeoutStartSec=12h
+ProtectSystem=strict
+ReadWritePaths=/srv/bulk-backup
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+# No PrivateDevices: findmnt reads the label and UUID of the LUKS mapper device
+# through /dev, and the preflight refuses to run without them.
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# What rsync -aHAX needs to recreate any owner, mode, ACL and file capability,
+# plus CAP_SYS_ADMIN for the btrfs subvolume ioctls.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_SETFCAP CAP_SYS_ADMIN CAP_MKNOD

@@ -18,8 +18,11 @@ One deliberate exception to the first shape: [`proxy/`](proxy/)'s
 `caddy.service`/`cloudflared.service` carry no `atlas-` prefix — they intentionally shadow the distro packages' units of the
 same names (see the comment in `proxy/install.sh`).
 
-Units run the scripts straight out of `~/atlas`, so re-run the relevant
-`install.sh` after a pull that moves or renames one.
+Most units run the scripts straight out of `~/atlas`, so re-run the relevant
+`install.sh` after a pull that moves or renames one. Units that run as root or
+handle credentials (`bulk-backup`, `github-sync`, `alerts`, `power-button`)
+run a root-owned copy in `/usr/local` instead: re-run their `install.sh` after
+any change to their scripts.
 
 | Path | What it is |
 |---|---|
@@ -28,6 +31,9 @@ Units run the scripts straight out of `~/atlas`, so re-run the relevant
 | [`firewall/`](firewall/) | nftables table confining atlas-server :8787 to loopback + tailnet, and the unit that loads it before the network comes up |
 | [`disk-guard/`](disk-guard/) | Five-minute check that root is not filling up — 85/90/95 % thresholds, a burn-rate trend trigger, an 80 G floor below which builds refuse to start, alerts to the journal |
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres` with retention, plus a restore drill that verifies row counts |
+| [`bulk-backup/`](bulk-backup/) | Hourly `rsync` of `/srv/bulk` and `/srv/backups` onto the encrypted USB disk (LUKS2 + btrfs, `/srv/bulk-backup`) with a read-only snapshot per run — 24 hourly, then one per day with no limit — a mass-change brake, and a monthly scrub |
+| [`github-sync/`](github-sync/) | Every repo of the account and its orgs, cloned to `/srv/bulk/github` through a read-only GitHub App, run by the bulk backup right before it snapshots |
+| [`alerts/`](alerts/) | Mail to Luka through the Luka Mail API: `OnFailure=` of the backup jobs, an hourly staleness/disk/SMART check, a weekly report, smartd warnings |
 | [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-server can report CPU power |
 | [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
 | [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.your-domain.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
@@ -45,16 +51,22 @@ Units run the scripts straight out of `~/atlas`, so re-run the relevant
 | `atlas-firewall.service` | boot, before the network | [`firewall/install.sh`](firewall/install.sh) |
 | `atlas-disk-guard.timer` | every 5 min | [`disk-guard/install.sh`](disk-guard/install.sh) |
 | `atlas-pg-backup.timer` | nightly 03:30 ± 10 min, `Persistent` | [`pg-backup/install.sh`](pg-backup/install.sh) |
+| `atlas-bulk-backup.timer` | hourly ± 5 min, `Persistent` | [`bulk-backup/install.sh`](bulk-backup/install.sh) |
+| `atlas-bulk-backup-scrub.timer` | monthly, the 1st 11:00 ± 2 h, `Persistent` | ″ |
+| `atlas-github-sync.service` | with every `atlas-bulk-backup` run (`WantedBy=`/`Before=`) | [`github-sync/install.sh`](github-sync/install.sh) |
+| `atlas-backup-check.timer` | hourly at :30, and 20 min after boot | [`alerts/install.sh`](alerts/install.sh) |
+| `atlas-backup-report.timer` | Mondays 09:00, `Persistent` | ″ |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
 | `dairo-ci-health.timer` | daily 12:05 UTC, `Persistent` | [`ci-health/install.sh`](ci-health/install.sh) |
 | `atlas-power-button.service` | boot | [`power-button/install.sh`](power-button/install.sh) |
 | `caddy.service`, `cloudflared.service` | boot (steady-state dev-proxy infra) | [`proxy/install.sh`](proxy/install.sh) |
 
-Both calendar timers set `Persistent=true` for the same reason: atlas is
+The calendar timers set `Persistent=true` for the same reason: atlas is
 powered off whenever it is not needed, and a plain calendar schedule silently
 drops every run that falls into a powered-off window. `atlas-disk-guard.timer`
-is the exception on purpose — it is a monotonic every-5-minutes timer, and a
-catch-up run of a "how full is the disk right now" check is worthless.
+and `atlas-backup-check.timer` are the exceptions on purpose — a catch-up run
+of a "how are things right now" check is worthless; the backup check runs
+20 min after boot instead.
 
 ## cargo-dev-profile.sh
 

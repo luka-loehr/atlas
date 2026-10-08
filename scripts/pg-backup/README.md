@@ -49,9 +49,10 @@ docker exec -i atlas-postgres pg_restore -U atlas -d atlas --no-owner --exit-on-
 
 Run `restore-drill.sh` after any Postgres major upgrade and every few months.
 
-## Known limitation
+## Off-disk copy
 
-atlas has a **single physical disk** (one NVMe, one LVM volume). Backups in
-`/srv/backups` survive `docker volume rm pgdata`, a botched migration, or an
-accidental `DROP TABLE` — they do **not** survive the disk dying. Off-machine
-replication (e.g. to the Mac via Tailscale) is a separate task.
+`/srv/backups` sits on the NVMe, so on its own it does not survive that disk
+dying. [`../bulk-backup/`](../bulk-backup/) copies it every hour onto the USB
+backup disk (`/srv/bulk-backup/current/backups/`, versioned in
+`snapshots/`). Both disks are still in the same box, so this is not an
+off-site copy.
