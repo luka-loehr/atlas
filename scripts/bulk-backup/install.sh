@@ -30,7 +30,7 @@ if [ -n "$luks" ]; then
     echo "$MAPPER  UUID=$luks_uuid  $KEY  luks,nofail,x-systemd.device-timeout=10" | sudo tee -a /etc/crypttab >/dev/null
     sudo systemctl daemon-reload
   fi
-  [ -e "/dev/mapper/$MAPPER" ] || sudo systemctl start "systemd-cryptsetup@$MAPPER.service"
+  [ -e "/dev/mapper/$MAPPER" ] || sudo systemctl start "systemd-cryptsetup@$(systemd-escape "$MAPPER").service"
 fi
 
 devs=$(for d in $(sudo blkid -t LABEL="$LABEL" -o device || true); do
