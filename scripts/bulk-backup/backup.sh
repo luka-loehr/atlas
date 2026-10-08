@@ -16,7 +16,8 @@
 # rsync changed something, so an idle hour adds no version.
 #
 # Retention keeps the newest snapshot per bucket: KEEP_HOURLY hours,
-# KEEP_DAILY days, KEEP_WEEKLY ISO weeks, KEEP_MONTHLY months. If the disk
+# KEEP_DAILY days, KEEP_WEEKLY ISO weeks, KEEP_MONTHLY months; 0 means no
+# limit (the default for days: one version of every day, forever). If the disk
 # still has less than MIN_FREE_PCT free, the oldest snapshots go next, but
 # never below KEEP_MIN.
 #
@@ -34,7 +35,7 @@ read -r -a MUST_BE_MOUNTED <<< "${BULK_BACKUP_MUST_BE_MOUNTED:-/srv/bulk}"
 STATE_DIR=${STATE_DIRECTORY:-/var/lib/atlas-bulk-backup}
 
 KEEP_HOURLY=${KEEP_HOURLY:-24}
-KEEP_DAILY=${KEEP_DAILY:-14}
+KEEP_DAILY=${KEEP_DAILY:-0}
 KEEP_WEEKLY=${KEEP_WEEKLY:-8}
 KEEP_MONTHLY=${KEEP_MONTHLY:-12}
 KEEP_MIN=${KEEP_MIN:-2}
@@ -141,11 +142,12 @@ fi
 mapfile -t newest_first < <(snapshots | sort -r)
 declare -A keep=()
 
-# Keep the newest snapshot of each of the latest $2 buckets, bucket = date +$1.
+# Keep the newest snapshot of each of the latest $2 buckets (0 = all of them),
+# bucket = date +$1.
 tier() {
   local fmt=$1 n=$2 last="" count=0 s key
   for s in "${newest_first[@]}"; do
-    [ "$count" -lt "$n" ] || break
+    [ "$n" = 0 ] || [ "$count" -lt "$n" ] || break
     key=$(date -d "${s:0:10} ${s:11:2}:${s:13:2}" +"$fmt")
     if [ "$key" != "$last" ]; then
       keep[$s]=1

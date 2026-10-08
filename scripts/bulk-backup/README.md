@@ -37,13 +37,16 @@ as read errors instead of silently wrong photos.
 The newest snapshot of each bucket is kept:
 
 - hourly: 24 hours
-- daily: 14 days
-- weekly: 8 ISO weeks
-- monthly: 12 months
+- daily: every day, no limit
 
-An accidentally deleted or overwritten file is therefore recoverable for up to
-a year. If the disk ever has less than 10 % free, the oldest snapshots are
-removed first, never fewer than 2. All of these are environment variables in
+So any day can be restored as it was at its last run, as far back as the
+backup goes. What a day costs on the disk is only what was deleted or
+rewritten that day: new photos are in `current/` anyway, so in practice it is
+the nightly Postgres dump (~230 MB) plus whatever was deleted or edited,
+roughly 100 GB a year against 3 TB free. If the disk ever has less than 10 %
+free, the oldest snapshots are removed first, never fewer than 2. Weekly and
+monthly tiers exist (`KEEP_WEEKLY`, `KEEP_MONTHLY`) but are redundant while
+daily has no limit. All of these are environment variables in
 `backup.sh` (`KEEP_*`, `MIN_FREE_PCT`, `KEEP_MIN`).
 
 ## Safety checks
