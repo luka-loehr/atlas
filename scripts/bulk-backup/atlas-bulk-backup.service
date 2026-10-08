@@ -23,7 +23,8 @@ ReadWritePaths=/srv/bulk-backup
 ProtectHome=yes
 PrivateTmp=yes
 PrivateNetwork=yes
-PrivateDevices=yes
+# No PrivateDevices: findmnt reads the label and UUID of the LUKS mapper device
+# through /dev, and the preflight refuses to run without them.
 NoNewPrivileges=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
