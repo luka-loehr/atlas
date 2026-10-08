@@ -35,7 +35,8 @@ and runs that, not the checkout: the daemon runs as root, and a file under
 changing the script.
 
 It requires logind to ignore the key, which
-`/etc/systemd/logind.conf.d/10-power-button.conf` does:
+`/etc/systemd/logind.conf.d/10-power-button.conf` does (`install.sh` writes it
+if missing):
 
     [Login]
     HandlePowerKey=ignore

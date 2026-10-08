@@ -14,10 +14,8 @@ Two shapes in here, and the difference is the naming convention:
 - **A loose `*.sh` at the top level** for one-shots you run by hand — no unit,
   no install step.
 
-Two deliberate exceptions to the first shape: [`power-button/`](power-button/)
-ships no `install.sh` (its README documents the two-line install + `enable` by
-hand), and [`proxy/`](proxy/)'s `caddy.service`/`cloudflared.service` carry no
-`atlas-` prefix — they intentionally shadow the distro packages' units of the
+One deliberate exception to the first shape: [`proxy/`](proxy/)'s
+`caddy.service`/`cloudflared.service` carry no `atlas-` prefix — they intentionally shadow the distro packages' units of the
 same names (see the comment in `proxy/install.sh`).
 
 Units run the scripts straight out of `~/atlas`, so re-run the relevant
@@ -49,7 +47,7 @@ Units run the scripts straight out of `~/atlas`, so re-run the relevant
 | `atlas-pg-backup.timer` | nightly 03:30 ± 10 min, `Persistent` | [`pg-backup/install.sh`](pg-backup/install.sh) |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
 | `dairo-ci-health.timer` | daily 12:05 UTC, `Persistent` | [`ci-health/install.sh`](ci-health/install.sh) |
-| `atlas-power-button.service` | boot | by hand — see [`power-button/`](power-button/) |
+| `atlas-power-button.service` | boot | [`power-button/install.sh`](power-button/install.sh) |
 | `caddy.service`, `cloudflared.service` | boot (steady-state dev-proxy infra) | [`proxy/install.sh`](proxy/install.sh) |
 
 Both calendar timers set `Persistent=true` for the same reason: atlas is

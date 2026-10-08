@@ -5,6 +5,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# logind must ignore the key, or a single press still powers off (README).
+CONF=/etc/systemd/logind.conf.d/10-power-button.conf
+if [ ! -e "$CONF" ]; then
+  sudo mkdir -p "$(dirname "$CONF")"
+  printf '[Login]\nHandlePowerKey=ignore\nHandlePowerKeyLongPress=ignore\n' | sudo tee "$CONF" >/dev/null
+  echo "wrote $CONF; it applies after: sudo systemctl restart systemd-logind (or a reboot)"
+fi
+
 sudo install -o root -g root -m 0755 power-button.py /usr/local/sbin/atlas-power-button
 . ../lib/install-unit.sh
 install_unit atlas-power-button.service
