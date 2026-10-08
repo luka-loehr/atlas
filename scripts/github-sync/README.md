@@ -25,9 +25,9 @@ the sync uses can push, delete a repo or change an org.
 - `/etc/atlas/github-sync.env`: `GITHUB_APP_ID=…` and
   `GITHUB_SYNC_OWNERS="luka-loehr dairo-app school-ui lgka-app kiste-run"`
 
-The app is public only so it can be installed on the orgs. An installation on
-any account outside `GITHUB_SYNC_OWNERS` is ignored and mailed by the hourly
-check. A new org: install the app there ("All repositories") and add it to
+The app is public only so it can be installed on the orgs. The sync looks up
+the installation of each account in `GITHUB_SYNC_OWNERS` by name, so an
+installation by anyone else is never listed or synced. A new org: install the app there ("All repositories") and add it to
 `GITHUB_SYNC_OWNERS`; an allowed account without the app fails the run.
 
 The key does not expire. To rotate it: app settings → Private keys → Generate,

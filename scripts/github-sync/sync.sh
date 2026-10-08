@@ -14,7 +14,7 @@
 # Authenticates as the GitHub App "atlas-backup-luka-loehr" (Contents and
 # Metadata read-only, installed on every account in GITHUB_SYNC_OWNERS): a JWT
 # signed with the app key gets one-hour installation tokens. Nothing here can
-# write to GitHub. Installations on other accounts are ignored and reported.
+# write to GitHub. Installations on other accounts are never looked at.
 #
 # One failing repo does not stop the others; the run fails at the end, and the
 # unit's OnFailure= mails it.
@@ -94,18 +94,16 @@ mint() {  # owner -> token[owner], renewed after 50 min
 }
 
 start=$(date +%s)
-installs=$(api "Bearer $(app_jwt)" "/app/installations?per_page=100" | jq -r '.[] | [.account.login, .id] | @tsv') \
-  || die "listing the app's installations failed (app key revoked? app $APP_ID deleted?)"
-
-ignored=() failures=()
-while IFS=$'\t' read -r login id; do
-  [ -n "$login" ] || continue
-  allowed=0
-  for o in "${OWNERS[@]}"; do [ "$o" = "$login" ] && allowed=1; done
-  if [ "$allowed" = 1 ]; then inst[$login]=$id; else ignored+=("$login"); fi
-done <<< "$installs"
+failures=()
+# Each allowed account's installation is looked up by name. The app is public
+# (so the orgs can install it), and whoever else installs it is never listed,
+# never synced and cannot crowd the real ones out of a paginated list.
+api "Bearer $(app_jwt)" /app >/dev/null || die "the app does not authenticate (key revoked? app $APP_ID deleted?)"
 for o in "${OWNERS[@]}"; do
-  [ -n "${inst[$o]:-}" ] || { echo "<4>github-sync: app is not installed on $o" >&2; failures+=("$o (app not installed)"); }
+  id=$(api "Bearer $(app_jwt)" "/users/$o/installation" 2>/dev/null | jq -r '.id // empty') \
+    || id=$(api "Bearer $(app_jwt)" "/orgs/$o/installation" 2>/dev/null | jq -r '.id // empty') || id=""
+  if [ -n "$id" ]; then inst[$o]=$id; else
+    echo "<4>github-sync: app is not installed on $o" >&2; failures+=("$o (app not installed)"); fi
 done
 
 # --- list ------------------------------------------------------------------
@@ -190,12 +188,11 @@ for d in "$DEST"/*/*/; do
   [ -n "${listed[$name]:-}" ] || orphans+=("$name")
 done
 [ "${#orphans[@]}" = 0 ] || echo "kept, no longer on GitHub: ${orphans[*]}"
-[ "${#ignored[@]}" = 0 ] || echo "<4>github-sync: ignored installations outside GITHUB_SYNC_OWNERS: ${ignored[*]}" >&2
 
 took=$(( $(date +%s) - start ))
 json_list() { printf '%s\n' "$@" | jq -R . | jq -sc 'map(select(length > 0))'; }
 cat > "$STATE_DIR/status.json.part" <<JSON
-{"last_run":"$(date -Is)","repos":${#listed[@]},"ok":$ok,"cloned":$cloned,"updated":$updated,"empty":$empty,"failed":$(json_list "${failures[@]}"),"orphans":$(json_list "${orphans[@]}"),"ignored_installations":$(json_list "${ignored[@]}"),"took_s":$took}
+{"last_run":"$(date -Is)","repos":${#listed[@]},"ok":$ok,"cloned":$cloned,"updated":$updated,"empty":$empty,"failed":$(json_list "${failures[@]}"),"orphans":$(json_list "${orphans[@]}"),"took_s":$took}
 JSON
 mv "$STATE_DIR/status.json.part" "$STATE_DIR/status.json"
 
