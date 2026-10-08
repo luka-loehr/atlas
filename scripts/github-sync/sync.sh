@@ -7,7 +7,7 @@
 # run lands on the USB disk in the same pass and becomes part of that hour's
 # read-only btrfs snapshot. That snapshot is the versioning: if a branch is
 # force-pushed or a repo emptied, this clone follows it, but the snapshots from
-# before still hold the old state (24 hourly / 14 daily / 8 weekly / 12 monthly).
+# before still hold the old state (24 hourly, then one per day with no limit).
 #
 # Never deletes a clone. A repo that disappears from GitHub (deleted, renamed,
 # transferred, access lost) keeps its last copy here and is reported each run.

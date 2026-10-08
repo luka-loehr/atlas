@@ -26,8 +26,9 @@ the hourly bulk backup first runs the sync, waits for it, then mirrors
 
 The clones follow GitHub exactly, rewrites included: if `main` is
 force-pushed or wiped, the next run takes that over. The snapshots from before
-do not change, and they are kept 24 hourly / 14 daily / 8 weekly / 12 monthly,
-so the state before the incident is there for up to a year. A failed sync does
+do not change: one per hour for the last 24 hours and one for every day before
+that, with no limit (until the USB disk drops below 10 % free), so any earlier
+day can be restored. A failed sync does
 not stop the backup.
 
 A repo that disappears from GitHub (deleted, renamed, transferred) is never
