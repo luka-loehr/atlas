@@ -45,6 +45,6 @@ sha2 = "0.10"
 thumbhash = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["fs", "compression-gzip", "compression-br", "compression-zstd"] }
+tower-http = { version = "0.7", features = ["fs", "compression-gzip", "compression-br", "compression-zstd"] }
 webp = "0.3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
