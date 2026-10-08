@@ -1,0 +1,52 @@
+[Unit]
+Description=Mirror every GitHub repo into /srv/bulk/github
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/bulk
+# No timer of its own: the [Install] section below hooks it into the hourly
+# bulk backup, which then waits for it, so each hour's snapshot on the USB disk
+# holds that hour's repos. A failed sync does not stop the backup.
+Before=atlas-bulk-backup.service
+OnFailure=atlas-alert@%n.service
+
+[Service]
+Type=oneshot
+# Its own system user (not luka, not root): it only ever reads GitHub, through
+# the read-only GitHub App, and writes /srv/bulk/github.
+User=atlas-github
+Group=atlas-github
+Environment=HOME=/var/lib/atlas-github-sync
+EnvironmentFile=/etc/atlas/github-sync.env
+LoadCredential=github-app.pem:/etc/atlas/credentials/github-sync-app.pem
+ExecStart=/usr/local/bin/atlas-github-sync
+StateDirectory=atlas-github-sync
+Nice=10
+IOSchedulingClass=idle
+# The first run clones everything (~9 GB); each git command has its own 20 min cap.
+TimeoutStartSec=2h
+ProtectSystem=strict
+ReadWritePaths=/srv/bulk/github
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+UMask=0027
+
+[Install]
+WantedBy=atlas-bulk-backup.service
