@@ -4,7 +4,8 @@ Description=Mirror /srv/bulk to the USB backup disk and snapshot it
 # mount fails and so does this unit, instead of rsyncing onto the root disk.
 RequiresMountsFor=/srv/bulk /srv/bulk-backup
 After=atlas-pg-backup.service
-# Any failure (including a missing mount) mails Luka, see ../alerts.
+# A failed run mails Luka, see ../alerts. A missing mount is a dependency
+# failure, which does not trigger OnFailure=; the hourly check mails that.
 OnFailure=atlas-alert@%n.service
 
 [Service]

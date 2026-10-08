@@ -64,8 +64,6 @@ elif [ $((now - t)) -gt 10800 ] && [ "$up" -gt 10800 ]; then
 fi
 failed=$(jq -r '(.failed // []) | join(", ")' "$SYNC_STATUS" 2>/dev/null)
 [ -z "$failed" ] || problem "sync:failed" "github sync failed for: $failed"
-ignored=$(jq -r '(.ignored_installations // []) | join(", ")' "$SYNC_STATUS" 2>/dev/null)
-[ -z "$ignored" ] || problem "sync:ignored" "GitHub App installed on accounts not in the allowlist (not synced): $ignored"
 
 newest=$(find "$DUMPS" -maxdepth 1 -name 'atlas_*.dump' -printf '%T@\n' 2>/dev/null | sort -n | tail -n1 | cut -d. -f1)
 if [ -z "$newest" ]; then
@@ -84,6 +82,17 @@ else
   btrfs device stats --check "$DEST" >/dev/null 2>&1 \
     || problem "disk:btrfs" "btrfs device errors on $DEST: $(btrfs device stats "$DEST" | grep -v ' 0$' | tr '\n' ' ')"
   findmnt -n -o OPTIONS --mountpoint "$DEST" | grep -qw rw || problem "disk:ro" "$DEST is mounted read-only"
+  # The monthly scrub is skipped quietly when atlas is off or shut down
+  # mid-scrub; make sure one actually finished recently. A disk younger than
+  # that has not had its first one yet.
+  born=$(stat -c %W "$DEST/current" 2>/dev/null || echo 0)
+  if [ "$born" -gt 0 ] && [ $((now - born)) -gt $((45 * 86400)) ]; then
+    scrub=$(btrfs scrub status "$DEST" 2>/dev/null)
+    started=$(sed -n 's/^Scrub started: *//p' <<<"$scrub" | xargs -r -I{} date -d {} +%s 2>/dev/null)
+    if ! grep -q 'Status: *finished' <<<"$scrub" || [ -z "$started" ] || [ $((now - started)) -gt $((45 * 86400)) ]; then
+      problem "scrub:stale" "no btrfs scrub of $DEST finished in the last 45 days: sudo systemctl start atlas-bulk-backup-scrub.service"
+    fi
+  fi
 fi
 mountpoint -q /srv/bulk || problem "disk:bulk" "/srv/bulk is not mounted"
 
@@ -113,11 +122,13 @@ for k in "${!problems[@]}"; do
     "${problems[$k]}" "$(date '+%F %T %Z')" | "$ALERT" "$k" "${problems[$k]}" || rc=1
 done
 
-# A problem from an earlier run that is gone now. Unit keys belong to
-# OnFailure mails; they resolve once the unit is no longer failed.
+# A problem from an earlier run that is gone now. Only keys this check raises
+# (and OnFailure's unit: keys, once the unit is no longer failed) resolve;
+# smartd and manual alerts are not observed here and must not "resolve".
 shopt -s nullglob
 for f in "$STATE"/*; do
   k=$(basename "$f")
+  [[ $k =~ ^(timer|hook|unit|bulk|sync|pg|disk|smart|scrub|key): ]] || continue
   key=$k
   for p in "${!problems[@]}"; do [ "$(printf '%s' "$p" | tr -c 'A-Za-z0-9._@:-' '_')" = "$k" ] && key=""; done
   [ -n "$key" ] || continue

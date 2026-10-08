@@ -43,8 +43,9 @@ read -r -a MUST_BE_MOUNTED <<< "${BULK_BACKUP_MUST_BE_MOUNTED:-/srv/bulk}"
 # formatted or wrongly mounted disk does not, so it is never mirrored.
 MARKER=.atlas-backup-source
 STATE_DIR=${STATE_DIRECTORY:-/var/lib/atlas-bulk-backup}
-# Shared with github-sync and pg-backup, so none of them writes while another
-# reads (created by tmpfiles, see install.sh).
+# Shared with github-sync, so no snapshot catches a half-updated clone
+# (created by tmpfiles, see install.sh). pg-backup needs none: it writes
+# *.part, which is skipped, and renames atomically.
 LOCK=${ATLAS_BACKUP_LOCK:-/run/lock/atlas-backup.lock}
 
 KEEP_HOURLY=${KEEP_HOURLY:-24}
@@ -55,6 +56,9 @@ KEEP_MIN=${KEEP_MIN:-2}
 MIN_FREE_PCT=${MIN_FREE_PCT:-10}
 MIN_AGE_DAYS=${MIN_AGE_DAYS:-30}
 MASS_CHANGE_LIMIT=${MASS_CHANGE_LIMIT:-1000}
+# make_room drops at most this many snapshots per run, and stops as soon as a
+# drop frees less than 1 % (old snapshots share most blocks with current/).
+MAX_SPACE_PRUNE=${MAX_SPACE_PRUNE:-8}
 # Retention never drops more than this many snapshots in one run; more means
 # a config or clock mistake, not normal ageing (1-2 per hour).
 MAX_PRUNE=${MAX_PRUNE:-48}
@@ -117,19 +121,29 @@ drop() {
 # the oldest is older than MIN_AGE_DAYS. Recent history is never traded for
 # space: the run warns instead and the health check mails it.
 make_room() {
-  local s cutoff
+  local s cutoff before n=0
   cutoff=$(date -u -d "-$MIN_AGE_DAYS days" +%Y-%m-%dT%H%MZ)
   while [ "$(used_pct)" -gt $((100 - MIN_FREE_PCT)) ]; do
+    if [ "$n" -ge "$MAX_SPACE_PRUNE" ]; then
+      echo "<4>bulk-backup: $DEST is $(used_pct)% full after pruning $n snapshots this run; stopping here" >&2
+      return
+    fi
     mapfile -t all < <(snapshots)
     s=${all[0]:-}
     if [ "${#all[@]}" -le "$KEEP_MIN" ] || [[ ! $s < $cutoff ]]; then
       echo "<4>bulk-backup: $DEST is $(used_pct)% full; ${#all[@]} snapshots, oldest $s, none older than $MIN_AGE_DAYS days to prune" >&2
       return
     fi
+    before=$(used_pct)
     drop "$s"
+    n=$((n + 1))
     # Space comes back only once the cleaner has run; without waiting, df
     # still reads full and the loop would take the next snapshot too.
     btrfs -q subvolume sync "$DEST"
+    if [ $((before - $(used_pct))) -lt 1 ]; then
+      echo "<4>bulk-backup: dropping $s freed less than 1 %; current/ itself fills $DEST, not the history — stopping" >&2
+      return
+    fi
   done
 }
 
@@ -145,9 +159,13 @@ had_pending=0
 touch "$STATE_DIR/pending"
 
 # rsync itemizes every created, updated or deleted entry here, one per line,
-# as "<flags> <source name>/<path>".
-changes=$(mktemp)
-trap 'rm -f "$changes"' EXIT
+# as "<flags> <source name>/<path>". The list lives in the state directory and
+# keeps growing until a snapshot is taken, so a run that dies half-way (after
+# --delete already ran) cannot hide its deletions from the brake next time.
+changes=$STATE_DIR/changes
+[ "$had_pending" = 1 ] || : > "$changes"
+run_start=$(wc -l < "$changes")
+failed_rc=""
 for s in "${SOURCES[@]}"; do
   name=$(basename "$s")
   echo "mirroring $s -> $DEST/current/$name"
@@ -158,7 +176,8 @@ for s in "${SOURCES[@]}"; do
         "$s/" "$DEST/current/$name/" >> "$changes" || rc=$?
   # 24 = files vanished while rsync ran (the server deletes or moves files
   # all the time). The copy is still consistent for everything that stayed.
-  [ "$rc" = 0 ] || [ "$rc" = 24 ] || die "rsync of $s failed with exit $rc"
+  # Anything else fails the run, but only after the brake below has looked.
+  [ "$rc" = 0 ] || [ "$rc" = 24 ] || failed_rc+="$s:$rc "
 done
 
 # Drop mirrors of sources that were removed from SOURCES, so they do not linger
@@ -171,21 +190,27 @@ for d in "$DEST/current"/*/; do
   [ "$keep" = 1 ] || { echo "removing stale mirror current/$name"; echo "*deleting $name/" >> "$changes"; rm -rf --one-file-system "$d"; }
 done
 shopt -u nullglob
-n_changes=$(wc -l < "$changes")
+n_changes=$(( $(wc -l < "$changes") - run_start ))
 
 # Deleted entries and overwritten existing files ('>f' without the '+' of a new
 # file). github/ is left out: its working trees and loose objects come and go
 # with every pushed refactor and git gc, and its history is git's own.
-lost=$(grep -E '^(\*deleting|>f[^+])' "$changes" | grep -cv '^[^ ]* bulk/github/' || true)
+# rsync pads "*deleting" with extra spaces, hence " +".
+lost=$(grep -E '^(\*deleting|>f[^+])' "$changes" | grep -cEv '^[^ ]+ +bulk/github/' || true)
 if [ "$lost" -gt "$MASS_CHANGE_LIMIT" ]; then
   {
     echo "$(date -Is): $lost files deleted or overwritten in one run (limit $MASS_CHANGE_LIMIT); no snapshot taken."
     echo "Check /srv/bulk. If this was intended: sudo rm $STATE_DIR/hold (the next run snapshots it)."
     echo "First entries:"
-    grep -E '^(\*deleting|>f[^+])' "$changes" | grep -v '^[^ ]* bulk/github/' | head -n 20 || true
+    grep -E '^(\*deleting|>f[^+])' "$changes" | grep -Ev '^[^ ]+ +bulk/github/' | head -n 20 || true
   } > "$STATE_DIR/hold"
+  # Releasing the hold accepts these changes: start the list afresh, while
+  # pending stays so the next run snapshots the accepted state.
+  : > "$changes"
   die "mass change: $lost files deleted or overwritten, holding (see $STATE_DIR/hold)"
 fi
+
+[ -z "$failed_rc" ] || die "rsync failed (source:exit): $failed_rc"
 
 # --- snapshot --------------------------------------------------------------
 
@@ -201,6 +226,7 @@ else
   echo "snapshot $stamp taken ($n_changes changed entries)"
 fi
 rm -f "$STATE_DIR/pending"
+: > "$changes"
 
 # --- retention -------------------------------------------------------------
 

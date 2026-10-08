@@ -22,16 +22,10 @@ globals="$BACKUP_DIR/globals_${stamp}.sql"
 
 mkdir -p "$BACKUP_DIR"
 
-# The hourly bulk backup copies $BACKUP_DIR to the USB disk; the shared lock
-# keeps it from snapshotting while a dump is being written.
-LOCK=${ATLAS_BACKUP_LOCK:-/run/lock/atlas-backup.lock}
-if [ -e "$LOCK" ]; then
-  exec 9<"$LOCK"
-  flock -w 7200 9 || { echo "bulk backup held $LOCK for two hours" >&2; exit 1; }
-fi
-
 # Dump to a .part file first so a failed run never leaves a truncated file
-# that looks like a valid backup.
+# that looks like a valid backup. The hourly bulk backup, which copies
+# $BACKUP_DIR to the USB disk, skips *.part, and the renames below are atomic,
+# so it never snapshots a half-written dump and needs no lock with this job.
 docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc --compress=zstd "$DB" > "$dump.part"
 
 # Roles/grants (tiny, but needed for a from-scratch rebuild).

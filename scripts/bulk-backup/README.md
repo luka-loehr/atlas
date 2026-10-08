@@ -50,8 +50,10 @@ the nightly Postgres dump (~230 MB) plus whatever was deleted or edited,
 roughly 100 GB a year against 3 TB free.
 
 If the disk has less than 10 % free, the oldest snapshots go first, but never
-one younger than 30 days and never fewer than 2: recent history is not traded
-for space, the check mails at 85 % instead. Retention refuses to drop more
+one younger than 30 days, never fewer than 2, at most 8 per run, and it stops
+as soon as a drop frees less than 1 % (then `current/` itself is what fills the
+disk, and deleting history would not help): recent history is not traded for
+space, the check mails at 85 % instead. Retention refuses to drop more
 than 48 snapshots in one run (a config or clock mistake, not ageing). Weekly
 and monthly tiers exist but are redundant while daily has no limit. All of
 these are environment variables in `backup.sh` (`KEEP_*`, `MIN_FREE_PCT`,
@@ -66,9 +68,12 @@ The run refuses (unit fails, mail) when
 - `/srv/bulk` is not mounted, or a source lacks its `.atlas-backup-source`
   marker (`install.sh` creates it) — a freshly formatted or wrong disk is never
   mirrored over the backup;
-- another backup job holds `/run/lock/atlas-backup.lock` (github-sync and
-  pg-backup take it too, so no snapshot catches a half-written clone or dump;
-  `*.part` files are skipped as well).
+- github-sync holds `/run/lock/atlas-backup.lock` for over an hour (the two
+  share it, so no snapshot catches a half-updated clone; pg-backup's dumps are
+  written as `*.part`, which is skipped, and renamed atomically).
+
+A failed run mails Luka. A missing USB disk fails the unit as a dependency,
+which `OnFailure=` does not see; the hourly check mails it instead.
 
 **Mass-change brake.** If one run deletes or overwrites more than 1000
 existing files (outside `bulk/github/`, whose clones churn by design), it takes
@@ -82,7 +87,10 @@ sudo rm /var/lib/atlas-bulk-backup/hold      # the next run snapshots the new st
 ```
 
 The snapshots from before stay untouched meanwhile, so a wiped or encrypted
-photo library cannot push the good versions out.
+photo library cannot push the good versions out. The list of changes is kept
+in the state directory until a snapshot is taken, so a run that fails half-way
+(after `--delete` already ran) cannot slip its deletions past the brake on the
+next run.
 
 `crypttab` and `fstab` use `nofail` with a 10 s device timeout, so atlas boots
 normally with the disk unplugged.

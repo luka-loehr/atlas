@@ -54,7 +54,7 @@ for s in "${SOURCES[@]}"; do
   sudo test -f "$s/.atlas-backup-source" || echo "mirrored hourly to $MNT by scripts/bulk-backup; do not delete" | sudo tee "$s/.atlas-backup-source" >/dev/null
 done
 
-# Shared lock of the backup jobs (bulk-backup, github-sync, pg-backup).
+# Shared lock of bulk-backup and github-sync.
 echo 'f /run/lock/atlas-backup.lock 0644 root root -' | sudo tee /etc/tmpfiles.d/atlas-backup.conf >/dev/null
 sudo systemd-tmpfiles --create /etc/tmpfiles.d/atlas-backup.conf
 
