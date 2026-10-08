@@ -36,7 +36,7 @@ futures-util = "0.3"
 kamadak-exif = "0.6"
 libc = "0.2"
 libheif-rs = "2"
-nvml-wrapper = "0.11"
+nvml-wrapper = "0.13"
 portable-pty = "0.9"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
