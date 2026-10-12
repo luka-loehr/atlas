@@ -3,7 +3,7 @@
 # alerts through atlas-alert (once per problem per day, plus a "resolved" mail).
 #
 #   atlas-backup-check            check, mail new problems and resolutions
-#   atlas-backup-check --weekly   also mail a summary, problems or not, so a
+#   atlas-backup-check --weekly   mail one summary instead, problems or not, so a
 #                                 silent alert channel gets noticed
 #
 # OnFailure= on each job reports a failed run. This catches what OnFailure
@@ -115,9 +115,12 @@ done
 # --- report ----------------------------------------------------------------
 
 STATE=${ATLAS_ALERT_STATE:-/var/lib/atlas-alerts}
+weekly=$([ "${1:-}" = --weekly ] && echo 1)
 rc=0
 for k in "${!problems[@]}"; do
   echo "<4>problem: ${problems[$k]}"
+  # The weekly report lists its problems itself; one mail, not one per problem.
+  [ -z "$weekly" ] || continue
   printf '%s\n\nChecked %s. Details: journalctl -u atlas-backup-check -n 50, and the README of the job in ~/atlas/scripts.\n' \
     "${problems[$k]}" "$(date '+%F %T %Z')" | "$ALERT" "$k" "${problems[$k]}" || rc=1
 done
@@ -136,7 +139,7 @@ for f in "$STATE"/*; do
   "$ALERT" --resolve "$k" "$(cat "$f")" || rc=1
 done
 
-if [ "${1:-}" = --weekly ]; then
+if [ -n "$weekly" ]; then
   {
     if [ "${#problems[@]}" = 0 ]; then echo "All backup checks pass."; else
       echo "Open problems:"; for k in "${!problems[@]}"; do echo "- ${problems[$k]}"; done; fi
@@ -148,7 +151,18 @@ if [ "${1:-}" = --weekly ]; then
     echo "Snapshots:    $(ls "$DEST/snapshots" 2>/dev/null | wc -l), oldest $(ls "$DEST/snapshots" 2>/dev/null | head -n1)"
     echo
     echo "This mail comes every Monday. If it stops coming, the alerting itself is broken."
-  } | ATLAS_ALERT_REPEAT_S=0 "$ALERT" "weekly" "weekly backup report: $([ "${#problems[@]}" = 0 ] && echo 'all good' || echo "${#problems[@]} problem(s)")" || rc=1
+  } | ATLAS_ALERT_REPEAT_S=0 "$ALERT" "weekly" "weekly backup report: $([ "${#problems[@]}" = 0 ] && echo 'all good' || echo "${#problems[@]} problem(s)")"
+  if [ $? = 0 ]; then
+    # Count the report as the alert, as atlas-alert would have recorded it: the
+    # hourly check does not mail them again within 24 h, and "resolved" still
+    # follows. If the report did not go out, the next hourly check mails them.
+    mkdir -p "$STATE"
+    for k in "${!problems[@]}"; do
+      printf '%s\n' "${problems[$k]}" > "$STATE/$(printf '%s' "$k" | tr -c 'A-Za-z0-9._@:-' '_')"
+    done
+  else
+    rc=1
+  fi
 fi
 
 echo "checked: ${#problems[@]} problem(s)"
