@@ -1,6 +1,10 @@
 [Unit]
 Description=Check the backup jobs and disks, mail Luka about problems
 After=network-online.target
+# Ordering only: at boot a missed Persistent run fires at once and would see the
+# mountpoint empty while the LUKS disk is still opening. A missing disk is still
+# reported (nofail mount, no Requires).
+After=srv-bulk\x2dbackup.mount
 Wants=network-online.target
 
 [Service]
