@@ -47,4 +47,4 @@ tokio-util = { version = "0.7", features = ["io"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.7", features = ["fs", "compression-gzip", "compression-br", "compression-zstd"] }
 webp = "0.3"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
