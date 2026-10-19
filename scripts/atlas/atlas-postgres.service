@@ -1,0 +1,18 @@
+[Unit]
+Description=Atlas PostgreSQL stack
+Requires=docker.service
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Compose owns the container lifecycle; --wait makes dependents start only
+# once Postgres has passed its healthcheck.  The installer renders this home
+# path for the account that owns the checkout.
+WorkingDirectory=/home/SET-BY-INSTALLER/atlas/db
+ExecStart=/usr/bin/docker compose up --detach --wait postgres
+TimeoutStartSec=3min
+
+[Install]
+WantedBy=multi-user.target

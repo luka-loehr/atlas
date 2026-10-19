@@ -5,11 +5,12 @@ put them on the box.
 
 | File | |
 |---|---|
-| `install.sh` | builds `atlas-server` and `atlas-ml` in release mode, installs them to `/usr/local/bin`, renders and enables both units, restarts them. Nothing is replaced unless the build succeeded. `atlas deploy` on the Mac runs exactly this over ssh |
+| `install.sh` | builds `atlas-server` and `atlas-ml` in release mode, installs them to `/usr/local/bin`, renders and enables the complete boot stack, then restarts it. Nothing is replaced unless the build succeeded. `atlas deploy` on the Mac runs exactly this over ssh |
+| `atlas-postgres.service` | brings the Compose database up at boot and waits for its healthcheck before the API starts |
 | `models.sh` | one-time: builds llama.cpp's server from a pinned commit (CUDA when available) into `/usr/local/lib/atlas/`, downloads the embedding model and the face models into `~/models`. Re-running skips what is there |
 | `atlas.env.example` | template for `/etc/atlas/atlas.env` (mode 0600), read by both units |
-| `atlas-server.service` | API on :8787 plus ingest workers; starts after Docker so the database is up |
-| `atlas-ml.service` | model worker on 127.0.0.1:8786 |
+| `atlas-server.service` | API on :8787 plus ingest workers; starts after healthy Postgres |
+| `atlas-ml.service` | model worker on 127.0.0.1:8786; starts after the API |
 
 ```bash
 # first time
