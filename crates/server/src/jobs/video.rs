@@ -18,6 +18,9 @@ pub struct Probe {
     pub duration: Option<f64>,
     pub codec: String,
     pub pixel_format: String,
+    /// the video stream's transfer curve: "arib-std-b67" (HLG) or
+    /// "smpte2084" (PQ) are HDR
+    pub transfer: String,
     pub bitrate: Option<i64>,
     pub container: String,
     pub created: Option<DateTime<Utc>>,
@@ -43,6 +46,7 @@ pub fn probe(path: &Path) -> Result<Probe> {
     if let Some(stream) = info["streams"].as_array().and_then(|s| s.iter().find(|s| s["codec_type"] == "video")) {
         probe.codec = stream["codec_name"].as_str().unwrap_or("").to_string();
         probe.pixel_format = stream["pix_fmt"].as_str().unwrap_or("").to_string();
+        probe.transfer = stream["color_transfer"].as_str().unwrap_or("").to_string();
         probe.coded_width = stream["width"].as_i64().unwrap_or(0) as i32;
         probe.coded_height = stream["height"].as_i64().unwrap_or(0) as i32;
         let rotation = stream["side_data_list"]
@@ -94,15 +98,36 @@ pub fn iso6709(s: &str) -> Option<(f64, f64)> {
     ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon) && (lat != 0.0 || lon != 0.0)).then_some((lat, lon))
 }
 
-/// One upright frame as PNG. Seeks to one second in for something more
-/// telling than a fade-in; clips shorter than that fall back to the first
-/// frame.
-pub fn poster(path: &Path) -> Result<Vec<u8>> {
+impl Probe {
+    /// HLG or PQ: frames need tone mapping before they look right in SDR.
+    pub fn hdr(&self) -> bool {
+        is_hdr(&self.transfer)
+    }
+}
+
+pub fn is_hdr(transfer: &str) -> bool {
+    matches!(transfer, "arib-std-b67" | "smpte2084")
+}
+
+/// HDR to SDR for stills: linear light with HLG/PQ reference white (203
+/// nits, BT.2408) as SDR white, BT.709 primaries, Hable's curve for what is
+/// brighter. Without it an iPhone clip's frame comes out pale and grey.
+pub const TONE_MAP: &str = "zscale=t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,\
+                            tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=pc,format=rgb24";
+
+/// One upright frame as BMP (lossless like PNG, without the seconds a 4K
+/// PNG takes to compress), tone-mapped when the clip is HDR. Seeks to one
+/// second in for something more telling than a fade-in; clips shorter than
+/// that fall back to the first frame.
+pub fn poster(path: &Path, hdr: bool) -> Result<Vec<u8>> {
     for seek in ["1", "0"] {
-        let out = Command::new("ffmpeg")
-            .args(["-v", "error", "-ss", seek, "-i"])
-            .arg(path)
-            .args(["-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"])
+        let mut ffmpeg = Command::new("ffmpeg");
+        ffmpeg.args(["-v", "error", "-ss", seek, "-i"]).arg(path).args(["-frames:v", "1"]);
+        if hdr {
+            ffmpeg.args(["-vf", TONE_MAP]);
+        }
+        let out = ffmpeg
+            .args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"])
             .output()
             .context("ffmpeg is not installed")?;
         if out.status.success() && !out.stdout.is_empty() {
@@ -114,7 +139,15 @@ pub fn poster(path: &Path) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::iso6709;
+    use super::{is_hdr, iso6709};
+
+    #[test]
+    fn hlg_and_pq_are_hdr() {
+        assert!(is_hdr("arib-std-b67"));
+        assert!(is_hdr("smpte2084"));
+        assert!(!is_hdr("bt709"));
+        assert!(!is_hdr(""));
+    }
 
     #[test]
     fn parses_quicktime_locations() {

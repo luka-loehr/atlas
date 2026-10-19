@@ -53,18 +53,6 @@ pub fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
-/// Escape POSIX-regex metacharacters so user input matches literally.
-pub fn regex_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        if "\\^$.[]|()*+?{}-".contains(ch) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 /// The last path component of a client-supplied name, percent-decoded.
 pub fn client_filename(raw: Option<&str>) -> String {
     raw.map(percent_decode)

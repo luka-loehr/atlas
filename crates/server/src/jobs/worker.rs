@@ -97,7 +97,7 @@ async fn drain(app: AppState, kinds: &'static [&'static str], parallel: usize, r
 async fn execute(app: &AppState, job: &Job) {
     let started = Instant::now();
     let result = match job.kind.as_str() {
-        queue::THUMB => thumb::run(app, &job.owner_id).await,
+        queue::THUMB => thumb::run(app, &job.owner_id, job.priority).await,
         queue::META => meta::run(app, &job.owner_id).await,
         queue::GEOCODE => geocode::run(app, &job.owner_id).await,
         queue::DRIVE_TEXT => drive_text::run(app, &job.owner_id).await,
@@ -116,8 +116,8 @@ async fn execute(app: &AppState, job: &Job) {
     .await;
     match (&result, settled) {
         (_, Err(e)) => tracing::warn!("{} {}: could not settle: {e:#}", job.kind, job.owner_id),
-        (Ok(()), _) => tracing::info!("{} {} done in {elapsed:.0?}", job.kind, short(&job.owner_id)),
-        (Err(e), _) => tracing::warn!("{} {} failed after {elapsed:.0?}: {e:#}", job.kind, short(&job.owner_id)),
+        (Ok(()), _) => tracing::info!("{} {} done in {elapsed:.1?}", job.kind, short(&job.owner_id)),
+        (Err(e), _) => tracing::warn!("{} {} failed after {elapsed:.1?}: {e:#}", job.kind, short(&job.owner_id)),
     }
 }
 

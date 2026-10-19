@@ -37,6 +37,7 @@ pub struct Job {
     pub id: i64,
     pub kind: String,
     pub owner_id: String,
+    pub priority: i32,
 }
 
 pub async fn enqueue(c: &Client, kind: &str, owner_type: &str, owner_id: &str, priority: i32) -> Result<(), Error> {
@@ -76,11 +77,11 @@ pub async fn claim(c: &Client, worker: &str, kinds: &[&str], limit: i64) -> Resu
                             ORDER BY priority, id
                             LIMIT $3
                             FOR UPDATE SKIP LOCKED)
-          RETURNING id, kind, owner_id",
+          RETURNING id, kind, owner_id, priority",
             &[&worker, &kinds, &limit],
         )
         .await?;
-    Ok(rows.iter().map(|r| Job { id: r.get(0), kind: r.get(1), owner_id: r.get(2) }).collect())
+    Ok(rows.iter().map(|r| Job { id: r.get(0), kind: r.get(1), owner_id: r.get(2), priority: r.get(3) }).collect())
 }
 
 pub async fn heartbeat(c: &Client, ids: &[i64]) -> Result<(), Error> {
