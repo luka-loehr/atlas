@@ -23,6 +23,26 @@ pub async fn server(State(app): State<AppState>) -> Json<Value> {
     }))
 }
 
+/// What atlas is working on right now, per job kind: running jobs and those
+/// due to run (a job waiting out a retry is not work in progress). The
+/// app's Sync line reads it.
+pub async fn work(State(app): State<AppState>) -> ApiResult<Json<Value>> {
+    let c = app.pool.get().await?;
+    let mut work = serde_json::Map::new();
+    for row in c
+        .query(
+            "SELECT kind, count(*) FROM ingest_jobs
+              WHERE status = 'running' OR (status = 'pending' AND run_after <= now())
+              GROUP BY kind",
+            &[],
+        )
+        .await?
+    {
+        work.insert(row.get::<_, String>(0), json!(row.get::<_, i64>(1)));
+    }
+    Ok(Json(Value::Object(work)))
+}
+
 pub async fn stats(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let a = c

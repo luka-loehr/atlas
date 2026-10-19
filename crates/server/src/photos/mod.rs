@@ -1,6 +1,7 @@
 //! The photo library API.
 //!
 //!   GET  /v1/server                       who am I talking to
+//!   GET  /v1/work                         what atlas is working on now (per job kind)
 //!   GET  /v1/stats                        library and storage totals
 //!   GET  /v1/heatmap                      photos per day, last year
 //!   GET  /v1/timeline                     bucket index (month, count, etag)
@@ -49,6 +50,7 @@ pub const COLS: &str = "assets.id, assets.type, assets.taken_at, assets.tz_offse
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/server", get(library::server))
+        .route("/work", get(library::work))
         .route("/stats", get(library::stats))
         .route("/heatmap", get(library::heatmap))
         .route("/timeline", get(timeline::index))

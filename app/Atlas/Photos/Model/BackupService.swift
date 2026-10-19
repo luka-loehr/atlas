@@ -49,7 +49,10 @@ final class BackupService: NSObject {
     /// Hash → local id of contents still to upload, newest first.
     @ObservationIgnored private var queue: [(hash: String, localID: String)] = []
     /// Hashes with an upload task in the background session.
-    @ObservationIgnored private var inflight: Set<String> = []
+    @ObservationIgnored private var inflight: Set<String> = [] { didSet { uploading = inflight.count } }
+    /// Uploads handed to iOS and not finished yet (the Sync line).
+    private(set) var uploading = 0
+    @ObservationIgnored private var retry: Task<Void, Never>?
     @ObservationIgnored private var inflightBytes: [String: Int64] = [:]
     private var outboxBytes: Int64 { inflightBytes.values.reduce(0) { $0 + max($1, 0) } }
     private static let outboxLimit: Int64 = 2 << 30
@@ -263,6 +266,20 @@ final class BackupService: NSObject {
 
     // MARK: Pass
 
+    /// Something failed (an export, an upload, atlas out of reach): another
+    /// pass in two minutes, which tries what failed again. Nobody has to
+    /// open the app for it; while it is closed, iOS's background windows
+    /// and the next launch do the same.
+    private func retrySoon() {
+        guard retry == nil else { return }
+        retry = Task {
+            try? await Task.sleep(for: .seconds(120))
+            retry = nil
+            guard !Task.isCancelled else { return }
+            kick()
+        }
+    }
+
     /// Starts a pass, or asks the running one to go again when it is done.
     func kick() {
         guard !host.isEmpty else { return }
@@ -323,6 +340,7 @@ final class BackupService: NSObject {
         } catch {
             phase = .offline
             log.error("exists check failed: \(error.localizedDescription, privacy: .public)")
+            retrySoon()
             return
         }
         saveState()
@@ -512,6 +530,7 @@ final class BackupService: NSObject {
                         try? FileManager.default.removeItem(at: file)
                         failedThisRun.insert(next.hash)
                         failed += 1
+                        retrySoon()
                         log.error("export \(next.hash, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
@@ -551,6 +570,7 @@ final class BackupService: NSObject {
             if (error as? URLError)?.code == .cancelled { return }
             failedThisRun.insert(ticket.hash)
             failed += 1
+            retrySoon()
             log.error("upload \(ticket.hash, privacy: .public) failed: \(error?.localizedDescription ?? "HTTP \(status)", privacy: .public)")
         }
         if queue.isEmpty, inflight.isEmpty { updatePending() }

@@ -23,7 +23,7 @@ Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
 
 | Area | Routes |
 |---|---|
-| Library | `GET /server` · `/stats` · `/heatmap` |
+| Library | `GET /server` · `/work` (what atlas is busy with) · `/stats` · `/heatmap` |
 | Timeline | `GET /timeline` (month index: key, count, validator) · `GET /timeline/{YYYY-MM\|undated}` (one month, columnar) |
 | Assets | `PUT /assets` (streaming upload) · `POST /assets/exists` · `GET /assets/{id}` · `/assets/{id}/thumb/{512\|2048}` · `/assets/{id}/original` · `/assets/{id}/video` · `POST /assets/{favorite,archive,lock,trash,restore,delete}` |
 | Collections | `GET /library/{favorites,videos,archive,locked,trash}` · `POST /library/trash/empty` · `/albums…` · `/people…` · `/faces/{id}/crop` · `/places…` |
