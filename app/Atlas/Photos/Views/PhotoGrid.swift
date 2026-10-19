@@ -226,9 +226,17 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         shade.isHidden = !grid.titleShade
         if grid.revision != revision {
             revision = grid.revision
+            // the same photos in the same places (a favorite flag changed):
+            // the cells on screen are refreshed in place, nothing reloads
+            let samePlaces = grid.assets.count == assets.count
+                && zip(grid.assets, assets).allSatisfy { $0.id == $1.id }
             assets = grid.assets
             selecting = grid.selecting
             selected = grid.selected
+            if samePlaces {
+                collectionView.reconfigureItems(at: collectionView.indexPathsForVisibleItems)
+                return
+            }
             collectionView.reloadData()
             if pinnedToBottom { needsBottom = true; view.setNeedsLayout() }
             return

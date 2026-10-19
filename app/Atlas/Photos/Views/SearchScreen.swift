@@ -46,7 +46,11 @@ struct SearchScreen: View {
             }
         }
         .searchable(text: $query, prompt: "Person, place, dog, 2019…")
-        .onChange(of: query) { _, q in
+        // the model unloads after ten idle minutes: load it while the
+        // query is being typed, not after it was sent
+        .task { await library.client.warmSearch() }
+        .onChange(of: query) { old, q in
+            if old.isEmpty, !q.isEmpty { Task { await library.client.warmSearch() } }
             Task { await run(q) }
         }
         .fullScreenCover(item: $pick) { a in
