@@ -36,24 +36,45 @@ pub fn png(img: &RgbImage) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// `count` upright frames spread evenly over a clip.
+/// HDR to SDR, as for the server's video posters (jobs/video.rs there).
+const TONE_MAP: &str = "zscale=t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,\
+                        tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=pc,format=rgb24";
+
+/// The transfer curve of a clip's video stream ("arib-std-b67", "bt709", ...).
+fn transfer(path: &Path) -> String {
+    Command::new("ffprobe")
+        .args(["-v", "quiet", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0"])
+        .arg(path)
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().trim_end_matches(',').to_string())
+        .unwrap_or_default()
+}
+
+/// `count` upright frames spread evenly over a clip, tone-mapped when it is
+/// HDR. The seeks run side by side, and frames come over as BMP: lossless
+/// like PNG, without compressing megapixels only to decode them again.
 pub fn video_frames(path: &Path, duration: f64, count: usize) -> Result<Vec<RgbImage>> {
-    let mut frames = Vec::with_capacity(count);
-    for i in 0..count {
-        let at = (duration * (i as f64 + 0.5) / count as f64).max(0.0);
-        let out = Command::new("ffmpeg")
-            .args(["-v", "error", "-ss", &format!("{at:.3}"), "-i"])
-            .arg(path)
-            .args(["-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"])
-            .output()
-            .context("ffmpeg is not installed")?;
-        if out.status.success()
-            && let Ok(frame) = image::load_from_memory(&out.stdout)
-        {
-            frames.push(frame.into_rgb8());
-        }
-    }
-    ensure!(!frames.is_empty(), "ffmpeg produced no frames");
+    let hdr = matches!(transfer(path).as_str(), "arib-std-b67" | "smpte2084");
+    let frames: Vec<Option<RgbImage>> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..count)
+            .map(|i| {
+                scope.spawn(move || {
+                    let at = (duration * (i as f64 + 0.5) / count as f64).max(0.0);
+                    let mut ffmpeg = Command::new("ffmpeg");
+                    ffmpeg.args(["-v", "error", "-ss", &format!("{at:.3}"), "-i"]).arg(path).args(["-frames:v", "1"]);
+                    if hdr {
+                        ffmpeg.args(["-vf", TONE_MAP]);
+                    }
+                    let out = ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]).output().ok()?;
+                    out.status.success().then_some(())?;
+                    image::load_from_memory(&out.stdout).ok().map(|f| f.into_rgb8())
+                })
+            })
+            .collect();
+        workers.into_iter().map(|w| w.join().ok().flatten()).collect()
+    });
+    let frames: Vec<RgbImage> = frames.into_iter().flatten().collect();
+    ensure!(!frames.is_empty(), "ffmpeg produced no frames (is it installed?)");
     Ok(frames)
 }
 

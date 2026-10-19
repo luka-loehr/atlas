@@ -1,15 +1,18 @@
 //! The model stages of the job queue: `embed` and `faces`.
 //!
-//! One job at a time: there is one GPU. Both stages work from the 2048px
-//! thumbnail the server's workers make, so a job whose thumbnail does not
-//! exist yet is put back without spending an attempt.
+//! Two loops side by side: embeddings on the GPU, as many at once as the
+//! embedding server has slots to spare for the queue, and faces on the CPU,
+//! one at a time. Both work from the 2048px thumbnail the server's workers
+//! make (the thumbnail job queues them), so a job whose thumbnail is missing
+//! is put back without spending an attempt.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use atlas_core::queue::{self, Job};
 use pgvector::Vector;
+use tokio::sync::Semaphore;
 
 use crate::faces::{Face, FaceEngine};
 use crate::{Worker, pixels};
@@ -24,6 +27,7 @@ const SAME_PERSON: f64 = 0.55;
 /// Faces smaller than this share of the image are background.
 const MIN_FACE_AREA: f32 = 0.02;
 const NOT_READY: Duration = Duration::from_secs(60);
+const IDLE_POLL: Duration = Duration::from_secs(60);
 
 enum Outcome {
     Done,
@@ -32,58 +36,87 @@ enum Outcome {
 }
 
 pub async fn run(worker: Arc<Worker>) {
-    let name = format!("ml:{}", std::process::id());
-    let mut notifications = atlas_core::db::listen(&["atlas_jobs"]);
-    let mut engine: Option<FaceEngine> = None;
     if let Ok(c) = worker.pool.get().await {
         let _ = queue::reap(&c).await;
     }
-    loop {
-        let claimed = match worker.pool.get().await {
-            Ok(c) => queue::claim(&c, &name, &[queue::FACES, queue::EMBED], 1).await.map_err(anyhow::Error::from),
-            Err(e) => Err(e.into()),
-        };
-        let job = match claimed {
-            Ok(mut jobs) if !jobs.is_empty() => jobs.remove(0),
-            Ok(_) => {
-                // nothing to do: release the face models too, then wait for
-                // Postgres to announce a job
-                engine = None;
-                tokio::select! {
-                    _ = notifications.recv() => {}
-                    _ = tokio::time::sleep(Duration::from_secs(60)) => {}
-                }
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!("queue unavailable: {e:#}");
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-        };
+    // one slot stays free for searches
+    let parallel = worker.embedder.slots.saturating_sub(1).max(1) as usize;
+    tokio::join!(embeddings(worker.clone(), parallel), faces_loop(worker));
+}
 
-        let started = std::time::Instant::now();
-        let result = match job.kind.as_str() {
-            queue::EMBED => embed(&worker, &job).await,
-            _ => faces(&worker, &mut engine, &job).await,
-        };
-        let settled = async {
-            let c = worker.pool.get().await?;
-            match &result {
-                Ok(Outcome::Done) => queue::done(&c, job.id).await?,
-                Ok(Outcome::NotReady) => queue::defer(&c, job.id, NOT_READY, Some("no thumbnail yet")).await?,
-                Err(e) => queue::fail(&c, job.id, &format!("{e:#}")).await?,
+/// Claims one job of `kind`, or waits for Postgres to announce one.
+async fn next_job(worker: &Worker, name: &str, kind: &str, notifications: &mut tokio::sync::mpsc::UnboundedReceiver<&'static str>) -> Option<Job> {
+    let claimed = match worker.pool.get().await {
+        Ok(c) => queue::claim(&c, name, &[kind], 1).await.map_err(anyhow::Error::from),
+        Err(e) => Err(e.into()),
+    };
+    match claimed {
+        Ok(mut jobs) if !jobs.is_empty() => Some(jobs.remove(0)),
+        Ok(_) => {
+            tokio::select! {
+                _ = notifications.recv() => {}
+                _ = tokio::time::sleep(IDLE_POLL) => {}
             }
-            anyhow::Ok(())
+            None
         }
-        .await;
-        let id = &job.owner_id[..job.owner_id.len().min(12)];
-        match (&result, settled) {
-            (_, Err(e)) => tracing::warn!("{} {id}: could not settle: {e:#}", job.kind),
-            (Ok(Outcome::Done), _) => tracing::info!("{} {id} done in {:.0?}", job.kind, started.elapsed()),
-            (Ok(Outcome::NotReady), _) => {}
-            (Err(e), _) => tracing::warn!("{} {id} failed: {e:#}", job.kind),
+        Err(e) => {
+            tracing::warn!("queue unavailable: {e:#}");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            None
         }
+    }
+}
+
+async fn embeddings(worker: Arc<Worker>, parallel: usize) {
+    let name = format!("ml:{}:embed", std::process::id());
+    let mut notifications = atlas_core::db::listen(&["atlas_jobs"]);
+    let slots = Arc::new(Semaphore::new(parallel));
+    loop {
+        let slot = slots.clone().acquire_owned().await.expect("semaphore open");
+        let Some(job) = next_job(&worker, &name, queue::EMBED, &mut notifications).await else { continue };
+        let worker = worker.clone();
+        tokio::spawn(async move {
+            let started = Instant::now();
+            let result = embed(&worker, &job).await;
+            settle(&worker, &job, result, started).await;
+            drop(slot);
+        });
+    }
+}
+
+async fn faces_loop(worker: Arc<Worker>) {
+    let name = format!("ml:{}:faces", std::process::id());
+    let mut notifications = atlas_core::db::listen(&["atlas_jobs"]);
+    let mut engine: Option<FaceEngine> = None;
+    loop {
+        let Some(job) = next_job(&worker, &name, queue::FACES, &mut notifications).await else {
+            // nothing to do: the face models' memory goes back too
+            engine = None;
+            continue;
+        };
+        let started = Instant::now();
+        let result = faces(&worker, &mut engine, &job).await;
+        settle(&worker, &job, result, started).await;
+    }
+}
+
+async fn settle(worker: &Worker, job: &Job, result: Result<Outcome>, started: Instant) {
+    let settled = async {
+        let c = worker.pool.get().await?;
+        match &result {
+            Ok(Outcome::Done) => queue::done(&c, job.id).await?,
+            Ok(Outcome::NotReady) => queue::defer(&c, job.id, NOT_READY, Some("no thumbnail yet")).await?,
+            Err(e) => queue::fail(&c, job.id, &format!("{e:#}")).await?,
+        }
+        anyhow::Ok(())
+    }
+    .await;
+    let id = &job.owner_id[..job.owner_id.len().min(12)];
+    match (&result, settled) {
+        (_, Err(e)) => tracing::warn!("{} {id}: could not settle: {e:#}", job.kind),
+        (Ok(Outcome::Done), _) => tracing::info!("{} {id} done in {:.1?}", job.kind, started.elapsed()),
+        (Ok(Outcome::NotReady), _) => {}
+        (Err(e), _) => tracing::warn!("{} {id} failed: {e:#}", job.kind),
     }
 }
 
