@@ -59,7 +59,7 @@ describe("admin auth", () => {
     expect((await call("/api/health", { headers: { Authorization: "Bearer nope" } })).status).toBe(401);
     const r = await admin("/api/health");
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ ok: true, version: "0.1.0", max_days: 7 });
+    expect(await r.json()).toEqual({ ok: true, version: "0.1.1", max_days: 7 });
   });
   it("fails closed without SHARE_TOKEN", async () => {
     env.SHARE_TOKEN = undefined;
@@ -152,6 +152,44 @@ describe("public", () => {
     expect(r.headers.get("Cache-Control")).toBe("no-store");
     const nonce = /script-src 'nonce-([^']+)'/.exec(r.headers.get("Content-Security-Policy")!)![1];
     expect(html).toContain(`<script nonce="${nonce}">`);
+  });
+
+  it("stores the link preview and points the page at its version", async () => {
+    const jpeg = "\xff\xd8preview";
+    const put = (init: RequestInit) => admin(`/api/shares/${ID}/og`, { method: "PUT", ...init });
+    expect((await put({ body: jpeg, headers: { "Content-Type": "image/png", "Content-Length": "9" } })).status).toBe(415);
+    expect((await put({ body: jpeg, headers: { "Content-Type": "image/jpeg" } })).status).toBe(411);
+    expect((await put({ body: jpeg, headers: { "Content-Type": "image/jpeg", "Content-Length": String(3 << 20) } })).status).toBe(413);
+    expect((await put({ body: jpeg, headers: { "Content-Type": "image/jpeg", "Content-Length": String(jpeg.length) } })).status).toBe(200);
+    expect((await putManifest({ og: "NOT-HEX" })).status).toBe(400);
+    // no version in the manifest yet: no preview, and the thumbnail as before
+    await putManifest();
+    expect((await call(`/s/${ID}/og.jpg`)).status).toBe(404);
+    expect(await (await call(`/s/${ID}`)).text()).toContain(`<meta property="og:image" content="${ORIGIN}/s/${ID}/f/t/${A1}">`);
+
+    await putManifest({ og: "0123abcd" });
+    const html = await (await call(`/s/${ID}`)).text();
+    expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/s/${ID}/og.jpg?v=0123abcd">`);
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
+    const r = await call(`/s/${ID}/og.jpg?v=0123abcd`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(await r.text()).toBe(jpeg);
+    expect((await call(`/s/${ID}/og.jpg`, { method: "HEAD" })).status).toBe(200);
+  });
+
+  it("previews a password share without its photo, and never its thumbnail", async () => {
+    await putManifest({ password: "open sesame" });
+    let html = await (await call(`/s/${ID}`)).text();
+    expect(html).toContain('<meta property="og:description" content="Password protected">');
+    expect(html).not.toContain("og:image");
+    // atlas's card of a password share has no photo in it: it is served
+    await admin(`/api/shares/${ID}/og`, { method: "PUT", body: "card", headers: { "Content-Type": "image/jpeg", "Content-Length": "4" } });
+    await putManifest({ password: "open sesame", og: "0123abcd" });
+    html = await (await call(`/s/${ID}`)).text();
+    expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/s/${ID}/og.jpg?v=0123abcd">`);
+    expect((await call(`/s/${ID}/og.jpg`)).status).toBe(200);
+    expect((await call(`/s/${ID}/f/t/${A1}`)).status).toBe(404);
   });
 
   it("404 for unknown, 202 while uploading, 410 for expired", async () => {

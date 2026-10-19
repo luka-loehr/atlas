@@ -7,10 +7,10 @@
 //!
 //! A share is a snapshot: its thumbnails, views (WebP photos, H.264 videos)
 //! and, when allowed, the originals are uploaded to R2 under `s/<id>/`, then
-//! the manifest, which makes the link live. Links work while atlas is off and
-//! expire after at most [`MAX_DAYS`]; the hourly sweep removes expired files,
-//! the Worker's cron and an R2 lifecycle rule do too. The wire format is in
-//! share/CONTRACT.md.
+//! the link preview chat apps show (`og`), then the manifest, which makes
+//! the link live. Links work while atlas is off and expire after at most
+//! [`MAX_DAYS`]; the hourly sweep removes expired files, the Worker's cron
+//! and an R2 lifecycle rule do too. The wire format is in share/CONTRACT.md.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,7 +29,9 @@ use tokio::io::AsyncReadExt;
 
 use crate::jobs::{preview, video};
 use crate::photos::VISIBLE;
-use crate::{ApiError, ApiResult, App, AppState, util};
+use crate::{ApiError, ApiResult, App, AppState, imaging, util};
+
+mod og;
 
 /// No link lives longer than this, whatever is asked for.
 pub const MAX_DAYS: i64 = 7;
@@ -519,13 +521,19 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     if !still_wanted(app, id).await? {
         return Ok(());
     }
-    let manifest = json!({
+    let card = preview(app, &title, &manifest_items, password.is_some()).await.context("preview")?;
+    let stored = with_retries(|| remote.preview(id, &card)).await.context("preview")?;
+    let mut manifest = json!({
         "title": title,
         "expires_at": expires,
         "allow_download": allow_download,
         "password": password,
         "items": manifest_items,
     });
+    if stored {
+        // its version: the page's og:image URL changes with the card
+        manifest["og"] = json!(&util::sha256_hex(&card)[..16]);
+    }
     with_retries(|| remote.manifest(id, &manifest)).await.context("manifest")?;
     let c = app.pool.get().await?;
     c.execute("UPDATE shares SET state = 'ready', live = true, error = NULL WHERE id = $1", &[&id]).await?;
@@ -592,6 +600,65 @@ async fn prepare(app: &App, r: &tokio_postgres::Row, allow_download: bool) -> Re
         json["crc32"] = json!(crc);
     }
     Ok(Item { json, files })
+}
+
+/// The link preview (og.rs): the first item's large thumbnail (a video's
+/// poster frame) with the title over it. A password share's shows no photo.
+async fn preview(app: &App, title: &str, items: &[Value], locked: bool) -> Result<Vec<u8>> {
+    let first = items.first().and_then(|i| i["id"].as_str()).context("no items")?;
+    let photo = app.cfg.thumb_path(first, imaging::SCREEN);
+    let title = if title.trim().is_empty() { "Shared photos".to_string() } else { title.to_string() };
+    let meta = if locked { vec!["Password protected".to_string()] } else { preview_meta(items) };
+    tokio::task::spawn_blocking(move || {
+        let photo = if locked { None } else { Some(imaging::decode(&photo)?) };
+        og::render(&og::Card { title: &title, meta: &meta, photo: photo.as_ref() })
+    })
+    .await?
+}
+
+/// "48 photos" and "Oct 1 – 3, 2026", worded as on the share page.
+fn preview_meta(items: &[Value]) -> Vec<String> {
+    let videos = items.iter().filter(|i| i["kind"] == "video").count();
+    let photos = items.len() - videos;
+    let part = |n: usize, one: &str| format!("{} {one}{}", thousands(n), if n == 1 { "" } else { "s" });
+    let count = match (photos, videos) {
+        (_, 0) => part(photos, "photo"),
+        (0, _) => part(videos, "video"),
+        _ => format!("{}, {}", part(photos, "photo"), part(videos, "video")),
+    };
+    let taken: Vec<i64> = items.iter().filter_map(|i| i["taken"].as_i64()).collect();
+    match (taken.iter().min(), taken.iter().max()) {
+        (Some(&from), Some(&to)) => vec![count, day_range(from, to)],
+        _ => vec![count],
+    }
+}
+
+fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// "Oct 1 – 3, 2026", "Sep 30 – Oct 2, 2026", "Dec 30, 2025 – Jan 2, 2026",
+/// from wall-time seconds read as UTC (as `taken` is stored).
+fn day_range(from: i64, to: i64) -> String {
+    let day = |t: i64| DateTime::from_timestamp(t, 0).unwrap_or_default();
+    let (a, b) = (day(from), day(to));
+    if a.date_naive() == b.date_naive() {
+        a.format("%b %-d, %Y").to_string()
+    } else if a.format("%Y%m").to_string() == b.format("%Y%m").to_string() {
+        format!("{} – {}", a.format("%b %-d"), b.format("%-d, %Y"))
+    } else if a.format("%Y").to_string() == b.format("%Y").to_string() {
+        format!("{} – {}", a.format("%b %-d"), b.format("%b %-d, %Y"))
+    } else {
+        format!("{} – {}", a.format("%b %-d, %Y"), b.format("%b %-d, %Y"))
+    }
 }
 
 fn crc32_of(path: &Path) -> Result<u32> {
@@ -928,6 +995,21 @@ impl Remote {
         Ok(())
     }
 
+    /// Stores the link preview; false when this atlas-share predates them
+    /// (the page then shows the first thumbnail, as before).
+    async fn preview(&self, id: &str, jpeg: &[u8]) -> Result<bool> {
+        let url = format!("{}/api/shares/{id}/og", self.base);
+        let req = self.http.put(&url).header("content-type", "image/jpeg").body(jpeg.to_vec());
+        match self.send(req).await {
+            Ok(_) => Ok(true),
+            Err(e) if e.to_string().starts_with("atlas-share answered 404") => {
+                tracing::warn!("share {id}: atlas-share has no link previews yet; `atlas share setup` updates it");
+                Ok(false)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     async fn progress(&self, id: &str, body: &Value) -> Result<()> {
         self.send(self.http.put(format!("{}/api/shares/{id}/progress", self.base)).json(body)).await?;
         Ok(())
@@ -969,6 +1051,19 @@ async fn read_full(file: &mut tokio::fs::File, buf: &mut [u8]) -> Result<usize> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn previews_word_counts_and_days_as_the_page_does() {
+        let item = |kind: &str, taken: Option<i64>| json!({ "kind": kind, "taken": taken });
+        // 2026-10-01 10:00 and 2026-10-03 18:00
+        let (oct1, oct3) = (1_790_848_800, 1_791_050_400);
+        assert_eq!(preview_meta(&[item("photo", Some(oct1)), item("photo", Some(oct3))]), ["2 photos", "Oct 1 – 3, 2026"]);
+        assert_eq!(preview_meta(&[item("video", None)]), ["1 video"]);
+        let many: Vec<Value> = (0..1234).map(|_| item("photo", None)).chain([item("video", Some(oct1))]).collect();
+        assert_eq!(preview_meta(&many), ["1,234 photos, 1 video", "Oct 1, 2026"]);
+        assert_eq!(day_range(1_790_762_400, oct1), "Sep 30 – Oct 1, 2026");
+        assert_eq!(day_range(1_767_096_000, 1_767_355_200), "Dec 30, 2025 – Jan 2, 2026");
+    }
 
     #[test]
     fn ids_are_22_base62() {

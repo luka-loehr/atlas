@@ -8,6 +8,8 @@ import {
   isFileKind,
   type Manifest,
   MAX_DAYS,
+  MAX_OG,
+  ogKey,
   parseProgress,
   progressKey,
   SHARE_ID_RE,
@@ -96,6 +98,20 @@ export async function handleAdmin(request: Request, env: Env, url: URL): Promise
     const parsed = parseProgress(body, Math.floor(Date.now() / 1000));
     if (typeof parsed === "string") return error(400, parsed);
     await env.SHARES.put(progressKey(id), JSON.stringify(parsed), { httpMetadata: { contentType: "application/json" } });
+    return json({ ok: true });
+  }
+
+  // the link preview atlas renders: stored as is, read by chat apps
+  const og = /^\/api\/shares\/([^/]+)\/og$/.exec(path);
+  if (og) {
+    const id = og[1] ?? "";
+    if (!SHARE_ID_RE.test(id)) return error(400, "bad share id");
+    if (method !== "PUT") return error(405, "method not allowed");
+    if (request.headers.get("Content-Type") !== "image/jpeg") return error(415, "the preview must be image/jpeg");
+    const len = bodyLength(request);
+    if (len instanceof Response) return len;
+    if (len > MAX_OG) return error(413, `the preview is larger than ${MAX_OG} bytes`);
+    await env.SHARES.put(ogKey(id), request.body ?? new Uint8Array(0), { httpMetadata: { contentType: "image/jpeg" } });
     return json({ ok: true });
   }
 
@@ -216,6 +232,7 @@ async function putManifest(request: Request, env: Env, url: URL, id: string): Pr
     password_hash: input.password === null ? null : await hashPassword(input.password),
     items: input.items,
     created_at: createdAt ?? now,
+    ...(input.og === undefined ? {} : { og: input.og }),
   };
   await env.SHARES.put(shareKey(id), JSON.stringify(manifest), {
     httpMetadata: { contentType: "application/json" },

@@ -55,7 +55,7 @@ atlas connect     # the link that connects the app
 ## License
 
 MIT License - [View License](LICENSE)  
-Model weights downloaded at setup (Qwen3-VL-Embedding, InsightFace `buffalo_l` with its non-commercial research license) keep their own licenses.
+Model weights downloaded at setup (Qwen3-VL-Embedding, InsightFace `buffalo_l` with its non-commercial research license) keep their own licenses. The Inter font in `crates/server/assets/fonts` is under the SIL Open Font License.
 
 ---
 

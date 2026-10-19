@@ -272,13 +272,14 @@ const GATE_CSS = `
 
 const ICON_LOCK = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.8"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>`;
 
-export function gatePage(nonce: string, id: string, title: string, wrong: boolean | "limited"): string {
-  const t = title || "Shared photos";
+export function gatePage(nonce: string, id: string, m: Manifest, wrong: boolean | "limited", origin?: string): string {
+  const t = m.title || "Shared photos";
   const err = wrong === "limited" ? "Too many tries. Wait a minute, then try again." : "Wrong password. Try again.";
   return shell({
     title: t,
     nonce,
     css: GATE_CSS,
+    head: previewTags(t, "Password protected", origin && m.og ? `${origin}/s/${id}/og.jpg?v=${m.og}` : undefined),
     body: `<div class="center"><main><div class="card">
 <div class="badge">${ICON_LOCK}</div>
 <h1>${escapeHtml(t)}</h1>
@@ -607,8 +608,21 @@ export interface GalleryOptions {
   nonce: string;
   id: string;
   manifest: Manifest;
-  /** Absolute origin, for link-preview tags; omitted for password shares. */
+  /** Absolute origin, for link-preview tags. */
   previewOrigin?: string;
+}
+
+/**
+ * Link-preview tags: atlas's preview card when there is one (any share), or
+ * else the first thumbnail (shares without a password, from older atlas).
+ */
+function previewTags(title: string, description: string, image?: string): string {
+  let head = `\n<meta property="og:type" content="website">\n<meta property="og:title" content="${escapeHtml(title)}">\n<meta property="og:description" content="${escapeHtml(description)}">`;
+  if (!image) return head;
+  head += `\n<meta property="og:image" content="${escapeHtml(image)}">`;
+  if (image.includes("/og.jpg"))
+    head += `\n<meta property="og:image:type" content="image/jpeg">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta property="og:image:alt" content="${escapeHtml(title)}">\n<meta name="twitter:card" content="summary_large_image">`;
+  return head;
 }
 
 export function galleryPage(o: GalleryOptions): string {
@@ -644,9 +658,14 @@ export function galleryPage(o: GalleryOptions): string {
     })),
   };
 
-  let head = `\n<meta property="og:title" content="${escapeHtml(title)}">\n<meta property="og:description" content="${escapeHtml(meta)}">`;
-  if (o.previewOrigin && m.items[0])
-    head += `\n<meta property="og:image" content="${escapeHtml(`${o.previewOrigin}${base}t/${m.items[0].id}`)}">`;
+  const image = !o.previewOrigin
+    ? undefined
+    : m.og
+      ? `${o.previewOrigin}/s/${o.id}/og.jpg?v=${m.og}`
+      : !m.password_hash && m.items[0]
+        ? `${o.previewOrigin}${base}t/${m.items[0].id}`
+        : undefined;
+  const head = previewTags(title, meta, image);
 
   const sep = ` <span class="sep" aria-hidden="true">·</span> `;
   const sub =

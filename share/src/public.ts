@@ -2,7 +2,7 @@
 
 import { sessionExpiry, signSession, verifySession, verifyPassword } from "./crypto";
 import { contentSecurityPolicy, creatingPage, galleryPage, gatePage, newNonce, noticePage } from "./html";
-import { ASSET_ID_RE, fileKey, isFileKind, isLive, type Manifest, type Progress, SHARE_ID_RE } from "./manifest";
+import { ASSET_ID_RE, fileKey, isFileKind, isLive, type Manifest, ogKey, type Progress, SHARE_ID_RE } from "./manifest";
 import { parseRange } from "./range";
 import { type Env, loadManifest, loadProgress } from "./store";
 import { planZip, zipPipe, zipStream } from "./zip";
@@ -94,6 +94,10 @@ export async function handlePublic(request: Request, env: Env, url: URL): Promis
     if (method !== "POST") return Response.redirect(`${url.origin}/s/${id}`, 303);
     return unlock(request, env, url, id);
   }
+  if (rest.length === 1 && rest[0] === "og.jpg") {
+    if (method !== "GET" && method !== "HEAD") return fileError(405);
+    return serveOg(request, env, id);
+  }
   if (rest.length === 1 && rest[0] === "zip") {
     if (method !== "GET" && method !== "HEAD") return fileError(405);
     return serveZip(request, env, id);
@@ -154,11 +158,31 @@ async function sharePage(request: Request, env: Env, url: URL, id: string, wrong
   const access = await unlocked(request, env, id, m);
   if (access === "no-secret") return notice(500);
   const nonce = newNonce();
-  if (!access) return page(gatePage(nonce, id, m.title, wrong), nonce, wrong ? 403 : 200);
-  return page(
-    galleryPage({ nonce, id, manifest: m, previewOrigin: m.password_hash ? undefined : url.origin }),
-    nonce,
-  );
+  if (!access) return page(gatePage(nonce, id, m, wrong, url.origin), nonce, wrong ? 403 : 200);
+  return page(galleryPage({ nonce, id, manifest: m, previewOrigin: url.origin }), nonce);
+}
+
+/**
+ * The link preview chat apps show, for anyone with the link: atlas renders a
+ * password share's without its photo. Its URL carries its version, so a
+ * cache never shows an old one for a renamed album.
+ */
+async function serveOg(request: Request, env: Env, id: string): Promise<Response> {
+  const m = await loadManifest(env.SHARES, id);
+  if (!m || !isLive(m, now()) || !m.og) return fileError(404);
+  const head = request.method === "HEAD";
+  const obj = head ? await env.SHARES.head(ogKey(id)) : await env.SHARES.get(ogKey(id));
+  if (!obj) return fileError(404);
+  const headers = new Headers({
+    "Content-Type": "image/jpeg",
+    "Content-Length": String(obj.size),
+    "Cache-Control": "public, max-age=3600",
+    "X-Robots-Tag": "noindex, nofollow",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    ETag: obj.httpEtag,
+  });
+  return new Response(head ? null : (obj as R2ObjectBody).body, { status: 200, headers });
 }
 
 async function unlock(request: Request, env: Env, url: URL, id: string): Promise<Response> {
@@ -174,7 +198,7 @@ async function unlock(request: Request, env: Env, url: URL, id: string): Promise
   // slowed per address and per share before any PBKDF2 work is done
   if (!(await allowTry(request, env, id))) {
     const nonce = newNonce();
-    return page(gatePage(nonce, id, m.title, "limited"), nonce, 429, { "Retry-After": "60" });
+    return page(gatePage(nonce, id, m, "limited", url.origin), nonce, 429, { "Retry-After": "60" });
   }
 
   let password = "";
@@ -187,7 +211,7 @@ async function unlock(request: Request, env: Env, url: URL, id: string): Promise
   }
   if (!password || password.length > 1024 || !(await verifyPassword(password, m.password_hash))) {
     const nonce = newNonce();
-    return page(gatePage(nonce, id, m.title, true), nonce, 403);
+    return page(gatePage(nonce, id, m, true, url.origin), nonce, 403);
   }
 
   const expiry = sessionExpiry(m.expires_at, t);
