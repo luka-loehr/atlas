@@ -611,16 +611,18 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
 // MARK: - Layout
 
-/// Square cells, 5 px apart (measured on Photos), edge to edge; every position is arithmetic, so
-/// a layout pass costs the same for 25,000 photos as for 25.
+/// Square cells edge to edge, a mosaic without gaps; every position is arithmetic, so a layout
+/// pass costs the same for 25,000 photos as for 25. Edges sit on whole pixels, so neighbours
+/// meet exactly and no hairline shows between them.
 final class PhotoGridLayout: UICollectionViewLayout {
-    static let spacing: CGFloat = 5 / 3
+    static let spacing: CGFloat = 0
 
     var columns = 5 { didSet { if columns != oldValue { invalidateLayout() } } }
     private(set) var side: CGFloat = 1
     private var count = 0
     private var width: CGFloat = 0
     private var originX: CGFloat = 0
+    private var scale: CGFloat = 3
 
     var pitch: CGFloat { side + Self.spacing }
     private var rows: Int { (count + columns - 1) / max(columns, 1) }
@@ -631,6 +633,7 @@ final class PhotoGridLayout: UICollectionViewLayout {
         count = cv.numberOfSections > 0 ? cv.numberOfItems(inSection: 0) : 0
         // landscape: stay inside the horizontal safe area, like before
         originX = cv.safeAreaInsets.left
+        scale = max(cv.traitCollection.displayScale, 1)
         width = max(cv.bounds.width - cv.safeAreaInsets.left - cv.safeAreaInsets.right, 1)
         side = max((width - Self.spacing * CGFloat(columns - 1)) / CGFloat(columns), 1)
     }
@@ -642,7 +645,10 @@ final class PhotoGridLayout: UICollectionViewLayout {
     private func attributes(_ item: Int) -> UICollectionViewLayoutAttributes {
         let a = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: item, section: 0))
         let row = item / columns, col = item % columns
-        a.frame = CGRect(x: originX + CGFloat(col) * pitch, y: CGFloat(row) * pitch, width: side, height: side)
+        let snap = { (v: CGFloat) in (v * self.scale).rounded() / self.scale }
+        let x0 = snap(originX + CGFloat(col) * pitch), x1 = snap(originX + CGFloat(col) * pitch + side)
+        let y0 = snap(CGFloat(row) * pitch), y1 = snap(CGFloat(row) * pitch + side)
+        a.frame = CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
         return a
     }
 

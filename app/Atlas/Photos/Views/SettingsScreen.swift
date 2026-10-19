@@ -43,10 +43,10 @@ struct SettingsScreen: View {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
                     // backed-up photos older than 30 days leave the iPhone on their own
                     valueRow("Keep Last \(BackupService.keepDays) Days", backup.cleanupText, "iphone", .blue)
+                    syncRow
                 }
                 Section("Dynamic Cache") {
                     StorageBar(use: storage)
-                    thumbnailsRow
                 }
             }
             .navigationTitle("Settings")
@@ -66,6 +66,7 @@ struct SettingsScreen: View {
             await Machine.shared.keepLive(api)
         }
         .task { storage = await StorageUse.measure() }
+        .task { await SyncStatus.shared.watch(library.client) }
         .task {
             guard library.sharing else { return }
             links = (try? await library.client.shares())?.count
@@ -84,28 +85,28 @@ struct SettingsScreen: View {
         }
     }
 
-    /// Every grid thumbnail is kept on the phone; this is how far that is,
-    /// and why it waits when it does (it runs while the app is open, on
-    /// Wi-Fi, not in Low Power Mode).
-    @ViewBuilder
-    private var thumbnailsRow: some View {
-        let fill = ThumbFill.shared
-        VStack(alignment: .leading, spacing: 8) {
-            valueRow("Thumbnails", thumbnailsText, "photo.on.rectangle", .orange)
-            if fill.total > 0, !fill.complete {
-                ProgressView(value: Double(fill.stored), total: Double(fill.total))
-                    .accessibilityLabel("Thumbnails on this iPhone")
+    /// What is being synced right now, in a few words (on the phone and
+    /// on atlas); a small spinner while anything is.
+    private var syncRow: some View {
+        let (text, busy) = SyncStatus.shared.line(library)
+        return HStack {
+            icon("arrow.trianglehead.2.clockwise", .teal)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sync").foregroundStyle(.primary)
+                Text(text)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(2)
+            }
+            Spacer()
+            if busy {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: "checkmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
             }
         }
-    }
-
-    private var thumbnailsText: String {
-        let fill = ThumbFill.shared
-        guard fill.total > 0 else { return "…" }
-        if fill.complete { return "All \(fill.total.formatted())" }
-        let count = "\(fill.stored.formatted()) of \(fill.total.formatted())"
-        if let reason = fill.paused { return "\(reason) · \(count)" }
-        return fill.running ? count : "\(count) · Paused"
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Building blocks

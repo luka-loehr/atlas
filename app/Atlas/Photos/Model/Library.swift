@@ -43,7 +43,8 @@ final class Library {
     /// months loaded for it.
     @ObservationIgnored private var index: [PhotoClient.TimelineBucket] = []
     @ObservationIgnored private var columns: [String: AssetColumns] = [:]
-    @ObservationIgnored private var refreshing = false
+    /// Fetching the index and changed months right now (the Sync line).
+    private(set) var refreshing = false
     /// Reading the timeline from disk; whoever refreshes waits for it, so
     /// the refresh compares against what is on disk and fetches only the
     /// months that changed (not all of them, as against an empty index).

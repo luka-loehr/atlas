@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		015F9EBA2130CB1431092FEE /* PhotoGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = A066C7D7B5499412E300C957 /* PhotoGrid.swift */; };
+		03DAF593759C996097AEF39B /* NetworkWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C22E76AAD2648E9F8703F7D /* NetworkWatch.swift */; };
 		066FF6329A9FAD91ADC83732 /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC37520A62D1CF278BDCD199 /* Format.swift */; };
 		0AAF8EEA58074547751EEC43 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */; };
 		1199662680F239C8749F4521 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
@@ -43,6 +44,7 @@
 		97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FBC23EEED736F63F0D8977 /* AssetInfo.swift */; };
 		97F64F47C99747F2D425C52B /* AtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B039968FC134F8A1AC6E2337 /* AtlasApp.swift */; };
 		999C72BE2AF36F496E7EAF1C /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D37F62453CBAD3DFE4B4C67 /* Library.swift */; };
+		9C076FB7B8FBD155A58F6AF9 /* SyncStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B35F52B51C628DE84DC1F1 /* SyncStatus.swift */; };
 		A875DD7D05C7CE69D0D7F973 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
 		B0A4A57E2EB2B9A0421FBBB3 /* DriveScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3AC2C323DCA3AD1C601CE5D /* DriveScreen.swift */; };
 		B4173225F8E64AE465AFD421 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 83DBAEE08B909D318A2FE16B /* AppIcon.icon */; };
@@ -107,9 +109,11 @@
 		6A0BBA486E6F66F89D14D5F5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6DBB2D8DA3BA7AA013C6D346 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		714D740CD26629737AAC5401 /* Atlas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Atlas.entitlements; sourceTree = "<group>"; };
+		79B35F52B51C628DE84DC1F1 /* SyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatus.swift; sourceTree = "<group>"; };
 		82068608456E732BBB7111BA /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
 		83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumWidgetIntent.swift; sourceTree = "<group>"; };
 		83DBAEE08B909D318A2FE16B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		8C22E76AAD2648E9F8703F7D /* NetworkWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWatch.swift; sourceTree = "<group>"; };
 		8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = AtlasWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		960D112EC6584D8D0BA84043 /* PhotoMutations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMutations.swift; sourceTree = "<group>"; };
 		967CA86A1914A3E70629D9E9 /* ThumbFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbFill.swift; sourceTree = "<group>"; };
@@ -177,6 +181,7 @@
 			children = (
 				B8449E3A776DD1F5E760B7D1 /* API.swift */,
 				DC37520A62D1CF278BDCD199 /* Format.swift */,
+				8C22E76AAD2648E9F8703F7D /* NetworkWatch.swift */,
 				6A0BBA486E6F66F89D14D5F5 /* Session.swift */,
 			);
 			path = Core;
@@ -279,6 +284,7 @@
 				1546EC722323AA2800B2C62F /* Selection.swift */,
 				E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */,
 				A11A82F97E9C46A16439690B /* Shares.swift */,
+				79B35F52B51C628DE84DC1F1 /* SyncStatus.swift */,
 				1C599A794847EFA1A83D1146 /* WidgetShelf.swift */,
 				9BC0BAA70957F4698346E7E8 /* Cache */,
 			);
@@ -403,6 +409,7 @@
 				739FCA36A39E130CEA6CE2AD /* MediaCache.swift in Sources */,
 				70F79F4B48013DEFCA26029C /* MediaFetch.swift in Sources */,
 				34AF8E717DCAA36AF2ACB2EF /* MediaStore.swift in Sources */,
+				03DAF593759C996097AEF39B /* NetworkWatch.swift in Sources */,
 				6A4BD7467FAA1D79D86CECA1 /* Persons.swift in Sources */,
 				D901D1E788DE2D393F94F8B2 /* PersonsScreen.swift in Sources */,
 				3000C718B6D51574404EE4C6 /* PhotoClient.swift in Sources */,
@@ -422,6 +429,7 @@
 				78DA201665FCAAF4B05BE173 /* ShareLink.swift in Sources */,
 				3BC2C8B6E0E01F03EC233817 /* ShareSheet.swift in Sources */,
 				9193B9D88BABA79F14CED4A1 /* Shares.swift in Sources */,
+				9C076FB7B8FBD155A58F6AF9 /* SyncStatus.swift in Sources */,
 				3AE3D053BFB90A4A1E11276E /* TerminalScreen.swift in Sources */,
 				4947046CB18DF93A6874DECE /* ThumbFill.swift in Sources */,
 				BD4B6D15B16103087A7BDB58 /* VideoCache.swift in Sources */,
@@ -524,7 +532,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -538,7 +546,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.3.2;
+				MARKETING_VERSION = 0.3.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -622,7 +630,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -642,7 +650,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.3.2;
+				MARKETING_VERSION = 0.3.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

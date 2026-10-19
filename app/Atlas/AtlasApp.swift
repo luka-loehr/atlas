@@ -157,6 +157,13 @@ struct RootView: View {
             BackupService.shared.foreground()
             await library.start()
             CacheWarmer.shared.start(library)
+            // back online (or on Wi-Fi again): everything carries on at once
+            NetworkWatch.shared.start {
+                guard session.isConnected else { return }
+                Task { await library.refresh() }
+                BackupService.shared.kick()
+                ThumbFill.shared.resume()
+            }
             // the Album widgets' photos, for albums chosen while the app was closed
             await WidgetShelf.shared.refresh(library: library, force: true)
         }
@@ -174,6 +181,7 @@ struct RootView: View {
                     await WidgetShelf.shared.refresh(library: library)
                 }
                 BackupService.shared.foreground()
+                ThumbFill.shared.resume()
                 if !library.assets.isEmpty { CacheWarmer.shared.start(library) }
             default:
                 break
