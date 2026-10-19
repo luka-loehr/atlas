@@ -33,6 +33,10 @@ struct AssetColumns: Codable, Sendable {
     var v: [Int] = []
     var d: [Double] = []
     var f: [Int] = []
+    /// thumbhash, base64 ("" before the thumbnail exists). It changes when
+    /// the thumbnail is made again, which is how the phone learns that its
+    /// stored copy is stale. Nil in months cached before it was kept.
+    var p: [String]?
 
     /// The app shows times with the device calendar, so the wall clock the
     /// server sends is turned into the instant that reads the same here: a
@@ -159,6 +163,16 @@ struct PhotoClient: Sendable {
         /// false when the model worker is down and only names, places and
         /// albums were searched
         var semantic = true
+    }
+
+    /// Loads the search model on the server if it went idle, so the first
+    /// query does not wait for it (that takes up to ~15 s).
+    func warmSearch() async {
+        guard let url = url("/search/warm") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 60)
+        req.httpMethod = "POST"
+        AtlasAuth.apply(to: &req)
+        _ = try? await URLSession.shared.data(for: req)
     }
 
     func search(_ q: String) async throws -> SearchResult {

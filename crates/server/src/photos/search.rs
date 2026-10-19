@@ -1,4 +1,4 @@
-//! Search: what the library knows by name (people, places, albums, tags,
+//! Search: what the library knows by name (people, places, albums,
 //! filenames, years) plus what the photos look like (semantic).
 //!
 //! The semantic half embeds the query with the same model the assets were
@@ -146,9 +146,6 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
 
     let c = app.pool.get().await?;
     let like = format!("%{}%", util::like_escape(&term));
-    // tags are phrases ("black cat"): match at a word start, so "cat" finds
-    // "black cat" and "cats" but not "authentication"
-    let tag_word = format!("\\m{}", util::regex_escape(&term));
     let country = country_code(&term);
     let year = (term.len() == 4 && term.chars().all(|ch| ch.is_ascii_digit())).then(|| term.clone());
 
@@ -198,7 +195,7 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
         .await?;
     let album_ids: Vec<i64> = album_rows.iter().map(|r| r.get(0)).collect();
 
-    // ranked: person, place, album, tag, then filename / year
+    // ranked: person, place, album, then filename / year
     let rows = c
         .query(
             &format!(
@@ -210,10 +207,8 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
                    UNION ALL
                      SELECT aa.asset_id, 2 FROM album_assets aa WHERE aa.album_id = ANY($3)
                    UNION ALL
-                     SELECT t.asset_id, 3 FROM tags t WHERE t.tag ~* $4
-                   UNION ALL
-                     SELECT a.id, 4 FROM assets a
-                     WHERE a.orig_name ILIKE $5 OR ($6::text IS NOT NULL AND to_char(a.taken_at, 'YYYY') = $6)
+                     SELECT a.id, 3 FROM assets a
+                     WHERE a.orig_name ILIKE $4 OR ($5::text IS NOT NULL AND to_char(a.taken_at, 'YYYY') = $5)
                  ), best AS (
                      SELECT id, min(rank) AS rank FROM hits GROUP BY id
                  )
@@ -222,7 +217,7 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
                  ORDER BY best.rank, assets.taken_at DESC NULLS LAST
                  LIMIT {STRUCTURED_LIMIT}"
             ),
-            &[&person_ids, &place_ids, &album_ids, &tag_word, &like, &year],
+            &[&person_ids, &place_ids, &album_ids, &like, &year],
         )
         .await?;
 

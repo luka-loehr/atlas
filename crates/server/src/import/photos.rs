@@ -7,8 +7,8 @@
 //! capture time, location, description and favorite flag; the folder it sits
 //! in becomes its album. Content is deduplicated by SHA-256, the same id the
 //! upload path computes, so re-running an import or importing something the
-//! phone already uploaded adds nothing twice. Thumbnails, metadata,
-//! embeddings and faces are left to the job queue.
+//! phone already uploaded adds nothing twice. Thumbnails and metadata are
+//! left to the job queue, and the thumbnail job queues embeddings and faces.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -224,7 +224,8 @@ async fn insert(
         ],
     )
     .await?;
-    for kind in [queue::THUMB, queue::META, queue::EMBED, queue::FACES] {
+    // embeddings and faces read the thumbnail: the thumbnail job queues them
+    for kind in [queue::THUMB, queue::META] {
         queue::enqueue(c, kind, "asset", id, queue::PRIORITY_DEFAULT).await?;
     }
     Ok(())

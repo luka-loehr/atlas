@@ -59,8 +59,8 @@ pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     }
     let failed: Vec<Value> = c
         .query(
-            "SELECT kind, owner_id, error, updated_at FROM ingest_jobs
-             WHERE status = 'failed' ORDER BY updated_at DESC LIMIT 20",
+            "SELECT kind, owner_id, error, updated_at, status FROM ingest_jobs
+             WHERE status IN ('failed', 'stuck') ORDER BY updated_at DESC LIMIT 20",
             &[],
         )
         .await?
@@ -69,6 +69,7 @@ pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
             json!({
                 "kind": r.get::<_, String>(0), "owner": r.get::<_, String>(1),
                 "error": r.get::<_, Option<String>>(2), "at": r.get::<_, Option<DateTime<Utc>>>(3),
+                "status": r.get::<_, String>(4),
             })
         })
         .collect();

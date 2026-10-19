@@ -1,7 +1,9 @@
 //! What atlas-server and atlas-ml share: how to reach the database, the
-//! schema migrations, and the job queue protocol both of them drain.
+//! schema migrations, the job queue protocol both of them drain, and external
+//! tools with a deadline.
 
 pub mod db;
+pub mod process;
 pub mod queue;
 
 /// Structured logs to stderr (journald adds the timestamps). `ATLAS_LOG`

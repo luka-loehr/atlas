@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
             }
         })
         .await?;
+    jobs::release(&worker).await;
     worker.embedder.unload().await;
     Ok(())
 }

@@ -1,6 +1,7 @@
 [Unit]
 Description=Atlas model worker (semantic embeddings, faces)
-After=network-online.target docker.service atlas-server.service
+Requires=atlas-server.service
+After=network-online.target atlas-server.service
 Wants=network-online.target
 
 [Service]

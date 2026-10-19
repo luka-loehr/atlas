@@ -72,13 +72,6 @@ pub async fn info(State(app): State<AppState>, Path(id): Path<String>) -> ApiRes
         .iter()
         .map(|a| json!({ "id": a.get::<_, i64>(0), "title": a.get::<_, String>(1) }))
         .collect();
-    let tags: Vec<String> = c
-        .query("SELECT DISTINCT tag FROM tags WHERE asset_id = $1 ORDER BY tag", &[&id])
-        .await?
-        .iter()
-        .map(|t| t.get(0))
-        .collect();
-
     let taken: Option<DateTime<Utc>> = r.get(1);
     let offset: Option<i32> = r.get(2);
     Ok(Json(json!({
@@ -106,7 +99,6 @@ pub async fn info(State(app): State<AppState>, Path(id): Path<String>) -> ApiRes
         "place": place,
         "people": people,
         "albums": albums,
-        "tags": tags,
     })))
 }
 
@@ -300,10 +292,9 @@ async fn store_upload(app: &App, headers: &HeaderMap, received: &Received) -> Ap
             ],
         )
         .await?;
+    // embeddings and faces read the thumbnail: the thumbnail job queues them
     queue::enqueue(&c, queue::THUMB, "asset", id, queue::PRIORITY_INTERACTIVE).await?;
     queue::enqueue(&c, queue::META, "asset", id, queue::PRIORITY_INTERACTIVE + 10).await?;
-    queue::enqueue(&c, queue::EMBED, "asset", id, queue::PRIORITY_DEFAULT).await?;
-    queue::enqueue(&c, queue::FACES, "asset", id, queue::PRIORITY_DEFAULT).await?;
     app.jobs_wake.notify_waiters();
     Ok(inserted > 0)
 }
@@ -421,7 +412,7 @@ async fn purge(app: &App, ids: &[String]) -> ApiResult<u64> {
     ] {
         tx.execute(statement, &[&ids]).await?;
     }
-    // faces, tags and album links follow through ON DELETE CASCADE
+    // faces and album links follow through ON DELETE CASCADE
     let deleted = tx.execute("DELETE FROM assets WHERE id = ANY($1)", &[&ids]).await?;
     tx.commit().await?;
 

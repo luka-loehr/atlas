@@ -78,6 +78,16 @@ final class MediaCache {
         MediaStore.shared.warmUp()
     }
 
+    /// Decoded images go: thumbnails were made again on the server and the
+    /// grid must decode the new files. Rare, so all of RAM rather than
+    /// hunting each id's keys.
+    func forgetDecoded() {
+        gridRam.removeAllObjects()
+        urlRam.removeAllObjects()
+        bigRam.removeAllObjects()
+        windowRam.removeAll()
+    }
+
     // MARK: What a URL is
 
     /// "/v1/assets/{id}/thumb/512|2048", "/v1/assets/{id}/original",

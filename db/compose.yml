@@ -22,6 +22,20 @@ services:
       POSTGRES_DB: atlas
       POSTGRES_USER: atlas
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    # Sized for atlas (31 GB RAM, NVMe) instead of Postgres' 128 MB defaults:
+    # the vectors (250 MB) and the asset table stay in shared memory.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=16GB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - random_page_cost=1.1
     ports:
       - "127.0.0.1:5432:5432"   # localhost only — remote dev via `atlas` ssh tunnel
     volumes:

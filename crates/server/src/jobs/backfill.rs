@@ -11,7 +11,9 @@ use crate::Config;
 
 #[derive(Subcommand)]
 pub enum Kind {
-    /// Thumbnails and placeholder hashes for assets that lack one
+    /// Thumbnails and placeholder hashes for assets that lack one, and
+    /// thumbnails made by an older recipe (video posters before HDR tone
+    /// mapping)
     Thumbs,
     /// Capture dates for undated assets (container tags, then filenames)
     /// and the local-time offset of photos that lack one
@@ -31,7 +33,7 @@ pub async fn run(_cfg: &Config, pool: &Pool, what: Kind) -> Result<()> {
         Kind::Thumbs => (
             queue::THUMB,
             "asset",
-            "SELECT id FROM assets WHERE thumbhash IS NULL OR width IS NULL",
+            "SELECT id FROM assets WHERE thumbhash IS NULL OR width IS NULL OR (type = 'video' AND thumb_v < 2)",
             queue::PRIORITY_DEFAULT + 100,
         ),
         Kind::Dates => (queue::META, "asset", "SELECT id FROM assets WHERE taken_at IS NULL OR tz_offset_s IS NULL", queue::PRIORITY_DEFAULT),
