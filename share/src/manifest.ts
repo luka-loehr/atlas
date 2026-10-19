@@ -6,6 +6,10 @@ export const EXPIRY_SLACK_SECONDS = 5 * 60;
 
 export const SHARE_ID_RE = /^[0-9A-Za-z]{22}$/;
 export const ASSET_ID_RE = /^[0-9a-f]{64}$/;
+/** The link preview's version (hex of its hash): its URL changes with it. */
+export const OG_RE = /^[0-9a-f]{8,64}$/;
+/** The link preview, a 1200×630 JPEG. */
+export const MAX_OG = 2 * 1024 * 1024;
 export const FILE_KINDS = ["t", "v", "o"] as const;
 export type FileKind = (typeof FILE_KINDS)[number];
 
@@ -35,6 +39,8 @@ export interface ManifestInput {
   allow_download: boolean;
   password: string | null;
   items: Item[];
+  /** The link preview's version, when atlas uploaded one (s/<id>/og.jpg). */
+  og?: string;
 }
 
 export interface Manifest {
@@ -44,6 +50,7 @@ export interface Manifest {
   password_hash: string | null;
   items: Item[];
   created_at: number;
+  og?: string;
 }
 
 /**
@@ -88,6 +95,10 @@ export function parseProgress(v: unknown, now: number): Progress | string {
 
 export function shareKey(id: string): string {
   return `s/${id}/share.json`;
+}
+
+export function ogKey(id: string): string {
+  return `s/${id}/og.jpg`;
 }
 
 export function fileKey(id: string, kind: FileKind, asset: string): string {
@@ -178,6 +189,8 @@ export function validateInput(
     seen.add(item.id);
     items.push(item);
   }
+  if (body.og !== undefined && (typeof body.og !== "string" || !OG_RE.test(body.og)))
+    return fail("og must be 8-64 lowercase hex");
   return {
     ok: true,
     value: {
@@ -186,6 +199,7 @@ export function validateInput(
       allow_download: body.allow_download,
       password: body.password as string | null,
       items,
+      ...(body.og === undefined ? {} : { og: body.og as string }),
     },
   };
 }

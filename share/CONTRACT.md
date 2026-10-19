@@ -34,6 +34,7 @@ prefix delete and the lifecycle rule can expire by prefix:
 | `s/<id>/t/<asset>` | thumbnail: WebP, long side 512 |
 | `s/<id>/v/<asset>` | view: photos WebP, long side 2048; videos H.264 MP4 (≤1080p, faststart) |
 | `s/<id>/o/<asset>` | the untouched original; only when `allow_download` |
+| `s/<id>/og.jpg` | the link preview chat apps show: JPEG, 1200×630, the first photo with the title on a panel of glass; a password share's has no photo. Written after the files, before the manifest |
 
 `<asset>` is the atlas asset id (SHA-256 of the original, 64 hex).
 
@@ -51,6 +52,7 @@ answers `500` (never open); errors are `{"error":"…"}`.
 | `POST /api/shares/<id>/files/<kind>/<asset>?uploads` | starts a multipart upload (`Content-Type` header = the file's) → `{"upload_id":"…"}` |
 | `PUT /api/shares/<id>/files/<kind>/<asset>?upload_id=U&part=N` | one part (N from 1, ≤ 95 MB, all but the last the same size) → `{"etag":"…"}` |
 | `POST /api/shares/<id>/files/<kind>/<asset>?upload_id=U&complete` | body `{"parts":[{"part":1,"etag":"…"}]}` → `{"ok":true}` |
+| `PUT /api/shares/<id>/og` | stores the link preview (`Content-Type: image/jpeg`, else `415`; ≤ 2 MB, else `413`) → `{"ok":true}` |
 | `PUT /api/shares/<id>` | writes the manifest (input below) → `{"url":"https://…/s/<id>"}` |
 | `DELETE /api/shares/<id>` | deletes every object under `s/<id>/` → `{"deleted":n}` |
 
@@ -93,6 +95,9 @@ every part but the last to be at least 5 MiB.
   unsigned integer. With it on every item, "Download all" pipes the files
   from R2 without reading them in the Worker.
 - `bytes` is the original's size; it is shown next to the download button.
+- `og` (optional): the link preview's version, 8–64 lowercase hex (atlas
+  sends the first 16 of its SHA-256), once `og.jpg` is stored. The pages'
+  `og:image` URL carries it, so a renamed album never shows an old preview.
 
 - Limits (else `400`): `title` ≤ 200 characters (may be empty), 1–20,000
   `items` with distinct `id`s, `name` 1–255 characters, `password` 1–1024
@@ -111,6 +116,7 @@ the manifest of an existing share again keeps its `created_at`, and
 | `GET /s/<id>` | the gallery; the password gate first when the share has one; `404` page when unknown, `410` page when expired |
 | `POST /s/<id>/unlock` | form field `password`; right → sets the cookie, `303` to `/s/<id>`; wrong → the gate again with an error (`403`); more than 10 tries a minute from one address, or 60 from anywhere, on one share → `429` with `Retry-After: 60` before the password is checked |
 | `GET /s/<id>/zip` | every original as one ZIP named after the title (`Lake Weekend.zip`, RFC 5987); same checks as files (`404` unless live and unlocked), then `403` without `allow_download`; `HEAD` too. Streamed from R2 one object at a time: STORE, data descriptors (flag bit 3), UTF-8 names (bit 11), CRC-32 computed on the way, ZIP64 records only where a size, offset or count needs them, names de-duplicated ignoring case (`IMG_1.HEIC`, `IMG_1 (2).HEIC`), MS-DOS times from `taken`. Only originals present in the bucket are included; their sizes come from a listing, so `Content-Length` is exact. `Cache-Control: private, no-store`, no `Range` |
+| `GET /s/<id>/og.jpg` | the link preview, for anyone with the link (a password share's shows no photo); `404` unless the share is live and its manifest has `og`; `HEAD` too; `public, max-age=3600`. Every page of a live share (gallery and password gate) points `og:image` at `og.jpg?v=<og>` with its size and `twitter:card` `summary_large_image`; a share without `og` (older atlas) uses its first thumbnail when it has no password, else no image |
 | `GET /s/<id>/f/<t\|v\|o>/<asset>` | the file, with `Range` support (one range: `206`/`416`), `HEAD`, `ETag`/`If-None-Match`; `404` unless the asset is in the manifest, the share is live and (with a password) the cookie is valid; after those checks `o` is `403` without `allow_download`, and is sent as an attachment named `name` (RFC 5987) |
 
 - Cookie `as_<id>`: `HttpOnly; Secure; SameSite=Lax; Path=/s/<id>`, value

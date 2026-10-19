@@ -38,6 +38,12 @@ item has a download button and "Download all" fetches `/s/<id>/zip`, a ZIP
 of the originals built while it streams. No framework and no build step:
 server-rendered HTML with inline CSS and JS under a per-response CSP nonce.
 
+A pasted link unfurls in chat apps as a 1200×630 preview: the first photo
+with the title and count on a panel of clear liquid glass
+([web-glass](https://web-glass.lukaloehr.com)), rendered by atlas-server and
+served at `/s/<id>/og.jpg`. A password share's preview shows the title on
+the Atlas colours, never the photo.
+
 atlas sends every original's CRC-32 in the manifest, so the Worker writes
 the ZIP headers itself and pipes the files from R2 to the recipient without
 touching their bytes: its CPU time stays tiny whatever the album weighs.

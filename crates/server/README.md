@@ -29,7 +29,7 @@ Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
 | Collections | `GET /library/{favorites,videos,archive,locked,trash}` · `POST /library/trash/empty` · `/albums…` · `/people…` · `/faces/{id}/crop` · `/places…` |
 | Search | `GET /search?q=` (people, places, albums, then meaning) · `POST /search/warm` |
 | Drive | `GET /drive/folders/{id\|root}` · `PUT /drive/files` · `/drive/blobs/{hash}/{name}` · `/drive/{recent,search,move,trash,restore,delete}` |
-| Shares | `GET/POST /shares` · `GET/DELETE /shares/{id}` (links through [atlas-share](../../share/), 7 days at most) |
+| Shares | `GET/POST /shares` · `GET/DELETE /shares/{id}` (links through [atlas-share](../../share/), 7 days at most; the link preview is drawn in [`share/og.rs`](src/share/og.rs)) |
 | System | `GET /system` · `WS /system/live` · `/system/{services,containers,network,activity}` · `WS /system/terminal` · `POST /system/power/{shutdown\|restart}` |
 
 The full list with one line each sits at the top of
