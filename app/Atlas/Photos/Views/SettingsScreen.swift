@@ -46,6 +46,7 @@ struct SettingsScreen: View {
                 }
                 Section("Dynamic Cache") {
                     StorageBar(use: storage)
+                    thumbnailsRow
                 }
             }
             .navigationTitle("Settings")
@@ -81,6 +82,30 @@ struct SettingsScreen: View {
         case .unauthorized: "Token Rejected"
         case .unknown: library.online ? "Connected" : "Offline"
         }
+    }
+
+    /// Every grid thumbnail is kept on the phone; this is how far that is,
+    /// and why it waits when it does (it runs while the app is open, on
+    /// Wi-Fi, not in Low Power Mode).
+    @ViewBuilder
+    private var thumbnailsRow: some View {
+        let fill = ThumbFill.shared
+        VStack(alignment: .leading, spacing: 8) {
+            valueRow("Thumbnails", thumbnailsText, "photo.on.rectangle", .orange)
+            if fill.total > 0, !fill.complete {
+                ProgressView(value: Double(fill.stored), total: Double(fill.total))
+                    .accessibilityLabel("Thumbnails on this iPhone")
+            }
+        }
+    }
+
+    private var thumbnailsText: String {
+        let fill = ThumbFill.shared
+        guard fill.total > 0 else { return "…" }
+        if fill.complete { return "All \(fill.total.formatted())" }
+        let count = "\(fill.stored.formatted()) of \(fill.total.formatted())"
+        if let reason = fill.paused { return "\(reason) · \(count)" }
+        return fill.running ? count : "\(count) · Paused"
     }
 
     // MARK: - Building blocks

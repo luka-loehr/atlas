@@ -19,6 +19,9 @@ final class ThumbFill {
     private(set) var total = 0
     /// Thumbnails that failed in this run (they are retried on the next).
     private(set) var failed = 0
+    /// Why the fill waits right now ("Waiting for Wi-Fi", "Low Power Mode",
+    /// ...), nil while it runs or is done.
+    private(set) var paused: String?
 
     @ObservationIgnored private var host = ""
     @ObservationIgnored private var wanted: [String] = []
@@ -43,6 +46,7 @@ final class ThumbFill {
     func stop() {
         task?.cancel()
         task = nil
+        paused = nil
     }
 
     /// Waits until the current fill has finished or was cancelled.
@@ -78,9 +82,11 @@ final class ThumbFill {
         while next < missing.count, !Task.isCancelled {
             if let reason = Self.pauseReason() {
                 log.info("thumb fill paused: \(reason, privacy: .public)")
+                paused = reason
                 try? await Task.sleep(for: .seconds(30))
                 continue
             }
+            paused = nil
             let batch = missing[next..<min(next + Self.concurrency * 8, missing.count)]
             var networkDown: String?
             await withTaskGroup(of: (String, Error?).self) { group in
@@ -112,6 +118,7 @@ final class ThumbFill {
             refreshCounts()
             if let networkDown {
                 log.info("thumb fill paused: \(networkDown, privacy: .public)")
+                paused = networkDown
                 // the same batch again; what came in meanwhile is a store hit
                 try? await Task.sleep(for: .seconds(60))
                 continue
@@ -121,6 +128,7 @@ final class ThumbFill {
             next = batch.endIndex
         }
         refreshCounts()
+        paused = nil
         log.info("thumb fill finished: \(self.stored)/\(self.total), \(self.failed) failed")
     }
 
