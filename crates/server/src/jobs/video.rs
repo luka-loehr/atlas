@@ -2,6 +2,9 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
+
+use atlas_core::process;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -31,11 +34,10 @@ pub struct Probe {
 }
 
 pub fn probe(path: &Path) -> Result<Probe> {
-    let out = Command::new("ffprobe")
-        .args(["-v", "quiet", "-print_format", "json", "-show_streams", "-show_format"])
-        .arg(path)
-        .output()
-        .context("ffprobe is not installed")?;
+    let out = process::output(
+        Command::new("ffprobe").args(["-v", "quiet", "-print_format", "json", "-show_streams", "-show_format"]).arg(path),
+        Duration::from_secs(60),
+    )?;
     let info: Value = serde_json::from_slice(&out.stdout).context("ffprobe returned no data")?;
     let mut probe = Probe::default();
     let format = &info["format"];
@@ -126,10 +128,7 @@ pub fn poster(path: &Path, hdr: bool) -> Result<Vec<u8>> {
         if hdr {
             ffmpeg.args(["-vf", TONE_MAP]);
         }
-        let out = ffmpeg
-            .args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"])
-            .output()
-            .context("ffmpeg is not installed")?;
+        let out = process::output(ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]), Duration::from_secs(120))?;
         if out.status.success() && !out.stdout.is_empty() {
             return Ok(out.stdout);
         }

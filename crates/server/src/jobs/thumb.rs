@@ -81,15 +81,16 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
 }
 
 /// Embedding and faces, once there is a thumbnail to read: a fresh upload's
-/// right behind it, a backlog's at the default.
+/// right behind it, a backlog's at the default. Model jobs that gave up
+/// while there was no thumbnail start over.
 async fn queue_models(app: &AppState, id: &str, priority: i32, embed_again: bool) -> Result<()> {
     let follow = if priority < queue::PRIORITY_DEFAULT { queue::PRIORITY_INTERACTIVE + 20 } else { queue::PRIORITY_DEFAULT };
     let c = app.pool.get().await?;
     if embed_again {
         queue::requeue(&c, queue::EMBED, "asset", id, queue::PRIORITY_BACKGROUND).await?;
     } else {
-        queue::enqueue(&c, queue::EMBED, "asset", id, follow).await?;
+        queue::ensure(&c, queue::EMBED, "asset", id, follow).await?;
     }
-    queue::enqueue(&c, queue::FACES, "asset", id, follow).await?;
+    queue::ensure(&c, queue::FACES, "asset", id, follow).await?;
     Ok(())
 }

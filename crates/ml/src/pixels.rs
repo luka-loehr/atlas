@@ -2,6 +2,9 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
+
+use atlas_core::process;
 
 use anyhow::{Context, Result, ensure};
 use fast_image_resize as fr;
@@ -42,11 +45,13 @@ const TONE_MAP: &str = "zscale=t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,
 
 /// The transfer curve of a clip's video stream ("arib-std-b67", "bt709", ...).
 fn transfer(path: &Path) -> String {
-    Command::new("ffprobe")
-        .args(["-v", "quiet", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0"])
-        .arg(path)
-        .output()
-        .map(|out| String::from_utf8_lossy(&out.stdout).trim().trim_end_matches(',').to_string())
+    process::output(
+        Command::new("ffprobe")
+            .args(["-v", "quiet", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0"])
+            .arg(path),
+        Duration::from_secs(60),
+    )
+    .map(|out| String::from_utf8_lossy(&out.stdout).trim().trim_end_matches(',').to_string())
         .unwrap_or_default()
 }
 
@@ -65,7 +70,7 @@ pub fn video_frames(path: &Path, duration: f64, count: usize) -> Result<Vec<RgbI
                     if hdr {
                         ffmpeg.args(["-vf", TONE_MAP]);
                     }
-                    let out = ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]).output().ok()?;
+                    let out = process::output(ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]), Duration::from_secs(120)).ok()?;
                     out.status.success().then_some(())?;
                     image::load_from_memory(&out.stdout).ok().map(|f| f.into_rgb8())
                 })

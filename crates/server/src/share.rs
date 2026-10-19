@@ -728,14 +728,18 @@ fn remux_clean(source: &Path, dest: &Path) -> Result<()> {
     }
     std::fs::create_dir_all(dest.parent().context("no parent directory")?)?;
     let tmp = dest.with_extension("part.mp4");
-    let output = std::process::Command::new("ffmpeg")
-        .args(["-v", "error", "-y", "-i"])
-        .arg(source)
-        .args(["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
-        .args(["-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart"])
-        .arg(&tmp)
-        .output()
-        .context("ffmpeg is not installed")?;
+    let output = atlas_core::process::output(
+        std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-i"])
+            .arg(source)
+            .args(["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
+            .args(["-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart"])
+            .arg(&tmp),
+        Duration::from_secs(3600),
+    )
+    .inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
     if output.status.success() && std::fs::metadata(&tmp).is_ok_and(|m| m.len() > 0) {
         std::fs::rename(&tmp, dest)?;
         return Ok(());
@@ -764,19 +768,28 @@ fn transcode_h264(source: &Path, dest: &Path) -> Result<()> {
     ];
     let mut last_error = String::new();
     for (decode, filter, encode) in attempts {
-        let output = std::process::Command::new("ffmpeg")
-            .args(["-v", "error", "-y", "-noautorotate"])
-            .args(decode)
-            .arg("-i")
-            .arg(source)
-            .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", filter])
-            .args(encode)
-            .args(["-profile:v", "high", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
-            // no location or camera data in what leaves the house
-            .args(["-map_metadata", "-1", "-movflags", "+faststart"])
-            .arg(&tmp)
-            .output()
-            .context("ffmpeg is not installed")?;
+        let output = atlas_core::process::output(
+            std::process::Command::new("ffmpeg")
+                .args(["-v", "error", "-y", "-noautorotate"])
+                .args(decode)
+                .arg("-i")
+                .arg(source)
+                .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", filter])
+                .args(encode)
+                .args(["-profile:v", "high", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
+                // no location or camera data in what leaves the house
+                .args(["-map_metadata", "-1", "-movflags", "+faststart"])
+                .arg(&tmp),
+            Duration::from_secs(4 * 3600),
+        );
+        let output = match output {
+            Ok(output) => output,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                last_error = e.to_string();
+                continue;
+            }
+        };
         if output.status.success() && std::fs::metadata(&tmp).is_ok_and(|m| m.len() > 0) {
             std::fs::rename(&tmp, dest)?;
             return Ok(());

@@ -38,3 +38,18 @@ DROP TABLE IF EXISTS events;
 -- are tone-mapped to SDR (they were washed out); older video thumbnails are
 -- redone by `atlas-server backfill thumbs`.
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS thumb_v SMALLINT NOT NULL DEFAULT 1;
+
+-- A self-healing queue (crates/core/src/queue.rs): jobs that cannot finish
+-- are retried later and, when that keeps failing, parked as 'stuck' with
+-- their reason, where they block nothing.
+--   defers    times a job was put back because its input was not there yet
+--   heals     times the healer gave a failed job a fresh set of attempts
+--   stuck_at  when it was parked
+ALTER TABLE ingest_jobs DROP CONSTRAINT IF EXISTS ingest_jobs_status_check;
+ALTER TABLE ingest_jobs ADD CONSTRAINT ingest_jobs_status_check
+    CHECK (status IN ('pending', 'running', 'done', 'failed', 'stuck'));
+ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS defers   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS heals    INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS stuck_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS ingest_jobs_unsettled_idx ON ingest_jobs (status, updated_at)
+    WHERE status IN ('running', 'failed', 'stuck');

@@ -58,7 +58,10 @@ fn extract(path: &Path, name: &str) -> Result<String> {
             String::from_utf8_lossy(&buf).into_owned()
         }
         "pdf" => {
-            let out = Command::new("pdftotext").arg(path).arg("-").output().context("pdftotext is not installed")?;
+            let out = atlas_core::process::output(
+                Command::new("pdftotext").arg(path).arg("-"),
+                std::time::Duration::from_secs(300),
+            )?;
             String::from_utf8_lossy(&out.stdout).into_owned()
         }
         "docx" => office(path, |member| member == "word/document.xml")?,

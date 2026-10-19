@@ -6,6 +6,7 @@
 pub mod backfill;
 pub mod drive_text;
 pub mod geocode;
+pub mod heal;
 pub mod meta;
 pub mod preview;
 pub mod thumb;
