@@ -1,12 +1,18 @@
 # Build output. `target/` is unanchored so it covers the Rust workspace
-# wherever cargo is run. `build-sim/` and `build-device/` are the conventional
-# -derivedDataPath values used for local simulator and device builds;
+# wherever cargo is run. `build-sim/`, `build-device/` and `build-mac/` are
+# the conventional -derivedDataPath values used for local simulator, device
+# and Mac builds (`build-sim-*/` for side-by-side simulator builds);
 # `DerivedData/` is what Xcode writes when it picks the path itself.
 target/
 build/
 build-sim/
+build-sim-*/
 build-device/
+build-mac/
 DerivedData/
+
+# Git worktrees that Claude Code creates for parallel agent sessions.
+.claude/worktrees/
 
 # Xcode per-user state. Never shareable, and xcuserdata/ additionally pins
 # scheme names, so a stale copy resurrects a renamed scheme as a ghost.
