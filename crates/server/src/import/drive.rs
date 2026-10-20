@@ -36,14 +36,14 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
         let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
         let mut archive = ZipArchive::new(file).with_context(|| format!("{} is not a complete zip", path.display()))?;
         let entries: Vec<usize> = (0..archive.len())
-            .filter(|&i| archive.by_index_raw(i).is_ok_and(|e| !e.is_dir() && e.name().starts_with(PREFIX)))
+            .filter(|&i| archive.by_index_raw(i).is_ok_and(|e| !e.is_dir() && e.name().is_ok_and(|n| n.starts_with(PREFIX))))
             .collect();
         println!("{}: {} files", path.display(), entries.len());
 
         for (n, index) in entries.iter().enumerate() {
             let (relative, modified, extracted) = tokio::task::block_in_place(|| -> Result<_> {
                 let mut entry = archive.by_index(*index)?;
-                let relative = entry.name()[PREFIX.len()..].to_string();
+                let relative = entry.name()?[PREFIX.len()..].to_string();
                 let modified = entry.last_modified().and_then(|t| {
                     NaiveDate::from_ymd_opt(i32::from(t.year()), u32::from(t.month()), u32::from(t.day()))?
                         .and_hms_opt(u32::from(t.hour()), u32::from(t.minute()), u32::from(t.second()))

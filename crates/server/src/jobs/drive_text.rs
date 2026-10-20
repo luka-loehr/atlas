@@ -75,7 +75,9 @@ fn extract(path: &Path, name: &str) -> Result<String> {
 /// from adjacent runs do not glue together.
 fn office(path: &Path, wanted: impl Fn(&str) -> bool) -> Result<String> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(path)?)?;
-    let mut members: Vec<String> = archive.file_names().filter(|n| wanted(n)).map(str::to_string).collect();
+    // a name that decodes neither as UTF-8 nor as CP437 cannot be a wanted member
+    let mut members: Vec<String> =
+        archive.file_names().filter_map(Result::ok).filter(|n| wanted(n)).map(|n| n.into_owned()).collect();
     members.sort();
     let mut out = String::new();
     for member in members {
@@ -92,4 +94,44 @@ fn office(path: &Path, wanted: impl Fn(&str) -> bool) -> Result<String> {
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    /// An Office-style container with the given members.
+    fn container(members: &[(&str, &str)]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(util::temp_name("drive-text-test"));
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        for (name, body) in members {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn office_text_comes_from_the_wanted_members_only() {
+        let docx = container(&[
+            ("[Content_Types].xml", "<Types>ignored</Types>"),
+            ("word/document.xml", "<w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:t>Atlas</w:t></w:r></w:p>"),
+            ("word/styles.xml", "<w:styles>not text</w:styles>"),
+        ]);
+        let text = extract(&docx, "Letter.DOCX").unwrap();
+        std::fs::remove_file(&docx).unwrap();
+        assert_eq!(SPACES.replace_all(&text, " ").trim(), "Hello Atlas");
+
+        let pptx = container(&[
+            ("ppt/slides/slide2.xml", "<a:t>second</a:t>"),
+            ("ppt/slides/slide1.xml", "<a:t>first</a:t>"),
+            ("ppt/notesSlides/notesSlide1.xml", "<a:t>notes</a:t>"),
+        ]);
+        let text = extract(&pptx, "deck.pptx").unwrap();
+        std::fs::remove_file(&pptx).unwrap();
+        assert_eq!(SPACES.replace_all(&text, " ").trim(), "first second");
+    }
 }
