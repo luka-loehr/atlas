@@ -154,10 +154,22 @@ struct ServerStatusScreen: View {
     @Environment(Session.self) private var session
     @State private var machine = Machine.shared
     @State private var confirm: PowerAction?
+    @State private var power: PowerProgress?
+    @State private var powerError: String?
 
     enum PowerAction: String, Identifiable {
         case restart, shutdown
         var id: String { rawValue }
+    }
+
+    /// Where a power action is, from the request until the server is gone
+    /// (or, for a restart, back).
+    enum PowerProgress: Equatable {
+        case sending(PowerAction)
+        case stopping(PowerAction)
+        case booting
+        case off
+        case back
     }
 
     var body: some View {
@@ -250,17 +262,32 @@ struct ServerStatusScreen: View {
             }
 
             Section {
-                Button("Restart Server", systemImage: "arrow.clockwise") { Task { await askPower(.restart) } }
-                Button("Shut Down Server", systemImage: "power", role: .destructive) { Task { await askPower(.shutdown) } }
+                if let progress = power {
+                    PowerProgressRow(progress: progress)
+                } else {
+                    Button("Restart Server", systemImage: "arrow.clockwise") { Task { await askPower(.restart) } }
+                    Button("Shut Down Server", systemImage: "power", role: .destructive) { Task { await askPower(.shutdown) } }
+                }
             }
             .confirmationDialog(confirm == .restart ? "Restart Server?" : "Shut Down Server?",
                                 isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
                 if let action = confirm {
                     Button(action == .restart ? "Restart" : "Shut Down", role: .destructive) {
-                        Task { try? await session.api?.send("POST", "system/power/\(action.rawValue)") }
+                        Task { await perform(action) }
                     }
                 }
             }
+        }
+        .sensoryFeedback(trigger: power) { _, new in
+            switch new {
+            case .off, .back: .success
+            default: nil
+            }
+        }
+        .alert("Couldn’t Reach atlas", isPresented: Binding(get: { powerError != nil }, set: { if !$0 { powerError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(powerError ?? "")
         }
         .navigationTitle("Server")
         .navigationBarTitleDisplayMode(.inline)
@@ -285,6 +312,96 @@ extension ServerStatusScreen {
         let reason = action == .restart ? "Restart atlas" : "Shut down atlas"
         guard await Biometric.authenticate(reason: reason) else { return }
         confirm = action
+    }
+
+    /// Send the action, then follow it: wait until the server stops
+    /// answering, and for a restart until it answers again.
+    @MainActor func perform(_ action: PowerAction) async {
+        guard let api = session.api else { return }
+        power = .sending(action)
+        do {
+            try await api.send("POST", "system/power/\(action.rawValue)")
+        } catch {
+            power = nil
+            powerError = error.localizedDescription
+            return
+        }
+        power = .stopping(action)
+        // the server acts a second after answering; give it up to two minutes
+        guard await poll(until: false, api: api, timeout: 120) else {
+            power = nil
+            powerError = "atlas accepted the request but is still answering after two minutes."
+            return
+        }
+        guard action == .restart else {
+            power = .off
+            return
+        }
+        power = .booting
+        guard await poll(until: true, api: api, timeout: 300) else {
+            power = nil
+            powerError = "atlas went down but hasn’t come back after five minutes."
+            return
+        }
+        power = .back
+        await machine.refresh(api)
+        try? await Task.sleep(for: .seconds(3))
+        if power == .back { power = nil }
+    }
+
+    /// Ask the server every two seconds until it is (or isn't) answering.
+    private func poll(until up: Bool, api: API, timeout: TimeInterval) async -> Bool {
+        let deadline = Date.now.addingTimeInterval(timeout)
+        while Date.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(2))
+            let answering = (try? await api.get("server", as: Session.ServerInfo.self)) != nil
+            if answering == up { return true }
+        }
+        return false
+    }
+}
+
+/// The row that stands in for the power buttons while an action runs.
+private struct PowerProgressRow: View {
+    let progress: ServerStatusScreen.PowerProgress
+
+    var body: some View {
+        HStack(spacing: 12) {
+            switch progress {
+            case .off:
+                Image(systemName: "power.circle.fill").foregroundStyle(.secondary).font(.title2)
+            case .back:
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.title2)
+            default:
+                ProgressView()
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var title: String {
+        switch progress {
+        case .sending(let action): action == .restart ? "Restarting…" : "Shutting Down…"
+        case .stopping(let action): action == .restart ? "Restarting…" : "Shutting Down…"
+        case .booting: "Starting Up…"
+        case .off: "atlas Is Off"
+        case .back: "atlas Is Back"
+        }
+    }
+
+    private var detail: String {
+        switch progress {
+        case .sending: "Sending the request"
+        case .stopping: "Waiting for services to stop"
+        case .booting: "Waiting for atlas to answer again"
+        case .off: "Services have stopped. The fans go quiet within a minute."
+        case .back: "All services are answering"
+        }
     }
 }
 
