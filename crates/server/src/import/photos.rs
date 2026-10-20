@@ -101,7 +101,7 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
             if entry.is_dir() {
                 continue;
             }
-            let name = entry.name().to_string();
+            let name = entry.name()?.into_owned();
             let base = name.rsplit('/').next().unwrap_or(&name).to_string();
             if name.ends_with(".json") {
                 sidecars.insert(base, (a, i));
