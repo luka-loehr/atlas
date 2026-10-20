@@ -49,11 +49,21 @@ final class BackupService: NSObject {
     /// Hash → local id of contents still to upload, newest first.
     @ObservationIgnored private var queue: [(hash: String, localID: String)] = []
     /// Hashes with an upload task in the background session.
-    @ObservationIgnored private var inflight: Set<String> = []
+    @ObservationIgnored private var inflight: Set<String> = [] { didSet { uploading = inflight.count } }
+    /// Uploads handed to iOS and not finished yet (the Sync line).
+    private(set) var uploading = 0
+    @ObservationIgnored private var retry: Task<Void, Never>?
     @ObservationIgnored private var inflightBytes: [String: Int64] = [:]
     private var outboxBytes: Int64 { inflightBytes.values.reduce(0) { $0 + max($1, 0) } }
     private static let outboxLimit: Int64 = 2 << 30
     @ObservationIgnored private var failedThisRun: Set<String> = []
+    /// Photos just taken, exported to the outbox while they were hashed:
+    /// hash → file. Their upload sends that file instead of reading the
+    /// original out of the library a second time.
+    @ObservationIgnored private var staged: [String: URL] = [:]
+    /// Staging is for what was just taken; a big video is hashed in place.
+    private static let stageItemLimit: Int64 = 300 << 20
+    private static let stageLimit: Int64 = 1 << 30
     @ObservationIgnored private var passTask: Task<Void, Never>?
     @ObservationIgnored private var fillTask: Task<Void, Never>?
     @ObservationIgnored private var passAgain = false
@@ -256,6 +266,20 @@ final class BackupService: NSObject {
 
     // MARK: Pass
 
+    /// Something failed (an export, an upload, atlas out of reach): another
+    /// pass in two minutes, which tries what failed again. Nobody has to
+    /// open the app for it; while it is closed, iOS's background windows
+    /// and the next launch do the same.
+    private func retrySoon() {
+        guard retry == nil else { return }
+        retry = Task {
+            try? await Task.sleep(for: .seconds(120))
+            retry = nil
+            guard !Task.isCancelled else { return }
+            kick()
+        }
+    }
+
     /// Starts a pass, or asks the running one to go again when it is done.
     func kick() {
         guard !host.isEmpty else { return }
@@ -316,9 +340,14 @@ final class BackupService: NSObject {
         } catch {
             phase = .offline
             log.error("exists check failed: \(error.localizedDescription, privacy: .public)")
+            retrySoon()
             return
         }
         saveState()
+        for (hash, file) in staged where state.onServer.contains(hash) {
+            try? FileManager.default.removeItem(at: file)
+            staged[hash] = nil
+        }
 
         // 5) the queue: one local asset per missing content, newest first
         var seen = Set<String>()
@@ -378,7 +407,7 @@ final class BackupService: NSObject {
         for item in fresh.prefix(30) {
             guard let asset = Self.fetchAssets([item.id]).first,
                   let resource = Self.primaryResource(asset),
-                  let hash = try? await Self.sha256Hex(of: resource) else { continue }
+                  let hash = try? await hashNew(resource) else { continue }
             state.hashes[item.id] = .init(h: hash, m: item.modified)
             let isVideo = asset.mediaType == .video
             if let url = client.thumbURL(hash, 512), let img = await Self.localThumb(asset, side: 512) {
@@ -393,6 +422,40 @@ final class BackupService: NSObject {
         }
         state.marker = fresh.compactMap(\.created).max() ?? marker
         saveState()
+    }
+
+    /// The hash of something just taken, from a copy exported to the
+    /// outbox, which its upload then sends: the original is read out of the
+    /// library once. Large videos, and anything once the staged copies
+    /// reach their limit, are hashed in place.
+    private func hashNew(_ resource: PHAssetResource) async throws -> String {
+        let size = Self.fileSize(resource)
+        let stagedBytes = staged.values.reduce(Int64(0)) {
+            $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        guard size > 0, size <= Self.stageItemLimit, stagedBytes + size <= Self.stageLimit else {
+            return try await Self.sha256Hex(of: resource)
+        }
+        let ext = (resource.originalFilename as NSString).pathExtension
+        let tmp = Self.outbox.appendingPathComponent("staging-\(UUID().uuidString).\(ext.isEmpty ? "bin" : ext)")
+        try await Self.exportOriginal(resource, to: tmp)
+        let hash: String
+        do {
+            hash = try await Task.detached(priority: .utility) { try Self.sha256Hex(ofFile: tmp) }.value
+        } catch {
+            try? FileManager.default.removeItem(at: tmp)
+            throw error
+        }
+        let dest = Self.outbox.appendingPathComponent("\(hash).\(ext.isEmpty ? "bin" : ext)")
+        // already on atlas or on its way there: the copy is not needed
+        if state.onServer.contains(hash) || inflight.contains(hash) || staged[hash] != nil {
+            try? FileManager.default.removeItem(at: tmp)
+            return hash
+        }
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.moveItem(at: tmp, to: dest)
+        staged[hash] = dest
+        return hash
     }
 
     // MARK: Uploads
@@ -447,7 +510,12 @@ final class BackupService: NSObject {
                     let name = "\(next.hash).\(ext.isEmpty ? "bin" : ext)"
                     let file = Self.outbox.appendingPathComponent(name)
                     do {
-                        try await Self.exportOriginal(resource, to: file)
+                        // a photo just taken was exported when it was hashed
+                        let copy = staged.removeValue(forKey: next.hash)
+                        if copy != file || !FileManager.default.fileExists(atPath: file.path) {
+                            if let copy, copy != file { try? FileManager.default.removeItem(at: copy) }
+                            try await Self.exportOriginal(resource, to: file)
+                        }
                         guard let req = client.uploadRequest(filename: resource.originalFilename,
                                                              takenAt: asset.creationDate, hash: next.hash) else { break }
                         let task = session.uploadTask(with: req, fromFile: file)
@@ -462,6 +530,7 @@ final class BackupService: NSObject {
                         try? FileManager.default.removeItem(at: file)
                         failedThisRun.insert(next.hash)
                         failed += 1
+                        retrySoon()
                         log.error("export \(next.hash, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
@@ -501,6 +570,7 @@ final class BackupService: NSObject {
             if (error as? URLError)?.code == .cancelled { return }
             failedThisRun.insert(ticket.hash)
             failed += 1
+            retrySoon()
             log.error("upload \(ticket.hash, privacy: .public) failed: \(error?.localizedDescription ?? "HTTP \(status)", privacy: .public)")
         }
         if queue.isEmpty, inflight.isEmpty { updatePending() }
@@ -612,6 +682,17 @@ final class BackupService: NSObject {
         }
     }
 
+    /// SHA-256 (lowercase hex) of a file, read in 4 MB pieces.
+    nonisolated static func sha256Hex(ofFile url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 4 << 20), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     /// Writes the exact original bytes to `url`.
     nonisolated static func exportOriginal(_ resource: PHAssetResource, to url: URL) async throws {
         try? FileManager.default.removeItem(at: url)
@@ -642,13 +723,13 @@ final class BackupService: NSObject {
     /// PhotoKit has no public byte count; the resources' fileSize (KVC) is
     /// close enough for a status line.
     nonisolated static func estimatedBytes(_ assets: [PHAsset]) -> Int64 {
-        var total: Int64 = 0
-        for asset in assets {
-            guard let r = primaryResource(asset) else { continue }
-            if let n = r.value(forKey: "fileSize") as? Int64 { total += n }
-            else if let n = r.value(forKey: "fileSize") as? Int { total += Int64(n) }
-        }
-        return total
+        assets.compactMap(primaryResource).reduce(0) { $0 + fileSize($1) }
+    }
+
+    nonisolated static func fileSize(_ resource: PHAssetResource) -> Int64 {
+        if let n = resource.value(forKey: "fileSize") as? Int64 { return n }
+        if let n = resource.value(forKey: "fileSize") as? Int { return Int64(n) }
+        return 0
     }
 }
 

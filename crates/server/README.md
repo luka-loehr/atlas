@@ -23,7 +23,7 @@ Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
 
 | Area | Routes |
 |---|---|
-| Library | `GET /server` · `/stats` · `/heatmap` |
+| Library | `GET /server` · `/work` (what atlas is busy with) · `/stats` · `/heatmap` |
 | Timeline | `GET /timeline` (month index: key, count, validator) · `GET /timeline/{YYYY-MM\|undated}` (one month, columnar) |
 | Assets | `PUT /assets` (streaming upload) · `POST /assets/exists` · `GET /assets/{id}` · `/assets/{id}/thumb/{512\|2048}` · `/assets/{id}/original` · `/assets/{id}/video` · `POST /assets/{favorite,archive,lock,trash,restore,delete}` |
 | Collections | `GET /library/{favorites,videos,archive,locked,trash}` · `POST /library/trash/empty` · `/albums…` · `/people…` · `/faces/{id}/crop` · `/places…` |
@@ -53,9 +53,17 @@ The full list with one line each sits at the top of
   real match returns nothing rather than the least-bad photos.
 - **Job queue** ([`jobs/`](src/jobs/), protocol in
   [`atlas-core`](../core/src/queue.rs)). Rows in `ingest_jobs`, claimed with
-  `FOR UPDATE SKIP LOCKED`, heartbeated, retried with backoff, reaped when a
-  worker dies. Queues here: `thumb`, `meta`, `geocode`, `preview`,
-  `drive_text`; `embed` and `faces` are worked by atlas-ml.
+  `FOR UPDATE SKIP LOCKED`, heartbeated, retried with backoff. Queues here:
+  `thumb`, `meta`, `geocode`, `preview`, `drive_text`; `embed` and `faces`
+  are worked by atlas-ml, queued by the thumbnail job.
+- **Self-healing.** Nothing waits forever and nothing holds up anything
+  else: every job and every external tool has a time limit, a job that
+  crashes or hangs its worker spends an attempt (recovered at start, reaped
+  by heartbeat), a clean shutdown hands its jobs back, and an hourly
+  check-up ([`jobs/heal.rs`](src/jobs/heal.rs)) queues missing work, drops
+  jobs whose photo is gone and retries failed jobs later. What fails for
+  good is parked as `stuck` with its reason (listed under
+  `GET /v1/system`) and starts over when its input is fixed.
 - **Imaging** ([`imaging.rs`](src/imaging.rs)). JPEG, PNG, WebP and HEIC are
   decoded in process, resized with SIMD, and written as WebP with the source's
   color profile kept, so wide-gamut photos stay wide-gamut.

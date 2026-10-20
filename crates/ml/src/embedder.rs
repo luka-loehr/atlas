@@ -1,8 +1,8 @@
 //! The embedding model, behind a llama.cpp server this process owns.
 //!
 //! The server is started on first use and stopped after a stretch of
-//! idleness, which returns its GPU memory. Requests are serialized: one
-//! model, one slot.
+//! idleness, which returns its GPU memory. It has a few slots, so requests
+//! run side by side: the lock here only guards starting and stopping it.
 //!
 //! Inputs follow the model's own recipe exactly (its `Qwen3VLEmbedder`):
 //! a system turn carrying the instruction, the content as the user turn, an
@@ -14,7 +14,7 @@
 
 use std::process::Stdio;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -53,6 +53,9 @@ pub struct Embedder {
     http: reqwest::Client,
     running: Mutex<Option<Running>>,
     state: AtomicU8,
+    /// requests sent and not answered yet: the server is not stopped under them
+    in_flight: AtomicUsize,
+    pub slots: u32,
 }
 
 struct Running {
@@ -64,15 +67,18 @@ struct Running {
 
 impl Embedder {
     pub fn new(cfg: &Config) -> Self {
-        // the longest input is one still (1800 tokens) plus the prompt frame
-        let context = (IMAGE_TOKENS + 256).to_string();
+        // the longest input is one still (1800 tokens) plus the prompt frame;
+        // the context is shared by the slots, a batch holds one whole input
+        let per_slot = IMAGE_TOKENS + 256;
+        let context = (per_slot * cfg.slots).to_string();
+        let batch = per_slot.to_string();
         let args = [
             "--model", &cfg.embed_model.to_string_lossy(),
             "--mmproj", &cfg.embed_mmproj.to_string_lossy(),
             "--embedding", "--pooling", "last",
             "--n-gpu-layers", &cfg.gpu_layers.to_string(),
-            "--ctx-size", &context, "--batch-size", &context, "--ubatch-size", &context,
-            "--parallel", "1",
+            "--ctx-size", &context, "--batch-size", &batch, "--ubatch-size", &batch,
+            "--parallel", &cfg.slots.to_string(),
             "--image-max-tokens", &IMAGE_TOKENS.to_string(),
             "--host", "127.0.0.1", "--port", &cfg.llama_port.to_string(),
             "--no-webui",
@@ -87,6 +93,8 @@ impl Embedder {
             http: reqwest::Client::builder().timeout(Duration::from_secs(180)).build().expect("http client"),
             running: Mutex::new(None),
             state: AtomicU8::new(IDLE),
+            in_flight: AtomicUsize::new(0),
+            slots: cfg.slots,
         }
     }
 
@@ -138,22 +146,36 @@ impl Embedder {
     /// One request against the (started if necessary) server. `prompt` gets
     /// the server's media marker to place its images.
     async fn request(&self, prompt: impl FnOnce(&str) -> String, images: &[Vec<u8>]) -> Result<Vec<f32>> {
-        let mut running = self.running.lock().await;
-        if running.as_mut().is_some_and(|r| r.child.try_wait().ok().flatten().is_some()) {
-            *running = None; // it died; start over
+        let marker = {
+            let mut running = self.running.lock().await;
+            if running.as_mut().is_some_and(|r| r.child.try_wait().ok().flatten().is_some()) {
+                *running = None; // it died; start over
+            }
+            if running.is_none() {
+                *running = Some(self.start().await?);
+            }
+            let server = running.as_mut().expect("just started");
+            server.last_used = Instant::now();
+            // counted under the lock, so the idle check cannot stop the
+            // server between here and the request
+            self.in_flight.fetch_add(1, Ordering::SeqCst);
+            server.marker.clone()
+        };
+        let result = self.send(prompt(&marker), images).await;
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        if let Some(server) = self.running.lock().await.as_mut() {
+            server.last_used = Instant::now();
         }
-        if running.is_none() {
-            *running = Some(self.start().await?);
-        }
-        let server = running.as_mut().expect("just started");
-        server.last_used = Instant::now();
+        result
+    }
 
+    async fn send(&self, prompt: String, images: &[Vec<u8>]) -> Result<Vec<f32>> {
         let content = if images.is_empty() {
-            json!(prompt(&server.marker))
+            json!(prompt)
         } else {
             let encoded: Vec<String> =
                 images.iter().map(|png| base64::engine::general_purpose::STANDARD.encode(png)).collect();
-            json!({ "prompt_string": prompt(&server.marker), "multimodal_data": encoded })
+            json!({ "prompt_string": prompt, "multimodal_data": encoded })
         };
         let response = self
             .http
@@ -176,9 +198,6 @@ impl Embedder {
             .collect();
         ensure!(vec.len() == DIM, "expected {DIM} dimensions, got {}", vec.len());
         pixels::normalize(&mut vec);
-        if let Some(server) = running.as_mut() {
-            server.last_used = Instant::now();
-        }
         Ok(vec)
     }
 
@@ -225,8 +244,18 @@ impl Embedder {
         }
     }
 
-    async fn idle_for(&self) -> Option<Duration> {
-        self.running.try_lock().ok()?.as_ref().map(|s| s.last_used.elapsed())
+    /// Stops the server when nothing is in flight and nothing used it for
+    /// `idle_after`.
+    async fn unload_if_idle(&self) {
+        let Ok(mut running) = self.running.try_lock() else { return };
+        let idle = running.as_ref().is_some_and(|s| s.last_used.elapsed() >= self.idle_after);
+        if idle && self.in_flight.load(Ordering::SeqCst) == 0
+            && let Some(mut server) = running.take()
+        {
+            let _ = server.child.kill().await;
+            self.state.store(IDLE, Ordering::Relaxed);
+            tracing::info!("embedding model unloaded");
+        }
     }
 }
 
@@ -234,9 +263,7 @@ impl Embedder {
 pub async fn unload_when_idle(worker: Arc<Worker>) {
     loop {
         tokio::time::sleep(Duration::from_secs(30)).await;
-        if worker.embedder.idle_for().await.is_some_and(|idle| idle >= worker.embedder.idle_after) {
-            worker.embedder.unload().await;
-        }
+        worker.embedder.unload_if_idle().await;
     }
 }
 

@@ -43,7 +43,8 @@ final class Library {
     /// months loaded for it.
     @ObservationIgnored private var index: [PhotoClient.TimelineBucket] = []
     @ObservationIgnored private var columns: [String: AssetColumns] = [:]
-    @ObservationIgnored private var refreshing = false
+    /// Fetching the index and changed months right now (the Sync line).
+    private(set) var refreshing = false
     /// Reading the timeline from disk; whoever refreshes waits for it, so
     /// the refresh compares against what is on disk and fetches only the
     /// months that changed (not all of them, as against an empty index).
@@ -81,7 +82,8 @@ final class Library {
             let fresh = try await client.timelineIndex()
             if !online { online = true }
             let known = Dictionary(uniqueKeysWithValues: index.map { ($0.key, $0.etag) })
-            let stale = fresh.filter { known[$0.key] != $0.etag || columns[$0.key] == nil }
+            // a month cached without thumbhashes is fetched once more for them
+            let stale = fresh.filter { known[$0.key] != $0.etag || columns[$0.key]?.p == nil }
             // nothing changed: nothing to rebuild
             if stale.isEmpty, fresh.map(\.key) == index.map(\.key) { if !loaded { loaded = true }; return }
             var fetched: [String: AssetColumns] = [:]
@@ -101,7 +103,10 @@ final class Library {
             // a month that failed to load keeps its previous content
             let complete = fresh.allSatisfy { fetched[$0.key] != nil || (known[$0.key] == $0.etag && columns[$0.key] != nil) }
             guard complete else { return }
+            let redrawn = Self.redrawn(old: columns, new: fetched)
             for (key, value) in fetched { columns[key] = value }
+            await Self.forgetThumbs(redrawn)
+            await refreshVideoPostersOnce()
             let keys = Set(fresh.map(\.key))
             columns = columns.filter { keys.contains($0.key) }
             index = fresh
@@ -111,6 +116,45 @@ final class Library {
         } catch {
             if online { online = false }
         }
+    }
+
+    /// Assets whose thumbnail the server made again since the month was
+    /// cached: their thumbhash changed.
+    nonisolated private static func redrawn(old: [String: AssetColumns], new: [String: AssetColumns]) -> [String] {
+        var ids: [String] = []
+        for (key, month) in new {
+            guard let before = old[key], let was = before.p, let now = month.p else { continue }
+            let previous = Dictionary(zip(before.id, was), uniquingKeysWith: { a, _ in a })
+            for (id, hash) in zip(month.id, now) {
+                if let p = previous[id], !p.isEmpty, p != hash { ids.append(id) }
+            }
+        }
+        return ids
+    }
+
+    /// The stored thumbnails and previews of `ids` go, so they are fetched
+    /// again (the fill does it right after the timeline is applied).
+    private static func forgetThumbs(_ ids: [String]) async {
+        guard !ids.isEmpty else { return }
+        await Task.detached(priority: .utility) {
+            for id in ids {
+                MediaStore.shared.remove(.init(.thumb, id))
+                MediaStore.shared.remove(.init(.preview, id))
+            }
+        }.value
+        MediaCache.shared.forgetDecoded()
+    }
+
+    /// Video thumbnails made before the server tone-mapped HDR clips were
+    /// pale. Months cached by earlier versions have no thumbhashes to show
+    /// which changed, so every video's stored thumbnail is fetched again,
+    /// once.
+    private func refreshVideoPostersOnce() async {
+        let flag = "media.videoPostersV2"
+        guard !UserDefaults.standard.bool(forKey: flag) else { return }
+        let videos = columns.values.flatMap { month in zip(month.id, month.v).filter { $0.1 == 1 }.map(\.0) }
+        await Self.forgetThumbs(videos)
+        UserDefaults.standard.set(true, forKey: flag)
     }
 
     /// The finished timeline, built off the main thread.

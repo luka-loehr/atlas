@@ -227,6 +227,18 @@ mod tests {
     }
 
     #[test]
+    fn resize_keeps_colors_where_they_were() {
+        // left half red, right half blue: guards the resampler across fast_image_resize bumps
+        let (red, blue) = (image::Rgb([200u8, 30, 30]), image::Rgb([30u8, 30, 200]));
+        let img = RgbImage::from_fn(400, 300, |x, _| if x < 200 { red } else { blue });
+        let out = resize(&img, 100, 75).unwrap();
+        assert_eq!(out.dimensions(), (100, 75));
+        let near = |a: &image::Rgb<u8>, b: &image::Rgb<u8>| a.0.iter().zip(b.0).all(|(x, y)| x.abs_diff(y) <= 2);
+        assert!(near(out.get_pixel(10, 37), &red), "{:?}", out.get_pixel(10, 37));
+        assert!(near(out.get_pixel(90, 37), &blue), "{:?}", out.get_pixel(90, 37));
+    }
+
+    #[test]
     fn thumbhash_is_small() {
         let img = RgbImage::from_fn(512, 384, |x, y| image::Rgb([(x / 2) as u8, (y / 2) as u8, 128]));
         let hash = thumbhash(&img).unwrap();

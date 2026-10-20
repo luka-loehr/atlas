@@ -26,11 +26,15 @@ Only atlas-server talks to it. Logs: `journalctl -u atlas-ml -f`.
 ## How it works
 
 - **Queues.** It claims `embed` and `faces` jobs from the same Postgres queue
-  the server fills (protocol in [`atlas-core`](../core/src/queue.rs)), one
-  model at a time on the GPU.
+  the server fills (protocol in [`atlas-core`](../core/src/queue.rs)); the
+  server's thumbnail job queues both once the 2048 thumbnail exists. Two
+  loops run side by side: embeddings on the GPU, several at once in the
+  llama.cpp server's slots (one slot is always left for search queries), and
+  faces on the CPU.
 - **Stills** are resized exactly as the model's reference preprocessing does
   (`smart_resize`, bicubic) and embedded at up to 1800 visual tokens.
-  **Videos** are six frames spread over the clip, embedded together in one
+  **Videos** are six frames spread over the clip, extracted side by side,
+  tone-mapped to SDR when the clip is HDR, and embedded together in one
   prompt.
 - **Idle unload.** After `ATLAS_ML_IDLE_S` seconds without work the llama.cpp
   server is stopped and its GPU memory returned; the next job or `/warm`
@@ -51,6 +55,7 @@ From `/etc/atlas/atlas.env`, documented in [`config.rs`](src/config.rs).
 | `ATLAS_LLAMA_SERVER` | `/usr/local/lib/atlas/llama-server` | built by `models.sh` |
 | `ATLAS_EMBED_GPU_LAYERS` | `99` (all) | `0` runs the embedding model on the CPU |
 | `ATLAS_ML_IDLE_S` | `600` | seconds until the embedding model is unloaded |
+| `ATLAS_EMBED_SLOTS` | `3` | requests the embedding server runs side by side; the queue uses all but one |
 | `ATLAS_ML_BIND` | `127.0.0.1:8786` | |
 | `ATLAS_LLAMA_PORT` | `8785` | loopback port of the llama.cpp server |
 

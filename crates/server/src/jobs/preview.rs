@@ -12,6 +12,9 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
+
+use atlas_core::process;
 
 use anyhow::{Context, Result, bail};
 
@@ -21,6 +24,8 @@ use crate::{AppState, util};
 const MAX_SHORT_SIDE: i32 = 1080;
 /// Above this the original is too heavy to stream as is.
 const MAX_BITRATE: i64 = 12_000_000;
+/// One encoder attempt; a hung ffmpeg is stopped and the next one tried.
+const TRANSCODE_LIMIT: Duration = Duration::from_secs(4 * 3600);
 
 pub fn wanted(probe: &Probe) -> bool {
     let short_side = probe.coded_width.min(probe.coded_height);
@@ -97,18 +102,27 @@ fn transcode(source: &Path, dest: &Path, probe: &Probe) -> Result<()> {
 
     let mut last_error = String::new();
     for (decode, filter, encode) in attempts {
-        let output = Command::new("ffmpeg")
-            .args(["-v", "error", "-y", "-noautorotate"])
-            .args(decode)
-            .arg("-i")
-            .arg(source)
-            .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", filter])
-            .args(encode)
-            .args(["-tag:v", "hvc1", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
-            .args(["-map_metadata", "0", "-movflags", "+faststart"])
-            .arg(&tmp)
-            .output()
-            .context("ffmpeg is not installed")?;
+        let output = process::output(
+            Command::new("ffmpeg")
+                .args(["-v", "error", "-y", "-noautorotate"])
+                .args(decode)
+                .arg("-i")
+                .arg(source)
+                .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", filter])
+                .args(encode)
+                .args(["-tag:v", "hvc1", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
+                .args(["-map_metadata", "0", "-movflags", "+faststart"])
+                .arg(&tmp),
+            TRANSCODE_LIMIT,
+        );
+        let output = match output {
+            Ok(output) => output,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                last_error = e.to_string();
+                continue;
+            }
+        };
         if output.status.success() && std::fs::metadata(&tmp).is_ok_and(|m| m.len() > 0) {
             std::fs::rename(&tmp, dest)?;
             return Ok(());

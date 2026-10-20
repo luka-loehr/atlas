@@ -43,6 +43,7 @@ struct SettingsScreen: View {
                     valueRow("Backup", backup.statusText, "arrow.triangle.2.circlepath", .green)
                     // backed-up photos older than 30 days leave the iPhone on their own
                     valueRow("Keep Last \(BackupService.keepDays) Days", backup.cleanupText, "iphone", .blue)
+                    syncRow
                 }
                 Section("Dynamic Cache") {
                     StorageBar(use: storage)
@@ -65,6 +66,7 @@ struct SettingsScreen: View {
             await Machine.shared.keepLive(api)
         }
         .task { storage = await StorageUse.measure() }
+        .task { await SyncStatus.shared.watch(library.client) }
         .task {
             guard library.sharing else { return }
             links = (try? await library.client.shares())?.count
@@ -81,6 +83,30 @@ struct SettingsScreen: View {
         case .unauthorized: "Token Rejected"
         case .unknown: library.online ? "Connected" : "Offline"
         }
+    }
+
+    /// What is being synced right now, in a few words (on the phone and
+    /// on atlas); a small spinner while anything is.
+    private var syncRow: some View {
+        let (text, busy) = SyncStatus.shared.line(library)
+        return HStack {
+            icon("arrow.trianglehead.2.clockwise", .teal)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sync").foregroundStyle(.primary)
+                Text(text)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(2)
+            }
+            Spacer()
+            if busy {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: "checkmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Building blocks

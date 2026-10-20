@@ -207,5 +207,6 @@ async fn serve(pool: Pool) -> Result<()> {
             }
         })
         .await?;
+    jobs::worker::release(&app).await;
     Ok(())
 }

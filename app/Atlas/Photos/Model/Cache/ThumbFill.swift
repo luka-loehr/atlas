@@ -19,6 +19,9 @@ final class ThumbFill {
     private(set) var total = 0
     /// Thumbnails that failed in this run (they are retried on the next).
     private(set) var failed = 0
+    /// Why the fill waits right now ("Waiting for Wi-Fi", "Low Power Mode",
+    /// ...), nil while it runs or is done.
+    private(set) var paused: String?
 
     @ObservationIgnored private var host = ""
     @ObservationIgnored private var wanted: [String] = []
@@ -43,6 +46,15 @@ final class ThumbFill {
     func stop() {
         task?.cancel()
         task = nil
+        paused = nil
+    }
+
+    /// Carries on if it is not running and thumbnails are still missing
+    /// (after a background window ended it, or a run that had failures):
+    /// called on every return to the app and when the network is back.
+    func resume() {
+        guard task == nil, !host.isEmpty, !wanted.isEmpty, !complete else { return }
+        restart()
     }
 
     /// Waits until the current fill has finished or was cancelled.
@@ -67,7 +79,7 @@ final class ThumbFill {
         stored = min(MediaStore.shared.thumbStats.count, total)
     }
 
-    private func run(ids: [String], client: PhotoClient, generation gen: Int) async {
+    private func run(ids: [String], client: PhotoClient, generation gen: Int, attempt: Int = 0) async {
         // 25,000 lookups: off the main thread
         let missing = await Task.detached(priority: .utility) {
             ids.filter { !MediaStore.shared.contains(.init(.thumb, $0)) }
@@ -78,9 +90,11 @@ final class ThumbFill {
         while next < missing.count, !Task.isCancelled {
             if let reason = Self.pauseReason() {
                 log.info("thumb fill paused: \(reason, privacy: .public)")
+                paused = reason
                 try? await Task.sleep(for: .seconds(30))
                 continue
             }
+            paused = nil
             let batch = missing[next..<min(next + Self.concurrency * 8, missing.count)]
             var networkDown: String?
             await withTaskGroup(of: (String, Error?).self) { group in
@@ -112,6 +126,7 @@ final class ThumbFill {
             refreshCounts()
             if let networkDown {
                 log.info("thumb fill paused: \(networkDown, privacy: .public)")
+                paused = networkDown
                 // the same batch again; what came in meanwhile is a store hit
                 try? await Task.sleep(for: .seconds(60))
                 continue
@@ -121,7 +136,18 @@ final class ThumbFill {
             next = batch.endIndex
         }
         refreshCounts()
+        paused = nil
         log.info("thumb fill finished: \(self.stored)/\(self.total), \(self.failed) failed")
+        // what failed is tried again in a while (2, 4, ... 32 min), not only
+        // at the next launch; a thumbnail atlas cannot make is not asked for
+        // every two minutes forever
+        if failed > 0, attempt < 5, !Task.isCancelled {
+            paused = "\(failed.formatted()) failed, retrying"
+            try? await Task.sleep(for: .seconds(120 << attempt))
+            guard !Task.isCancelled, generation == gen else { return }
+            failed = 0
+            await run(ids: ids, client: client, generation: gen, attempt: attempt + 1)
+        }
     }
 
     private static func pauseReason() -> String? {

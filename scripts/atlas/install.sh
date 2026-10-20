@@ -17,9 +17,11 @@ cargo build --release -p atlas-server -p atlas-ml
 
 sudo install -m755 target/release/atlas-server target/release/atlas-ml /usr/local/bin/
 . scripts/lib/install-unit.sh
-install_unit scripts/atlas/atlas-server.service scripts/atlas/atlas-ml.service
+install_unit scripts/atlas/atlas-postgres.service scripts/atlas/atlas-server.service scripts/atlas/atlas-ml.service
 sudo systemctl daemon-reload
-sudo systemctl enable --quiet atlas-server atlas-ml
+sudo systemctl enable --now --quiet docker
+sudo systemctl enable --quiet atlas-postgres atlas-server atlas-ml
+sudo systemctl restart atlas-postgres
 sudo systemctl restart atlas-server atlas-ml
 
 sleep 2

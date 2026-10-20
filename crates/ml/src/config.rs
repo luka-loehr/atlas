@@ -28,6 +28,10 @@ pub struct Config {
     /// ATLAS_ML_IDLE_S: seconds without work after which the embedding model
     /// is unloaded and its GPU memory returned (default 600).
     pub idle: Duration,
+    /// ATLAS_EMBED_SLOTS: requests the embedding server takes side by side
+    /// (default 3). The queue uses all but one, so a search never waits
+    /// behind the backlog.
+    pub slots: u32,
     /// ATLAS_FACE_DETECTOR / ATLAS_FACE_RECOGNIZER: the buffalo_l ONNX files
     /// (default <models>/buffalo_l/{det_10g,w600k_r50}.onnx).
     pub face_detector: PathBuf,
@@ -49,6 +53,7 @@ impl Config {
             embed_mmproj: path("ATLAS_EMBED_MMPROJ", models.join("qwen3-vl-embedding/mmproj.gguf")),
             gpu_layers: env("ATLAS_EMBED_GPU_LAYERS").and_then(|v| v.parse().ok()).unwrap_or(99),
             idle: Duration::from_secs(env("ATLAS_ML_IDLE_S").and_then(|v| v.parse().ok()).unwrap_or(600)),
+            slots: env("ATLAS_EMBED_SLOTS").and_then(|v| v.parse().ok()).unwrap_or(3).clamp(1, 8),
             face_detector: path("ATLAS_FACE_DETECTOR", models.join("buffalo_l/det_10g.onnx")),
             face_recognizer: path("ATLAS_FACE_RECOGNIZER", models.join("buffalo_l/w600k_r50.onnx")),
         })

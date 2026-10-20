@@ -2,7 +2,7 @@ import SwiftUI
 import MapKit
 
 /// Detail sheet for one asset — Apple-/Google-Photos style:
-/// person chips + tags up top, date + filename, gray camera card (model +
+/// person chips up top, date + filename, gray camera card (model +
 /// format badge, MP · resolution · size, ISO | focal | ev | ƒ | shutter),
 /// a map with the photo as pin, and per person a "make this the avatar" row.
 struct InfoSheet: View {
@@ -17,7 +17,7 @@ struct InfoSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    personTagFlow
+                    personFlow
                     dateRow
                     cameraCard
                     mapCard
@@ -188,15 +188,12 @@ struct InfoSheet: View {
         item.openInMaps()
     }
 
-    // MARK: - Persons + tags. One shared flow up top: tappable person chips
-    // (face + name -> their photo grid) first, then the pipeline's tags.
-    // Bewusst keine KI-Beschreibungen: die generierten Sätze sind zu
-    // unzuverlässig; die Tags reichen.
+    // MARK: - Persons. One flow up top: tappable person chips (face + name
+    // -> their photo grid).
 
     @ViewBuilder
-    private var personTagFlow: some View {
-        let tags = info?.tags ?? []
-        if !personsOnPhoto.isEmpty || !tags.isEmpty {
+    private var personFlow: some View {
+        if !personsOnPhoto.isEmpty {
             FlowLayout(spacing: 8) {
                 ForEach(personsOnPhoto) { f in
                     NavigationLink {
@@ -224,15 +221,6 @@ struct InfoSheet: View {
                                     in: Capsule())
                     }
                     .buttonStyle(.plain)
-                }
-                ForEach(tags, id: \.self) { tag in
-                    Text(tag)
-                        .font(.footnote.weight(.medium))
-                        .lineLimit(1)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(uiColor: .secondarySystemBackground),
-                                    in: Capsule())
                 }
             }
             .padding(.top, 4)

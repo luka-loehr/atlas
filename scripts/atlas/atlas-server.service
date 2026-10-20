@@ -1,6 +1,7 @@
 [Unit]
 Description=Atlas server (photos, drive and system API, ingest workers)
-After=network-online.target docker.service
+Requires=atlas-postgres.service
+After=network-online.target atlas-postgres.service
 Wants=network-online.target
 
 [Service]

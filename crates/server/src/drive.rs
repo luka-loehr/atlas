@@ -360,10 +360,12 @@ async fn thumb(State(app): State<AppState>, Path(id): Path<i64>, headers: Header
 }
 
 fn first_pdf_page(pdf: &std::path::Path) -> anyhow::Result<Vec<u8>> {
-    let out = std::process::Command::new("pdftoppm")
-        .args(["-png", "-singlefile", "-f", "1", "-l", "1", "-scale-to", "1024"])
-        .arg(pdf) // no output root: the page goes to stdout
-        .output()?;
+    let out = atlas_core::process::output(
+        std::process::Command::new("pdftoppm")
+            .args(["-png", "-singlefile", "-f", "1", "-l", "1", "-scale-to", "1024"])
+            .arg(pdf), // no output root: the page goes to stdout
+        std::time::Duration::from_secs(60),
+    )?;
     anyhow::ensure!(out.status.success() && !out.stdout.is_empty(), "pdftoppm failed");
     Ok(out.stdout)
 }

@@ -30,7 +30,7 @@ base64 = "0.23"
 bytes = "1"
 chrono-tz = "0.10"
 crc32fast = "1"
-fast_image_resize = "5"
+fast_image_resize = "6"
 flate2 = "1"
 futures-util = "0.3"
 kamadak-exif = "0.6"
@@ -42,7 +42,7 @@ regex = "1"
 resvg = "0.48"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 reverse_geocoder = "4"
-sha2 = "0.10"
+sha2 = "0.11"
 thumbhash = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 tower = { version = "0.5", features = ["util"] }
