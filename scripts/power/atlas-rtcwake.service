@@ -1,0 +1,17 @@
+[Unit]
+Description=Arm the RTC wake alarm for the next daily power-on (10:00)
+# Default dependencies deliberately left on: they supply the
+# Conflicts=shutdown.target that actually queues the ExecStop job.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# '-' so a failed arm still leaves the unit active, keeping ExecStop scheduled.
+# ExecStop re-arms on the way down: every shutdown, scheduled or by hand,
+# leaves the alarm set for the next morning.
+ExecStart=-/usr/local/sbin/atlas-rtcwake
+ExecStop=/usr/local/sbin/atlas-rtcwake
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
