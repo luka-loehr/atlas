@@ -18,18 +18,20 @@ use serde_json::{Value, json};
 
 use super::library::place_json;
 use super::people::person_json;
-use super::vectors::{DIM, VectorIndex, normalize};
+use super::vectors::{DIM, Questions, VectorIndex, normalize};
 use super::{COLS, Columns, Item, VISIBLE};
 use crate::{ApiResult, AppState, Config, util};
 
-/// The best semantic hit must stand out this far (in standard deviations
-/// above the library mean) for the query to count as matching anything.
-/// Measured on a 24k library: real queries top out at 4.3 to 6.9, nonsense
-/// strings at 3.3 to 3.8.
-const CONFIDENT_TOP_Z: f32 = 4.0;
-/// ... and every further hit this far. At 3.0 a concrete query ("Hund",
-/// "Strand") returns a few hundred assets with the relevant ones in front.
-const MIN_Z: f32 = 3.0;
+/// The query counts as matching anything when its best hit stands out this
+/// far beyond what chance gives the best of its kind ...
+const CONFIDENT_MARGIN: f32 = 0.6;
+/// ... and is at least this similar to it. Measured on a 2,100-asset sample
+/// (2026-10-21): 48 of 50 everyday queries clear both, a common concept like
+/// "selfie" included (the two that do not, "football" and "a baby", had no
+/// good match there), and 12 of 16 gibberish strings do not. Every hit then
+/// shown stands out further than about two unrelated assets of its kind
+/// would by chance (`chance_tail`).
+const CONFIDENT_SIMILARITY: f32 = 0.34;
 const SEMANTIC_LIMIT: usize = 300;
 const STRUCTURED_LIMIT: i64 = 2000;
 
@@ -43,7 +45,7 @@ pub struct Ml {
 
 #[derive(Default)]
 struct QueryCache {
-    vectors: HashMap<String, Arc<Vec<f32>>>,
+    vectors: HashMap<String, Arc<Questions>>,
     order: VecDeque<String>,
 }
 
@@ -61,14 +63,17 @@ impl Ml {
         }
     }
 
-    pub async fn embed_text(&self, text: &str) -> Result<Arc<Vec<f32>>> {
+    /// The search as atlas-ml embeds it: the question for stills and the one
+    /// for clips.
+    pub async fn embed_text(&self, text: &str) -> Result<Arc<Questions>> {
         let key = text.to_lowercase();
         if let Some(hit) = self.cache.lock().unwrap().vectors.get(&key) {
             return Ok(hit.clone());
         }
         #[derive(Deserialize)]
         struct Embedding {
-            vec: Vec<f32>,
+            still: Vec<f32>,
+            clip: Vec<f32>,
         }
         let mut embedding: Embedding = self
             .http
@@ -80,9 +85,11 @@ impl Ml {
             .error_for_status()?
             .json()
             .await?;
-        anyhow::ensure!(embedding.vec.len() == DIM, "atlas-ml returned {} dimensions", embedding.vec.len());
-        normalize(&mut embedding.vec);
-        let vec = Arc::new(embedding.vec);
+        for v in [&mut embedding.still, &mut embedding.clip] {
+            anyhow::ensure!(v.len() == DIM, "atlas-ml returned {} dimensions", v.len());
+            normalize(v);
+        }
+        let vec = Arc::new(Questions { still: embedding.still, clip: embedding.clip });
         let mut cache = self.cache.lock().unwrap();
         if cache.vectors.insert(key.clone(), vec.clone()).is_none() {
             cache.order.push_back(key);
@@ -119,7 +126,7 @@ pub async fn warm(State(app): State<AppState>) -> Json<Value> {
     let vectors = app.ml.vectors.clone();
     let pool = app.pool.clone();
     tokio::spawn(async move {
-        let probe = Arc::new(vec![0f32; DIM]);
+        let probe = Arc::new(Questions { still: vec![0f32; DIM], clip: vec![0f32; DIM] });
         let _ = vectors.search(&pool, probe, 1).await;
     });
     Json(json!({ "semantic": ready }))
@@ -243,20 +250,23 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
         match embedding.await {
             Ok(Ok(vector)) => {
                 let hits = app.ml.vectors.search(&app.pool, vector, SEMANTIC_LIMIT).await?;
-                let confident = hits.first().is_some_and(|best| best.1 >= CONFIDENT_TOP_Z);
-                let wanted: Vec<&(String, f32)> = hits
+                let confident = hits.first().is_some_and(|best| {
+                    best.z >= best.chance_best + CONFIDENT_MARGIN
+                        && hits.iter().any(|h| h.similarity >= CONFIDENT_SIMILARITY)
+                });
+                let wanted: Vec<&String> = hits
                     .iter()
-                    .take_while(|(_, z)| confident && *z >= MIN_Z)
-                    .filter(|(id, _)| !seen.contains(id))
+                    .filter(|h| confident && h.z >= h.chance_tail && !seen.contains(&h.id))
+                    .map(|h| &h.id)
                     .collect();
                 if !wanted.is_empty() {
-                    let ids: Vec<&str> = wanted.iter().map(|(id, _)| id.as_str()).collect();
+                    let ids: Vec<&str> = wanted.iter().map(|id| id.as_str()).collect();
                     let found = c
                         .query(&format!("SELECT {COLS} FROM assets WHERE id = ANY($1) AND {VISIBLE}"), &[&ids])
                         .await?;
                     let mut by_id: HashMap<String, Item> =
                         found.iter().map(|r| Item::from_row(r, app.cfg.tz)).map(|i| (i.id.clone(), i)).collect();
-                    for (id, _) in wanted {
+                    for id in wanted {
                         if let Some(item) = by_id.remove(id) {
                             assets.push(item);
                         }

@@ -2,10 +2,10 @@
 //!
 //! Two models, nothing generative:
 //!
-//!   * Qwen3-VL-Embedding-2B puts photos, videos and search text into one
-//!     2048-dimensional space. It runs in a llama.cpp server that this
-//!     process starts on demand and stops again when idle, so the GPU is
-//!     free whenever nothing is being embedded.
+//!   * WeMM-Embedding-2B puts photos, videos and search text into one
+//!     2048-dimensional space. It runs on the GPU in a llama.cpp server that
+//!     this process starts on demand and stops again when idle, so the GPU
+//!     is free whenever nothing is being embedded.
 //!   * InsightFace buffalo_l (SCRFD detection + ArcFace recognition) finds
 //!     faces and groups them into people, on ONNX Runtime.
 //!
@@ -13,7 +13,8 @@
 //! loopback only:
 //!
 //!   GET  /health   what is loaded and what the queue holds
-//!   POST /embed    {"text": "..."} -> {"vec": [2048 floats]}
+//!   POST /embed    {"text": "..."} -> {"still": [2048 floats], "clip": [...]}
+//!                  the search as matched against stills and against clips
 //!   POST /warm     load the embedding model now
 
 mod config;
@@ -112,8 +113,8 @@ async fn embed(State(worker): State<Arc<Worker>>, Json(request): Json<EmbedReque
     if text.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "text required".into()));
     }
-    match worker.embedder.embed_text(&text).await {
-        Ok(vec) => Ok(Json(json!({ "vec": vec }))),
+    match worker.embedder.embed_query(&text).await {
+        Ok(query) => Ok(Json(json!({ "still": query.still, "clip": query.clip }))),
         Err(e) => {
             tracing::error!("text embedding failed: {e:#}");
             Err((StatusCode::SERVICE_UNAVAILABLE, format!("{e:#}")))

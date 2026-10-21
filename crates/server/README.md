@@ -49,8 +49,10 @@ The full list with one line each sits at the top of
   cost nothing, and every media response is `immutable` with Range support.
 - **Vector index** ([`photos/vectors.rs`](src/photos/vectors.rs)). All
   embeddings in one contiguous `n × 2048` matrix, kept current by `NOTIFY`.
-  Search is an exact dot-product scan ranked by z-score, so a query with no
-  real match returns nothing rather than the least-bad photos.
+  Search is an exact dot-product scan, photos against the query's photo
+  question and videos against its video question, ranked by z-score within
+  their kind, so a query with no real match returns nothing rather than the
+  least-bad photos, and videos do not crowd out better photos.
 - **Job queue** ([`jobs/`](src/jobs/), protocol in
   [`atlas-core`](../core/src/queue.rs)). Rows in `ingest_jobs`, claimed with
   `FOR UPDATE SKIP LOCKED`, heartbeated, retried with backoff. Queues here:

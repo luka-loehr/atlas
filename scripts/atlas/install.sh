@@ -11,6 +11,9 @@ if ! sudo test -f /etc/atlas/atlas.env; then
   exit 1
 fi
 
+# the models and the llama.cpp server this version of atlas-ml expects
+scripts/atlas/models.sh
+
 # cargo is not on the PATH of a non-interactive ssh session
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 cargo build --release -p atlas-server -p atlas-ml
