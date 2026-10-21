@@ -1,0 +1,35 @@
+#!/bin/bash
+# Arm the RTC wake alarm for atlas's next daily power-on.
+# The RTC has a single alarm register, so only the next slot can be armed;
+# atlas-rtcwake.service runs this at boot and again at shutdown.
+set -euo pipefail
+
+WAKE_AT=10:00   # local time (Europe/Berlin); the off side is atlas-poweroff.timer
+LEAD_MIN=5      # a slot this close is skipped: the poweroff would race it
+RTC=/sys/class/rtc/rtc0/wakealarm
+LOCK=/run/atlas-rtcwake.lock
+
+# Boot, shutdown and a manual run share one register. Without this they race
+# and one loses the write with EBUSY.
+exec 9>"$LOCK"
+flock -w 30 9 || { logger -t atlas-rtcwake "could not acquire $LOCK after 30s"; exit 1; }
+
+now=$(date +%s)
+target=$(date -d "today $WAKE_AT" +%s)
+(( target > now + LEAD_MIN * 60 )) || target=$(date -d "tomorrow $WAKE_AT" +%s)
+
+# The kernel rejects a write while an alarm is pending, so clear first.
+echo 0 > "$RTC"
+echo "$target" > "$RTC"
+
+# A past-dated write returns success but arms nothing, so verify the
+# register rather than trusting the exit status.
+armed=$(cat "$RTC")
+if [[ $armed != "$target" ]]; then
+  logger -t atlas-rtcwake "FAILED to arm: wanted $target, register reads '${armed:-empty}' (clock skew?)"
+  exit 1
+fi
+
+msg="armed for $(date -d "@$target" '+%F %T %Z')"
+logger -t atlas-rtcwake "$msg"
+echo "$msg"

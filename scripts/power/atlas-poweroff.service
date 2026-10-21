@@ -1,0 +1,8 @@
+[Unit]
+Description=Schedule the daily 22:00 power-off (logged-in users get the warning)
+
+[Service]
+Type=oneshot
+# logind holds the schedule and warns every login session; `sudo shutdown -c`
+# keeps the box up for the night.
+ExecStart=/usr/sbin/shutdown -h 22:00 "atlas powers off at 22:00 (daily schedule). Keep it up tonight: sudo shutdown -c"

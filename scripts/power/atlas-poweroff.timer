@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily power-off at 22:00, announced at 21:55
+
+[Timer]
+OnCalendar=*-*-* 21:55:00
+# Not persistent on purpose: a box booted after 21:55 must not power off the
+# moment it comes up.
+Persistent=false
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
