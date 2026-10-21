@@ -18,20 +18,23 @@ use serde_json::{Value, json};
 
 use super::library::place_json;
 use super::people::person_json;
-use super::vectors::{DIM, Questions, VectorIndex, normalize};
+use super::vectors::{DIM, Hit, Questions, VectorIndex, normalize};
 use super::{COLS, Columns, Item, VISIBLE};
 use crate::{ApiResult, AppState, Config, util};
 
-/// The query counts as matching anything when its best hit stands out this
-/// far beyond what chance gives the best of its kind ...
-const CONFIDENT_MARGIN: f32 = 0.6;
-/// ... and is at least this similar to it. Measured on a 2,100-asset sample
-/// (2026-10-21): 48 of 50 everyday queries clear both, a common concept like
-/// "selfie" included (the two that do not, "football" and "a baby", had no
-/// good match there), and 12 of 16 gibberish strings do not. Every hit then
-/// shown stands out further than about two unrelated assets of its kind
-/// would by chance (`chance_tail`).
+/// A query counts as matching anything when one of its hits is at least
+/// this similar to it ...
 const CONFIDENT_SIMILARITY: f32 = 0.34;
+/// ... and either its best hit stands out this far beyond what chance gives
+/// the best of its kind ...
+const CONFIDENT_MARGIN: f32 = 0.6;
+/// ... or this many hits beat what about two unrelated assets of their kind
+/// reach (`chance_tail`): a concept a large share of the library shows
+/// ("selfie") has a wide spread and no single outlier, but many hits. Those
+/// hits are what is then shown. Measured 2026-10-21 on a 2,100-asset sample
+/// and on the first 3,300 assets of the library: 49 and 50 of 50 everyday
+/// queries find results, 4 and 6 of 16 gibberish strings do too.
+const CONFIDENT_COUNT: usize = 10;
 const SEMANTIC_LIMIT: usize = 300;
 const STRUCTURED_LIMIT: i64 = 2000;
 
@@ -250,10 +253,7 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
         match embedding.await {
             Ok(Ok(vector)) => {
                 let hits = app.ml.vectors.search(&app.pool, vector, SEMANTIC_LIMIT).await?;
-                let confident = hits.first().is_some_and(|best| {
-                    best.z >= best.chance_best + CONFIDENT_MARGIN
-                        && hits.iter().any(|h| h.similarity >= CONFIDENT_SIMILARITY)
-                });
+                let confident = confident(&hits);
                 let wanted: Vec<&String> = hits
                     .iter()
                     .filter(|h| confident && h.z >= h.chance_tail && !seen.contains(&h.id))
@@ -345,9 +345,33 @@ pub fn country_code(term: &str) -> Option<&'static str> {
     COUNTRIES.iter().find(|(_, names)| names.contains(&needle.as_str())).map(|(code, _)| *code)
 }
 
+/// Whether a search's hits (best first) show it matches anything at all.
+fn confident(hits: &[Hit]) -> bool {
+    let outlier = hits.first().is_some_and(|best| best.z >= best.chance_best + CONFIDENT_MARGIN);
+    let many = hits.iter().filter(|h| h.z >= h.chance_tail).count() >= CONFIDENT_COUNT;
+    hits.iter().any(|h| h.similarity >= CONFIDENT_SIMILARITY) && (outlier || many)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::country_code;
+    use super::{Hit, confident, country_code};
+
+    fn hit(z: f32, similarity: f32) -> Hit {
+        Hit { id: String::new(), similarity, z, chance_best: 4.0, chance_tail: 3.5 }
+    }
+
+    #[test]
+    fn a_match_is_an_outlier_or_many_hits_and_similar_enough() {
+        // one clear outlier
+        assert!(confident(&[hit(6.0, 0.45), hit(3.0, 0.3)]));
+        // a broad concept: no outlier, but a dozen hits beyond chance
+        assert!(confident(&(0..12).map(|_| hit(3.8, 0.44)).collect::<Vec<_>>()));
+        // a few hits beyond chance and no outlier: noise
+        assert!(!confident(&(0..3).map(|_| hit(3.8, 0.44)).collect::<Vec<_>>()));
+        // an outlier nothing like the query
+        assert!(!confident(&[hit(6.0, 0.30)]));
+        assert!(!confident(&[]));
+    }
 
     #[test]
     fn countries_resolve_in_both_languages() {
