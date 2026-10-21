@@ -89,11 +89,11 @@ sudo usermod -aG docker atlas          # re-login afterwards
 sudo systemctl enable docker           # containers autostart after boot/WoL
 ```
 
-### NVIDIA driver and CUDA toolkit (optional)
+### NVIDIA driver and CUDA toolkit
 
-atlas-ml runs the embedding model through llama.cpp, which
-[`scripts/atlas/models.sh`](../scripts/atlas/models.sh) builds with CUDA when
-the toolkit is installed and for the CPU otherwise:
+atlas-ml runs the embedding model through llama.cpp on the GPU, and only
+there: [`scripts/atlas/models.sh`](../scripts/atlas/models.sh) builds it with
+CUDA and stops when the toolkit is missing. Any NVIDIA card with 8 GB does:
 
 ```bash
 sudo ubuntu-drivers install            # proprietary driver, then reboot
@@ -298,18 +298,20 @@ Two units, one installer:
 ~/atlas/scripts/atlas/models.sh
 ```
 
-builds llama.cpp's server from a pinned commit (with CUDA if `nvcc` is
-there) into `/usr/local/lib/atlas/llama-server`, and downloads into
-`~/models` (`ATLAS_MODELS_DIR`):
+builds llama.cpp's server with CUDA from a pinned commit, plus Atlas' small
+patch that lets the frames of a clip be merged in time
+([`llama-server-video-frames.patch`](../scripts/atlas/llama-server-video-frames.patch)),
+into `/usr/local/lib/atlas/llama-server`, and downloads into `~/models`
+(`ATLAS_MODELS_DIR`), each file checked against its sha256:
 
 | Model | Size | For |
 |---|---|---|
-| Qwen3-VL-Embedding-2B, GGUF Q8_0 + vision projector | 2.7 GB | photos, videos and search text in one 2048-d space |
+| [WeMM-Embedding-2B](https://huggingface.co/tencent/WeMM-Embedding-2B), GGUF Q8_0 + vision projector | 3.2 GB | photos, videos and search text in one 2048-d space (Apache-2.0) |
 | InsightFace buffalo_l (SCRFD + ArcFace, ONNX) | 190 MB | face detection and recognition — non-commercial research license |
 
 Nothing generative runs anywhere. The embedding model is loaded on first use
 and unloaded after ten idle minutes (`ATLAS_ML_IDLE_S`), which returns its
-4.5 GB of GPU memory.
+4.7 GB of GPU memory.
 
 ### 6.2 Configuration
 

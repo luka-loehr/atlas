@@ -71,6 +71,20 @@ async fn repair(c: &tokio_postgres::Client) -> Result<Report> {
             )
             .await?;
     }
+    // an embedding that is done must have left a vector of the current
+    // model: one written by an older model (a worker still on the previous
+    // version when the model changed) or lost since is made again
+    report.queued += c
+        .execute(
+            "UPDATE ingest_jobs j
+                SET status = 'pending', attempts = 0, defers = 0, heals = 0, error = NULL, stuck_at = NULL,
+                    run_after = now(), locked_by = NULL, heartbeat_at = NULL, priority = $3, updated_at = now()
+              WHERE j.kind = $1 AND j.owner_type = 'asset' AND j.status = 'done'
+                AND NOT EXISTS (SELECT 1 FROM embeddings e
+                                 WHERE e.owner_type = 'asset' AND e.owner_id = j.owner_id AND e.model = $2)",
+            &[&queue::EMBED, &atlas_core::EMBED_MODEL, &REPAIR_PRIORITY],
+        )
+        .await?;
     report.queued += c
         .execute(
             "INSERT INTO ingest_jobs (kind, owner_type, owner_id, priority)
@@ -107,10 +121,30 @@ mod tests {
         c.batch_execute(
             "INSERT INTO assets (id, type, orig_path, thumbhash, lat, lon)
                   VALUES ('new', 'photo', '/n.jpg', NULL, NULL, NULL),
-                         ('thumbed', 'photo', '/t.jpg', '\\x01', 48.1, 11.5);
+                         ('thumbed', 'photo', '/t.jpg', '\\x01', 48.1, 11.5),
+                         ('current', 'photo', '/c.jpg', '\\x01', NULL, NULL),
+                         ('older', 'photo', '/o.jpg', '\\x01', NULL, NULL);
              INSERT INTO ingest_jobs (kind, owner_type, owner_id, status)
                   VALUES ('thumb', 'asset', 'thumbed', 'done'), ('meta', 'asset', 'thumbed', 'done'),
                          ('thumb', 'asset', 'gone', 'failed');",
+        )
+        .await
+        .unwrap();
+        // two assets whose pipeline is done, one embedded by an older model
+        for id in ["current", "older"] {
+            for kind in ["thumb", "meta", "embed", "faces"] {
+                c.execute(
+                    "INSERT INTO ingest_jobs (kind, owner_type, owner_id, status) VALUES ($1, 'asset', $2, 'done')",
+                    &[&kind, &id],
+                )
+                .await
+                .unwrap();
+            }
+        }
+        let zero = pgvector::Vector::from(vec![0.0f32; atlas_core::EMBED_DIM]);
+        c.execute(
+            "INSERT INTO embeddings (owner_type, owner_id, model, vec) VALUES ('asset', 'current', $1, $3), ('asset', 'older', $2, $3)",
+            &[&atlas_core::EMBED_MODEL, &"qwen3vl", &zero],
         )
         .await
         .unwrap();
@@ -124,9 +158,16 @@ mod tests {
             .iter()
             .map(|r| (r.get(0), r.get(1)))
             .collect();
-        let want = [("new", "meta"), ("new", "thumb"), ("thumbed", "embed"), ("thumbed", "faces"), ("thumbed", "geocode")];
+        let want = [
+            ("new", "meta"),
+            ("new", "thumb"),
+            ("older", "embed"),
+            ("thumbed", "embed"),
+            ("thumbed", "faces"),
+            ("thumbed", "geocode"),
+        ];
         assert_eq!(jobs, want.map(|(o, k)| (o.to_string(), k.to_string())));
-        assert_eq!(report.queued, 5);
+        assert_eq!(report.queued, 6);
         // a second check-up finds nothing to do
         let again = repair(&c).await.unwrap();
         assert_eq!((again.queued, again.dropped), (0, 0));

@@ -1,0 +1,49 @@
+diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
+index 2d90fca..e0d1032 100644
+--- a/tools/server/server-common.cpp
++++ b/tools/server/server-common.cpp
+@@ -932,7 +932,8 @@ server_tokens process_mtmd_prompt(
+         const std::string & prompt,
+         const std::vector<raw_buffer> & files,
+         const mtmd_helper_init_opt & init_opt,
+-        bool is_placeholder) {
++        bool is_placeholder,
++        bool video_frames) {
+     // these will be freed upon going out of scope
+     mtmd::bitmaps bitmaps;
+     std::vector<mtmd_helper::video_ptr> videos;
+@@ -941,6 +942,10 @@ server_tokens process_mtmd_prompt(
+         if (!out.bitmap) {
+             throw std::runtime_error("Failed to load image or audio file");
+         }
++        if (video_frames) {
++            // consecutive frames of one video: the model may merge them in time
++            mtmd_bitmap_set_mergeable(out.bitmap, true);
++        }
+         bitmaps.entries.emplace_back(out.bitmap);
+         if (out.video_ctx) {
+             videos.emplace_back(out.video_ctx);
+@@ -1001,7 +1006,8 @@ server_tokens tokenize_input_subprompt(const llama_vocab * vocab, mtmd_context *
+             for (const auto & entry : json_prompt.at(JSON_MTMD_DATA_KEY)) {
+                 files.push_back(base64_decode(entry));
+             }
+-            return process_mtmd_prompt(mctx, json_prompt.at(JSON_STRING_PROMPT_KEY), files, init_opt);
++            const bool video_frames = json_prompt.value("video_frames", false);
++            return process_mtmd_prompt(mctx, json_prompt.at(JSON_STRING_PROMPT_KEY), files, init_opt, false, video_frames);
+         } else {
+             // Not multimodal, but contains a subobject.
+             llama_tokens tmp = tokenize_mixed(vocab, json_prompt.at(JSON_STRING_PROMPT_KEY), add_special, parse_special);
+diff --git a/tools/server/server-common.h b/tools/server/server-common.h
+index 7e4ebed..e92f834 100644
+--- a/tools/server/server-common.h
++++ b/tools/server/server-common.h
+@@ -283,7 +283,8 @@ server_tokens process_mtmd_prompt(
+                                         const std::string & prompt,
+                                         const std::vector<raw_buffer> & files,
+                                         const mtmd_helper_init_opt & init_opt,
+-                                        bool is_placeholder = false);
++                                        bool is_placeholder = false,
++                                        bool video_frames = false);
+ 
+ /**
+  * break the input "prompt" object into multiple prompt if needed, then tokenize them

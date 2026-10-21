@@ -19,18 +19,21 @@ pub struct Config {
     pub llama_port: u16,
     /// ATLAS_EMBED_MODEL / ATLAS_EMBED_MMPROJ: the embedding model and its
     /// vision projector as GGUF
-    /// (default <models>/qwen3-vl-embedding/{model,mmproj}.gguf).
+    /// (default <models>/wemm-embedding/{model,mmproj}.gguf).
     pub embed_model: PathBuf,
     pub embed_mmproj: PathBuf,
-    /// ATLAS_EMBED_GPU_LAYERS: layers kept on the GPU; 0 runs on the CPU
-    /// (default 99 = all).
-    pub gpu_layers: u32,
+    /// ATLAS_EMBED_DEVICE: the GPU the embedding model runs on, as
+    /// `llama-server --list-devices` names it (default CUDA0). There is no
+    /// CPU fallback: without this device the model does not load and the
+    /// queue waits.
+    pub device: String,
     /// ATLAS_ML_IDLE_S: seconds without work after which the embedding model
     /// is unloaded and its GPU memory returned (default 600).
     pub idle: Duration,
     /// ATLAS_EMBED_SLOTS: requests the embedding server takes side by side
-    /// (default 3). The queue uses all but one, so a search never waits
-    /// behind the backlog.
+    /// (default 6, at least 3). The queue uses all but two, so a search (two
+    /// requests) never waits behind the backlog; four jobs at once keep the
+    /// GPU busy while a clip's frames are read on the CPU.
     pub slots: u32,
     /// ATLAS_FACE_DETECTOR / ATLAS_FACE_RECOGNIZER: the buffalo_l ONNX files
     /// (default <models>/buffalo_l/{det_10g,w600k_r50}.onnx).
@@ -49,11 +52,11 @@ impl Config {
             photos_dir: PathBuf::from(env("ATLAS_PHOTOS_DIR").unwrap_or(format!("{home}/photos"))),
             llama_server: path("ATLAS_LLAMA_SERVER", "/usr/local/lib/atlas/llama-server".into()),
             llama_port: env("ATLAS_LLAMA_PORT").and_then(|v| v.parse().ok()).unwrap_or(8785),
-            embed_model: path("ATLAS_EMBED_MODEL", models.join("qwen3-vl-embedding/model.gguf")),
-            embed_mmproj: path("ATLAS_EMBED_MMPROJ", models.join("qwen3-vl-embedding/mmproj.gguf")),
-            gpu_layers: env("ATLAS_EMBED_GPU_LAYERS").and_then(|v| v.parse().ok()).unwrap_or(99),
+            embed_model: path("ATLAS_EMBED_MODEL", models.join("wemm-embedding/model.gguf")),
+            embed_mmproj: path("ATLAS_EMBED_MMPROJ", models.join("wemm-embedding/mmproj.gguf")),
+            device: env("ATLAS_EMBED_DEVICE").unwrap_or_else(|| "CUDA0".into()),
             idle: Duration::from_secs(env("ATLAS_ML_IDLE_S").and_then(|v| v.parse().ok()).unwrap_or(600)),
-            slots: env("ATLAS_EMBED_SLOTS").and_then(|v| v.parse().ok()).unwrap_or(3).clamp(1, 8),
+            slots: env("ATLAS_EMBED_SLOTS").and_then(|v| v.parse().ok()).unwrap_or(6).clamp(3, 8),
             face_detector: path("ATLAS_FACE_DETECTOR", models.join("buffalo_l/det_10g.onnx")),
             face_recognizer: path("ATLAS_FACE_RECOGNIZER", models.join("buffalo_l/w600k_r50.onnx")),
         })

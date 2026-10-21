@@ -72,8 +72,9 @@ pub async fn run(worker: Arc<Worker>) {
         }
     }
     let running: Running = Arc::default();
-    // one slot stays free for searches
-    let parallel = worker.embedder.slots.saturating_sub(1).max(1) as usize;
+    // two slots stay free for searches (a search asks twice: for stills and
+    // for clips)
+    let parallel = worker.embedder.slots.saturating_sub(2).max(1) as usize;
     tokio::join!(
         heartbeat(worker.clone(), running.clone()),
         embeddings(worker.clone(), parallel, running.clone()),
@@ -205,17 +206,26 @@ async fn embed(worker: &Worker, job: &Job) -> Result<Outcome> {
     let id = &job.owner_id;
     let c = worker.pool.get().await?;
     let row = c
-        .query_opt("SELECT type, orig_path, duration_s FROM assets WHERE id = $1", &[id])
+        .query_opt("SELECT type, orig_path FROM assets WHERE id = $1", &[id])
         .await?
         .context("asset is gone")?;
     drop(c);
     let is_video = row.get::<_, &str>(0) == "video";
     let original = std::path::PathBuf::from(row.get::<_, String>(1));
-    let duration: Option<f64> = row.get(2);
 
-    let vec = match (is_video && original.exists(), duration) {
-        (true, Some(duration)) if duration > 0.0 => worker.embedder.embed_video(&original, duration).await?,
-        _ => {
+    // a clip is embedded from its frames, never from its poster: a video
+    // whose original cannot be read fails visibly instead of being indexed
+    // as a still
+    let clip = if is_video {
+        anyhow::ensure!(original.exists(), "the original is missing: {}", original.display());
+        worker.embedder.embed_video(&original).await?
+    } else {
+        None
+    };
+    let vec = match clip {
+        Some(vec) => vec,
+        // a still, or a "clip" of a single frame
+        None => {
             let Some(thumb) = worker.cfg.thumb(id) else { return Ok(Outcome::NotReady) };
             let image = tokio::task::spawn_blocking(move || pixels::open(&thumb)).await??;
             worker.embedder.embed_image(&image).await?
@@ -225,10 +235,10 @@ async fn embed(worker: &Worker, job: &Job) -> Result<Outcome> {
     let c = worker.pool.get().await?;
     c.execute(
         "INSERT INTO embeddings (owner_type, owner_id, model, vec, updated_at)
-         VALUES ('asset', $1, 'qwen3vl', $2, now())
+         VALUES ('asset', $1, $2, $3, now())
          ON CONFLICT (owner_type, owner_id, model)
          DO UPDATE SET vec = EXCLUDED.vec, updated_at = now()",
-        &[id, &Vector::from(vec)],
+        &[id, &atlas_core::EMBED_MODEL, &Vector::from(vec)],
     )
     .await?;
     Ok(Outcome::Done)

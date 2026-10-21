@@ -22,7 +22,7 @@ pub enum Kind {
     Previews,
     /// Search text for drive files that were never extracted
     DriveText,
-    /// Embeddings for assets that have none
+    /// Embeddings for assets that have none from the current model
     Embeddings,
     /// Face detection for assets it never ran on
     Faces,
@@ -52,8 +52,13 @@ pub async fn run(_cfg: &Config, pool: &Pool, what: Kind) -> Result<()> {
         Kind::Embeddings => (
             queue::EMBED,
             "asset",
-            "SELECT id FROM assets a WHERE NOT EXISTS
-               (SELECT 1 FROM embeddings e WHERE e.owner_type = 'asset' AND e.owner_id = a.id)",
+            // EMBED_MODEL is a constant identifier, safe to inline
+            &*format!(
+                "SELECT id FROM assets a WHERE NOT EXISTS
+                   (SELECT 1 FROM embeddings e
+                     WHERE e.owner_type = 'asset' AND e.owner_id = a.id AND e.model = '{}')",
+                atlas_core::EMBED_MODEL
+            ),
             queue::PRIORITY_DEFAULT,
         ),
         Kind::Faces => (

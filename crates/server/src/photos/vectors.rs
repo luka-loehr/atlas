@@ -10,6 +10,14 @@
 //! carry `updated_at`, Postgres announces writes, and a refresh pulls only
 //! what is newer than the last load. Deleted assets are dropped by the
 //! caller's join against the visible set, so a stale row can never surface.
+//!
+//! Stills and clips are scored against their own kind, each with its own
+//! question (see [`Questions`]): the two sit at different distances from any
+//! text (with the previous model clips had 0.28 against 0.17 mean similarity
+//! for the same query), and one scale for both put one kind in front of
+//! better hits of the other. The scale is robust, median and median absolute
+//! deviation, so a concept a fifth of the library shows (selfies) does not
+//! widen its own yardstick until none of its photos stands out.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,12 +28,39 @@ use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
 use tokio::sync::RwLock;
 
-pub const DIM: usize = 2048;
-pub const MODEL: &str = "qwen3vl";
+pub use atlas_core::EMBED_DIM as DIM;
+
+/// Below this many vectors a kind is scored on the scale of the whole
+/// library: its own median and spread would be noise.
+const MIN_KIND: usize = 50;
+
+/// One asset a search found.
+pub struct Hit {
+    pub id: String,
+    /// cosine similarity to the query's question for its kind
+    pub similarity: f32,
+    /// robust z-score within its kind: how many spreads it lies above the
+    /// kind's median similarity for this query
+    pub z: f32,
+    /// the z-score the best of its kind reaches by chance alone, and the one
+    /// that about two unrelated vectors of its kind still exceed; both grow
+    /// with the number of vectors
+    pub chance_best: f32,
+    pub chance_tail: f32,
+}
+
+/// A search as the model embeds it: once as the question for stills and
+/// once for clips (unit vectors).
+pub struct Questions {
+    pub still: Vec<f32>,
+    pub clip: Vec<f32>,
+}
 
 #[derive(Default)]
 struct Matrix {
     ids: Vec<String>,
+    /// per row: a clip (true) or a still
+    video: Vec<bool>,
     rows: HashMap<String, usize>,
     data: Vec<f32>,
     loaded_until: Option<DateTime<Utc>>,
@@ -60,33 +95,49 @@ impl VectorIndex {
         result
     }
 
-    /// The `limit` nearest assets, best first, each with its z-score: how
-    /// many standard deviations its cosine similarity lies above the mean of
-    /// the whole library for this query. Raw similarities are not comparable
-    /// across queries (a vague query sits close to everything); the z-score
-    /// says how much an asset stands out for this one.
-    pub async fn search(self: &Arc<Self>, pool: &Pool, query: Arc<Vec<f32>>, limit: usize) -> Result<Vec<(String, f32)>> {
+    /// The `limit` assets that stand out most, best first. Raw similarities
+    /// are not comparable across queries (a vague query sits close to
+    /// everything) nor across kinds; the z-score says how much an asset
+    /// stands out among its kind for this one.
+    pub async fn search(self: &Arc<Self>, pool: &Pool, query: Arc<Questions>, limit: usize) -> Result<Vec<Hit>> {
         self.refresh(pool).await?;
         let index = self.clone();
         Ok(tokio::task::spawn_blocking(move || {
             let matrix = index.matrix.blocking_read();
-            let mut scored: Vec<(usize, f32)> = matrix
+            let scores: Vec<f32> = matrix
                 .data
                 .chunks_exact(DIM)
-                .map(|row| dot(row, &query))
-                .enumerate()
+                .zip(&matrix.video)
+                .map(|(row, &video)| dot(row, if video { &query.clip } else { &query.still }))
                 .collect();
-            let limit = limit.min(scored.len());
+            let limit = limit.min(scores.len());
             if limit == 0 {
                 return Vec::new();
             }
-            let n = scored.len() as f32;
-            let mean = scored.iter().map(|s| s.1).sum::<f32>() / n;
-            let deviation = (scored.iter().map(|s| (s.1 - mean).powi(2)).sum::<f32>() / n).sqrt().max(1e-6);
+            let all = Scale::of(scores.clone());
+            let scale = |video: bool| {
+                let kind = Scale::of(scores.iter().zip(&matrix.video).filter(|(_, v)| **v == video).map(|(s, _)| *s).collect());
+                if kind.n >= MIN_KIND { kind } else { all }
+            };
+            let (stills, clips) = (scale(false), scale(true));
+            let kind_of = |row: usize| if matrix.video[row] { &clips } else { &stills };
+            let mut scored: Vec<(usize, f32)> = scores.iter().enumerate().map(|(row, &s)| (row, kind_of(row).z(s))).collect();
             scored.select_nth_unstable_by(limit - 1, |a, b| b.1.total_cmp(&a.1));
             scored.truncate(limit);
             scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-            scored.into_iter().map(|(row, score)| (matrix.ids[row].clone(), (score - mean) / deviation)).collect()
+            scored
+                .into_iter()
+                .map(|(row, z)| {
+                    let kind = kind_of(row);
+                    Hit {
+                        id: matrix.ids[row].clone(),
+                        similarity: scores[row],
+                        z,
+                        chance_best: chance(kind.n, 0.5),
+                        chance_tail: chance(kind.n, 2.0),
+                    }
+                })
+                .collect()
         })
         .await?)
     }
@@ -94,6 +145,47 @@ impl VectorIndex {
     pub async fn len(&self) -> usize {
         self.matrix.read().await.ids.len()
     }
+}
+
+/// Median and spread of a set of similarities; the spread is the median
+/// absolute deviation, scaled (x 1.4826) to equal the standard deviation of
+/// normal data.
+#[derive(Clone, Copy)]
+struct Scale {
+    n: usize,
+    median: f32,
+    spread: f32,
+}
+
+impl Scale {
+    fn of(mut scores: Vec<f32>) -> Scale {
+        let n = scores.len();
+        if n == 0 {
+            return Scale { n, median: 0.0, spread: 1.0 };
+        }
+        let median = middle(&mut scores);
+        scores.iter_mut().for_each(|s| *s = (*s - median).abs());
+        Scale { n, median, spread: (1.4826 * middle(&mut scores)).max(1e-6) }
+    }
+
+    fn z(&self, score: f32) -> f32 {
+        (score - self.median) / self.spread
+    }
+}
+
+fn middle(values: &mut [f32]) -> f32 {
+    let mid = values.len() / 2;
+    *values.select_nth_unstable_by(mid, f32::total_cmp).1
+}
+
+/// The z-score that about `k` of `n` vectors unrelated to the query still
+/// exceed: the normal tail `Q(t) = k / n`, solved with `Q(t) ≈ φ(t) / t`.
+fn chance(n: usize, k: f32) -> f32 {
+    let l = (n as f32 / (k * (2.0 * std::f32::consts::PI).sqrt())).ln();
+    if l <= 0.0 {
+        return 0.0;
+    }
+    (2.0 * l - (2.0 * l).ln()).max(0.0).sqrt()
 }
 
 async fn load_newer(pool: &Pool, matrix: &mut Matrix) -> Result<()> {
@@ -104,10 +196,11 @@ async fn load_newer(pool: &Pool, matrix: &mut Matrix) -> Result<()> {
     // makes re-reading harmless
     let rows = c
         .query(
-            "SELECT owner_id, vec, updated_at FROM embeddings
-             WHERE owner_type = 'asset' AND model = $1 AND ($2::timestamptz IS NULL OR updated_at >= $2)
-             ORDER BY updated_at",
-            &[&MODEL, &matrix.loaded_until],
+            "SELECT e.owner_id, e.vec, e.updated_at, a.type = 'video'
+               FROM embeddings e JOIN assets a ON a.id = e.owner_id
+              WHERE e.owner_type = 'asset' AND e.model = $1 AND ($2::timestamptz IS NULL OR e.updated_at >= $2)
+              ORDER BY e.updated_at",
+            &[&atlas_core::EMBED_MODEL, &matrix.loaded_until],
         )
         .await?;
     let before = matrix.ids.len();
@@ -124,6 +217,7 @@ async fn load_newer(pool: &Pool, matrix: &mut Matrix) -> Result<()> {
             None => {
                 matrix.rows.insert(id.clone(), matrix.ids.len());
                 matrix.ids.push(id);
+                matrix.video.push(row.get(3));
                 matrix.data.extend_from_slice(&values);
             }
         }
@@ -169,6 +263,26 @@ mod tests {
         let b: Vec<f32> = (0..DIM).map(|i| (i as f32 * 0.11).cos()).collect();
         let plain: f32 = a.iter().zip(&b).map(|(x, y)| x * y).sum();
         assert!((dot(&a, &b) - plain).abs() < 1e-2);
+    }
+
+    #[test]
+    fn the_scale_ignores_a_cluster_of_matches() {
+        // 80 unrelated scores around 0.2, 20 matches far above
+        let mut scores: Vec<f32> = (0..80).map(|i| 0.2 + (i % 9) as f32 * 0.005 - 0.02).collect();
+        scores.extend([0.5f32; 20]);
+        let scale = Scale::of(scores);
+        assert_eq!(scale.n, 100);
+        assert!((scale.median - 0.2).abs() < 0.011, "median {}", scale.median);
+        assert!(scale.z(0.5) > 10.0, "the matches stand out: {}", scale.z(0.5));
+    }
+
+    #[test]
+    fn chance_levels_follow_the_normal_tail() {
+        // exact normal quantiles: Q^-1(2/800) = 2.81, Q^-1(2/19700) = 3.72
+        assert!((chance(800, 2.0) - 2.81).abs() < 0.03, "{}", chance(800, 2.0));
+        assert!((chance(19_700, 2.0) - 3.72).abs() < 0.03, "{}", chance(19_700, 2.0));
+        assert!(chance(19_700, 0.5) > chance(800, 0.5));
+        assert_eq!(chance(1, 2.0), 0.0);
     }
 
     #[test]
