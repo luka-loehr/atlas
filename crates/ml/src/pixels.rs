@@ -140,7 +140,9 @@ fn frame_at(path: &Path, seek: f64, hdr: bool) -> Result<Option<RgbImage>> {
     if hdr {
         ffmpeg.args(["-vf", TONE_MAP]);
     }
-    let out = process::output(ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]), Duration::from_secs(120))?;
+    // a seek deep into a long multi-GB clip, beside the other readers, can
+    // take minutes; the job's own limit (EMBED_LIMIT) still bounds the whole
+    let out = process::output(ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]), Duration::from_secs(600))?;
     if !out.status.success() || out.stdout.is_empty() {
         return Ok(None);
     }
