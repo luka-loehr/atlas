@@ -101,6 +101,12 @@ pub fn probe(path: &Path) -> Result<Clip> {
 /// again.
 pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage>> {
     const SIDE_BY_SIDE: usize = 8;
+    // a clip whose index does not seek (some phone editors' exports) is read
+    // from a copy remuxed for this job: every seek would otherwise decode
+    // from the start, minutes per frame in a long clip
+    let last = seconds.iter().copied().fold(0.0, f64::max);
+    let remuxed = if seeks_badly(path, last)? { Some(Remuxed::new(path)?) } else { None };
+    let path = remuxed.as_ref().map_or(path, |r| r.path.as_path());
     let mut frames = Vec::with_capacity(seconds.len());
     for batch in seconds.chunks(SIDE_BY_SIDE) {
         let decoded: Vec<Result<RgbImage>> = std::thread::scope(|scope| {
@@ -129,6 +135,54 @@ pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage
         }
     }
     Ok(frames)
+}
+
+/// Whether a seek to `at` lands far before it: the demuxer found no index
+/// entry near it and would start decoding at the beginning.
+fn seeks_badly(path: &Path, at: f64) -> Result<bool> {
+    const SLACK: f64 = 30.0;
+    if at < SLACK {
+        return Ok(false);
+    }
+    let out = process::output(
+        Command::new("ffprobe")
+            .args(["-v", "error", "-select_streams", "v:0", "-read_intervals", &format!("{at:.3}%+#1")])
+            .args(["-show_entries", "packet=pts_time", "-of", "csv=p=0"])
+            .arg(path),
+        Duration::from_secs(60),
+    )?;
+    let landed: Option<f64> = String::from_utf8_lossy(&out.stdout).lines().next().and_then(|l| l.trim().parse().ok());
+    Ok(landed.is_some_and(|t| t < at - SLACK))
+}
+
+/// A stream copy of a clip with a fresh index, removed when dropped.
+struct Remuxed {
+    path: std::path::PathBuf,
+}
+
+impl Remuxed {
+    fn new(src: &Path) -> Result<Self> {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("atlas-ml-remux-{}-{n}.mp4", std::process::id()));
+        let remuxed = Self { path };
+        let out = process::output(
+            Command::new("ffmpeg")
+                .args(["-v", "error", "-y", "-i"])
+                .arg(src)
+                .args(["-map", "0:v:0", "-c", "copy", "-movflags", "+faststart"])
+                .arg(&remuxed.path),
+            Duration::from_secs(600),
+        )?;
+        ensure!(out.status.success(), "remux: {}", String::from_utf8_lossy(&out.stderr).trim());
+        Ok(remuxed)
+    }
+}
+
+impl Drop for Remuxed {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 /// The first frame at or after `seek`, None when there is none.
