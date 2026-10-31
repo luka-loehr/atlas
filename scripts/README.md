@@ -20,7 +20,7 @@ same names (see the comment in `proxy/install.sh`).
 
 Most units run the scripts straight out of `~/atlas`, so re-run the relevant
 `install.sh` after a pull that moves or renames one. Units that run as root or
-handle credentials (`bulk-backup`, `github-sync`, `alerts`, `power-button`)
+handle credentials (`bulk-backup`, `github-sync`, `agentbrain-backup`, `alerts`, `power-button`)
 run a root-owned copy in `/usr/local` instead: re-run their `install.sh` after
 any change to their scripts.
 
@@ -33,6 +33,7 @@ any change to their scripts.
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres` with retention, plus a restore drill that verifies row counts |
 | [`bulk-backup/`](bulk-backup/) | Hourly `rsync` of `/srv/bulk` and `/srv/backups` onto the encrypted USB disk (LUKS2 + btrfs, `/srv/bulk-backup`) with a read-only snapshot per run — 24 hourly, then one per day with no limit — a mass-change brake, and a monthly scrub |
 | [`github-sync/`](github-sync/) | Every repo of the account and its orgs, cloned to `/srv/bulk/github` through a read-only GitHub App, run by the bulk backup right before it snapshots |
+| [`agentbrain-backup/`](agentbrain-backup/) | The full agentbrain archive, pulled with a download-only backup key into `/srv/bulk/agentbrain` and checked, run by the bulk backup right before it snapshots |
 | [`alerts/`](alerts/) | Mail to Luka through the Luka Mail API: `OnFailure=` of the backup jobs, an hourly staleness/disk/SMART check, a weekly report, smartd warnings |
 | [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-server can report CPU power |
 | [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
@@ -54,6 +55,7 @@ any change to their scripts.
 | `atlas-bulk-backup.timer` | hourly ± 5 min, `Persistent` | [`bulk-backup/install.sh`](bulk-backup/install.sh) |
 | `atlas-bulk-backup-scrub.timer` | monthly, the 1st 11:00 ± 2 h, `Persistent` | ″ |
 | `atlas-github-sync.service` | with every `atlas-bulk-backup` run (`WantedBy=`/`Before=`) | [`github-sync/install.sh`](github-sync/install.sh) |
+| `atlas-agentbrain-backup.service` | with every `atlas-bulk-backup` run (`WantedBy=`/`Before=`) | [`agentbrain-backup/install.sh`](agentbrain-backup/install.sh) |
 | `atlas-backup-check.timer` | hourly at :30, and 20 min after boot | [`alerts/install.sh`](alerts/install.sh) |
 | `atlas-backup-report.timer` | Mondays 09:00, `Persistent` | ″ |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |

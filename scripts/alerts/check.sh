@@ -16,10 +16,12 @@ ALERT=${ATLAS_ALERT:-/usr/local/sbin/atlas-alert}
 BULK_STATUS=/var/lib/atlas-bulk-backup/status.json
 BULK_HOLD=/var/lib/atlas-bulk-backup/hold
 SYNC_STATUS=/var/lib/atlas-github-sync/status.json
+BRAIN_STATUS=/var/lib/atlas-agentbrain-backup/status.json
+BRAIN_HELD=/srv/bulk/agentbrain/held
 DUMPS=/srv/backups/atlas-postgres
 DEST=/srv/bulk-backup
 KEY_EXPIRES=/etc/atlas/credentials/lmail-alerts.expires
-UNITS=(atlas-bulk-backup atlas-github-sync atlas-pg-backup atlas-bulk-backup-scrub)
+UNITS=(atlas-bulk-backup atlas-github-sync atlas-agentbrain-backup atlas-pg-backup atlas-bulk-backup-scrub)
 TIMERS=(atlas-bulk-backup.timer atlas-pg-backup.timer atlas-bulk-backup-scrub.timer)
 
 now=$(date +%s)
@@ -40,6 +42,8 @@ for t in "${TIMERS[@]}"; do
 done
 systemctl show -p WantedBy atlas-github-sync.service 2>/dev/null | grep -q atlas-bulk-backup.service \
   || problem "hook:github-sync" "atlas-github-sync is no longer hooked into atlas-bulk-backup"
+systemctl show -p WantedBy atlas-agentbrain-backup.service 2>/dev/null | grep -q atlas-bulk-backup.service \
+  || problem "hook:agentbrain-backup" "atlas-agentbrain-backup is no longer hooked into atlas-bulk-backup"
 
 for u in "${UNITS[@]}"; do
   systemctl is-failed -q "$u.service" && problem "unit:$u.service" "$u.service is in failed state"
@@ -64,6 +68,15 @@ elif [ $((now - t)) -gt 10800 ] && [ "$up" -gt 10800 ]; then
 fi
 failed=$(jq -r '(.failed // []) | join(", ")' "$SYNC_STATUS" 2>/dev/null)
 [ -z "$failed" ] || problem "sync:failed" "github sync failed for: $failed"
+
+t=$(json_time "$BRAIN_STATUS" last_ok)
+if [ -z "$t" ]; then
+  problem "brain:stale" "agentbrain archive has no successful pull on record"
+elif [ $((now - t)) -gt 10800 ] && [ "$up" -gt 10800 ]; then
+  problem "brain:stale" "last agentbrain archive is $(age_h "$t") h old"
+fi
+held=$(find "$BRAIN_HELD" -name '*.json.gz' 2>/dev/null | wc -l)
+[ "${held:-0}" = 0 ] || problem "brain:held" "$held agentbrain archive(s) held by the shrink brake in $BRAIN_HELD"
 
 newest=$(find "$DUMPS" -maxdepth 1 -name 'atlas_*.dump' -printf '%T@\n' 2>/dev/null | sort -n | tail -n1 | cut -d. -f1)
 if [ -z "$newest" ]; then
@@ -131,7 +144,7 @@ done
 shopt -s nullglob
 for f in "$STATE"/*; do
   k=$(basename "$f")
-  [[ $k =~ ^(timer|hook|unit|bulk|sync|pg|disk|smart|scrub|key): ]] || continue
+  [[ $k =~ ^(timer|hook|unit|bulk|sync|brain|pg|disk|smart|scrub|key): ]] || continue
   key=$k
   for p in "${!problems[@]}"; do [ "$(printf '%s' "$p" | tr -c 'A-Za-z0-9._@:-' '_')" = "$k" ] && key=""; done
   [ -n "$key" ] || continue
@@ -146,6 +159,7 @@ if [ -n "$weekly" ]; then
     echo
     echo "Bulk backup:  $(jq -c . "$BULK_STATUS" 2>/dev/null || echo 'no status')"
     echo "GitHub sync:  $(jq -c 'del(.failed, .orphans) + {failed: (.failed|length), orphans: .orphans}' "$SYNC_STATUS" 2>/dev/null || echo 'no status')"
+    echo "agentbrain:   $(jq -c 'del(.sha256)' "$BRAIN_STATUS" 2>/dev/null || echo 'no status')"
     echo "Newest dump:  $(ls -1t "$DUMPS"/atlas_*.dump 2>/dev/null | head -n1)"
     echo "USB disk:     $(df -h --output=used,avail,pcent "$DEST" 2>/dev/null | tail -n1)"
     echo "Snapshots:    $(ls "$DEST/snapshots" 2>/dev/null | wc -l), oldest $(ls "$DEST/snapshots" 2>/dev/null | head -n1)"
