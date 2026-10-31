@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# agentbrain-backup — pull the full agentbrain archive into /srv/bulk/agentbrain.
+# agentbrain-backup — copy your agentbrain memories to this server, hourly.
 #
-# Pulled in by atlas-bulk-backup.service and ordered before it, like
-# github-sync, so every hourly run lands on the USB disk in the same pass and
-# becomes part of that hour's read-only btrfs snapshot. Those snapshots are the
-# versioning (24 hourly, then one per day with no limit); the files here are
-# the newest archive plus the last one of every day:
+# Runs every hour: on its own timer, or, when scripts/bulk-backup is installed,
+# right before each bulk backup, so every hour's snapshot on the backup disk
+# holds that hour's archive. The files in $DEST are the newest archive plus the
+# last one of every day:
 #
-#   /srv/bulk/agentbrain/latest.json.gz             the newest archive
-#   /srv/bulk/agentbrain/daily/<YYYY-MM-DD>.json.gz  the last archive of each day (UTC)
-#   /srv/bulk/agentbrain/imported/                   copies taken before this job existed
+#   $DEST/latest.json.gz             the newest archive
+#   $DEST/daily/<YYYY-MM-DD>.json.gz  the last archive of each day (UTC)
 #
 # The archive is gzipped JSON (format agentbrain-backup/1) of every project,
 # memory, relation, version, task and activity row plus the account's auth
@@ -23,7 +21,6 @@
 set -euo pipefail
 
 DEST=${AGENTBRAIN_BACKUP_DEST:-/srv/bulk/agentbrain}
-MUST_BE_MOUNTED=${AGENTBRAIN_BACKUP_MUST_BE_MOUNTED:-/srv/bulk}
 URL=${AGENTBRAIN_URL:?AGENTBRAIN_URL is not set (/etc/atlas/agentbrain-backup.env)}
 KEY_FILE=${AGENTBRAIN_BACKUP_KEY_FILE:-${CREDENTIALS_DIRECTORY:-/nonexistent}/agentbrain-backup.key}
 STATE_DIR=${STATE_DIRECTORY:-/var/lib/atlas-agentbrain-backup}
@@ -37,13 +34,14 @@ die() { echo "<3>agentbrain-backup: $*" >&2; exit 1; }
 log() { echo "agentbrain-backup: $*"; }
 
 [ -r "$KEY_FILE" ] || die "backup key $KEY_FILE is not readable (LoadCredential)"
-mountpoint -q "$MUST_BE_MOUNTED" || die "$MUST_BE_MOUNTED is not mounted"
+# A missing directory also catches a data disk that is not mounted (the unit
+# has RequiresMountsFor= on $DEST as well): never write onto the root disk.
 [ -d "$DEST" ] && [ -w "$DEST" ] || die "$DEST is missing or not writable (run install.sh)"
 mkdir -p "$STATE_DIR" "$DEST/daily"
 
 # The bulk backup must not snapshot a half-written archive. (Partial files end
 # in .part, which it skips anyway.)
-exec 9<"$LOCK" || die "lock file $LOCK is missing (install scripts/bulk-backup)"
+exec 9<"$LOCK" || die "lock file $LOCK is missing (run install.sh)"
 flock -w 3600 9 || die "another backup job held $LOCK for an hour"
 
 stamp=$(date -u +%Y-%m-%dT%H-%M-%SZ)

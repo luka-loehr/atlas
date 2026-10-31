@@ -412,6 +412,22 @@ atlas share destroy   # removes all of it from Cloudflare again
 Then "Share Link…" appears in album menus and "Share as Link…" for selected
 photos in the app. Details in [share/README.md](../share/README.md).
 
+## 7c. agentbrain sync (optional)
+
+If your agents keep their memory in agentbrain, the server can hold an hourly,
+verified and versioned copy of all of it. Create a backup key in agentbrain
+(Settings → Backups), then on the server:
+
+```bash
+sudo sh -c 'umask 077; cat > /etc/atlas/credentials/agentbrain-backup.key'   # paste the key, Ctrl-D
+echo 'AGENTBRAIN_URL=https://your-agentbrain.example.com' | sudo tee /etc/atlas/agentbrain-backup.env
+~/atlas/scripts/agentbrain-backup/install.sh
+sudo systemctl start atlas-agentbrain-backup.service
+```
+
+Details, restore and the shrink brake in
+[scripts/agentbrain-backup/README.md](../scripts/agentbrain-backup/README.md).
+
 ## 8. Dev-subdomain proxy (optional — only for `atlas dev --public`)
 
 `atlas build` / `atlas dev` over the tailnet need nothing beyond the CLI

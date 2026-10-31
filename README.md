@@ -18,6 +18,7 @@
 - **Drive** folders over content-addressed files, with previews, full-text search and a trash
 - **One app** Fotos, Alben, Dateien and Einstellungen, with live server status, power control and a terminal
 - **Built to feel instant** precomputed and compressed timeline, immutable media URLs, streaming uploads, video renditions on the GPU
+- **agentbrain sync** keep a copy of your agents' agentbrain memories on your server: every memory and version, hourly, verified and versioned ([setup](scripts/agentbrain-backup/README.md))
 - **Wake-on-LAN CLI** `atlas boot` wakes the server, `atlas deploy` installs the services, `atlas build` and `atlas dev` build other projects on it
 - **Tailnet-first security** one port, firewalled to loopback and the tailnet, one bearer token on every route
 

@@ -17,7 +17,8 @@ BULK_STATUS=/var/lib/atlas-bulk-backup/status.json
 BULK_HOLD=/var/lib/atlas-bulk-backup/hold
 SYNC_STATUS=/var/lib/atlas-github-sync/status.json
 BRAIN_STATUS=/var/lib/atlas-agentbrain-backup/status.json
-BRAIN_HELD=/srv/bulk/agentbrain/held
+BRAIN_DEST=$(sed -n 's/^AGENTBRAIN_BACKUP_DEST=//p' /etc/atlas/agentbrain-backup.env 2>/dev/null | tail -n1)
+BRAIN_HELD=${BRAIN_DEST:-/srv/bulk/agentbrain}/held
 DUMPS=/srv/backups/atlas-postgres
 DEST=/srv/bulk-backup
 KEY_EXPIRES=/etc/atlas/credentials/lmail-alerts.expires
@@ -42,8 +43,11 @@ for t in "${TIMERS[@]}"; do
 done
 systemctl show -p WantedBy atlas-github-sync.service 2>/dev/null | grep -q atlas-bulk-backup.service \
   || problem "hook:github-sync" "atlas-github-sync is no longer hooked into atlas-bulk-backup"
-systemctl show -p WantedBy atlas-agentbrain-backup.service 2>/dev/null | grep -q atlas-bulk-backup.service \
-  || problem "hook:agentbrain-backup" "atlas-agentbrain-backup is no longer hooked into atlas-bulk-backup"
+if systemctl cat atlas-agentbrain-backup.service >/dev/null 2>&1; then
+  systemctl show -p WantedBy atlas-agentbrain-backup.service 2>/dev/null | grep -q atlas-bulk-backup.service \
+    || systemctl is-active -q atlas-agentbrain-backup.timer \
+    || problem "hook:agentbrain-backup" "atlas-agentbrain-backup is neither hooked into atlas-bulk-backup nor on its timer"
+fi
 
 for u in "${UNITS[@]}"; do
   systemctl is-failed -q "$u.service" && problem "unit:$u.service" "$u.service is in failed state"
@@ -70,7 +74,9 @@ failed=$(jq -r '(.failed // []) | join(", ")' "$SYNC_STATUS" 2>/dev/null)
 [ -z "$failed" ] || problem "sync:failed" "github sync failed for: $failed"
 
 t=$(json_time "$BRAIN_STATUS" last_ok)
-if [ -z "$t" ]; then
+if ! systemctl cat atlas-agentbrain-backup.service >/dev/null 2>&1; then
+  :  # agentbrain sync not installed
+elif [ -z "$t" ]; then
   problem "brain:stale" "agentbrain archive has no successful pull on record"
 elif [ $((now - t)) -gt 10800 ] && [ "$up" -gt 10800 ]; then
   problem "brain:stale" "last agentbrain archive is $(age_h "$t") h old"

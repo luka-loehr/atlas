@@ -1,18 +1,19 @@
 [Unit]
-Description=Pull the agentbrain archive into /srv/bulk/agentbrain
+Description=Copy the agentbrain memories to this server
 Wants=network-online.target
 After=network-online.target
-RequiresMountsFor=/srv/bulk
-# No timer of its own: the [Install] section below hooks it into the hourly
-# bulk backup, which then waits for it, so each hour's snapshot on the USB disk
-# holds that hour's archive. A failed pull does not stop the backup.
+# install.sh fills in the destination from /etc/atlas/agentbrain-backup.env.
+RequiresMountsFor=SET-BY-INSTALLER
+# With scripts/bulk-backup installed, the [Install] section hooks this into the
+# hourly bulk backup, which then waits for it, so each hour's snapshot holds
+# that hour's archive; a failed pull does not stop the backup. Without it,
+# atlas-agentbrain-backup.timer runs it hourly.
 Before=atlas-bulk-backup.service
-OnFailure=atlas-alert@%n.service
 
 [Service]
 Type=oneshot
-# Its own system user: it only ever downloads the archive and writes
-# /srv/bulk/agentbrain.
+# Its own system user: it only ever downloads the archive and writes the
+# destination directory.
 User=atlas-agentbrain
 Group=atlas-agentbrain
 EnvironmentFile=/etc/atlas/agentbrain-backup.env
@@ -24,7 +25,7 @@ Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=45min
 ProtectSystem=strict
-ReadWritePaths=/srv/bulk/agentbrain
+ReadWritePaths=SET-BY-INSTALLER
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

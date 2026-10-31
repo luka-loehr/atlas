@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy the agentbrain memories to this server every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+# A server that is switched off at night catches up right after it boots.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
