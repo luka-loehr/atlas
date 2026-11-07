@@ -21,6 +21,24 @@ final class PhotoCellLayer: CALayer {
     private var favorite = false
 
     var selected = false { didSet { if selected != oldValue { update() } } }
+    /// Held down: darkened a little, so the press shows before it selects.
+    var pressed = false {
+        didSet {
+            guard pressed != oldValue else { return }
+            guard pressed else { update(); return }
+            // the shade deepens over the hold, so the press shows where it
+            // is going: at 300 ms the photo is selected
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            dim.opacity = 0
+            dim.isHidden = false
+            CATransaction.commit()
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.3)
+            dim.opacity = 1
+            CATransaction.commit()
+        }
+    }
     var image: CGImage? { imageLayer.contents.map { $0 as! CGImage } }
 
     override init() {
@@ -64,6 +82,7 @@ final class PhotoCellLayer: CALayer {
         didSet {
             guard contentsScale != oldValue else { return }
             for l in [imageLayer, durationLayer, heartLayer, checkLayer] { l.contentsScale = contentsScale }
+            durationText = nil
             heartLayer.contents = Badges.heart(scale: contentsScale)
             applyColors()
         }
@@ -85,7 +104,6 @@ final class PhotoCellLayer: CALayer {
         self.pixels = pixels
         video = asset.isVideo ? Self.duration(asset.durationS) : nil
         favorite = asset.isFavorite
-        durationLayer.contents = video.flatMap { Badges.text($0, scale: contentsScale) }
         update()
         guard !same || force else { return }
         cancel()
@@ -163,23 +181,39 @@ final class PhotoCellLayer: CALayer {
         dim.frame = b
         ring.frame = b
         // the grid view is flipped, and so are its layers: y counts down
-        shade.frame = CGRect(x: 0, y: b.height - 28, width: b.width, height: 28)
-        durationLayer.frame = CGRect(x: 4, y: b.height - 18, width: b.width - 10, height: 14)
-        heartLayer.frame = CGRect(x: 6, y: b.height - 17, width: 13, height: 12)
+        // badges grow a little with the cell: legible at a glance, never loud
+        let big = b.width >= 200
+        let text: CGFloat = big ? 15 : 13
+        textSize = text
+        shade.frame = CGRect(x: 0, y: b.height - 40, width: b.width, height: 40)
+        durationLayer.frame = CGRect(x: 6, y: b.height - text - 9, width: b.width - 14, height: text + 4)
+        let heart: CGFloat = big ? 17 : 15
+        heartLayer.frame = CGRect(x: 7, y: b.height - heart - 7, width: heart, height: heart * 0.9)
         checkLayer.frame = CGRect(x: b.width - 24, y: 5, width: 19, height: 19)
         CATransaction.commit()
         update()
     }
 
+    /// The point size the duration is drawn at, for this cell's size.
+    private var textSize: CGFloat = 13 {
+        didSet { if textSize != oldValue { durationText = nil } }
+    }
+    private var durationText: String?
+
     private func update() {
         let small = bounds.width < 70
+        if video != durationText {
+            durationText = video
+            durationLayer.contents = video.flatMap { Badges.text($0, size: textSize, scale: contentsScale) }
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         durationLayer.isHidden = video == nil || small
         heartLayer.isHidden = !favorite || small
         shade.isHidden = durationLayer.isHidden && heartLayer.isHidden
         ring.isHidden = !selected
-        dim.isHidden = !selected
+        dim.isHidden = !selected && !pressed
+        dim.opacity = 1
         checkLayer.isHidden = !selected || small
         CATransaction.commit()
     }
@@ -201,14 +235,21 @@ private enum Badges {
 
     /// A video's length, white on clear, typeset once per string: a few
     /// hundred distinct lengths cover a library.
-    static func text(_ string: String, scale: CGFloat) -> CGImage? {
-        let key = "\(scale)-\(string)"
+    static func text(_ string: String, size points: CGFloat, scale: CGFloat) -> CGImage? {
+        let key = "\(scale)-\(points)-\(string)"
         if let image = texts[key] { return image }
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
+        shadow.shadowBlurRadius = 2
+        shadow.shadowOffset = .zero
         let text = NSAttributedString(string: string, attributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: points, weight: .bold),
             .foregroundColor: NSColor.white,
+            .shadow: shadow,
         ])
-        let size = text.size()
+        var size = text.size()
+        size.width += 4
+        size.height += 2
         let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
         guard w > 0, h > 0,
               let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8,
@@ -218,7 +259,7 @@ private enum Badges {
         rep.size = size
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
-        text.draw(at: .zero)
+        text.draw(at: CGPoint(x: 2, y: 1))
         NSGraphicsContext.restoreGraphicsState()
         let image = rep.cgImage
         if texts.count > 2000 { texts.removeAll() }
@@ -228,7 +269,7 @@ private enum Badges {
 
     static func heart(scale: CGFloat) -> CGImage? {
         if let image = hearts[scale] { return image }
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
             .applying(.init(paletteColors: [.white]))
         let image = render("heart.fill", config, scale: scale)
         hearts[scale] = image

@@ -89,9 +89,11 @@ Built to the macOS Human Interface Guidelines:
   instant a cell appears, and a 256 px square JPEG (0.5 ms to decode) that
   replaces it a frame later and stays in RAM. A thumbnail made again on the
   server drops its tiles; the two largest zooms decode the 512 WebP.
-  Click, ⌘-click, ⇧-click, a selection rectangle from below the photos,
-  arrow keys (⇧ extends), ⌘A, Return/Space/double-click opens, `.`
-  favorites, pinch or the toolbar slider zooms.
+  A click opens a photo; holding it for 300 ms selects it (the photo
+  darkens over the hold); ⌘-click and ⇧-click select as everywhere on the
+  Mac, a rectangle drawn from below the photos selects many, arrow keys (⇧
+  extends), ⌘A, Return or Space open, `.` favorites. Pinching on the
+  trackpad (or ⌘+ ⌘−) changes the size.
 - **Drag and drop**: photos drag out as their originals (Finder, Mail, …)
   and onto an album in the sidebar; files drop into Files from the Finder to
   upload and drag out to download.

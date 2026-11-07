@@ -451,58 +451,91 @@ final class PhotoGridView: NSView, NSDraggingSource, NSMenuItemValidation {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// How long a press must last to select instead of open.
+    private static let holdToSelect: TimeInterval = 0.3
+
+    /// A click opens the photo; holding it for 300 ms selects it (or takes
+    /// it out of the selection); moving the pointer drags it (with the rest
+    /// of the selection, if it is selected) out to the Finder or onto an
+    /// album. ⌘-click adds or removes, ⇧-click extends, as everywhere on the
+    /// Mac. From below the photos, a drag draws a selection rectangle.
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let start = convert(event.locationInWindow, from: nil)
         let hit = index(at: start)
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if event.clickCount == 2, let hit {
-            setSelected([hit])
-            open(hit)
+
+        guard let hit else {
+            // the background: a selection rectangle, or nothing
+            let base = mods.contains(.command) || mods.contains(.shift) ? selected : []
+            if base.isEmpty { setSelected([]) }
+            while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+                if next.type == .leftMouseUp { break }
+                let point = convert(next.locationInWindow, from: nil)
+                guard hypot(point.x - start.x, point.y - start.y) > 4 else { continue }
+                rubberBand(from: start, to: point, base: base)
+                autoscroll(with: next)
+            }
+            band?.removeFromSuperlayer()
+            band = nil
             return
         }
-        let base = selected
-        var deferredSelect: Int?
-        if let hit {
-            if mods.contains(.command) {
+
+        cursor = hit
+        if mods.contains(.command) {
+            var s = selected
+            if s.contains(hit) { s.remove(hit) } else { s.insert(hit) }
+            setSelected(s)
+            anchor = hit
+            trackDrag(from: hit, start: start, event: event)
+            return
+        }
+        if mods.contains(.shift) {
+            let from = anchor ?? hit
+            setSelected(selected.union(min(from, hit)...max(from, hit)))
+            anchor = from
+            trackDrag(from: hit, start: start, event: event)
+            return
+        }
+
+        // plain press: open, select or drag, decided by what comes first
+        let deadline = Date(timeIntervalSinceNow: Self.holdToSelect)
+        visible[hit]?.pressed = true
+        defer { visible[hit]?.pressed = false }
+        while true {
+            guard let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: deadline,
+                                                 inMode: .eventTracking, dequeue: true) else {
+                // held: select (or deselect), then a drag may still follow
                 var s = selected
                 if s.contains(hit) { s.remove(hit) } else { s.insert(hit) }
                 setSelected(s)
                 anchor = hit
-            } else if mods.contains(.shift), let anchor {
-                setSelected(selected.union(min(anchor, hit)...max(anchor, hit)))
-                self.anchor = anchor
-            } else if selected.contains(hit) {
-                // a click on a selected photo selects only it, unless it
-                // turns into a drag of the selection
-                deferredSelect = hit
-            } else {
-                setSelected([hit])
-                anchor = hit
-            }
-            cursor = hit
-        } else if !mods.contains(.command) && !mods.contains(.shift) {
-            setSelected([])
-        }
-
-        // track: a drag from a photo drags the photos, from elsewhere draws
-        // a selection rectangle
-        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            let point = convert(next.locationInWindow, from: nil)
-            if next.type == .leftMouseUp {
-                if let deferredSelect { setSelected([deferredSelect]); anchor = deferredSelect }
-                break
-            }
-            guard hypot(point.x - start.x, point.y - start.y) > 4 else { continue }
-            if hit != nil {
-                beginDrag(with: event)
+                visible[hit]?.pressed = false
+                trackDrag(from: hit, start: start, event: event)
                 return
             }
-            rubberBand(from: start, to: point, base: mods.contains(.command) || mods.contains(.shift) ? base : [])
-            autoscroll(with: next)
+            if next.type == .leftMouseUp {
+                open(hit)
+                return
+            }
+            let point = convert(next.locationInWindow, from: nil)
+            if hypot(point.x - start.x, point.y - start.y) > 4 {
+                beginDrag(with: event, from: hit)
+                return
+            }
         }
-        band?.removeFromSuperlayer()
-        band = nil
+    }
+
+    /// After a press that selected: a drag drags, a release ends it.
+    private func trackDrag(from hit: Int, start: CGPoint, event: NSEvent) {
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp { return }
+            let point = convert(next.locationInWindow, from: nil)
+            if hypot(point.x - start.x, point.y - start.y) > 4 {
+                beginDrag(with: event, from: hit)
+                return
+            }
+        }
     }
 
     private func rubberBand(from a: CGPoint, to b: CGPoint, base: Set<Int>) {
@@ -540,8 +573,10 @@ final class PhotoGridView: NSView, NSDraggingSource, NSMenuItemValidation {
 
     // MARK: Dragging out
 
-    private func beginDrag(with event: NSEvent) {
-        let order = selected.sorted()
+    /// Drags the selection when the photo under the pointer is part of it,
+    /// else just that photo.
+    private func beginDrag(with event: NSEvent, from hit: Int) {
+        let order = selected.contains(hit) ? selected.sorted() : [hit]
         guard !order.isEmpty else { return }
         let client = MediaCache.shared.client
         let origin = convert(event.locationInWindow, from: nil)

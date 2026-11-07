@@ -204,10 +204,6 @@ struct MacPhotoBrowser: View {
                     .help("Back to \(source == .library ? "Library" : title)")
                     .keyboardShortcut(.escape, modifiers: [])
             }
-        } else if !gated && !shown.isEmpty {
-            ToolbarItem(placement: .principal) {
-                ZoomSlider(zoom: Bindable(window).zoom)
-            }
         }
         if !gated {
             let a = actions(for: targetIDs)
@@ -550,25 +546,5 @@ struct MacPhotoBrowser: View {
             assets.removeAll { ids.contains($0.id) }
             revision &+= 1
         }
-    }
-}
-
-/// The grid's density, as in Photos: a slider in the toolbar, also ⌘+ ⌘−
-/// and pinching.
-private struct ZoomSlider: View {
-    @Binding var zoom: Int
-
-    var body: some View {
-        Slider(value: Binding(get: { Double(zoom) }, set: { zoom = Int($0.rounded()) }),
-               in: 0...Double(GridZoom.sizes.count - 1), step: 1) {
-            Text("Zoom")
-        } minimumValueLabel: {
-            Image(systemName: "square.grid.4x3.fill").imageScale(.small)
-        } maximumValueLabel: {
-            Image(systemName: "square.grid.2x2.fill").imageScale(.small)
-        }
-        .labelsHidden()
-        .frame(width: 140)
-        .help("Zoom")
     }
 }
