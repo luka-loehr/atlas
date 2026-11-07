@@ -801,6 +801,10 @@ final class PhotoCell: UICollectionViewCell {
             // one photo per row: the 2048 preview, sharp at full width
             let px = CGFloat(pixels)
             sharpTask = Task { [weak self] in
+                // only for a cell that stays: a fling through full-width
+                // photos would start (and drop) a 2048 download per cell
+                try? await Task.sleep(for: .milliseconds(180))
+                guard !Task.isCancelled else { return }
                 guard let img = await MediaCache.shared.load(url, maxPixel: px * 1.5),
                       let self, self.assetID == id, !Task.isCancelled else { return }
                 self.imageView.image = img
