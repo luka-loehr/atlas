@@ -22,7 +22,7 @@ pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<
     let rows = c
         .query(
             &format!(
-                "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos
+                "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos, p.kind
                  FROM persons p
                  JOIN faces f ON f.person_id = p.id
                  JOIN assets ON assets.id = f.asset_id
@@ -44,13 +44,15 @@ pub fn person_json(r: &tokio_postgres::Row) -> Value {
         "name": r.get::<_, Option<String>>(1),
         "cover_face": r.get::<_, Option<i64>>(2),
         "photos": r.get::<_, i64>(3),
+        // 'person', or a species for a pet ('dog', 'cat', 'horse', 'bird')
+        "kind": r.get::<_, String>(4),
     })
 }
 
 pub async fn assets(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> ApiResult<Response> {
     let c = app.pool.get().await?;
     let person = c
-        .query_opt("SELECT display_name, cover_face_id FROM persons WHERE id = $1", &[&id])
+        .query_opt("SELECT display_name, cover_face_id, kind FROM persons WHERE id = $1", &[&id])
         .await?
         .ok_or(ApiError::NotFound)?;
     let rows = c
@@ -69,6 +71,7 @@ pub async fn assets(State(app): State<AppState>, Path(id): Path<i64>, headers: H
             "id": id,
             "name": person.get::<_, Option<String>>(0),
             "cover_face": person.get::<_, Option<i64>>(1),
+            "kind": person.get::<_, String>(2),
             "assets": Columns::from_rows(&rows, app.cfg.tz),
         }),
     ))
@@ -135,13 +138,18 @@ pub async fn merge(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Js
     .await?;
     tx.execute("DELETE FROM edges WHERE dst_type = 'person' AND dst_id = $1", &[&from]).await?;
     tx.execute(
-        "UPDATE persons SET merged_into = $2, centroid = NULL, face_count = 0, cover_face_id = NULL WHERE id = $1",
+        "UPDATE persons SET merged_into = $2, centroid = NULL, look = NULL, face_count = 0, cover_face_id = NULL WHERE id = $1",
         &[&id, &b.into],
     )
     .await?;
+    // the centroid of the current recognizer's faces (atlas-ml's
+    // vision::refresh_people), an animal's mean look
     tx.execute(
-        "UPDATE persons p SET face_count = c.n, centroid = c.a
-         FROM (SELECT count(*) AS n, avg(embedding) AS a FROM faces WHERE person_id = $1) c
+        "UPDATE persons p SET face_count = c.n, centroid = coalesce(c.a, p.centroid), look = coalesce(c.l, p.look)
+         FROM (SELECT count(*) AS n,
+                      avg(embedding) FILTER (WHERE model = 'adaface-ir101') AS a,
+                      avg(look) AS l
+               FROM faces WHERE person_id = $1) c
          WHERE p.id = $1",
         &[&b.into],
     )
@@ -156,8 +164,10 @@ pub async fn face_crop(State(app): State<AppState>, Path(id): Path<i64>, headers
     media::immutable_file(app.cfg.faces_dir().join(format!("{id}.webp")), headers).await
 }
 
-/// Keeps every person showable, run hourly: people left without faces are
-/// removed, and a person whose cover is missing, hidden (archived, locked,
+/// Keeps every person showable, run hourly: unnamed people left without
+/// faces are removed (a named person is never removed: their name is the
+/// owner's work, and a re-run of the vision stage may leave them without
+/// faces for a moment), and a person whose cover is missing, hidden (archived, locked,
 /// trashed) or has no crop on disk gets their best visible face instead.
 /// A cover the owner chose stays while it is visible. Returns (removed,
 /// covers set).
@@ -167,6 +177,7 @@ pub async fn tidy(app: &App) -> ApiResult<(u64, usize)> {
         .execute(
             "DELETE FROM persons p
              WHERE p.merged_into IS NULL
+               AND p.display_name IS NULL
                AND NOT EXISTS (SELECT 1 FROM faces WHERE person_id = p.id)
                AND NOT EXISTS (SELECT 1 FROM persons m WHERE m.merged_into = p.id)
                AND NOT EXISTS (SELECT 1 FROM edges WHERE dst_type = 'person' AND dst_id = p.id::text)",

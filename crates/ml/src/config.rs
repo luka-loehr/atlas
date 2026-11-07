@@ -35,10 +35,24 @@ pub struct Config {
     /// requests) never waits behind the backlog; four jobs at once keep the
     /// GPU busy while a clip's frames are read on the CPU.
     pub slots: u32,
-    /// ATLAS_FACE_DETECTOR / ATLAS_FACE_RECOGNIZER: the buffalo_l ONNX files
-    /// (default <models>/buffalo_l/{det_10g,w600k_r50}.onnx).
+    /// ATLAS_FACE_DETECTOR / ATLAS_FACE_RECOGNIZER: SCRFD (buffalo_l) and
+    /// AdaFace IR-101 as ONNX (default <models>/buffalo_l/det_10g.onnx,
+    /// <models>/adaface/ir101.onnx).
     pub face_detector: PathBuf,
     pub face_recognizer: PathBuf,
+    /// RF-DETR Large and pet-recognition-large (default
+    /// <models>/rfdetr/large.onnx, <models>/pet/model.onnx).
+    pub animal_detector: PathBuf,
+    pub animal_identifier: PathBuf,
+    /// PP-OCRv6 medium: detector, recognizer and its dictionary (default
+    /// <models>/ocr6/{det.onnx,rec.onnx,dict.txt}).
+    pub text_detector: PathBuf,
+    pub text_recognizer: PathBuf,
+    pub text_dictionary: PathBuf,
+    /// ATLAS_VISION_JOBS: assets the vision stage prepares side by side
+    /// (decoding originals, reading video frames) while one at a time is on
+    /// the GPU (default 3).
+    pub vision_jobs: usize,
 }
 
 impl Config {
@@ -58,7 +72,13 @@ impl Config {
             idle: Duration::from_secs(env("ATLAS_ML_IDLE_S").and_then(|v| v.parse().ok()).unwrap_or(600)),
             slots: env("ATLAS_EMBED_SLOTS").and_then(|v| v.parse().ok()).unwrap_or(6).clamp(3, 8),
             face_detector: path("ATLAS_FACE_DETECTOR", models.join("buffalo_l/det_10g.onnx")),
-            face_recognizer: path("ATLAS_FACE_RECOGNIZER", models.join("buffalo_l/w600k_r50.onnx")),
+            face_recognizer: path("ATLAS_FACE_RECOGNIZER", models.join("adaface/ir101.onnx")),
+            animal_detector: models.join("rfdetr/large.onnx"),
+            animal_identifier: models.join("pet/model.onnx"),
+            text_detector: models.join("ocr6/det.onnx"),
+            text_recognizer: models.join("ocr6/rec.onnx"),
+            text_dictionary: models.join("ocr6/dict.txt"),
+            vision_jobs: env("ATLAS_VISION_JOBS").and_then(|v| v.parse().ok()).unwrap_or(3).clamp(1, 8),
         })
     }
 
@@ -67,6 +87,19 @@ impl Config {
             .into_iter()
             .map(|size| self.photos_dir.join("thumbs").join(format!("{id}.{size}.webp")))
             .find(|p| p.exists())
+    }
+
+    /// Every model file the vision stage needs.
+    pub fn vision_models(&self) -> [&PathBuf; 7] {
+        [
+            &self.face_detector,
+            &self.face_recognizer,
+            &self.animal_detector,
+            &self.animal_identifier,
+            &self.text_detector,
+            &self.text_recognizer,
+            &self.text_dictionary,
+        ]
     }
 
     pub fn faces_dir(&self) -> PathBuf {

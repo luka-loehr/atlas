@@ -3,6 +3,7 @@
 //! tools with a deadline.
 
 pub mod db;
+pub mod decode;
 pub mod process;
 pub mod queue;
 
@@ -18,8 +19,9 @@ pub const EMBED_DIM: usize = 2048;
 /// Structured logs to stderr (journald adds the timestamps). `ATLAS_LOG`
 /// takes a tracing filter, e.g. `debug` or `atlas_server=debug,info`.
 pub fn init_logging() {
-    // onnxruntime narrates every arena allocation at info level
-    let filter = std::env::var("ATLAS_LOG").unwrap_or_else(|_| "info,ort=warn".into());
+    // onnxruntime narrates every arena allocation at info level, and warns
+    // about every SCRFD run at a size other than the one it was exported at
+    let filter = std::env::var("ATLAS_LOG").unwrap_or_else(|_| "info,ort=error".into());
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
         .with_target(false)

@@ -6,8 +6,9 @@
 //!     2048-dimensional space. It runs on the GPU in a llama.cpp server that
 //!     this process starts on demand and stops again when idle, so the GPU
 //!     is free whenever nothing is being embedded.
-//!   * InsightFace buffalo_l (SCRFD detection + ArcFace recognition) finds
-//!     faces and groups them into people, on ONNX Runtime.
+//!   * the vision stage, on ONNX Runtime (GPU): faces (SCRFD at two scales,
+//!     AdaFace IR-101), animals (RF-DETR, pet-recognition-large) and text
+//!     (PP-OCRv6), grouped into people and pets (grouping.rs)
 //!
 //! It drains the `embed` and `faces` jobs of the queue and answers on
 //! loopback only:
@@ -17,11 +18,16 @@
 //!                  the search as matched against stills and against clips
 //!   POST /warm     load the embedding model now
 
+mod animals;
 mod config;
 mod embedder;
 mod faces;
+mod grouping;
 mod jobs;
+mod ocr;
 mod pixels;
+mod runtime;
+mod vision;
 
 use std::sync::Arc;
 
@@ -46,10 +52,24 @@ pub struct Worker {
 async fn main() -> Result<()> {
     atlas_core::init_logging();
     let cfg = Config::from_env()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("analyze") {
+        runtime::init()?;
+        let result = vision::analyze_files(cfg.vision_models().map(|p| p.clone()), &args[1..]);
+        if let Err(e) = &result {
+            eprintln!("Error: {e:#}");
+        }
+        exit_now(if result.is_ok() { 0 } else { 1 });
+    }
     let pool = atlas_core::db::pool(4)?;
     let worker = Arc::new(Worker { embedder: Embedder::new(&cfg), pool, cfg });
 
+    if let Err(e) = runtime::init() {
+        // the embeddings still run; the vision jobs fail visibly
+        tracing::error!("{e:#}");
+    }
     tokio::spawn(jobs::run(worker.clone()));
+    tokio::spawn(grouping::run(worker.clone()));
     tokio::spawn(embedder::unload_when_idle(worker.clone()));
 
     let router = Router::new()
@@ -72,7 +92,23 @@ async fn main() -> Result<()> {
         .await?;
     jobs::release(&worker).await;
     worker.embedder.unload().await;
-    Ok(())
+    exit_now(0)
+}
+
+/// Ends the process without running native destructors. ONNX Runtime's CUDA
+/// provider races its own teardown at exit and can corrupt the heap then (one
+/// exit in three, measured 2026-11-07; 50 analyses in one process under
+/// glibc's strict heap checks were clean). By this point the jobs are handed
+/// back and the embedding model is stopped: nothing is left to tear down.
+fn exit_now(code: i32) -> ! {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    unsafe extern "C" {
+        fn _exit(code: i32) -> !;
+    }
+    // SAFETY: _exit only ends the process
+    unsafe { _exit(code) }
 }
 
 async fn health(State(worker): State<Arc<Worker>>) -> Json<Value> {
@@ -98,7 +134,7 @@ async fn health(State(worker): State<Arc<Worker>>) -> Json<Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "embedder": worker.embedder.state(),
         "embed_model": worker.cfg.embed_model.file_name().map(|n| n.to_string_lossy().into_owned()),
-        "faces": worker.cfg.face_detector.exists() && worker.cfg.face_recognizer.exists(),
+        "vision": worker.cfg.vision_models().iter().all(|p| p.exists()),
         "queue": queue,
     }))
 }

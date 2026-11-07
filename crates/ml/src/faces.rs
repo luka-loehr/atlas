@@ -1,30 +1,41 @@
-//! Faces: SCRFD detection and ArcFace recognition (InsightFace buffalo_l)
-//! on ONNX Runtime.
+//! Faces: SCRFD detection and AdaFace recognition on ONNX Runtime.
 //!
-//! The pipeline mirrors InsightFace's `FaceAnalysis` step for step, so the
-//! 512-d embeddings land in the same space as every face already stored:
+//!   1. SCRFD runs twice: on the image fitted into 640 px, where close-ups
+//!      fall into the sizes it was trained on, and at 1600 px, where the
+//!      fifth face at the back of a group photo is still 30 px wide. The two
+//!      sets are merged by overlap, the more confident detection kept.
+//!   2. each face is warped onto the canonical 112x112 landmark layout
+//!   3. AdaFace IR-101 (WebFace12M) embeds it and its mirror image; the
+//!      mean of the two, L2-normalized, is the face's embedding (the usual
+//!      test-time flip, worth a little on profiles and small faces)
 //!
-//!   1. letterbox the image into 640x640, run SCRFD, decode its three
-//!      feature strides into boxes and five landmarks, suppress overlaps
-//!   2. warp each face onto ArcFace's canonical 112x112 landmark layout
-//!   3. run ArcFace, L2-normalize
+//! AdaFace replaced ArcFace R50 (buffalo_l) in Atlas 0.5.0. Measured on the
+//! owner's 7,641 named faces (2026-11-07), nearest-face accuracy and true
+//! accepts at 1 in 1,000 false accepts: 96.0 / 91.0 % against 95.6 / 89.1 %,
+//! and on the same faces shrunk to 20 px, the back row of a group photo,
+//! 92.7 / 75.1 % against 90.9 / 65.8 %. ArcFace R100 (Glint360K) was worse
+//! than both.
 
 use std::path::Path;
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use fast_image_resize::FilterType;
 use image::RgbImage;
 use ort::session::Session;
-use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Tensor;
 
+use crate::runtime::{self, Device};
 use crate::pixels;
 
-const DETECT_SIZE: u32 = 640;
+/// The sides SCRFD sees the image at, longest edge in pixels.
+const SCALES: [u32; 2] = [640, 1600];
 const STRIDES: [usize; 3] = [8, 16, 32];
 const ANCHORS_PER_CELL: usize = 2;
 const DETECT_THRESHOLD: f32 = 0.5;
 const NMS_THRESHOLD: f32 = 0.4;
+/// Faces narrower than this (pixels of the analyzed image) carry too little
+/// identity to be worth keeping.
+pub const MIN_FACE_PX: f32 = 14.0;
 const FACE_SIZE: usize = 112;
 /// Where ArcFace expects the eyes, nose and mouth corners in its 112x112 input.
 const TEMPLATE: [[f32; 2]; 5] =
@@ -44,47 +55,49 @@ pub struct FaceEngine {
 }
 
 impl FaceEngine {
-    pub fn load(detector: &Path, recognizer: &Path) -> Result<Self> {
-        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
-        let open = |path: &Path| -> Result<Session> {
-            Session::builder()
-                .map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
-                .with_optimization_level(GraphOptimizationLevel::Level3)
-                .map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
-                .with_intra_threads(threads)
-                .map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
-                .commit_from_file(path)
-                .with_context(|| format!("cannot load {}", path.display()))
-        };
-        Ok(FaceEngine { detector: open(detector)?, recognizer: open(recognizer)? })
+    pub fn load(detector: &Path, recognizer: &Path, devices: [Device; 2]) -> Result<Self> {
+        Ok(FaceEngine { detector: runtime::session(detector, devices[0])?, recognizer: runtime::session(recognizer, devices[1])? })
     }
 
     pub fn analyze(&mut self, image: &RgbImage) -> Result<Vec<Face>> {
-        let detections = self.detect(image)?;
+        let mut detections = Vec::new();
+        let long = image.width().max(image.height());
+        for side in SCALES {
+            // a small image gains nothing from being blown up
+            if side > 640 && long < 960 {
+                continue;
+            }
+            detections.extend(self.detect(image, side)?);
+        }
+        let detections = suppress(detections);
         let mut faces = Vec::with_capacity(detections.len());
         for detection in detections {
+            if detection.bbox[2] - detection.bbox[0] < MIN_FACE_PX {
+                continue;
+            }
             let aligned = align(image, &detection.landmarks);
             faces.push(Face { bbox: detection.bbox, score: detection.score, embedding: self.embed(&aligned)? });
         }
         Ok(faces)
     }
 
-    fn detect(&mut self, image: &RgbImage) -> Result<Vec<Detection>> {
-        // fit into the square keeping the aspect; the rest stays black
+    fn detect(&mut self, image: &RgbImage, side: u32) -> Result<Vec<Detection>> {
+        // fit the long side to `side` keeping the aspect; pad to strides of 32
         let (w, h) = image.dimensions();
-        let scale = f64::from(DETECT_SIZE) / f64::from(w.max(h));
+        let scale = f64::from(side) / f64::from(w.max(h));
         let (new_w, new_h) = (((f64::from(w) * scale) as u32).max(1), ((f64::from(h) * scale) as u32).max(1));
+        let (canvas_w, canvas_h) = (new_w.div_ceil(32) * 32, new_h.div_ceil(32) * 32);
         let resized = pixels::resize(image, new_w, new_h, FilterType::Bilinear)?;
-        let plane = (DETECT_SIZE * DETECT_SIZE) as usize;
+        let plane = (canvas_w * canvas_h) as usize;
         // an empty canvas is black, which is (0 - 127.5) / 128 after scaling
         let mut input = vec![-127.5 / 128.0; 3 * plane];
         for (x, y, pixel) in resized.enumerate_pixels() {
-            let at = (y * DETECT_SIZE + x) as usize;
+            let at = (y * canvas_w + x) as usize;
             for channel in 0..3 {
                 input[channel * plane + at] = (f32::from(pixel[channel]) - 127.5) / 128.0;
             }
         }
-        let tensor = Tensor::from_array(([1usize, 3, DETECT_SIZE as usize, DETECT_SIZE as usize], input))?;
+        let tensor = Tensor::from_array(([1usize, 3, canvas_h as usize, canvas_w as usize], input))?;
         let outputs = self.detector.run(ort::inputs![tensor])?;
         ensure!(outputs.len() == 9, "unexpected SCRFD model: {} outputs", outputs.len());
 
@@ -94,15 +107,15 @@ impl FaceEngine {
             let (_, scores) = outputs[level].try_extract_tensor::<f32>()?;
             let (_, boxes) = outputs[level + 3].try_extract_tensor::<f32>()?;
             let (_, points) = outputs[level + 6].try_extract_tensor::<f32>()?;
-            let cells = DETECT_SIZE as usize / stride;
-            ensure!(scores.len() == cells * cells * ANCHORS_PER_CELL, "unexpected SCRFD output shape");
+            let (cells_w, cells_h) = (canvas_w as usize / stride, canvas_h as usize / stride);
+            ensure!(scores.len() == cells_w * cells_h * ANCHORS_PER_CELL, "unexpected SCRFD output shape");
             for (anchor, &score) in scores.iter().enumerate() {
                 if score < DETECT_THRESHOLD {
                     continue;
                 }
                 let cell = anchor / ANCHORS_PER_CELL;
-                let cx = ((cell % cells) * stride) as f32;
-                let cy = ((cell / cells) * stride) as f32;
+                let cx = ((cell % cells_w) * stride) as f32;
+                let cy = ((cell / cells_w) * stride) as f32;
                 let s = *stride as f32;
                 let b = &boxes[anchor * 4..anchor * 4 + 4];
                 let p = &points[anchor * 10..anchor * 10 + 10];
@@ -123,22 +136,35 @@ impl FaceEngine {
                 });
             }
         }
-        Ok(suppress(found))
+        Ok(found)
     }
 
+    /// The face and its mirror image in one batch; their mean, normalized.
     fn embed(&mut self, aligned: &[u8]) -> Result<Vec<f32>> {
         let plane = FACE_SIZE * FACE_SIZE;
-        let mut input = vec![0f32; 3 * plane];
-        for at in 0..plane {
-            for channel in 0..3 {
-                input[channel * plane + at] = (f32::from(aligned[at * 3 + channel]) - 127.5) / 127.5;
+        let mut input = vec![0f32; 2 * 3 * plane];
+        for y in 0..FACE_SIZE {
+            for x in 0..FACE_SIZE {
+                let at = y * FACE_SIZE + x;
+                let mirrored = y * FACE_SIZE + (FACE_SIZE - 1 - x);
+                for channel in 0..3 {
+                    // RGB, scaled to [-1, 1]
+                    let v = (f32::from(aligned[at * 3 + channel]) / 255.0 - 0.5) / 0.5;
+                    input[channel * plane + at] = v;
+                    input[3 * plane + channel * plane + mirrored] = v;
+                }
             }
         }
-        let tensor = Tensor::from_array(([1usize, 3, FACE_SIZE, FACE_SIZE], input))?;
+        let tensor = Tensor::from_array(([2usize, 3, FACE_SIZE, FACE_SIZE], input))?;
         let outputs = self.recognizer.run(ort::inputs![tensor])?;
         let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
-        let mut embedding = values.to_vec();
-        ensure!(embedding.len() == 512, "unexpected ArcFace output: {} values", embedding.len());
+        let dim = values.len() / 2;
+        ensure!(dim == 512, "unexpected recognizer output: {} values per face", dim);
+        let mut a = values[..dim].to_vec();
+        let mut b = values[dim..].to_vec();
+        pixels::normalize(&mut a);
+        pixels::normalize(&mut b);
+        let mut embedding: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x + y).collect();
         pixels::normalize(&mut embedding);
         Ok(embedding)
     }

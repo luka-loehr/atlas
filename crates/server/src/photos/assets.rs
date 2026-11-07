@@ -51,17 +51,31 @@ pub async fn info(State(app): State<AppState>, Path(id): Path<String>) -> ApiRes
                 "region": p.get::<_, Option<String>>(2), "country": p.get::<_, Option<String>>(3),
             })
         });
+    // each person or pet once, at their best face; named ones first
     let people: Vec<Value> = c
         .query(
-            "SELECT f.id, p.id, p.display_name
-             FROM faces f JOIN persons p ON p.id = f.person_id
-             WHERE f.asset_id = $1 ORDER BY f.quality DESC NULLS LAST",
+            "SELECT face, id, name, kind FROM (
+                 SELECT DISTINCT ON (p.id) f.id AS face, p.id, p.display_name AS name, p.kind,
+                        coalesce(f.quality, 0) * coalesce(f.width_px, 1) AS worth
+                 FROM faces f JOIN persons p ON p.id = f.person_id
+                 WHERE f.asset_id = $1
+                 ORDER BY p.id, worth DESC
+             ) x ORDER BY (name IS NULL), worth DESC",
             &[&id],
         )
         .await?
         .iter()
-        .map(|f| json!({ "face": f.get::<_, i64>(0), "id": f.get::<_, i64>(1), "name": f.get::<_, Option<String>>(2) }))
+        .map(|f| {
+            json!({
+                "face": f.get::<_, i64>(0), "id": f.get::<_, i64>(1),
+                "name": f.get::<_, Option<String>>(2), "kind": f.get::<_, String>(3),
+            })
+        })
         .collect();
+    let text: Option<String> = c
+        .query_opt("SELECT text FROM asset_text WHERE asset_id = $1", &[&id])
+        .await?
+        .map(|r| r.get(0));
     let albums: Vec<Value> = c
         .query(
             "SELECT a.id, a.title FROM albums a JOIN album_assets aa ON aa.album_id = a.id
@@ -98,6 +112,7 @@ pub async fn info(State(app): State<AppState>, Path(id): Path<String>) -> ApiRes
         "has_preview": r.get::<_, bool>(19),
         "place": place,
         "people": people,
+        "text": text,
         "albums": albums,
     })))
 }

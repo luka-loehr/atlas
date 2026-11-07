@@ -1,5 +1,5 @@
 [Unit]
-Description=Atlas model worker (semantic embeddings, faces)
+Description=Atlas model worker (semantic embeddings, faces, animals, text)
 Requires=atlas-server.service
 After=network-online.target atlas-server.service
 Wants=network-online.target
@@ -8,6 +8,9 @@ Wants=network-online.target
 Type=simple
 User=SET-BY-INSTALLER
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+# ONNX Runtime with CUDA and the CUDA and cuDNN libraries it loads
+Environment="ORT_DYLIB_PATH=/usr/local/lib/atlas/onnxruntime/onnxruntime/capi/libonnxruntime.so.1.31.1"
+Environment="LD_LIBRARY_PATH=/usr/local/lib/atlas/onnxruntime/nvidia/cu13/lib:/usr/local/lib/atlas/onnxruntime/nvidia/cudnn/lib:/usr/local/lib/atlas/onnxruntime/onnxruntime/capi"
 EnvironmentFile=/etc/atlas/atlas.env
 ExecStart=/usr/local/bin/atlas-ml
 Restart=always

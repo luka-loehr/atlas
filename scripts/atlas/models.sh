@@ -9,6 +9,13 @@
 #     (BF16, 0.7 GB), from a pinned revision, checked against their sha256
 #   * InsightFace buffalo_l: SCRFD face detection and ArcFace recognition
 #     (non-commercial research license)
+#   * the vision stage: AdaFace IR-101 (face recognition, replacing
+#     buffalo_l's ArcFace; SCRFD from buffalo_l still detects), RF-DETR Large
+#     (animals; exported to ONNX here from Roboflow's PyTorch weights),
+#     pet-recognition-large (which animal), PP-OCRv6 medium (text)
+#   * ONNX Runtime with CUDA and cuDNN (from NVIDIA's and Microsoft's pip
+#     wheels) in /usr/local/lib/atlas/onnxruntime: the face, animal and text
+#     models run on the GPU, and on the CPU when it is missing
 #
 # Re-running skips whatever is already there; a llama.cpp server from
 # another commit or patch is built again. install.sh runs this first.
@@ -67,6 +74,67 @@ if [ ! -s "$MODELS/buffalo_l/det_10g.onnx" ] || [ ! -s "$MODELS/buffalo_l/w600k_
   curl -fL --retry 5 -o "$tmp/buffalo_l.zip" \
     https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
   unzip -q -o "$tmp/buffalo_l.zip" det_10g.onnx w600k_r50.onnx -d "$MODELS/buffalo_l"
+  rm -rf "$tmp"
+fi
+
+# ---- vision models ---------------------------------------------------------
+HF=https://huggingface.co
+fetch "$HF/Evn9172/cvlface_adaface_ir101_webface12m_onnx/resolve/3af39a8cf2f199127f34e247950df9c4d6f227e8/adaface_ir101.onnx" \
+  "$MODELS/adaface/ir101.onnx" 6168ed3961838a871e706e8e5ebbf963de2821ecb3f64da9d5c3fd373cc80c65
+fetch "$HF/open-noodle/pet-recognition-large/resolve/cff7cf1559cb99596273f26f1eaae117327d8eb1/recognition/model.onnx" \
+  "$MODELS/pet/model.onnx" e98f18a65e1a1192137e77e41ebae7b150ac3a6930298690016cd316e1c2a8c2
+fetch "$HF/PaddlePaddle/PP-OCRv6_medium_det_onnx/resolve/61323801669c338b7891481ec7bac61ce31b576a/inference.onnx" \
+  "$MODELS/ocr6/det.onnx" eb13b44b25bb36f89528b68720af8a61d9cf381176107f465db1757b65d086e1
+fetch "$HF/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/50c7eacafc52fa7bcf4194e8cd08e46f8558504b/inference.onnx" \
+  "$MODELS/ocr6/rec.onnx" 9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba
+fetch "$HF/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/50c7eacafc52fa7bcf4194e8cd08e46f8558504b/inference.yml" \
+  "$MODELS/ocr6/rec.yml" 991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129
+
+# the tools the two steps below need, once
+TOOLS="${ATLAS_BUILD_DIR:-$HOME/build}/atlas-model-tools"
+tools() {
+  if [ ! -x "$TOOLS/bin/python" ]; then
+    python3 -m venv "$TOOLS"
+    "$TOOLS/bin/pip" install --quiet pyyaml
+  fi
+}
+
+# the recognizer's dictionary, one character per line, from its config
+if [ ! -s "$MODELS/ocr6/dict.txt" ]; then
+  tools
+  "$TOOLS/bin/python" -I -c '
+import sys, yaml
+chars = yaml.safe_load(open(sys.argv[1], encoding="utf8"))["PostProcess"]["character_dict"]
+open(sys.argv[2], "w", encoding="utf8").write("".join(str(c) + "\n" for c in chars))
+' "$MODELS/ocr6/rec.yml" "$MODELS/ocr6/dict.txt"
+fi
+
+# RF-DETR Large, exported from its pinned release with PyTorch on the CPU
+RFDETR_VERSION=1.12.0
+if [ ! -s "$MODELS/rfdetr/large.onnx" ]; then
+  tools
+  echo "exporting RF-DETR Large $RFDETR_VERSION to ONNX (downloads PyTorch once) ..."
+  "$TOOLS/bin/pip" install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+  "$TOOLS/bin/pip" install --quiet "rfdetr==$RFDETR_VERSION" onnx
+  mkdir -p "$MODELS/rfdetr"
+  work="$(mktemp -d)"
+  (cd "$work" && "$TOOLS/bin/python" -c 'from rfdetr import RFDETRLarge; RFDETRLarge().export(output_dir=".")' >/dev/null)
+  mv "$work/rfdetr-large.onnx" "$MODELS/rfdetr/large.onnx"
+  rm -rf "$work"
+fi
+
+# ---- ONNX Runtime (GPU) ----------------------------------------------------
+ORT_VERSION=1.31.1
+ORT=/usr/local/lib/atlas/onnxruntime
+if [ "$(cat "$ORT/.version" 2>/dev/null)" != "$ORT_VERSION" ]; then
+  echo "installing ONNX Runtime $ORT_VERSION with CUDA ..."
+  tmp="$(mktemp -d)"
+  python3 -m venv "$tmp/venv"
+  "$tmp/venv/bin/pip" install --quiet --target "$tmp/ort" "onnxruntime-gpu[cuda,cudnn]==$ORT_VERSION"
+  echo "$ORT_VERSION" > "$tmp/ort/.version"
+  sudo rm -rf "$ORT"
+  sudo mkdir -p "$(dirname "$ORT")"
+  sudo mv "$tmp/ort" "$ORT"
   rm -rf "$tmp"
 fi
 

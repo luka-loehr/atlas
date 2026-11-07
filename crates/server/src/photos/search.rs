@@ -162,7 +162,7 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
     let people_rows = c
         .query(
             &format!(
-                "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos
+                "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos, p.kind
                  FROM persons p JOIN faces f ON f.person_id = p.id JOIN assets ON assets.id = f.asset_id
                  WHERE p.merged_into IS NULL AND p.display_name ILIKE $1 AND {VISIBLE}
                  GROUP BY p.id ORDER BY photos DESC LIMIT 8"
