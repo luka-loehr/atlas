@@ -37,7 +37,9 @@ struct InfoSheet: View {
                 dateRow
                 cameraCard
                 mapCard
+                textCard
                 coverSection
+                hideStrangers
             }
             .padding(18)
             .padding(.top, 8)
@@ -154,6 +156,49 @@ struct InfoSheet: View {
         return out
     }
 
+    // MARK: - Text in the photo
+
+    @ViewBuilder
+    private var textCard: some View {
+        if let text = info?.text, !text.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Text", systemImage: "text.viewfinder")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(text)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .lineLimit(12)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color.cardBackground, in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    // MARK: - Strangers
+
+    /// Hides everyone unnamed on the photo (a school's staff photo): they
+    /// leave People, search and this panel, and stay hidden when they turn
+    /// up in other photos.
+    @ViewBuilder
+    private var hideStrangers: some View {
+        if personsOnPhoto.contains(where: { $0.name == nil }) {
+            Button {
+                Task {
+                    try? await library.client.hideFaces(inAssets: [asset.id])
+                    if let fresh = try? await library.client.assetInfo(asset.id) {
+                        info = fresh
+                        faces = fresh.people
+                    }
+                }
+            } label: {
+                Label("Hide Unnamed People in This Photo", systemImage: "eye.slash")
+            }
+            .font(.subheadline)
+        }
+    }
+
     // MARK: - Map
 
     @ViewBuilder
@@ -210,7 +255,7 @@ struct InfoSheet: View {
         if !personsOnPhoto.isEmpty {
             FlowLayout(spacing: 8) {
                 ForEach(personsOnPhoto) { f in
-                    let person = Person(id: f.person, name: f.name, coverFace: f.face, photos: 0)
+                    let person = Person(id: f.person, name: f.name, coverFace: f.face, photos: 0, kind: f.kind ?? "person")
                     #if os(iOS)
                     NavigationLink {
                         PersonDetailScreen(library: library, person: person)

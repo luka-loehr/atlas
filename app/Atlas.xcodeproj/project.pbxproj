@@ -23,6 +23,7 @@
 		25503606CD81AC4B04AAE776 /* AlbumWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3564974376000E1F3E6417A3 /* AlbumWidget.swift */; };
 		2735579E00860A7EA740C6E7 /* AlbumPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */; };
 		29DEADF8828EAD1F58E297C2 /* DriveScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285FF36D6B44576320BBC93 /* DriveScreen.swift */; platformFilters = (ios, ); };
+		2BDFE2896DBB4356E6D786A8 /* PeopleExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9477B3B5FE3E1C8645BF496E /* PeopleExtras.swift */; };
 		3000C718B6D51574404EE4C6 /* PhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */; };
 		34AF8E717DCAA36AF2ACB2EF /* MediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151313760EDC071BADFEF3E8 /* MediaStore.swift */; };
 		3893BFB56D24023F68C73746 /* AtlasCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B053E2A052D48A419DFEB83 /* AtlasCommands.swift */; platformFilters = (macos, ); };
@@ -146,6 +147,7 @@
 		8C22E76AAD2648E9F8703F7D /* NetworkWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWatch.swift; sourceTree = "<group>"; };
 		8CAC5B1838A9E7D2AD0E89C0 /* Common.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Common.swift; sourceTree = "<group>"; };
 		8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = AtlasWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9477B3B5FE3E1C8645BF496E /* PeopleExtras.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleExtras.swift; sourceTree = "<group>"; };
 		960D112EC6584D8D0BA84043 /* PhotoMutations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMutations.swift; sourceTree = "<group>"; };
 		967CA86A1914A3E70629D9E9 /* ThumbFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbFill.swift; sourceTree = "<group>"; };
 		A11A82F97E9C46A16439690B /* Shares.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shares.swift; sourceTree = "<group>"; };
@@ -391,6 +393,7 @@
 				512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */,
 				8CAC5B1838A9E7D2AD0E89C0 /* Common.swift */,
 				E3856AB17EC39E376E1CC478 /* InfoSheet.swift */,
+				9477B3B5FE3E1C8645BF496E /* PeopleExtras.swift */,
 				0E4AE35D3606457E9607B926 /* ShareLink.swift */,
 			);
 			path = Views;
@@ -554,6 +557,7 @@
 				70F79F4B48013DEFCA26029C /* MediaFetch.swift in Sources */,
 				34AF8E717DCAA36AF2ACB2EF /* MediaStore.swift in Sources */,
 				03DAF593759C996097AEF39B /* NetworkWatch.swift in Sources */,
+				2BDFE2896DBB4356E6D786A8 /* PeopleExtras.swift in Sources */,
 				6A4BD7467FAA1D79D86CECA1 /* Persons.swift in Sources */,
 				83D0D5DFD1952C0163DA124C /* PersonsScreen.swift in Sources */,
 				FB5A87CC4B24F2F03C5659CD /* PhotoCellLayer.swift in Sources */,

@@ -23,6 +23,7 @@ struct SearchScreen: View {
                     }
                 } else {
                     ScrollView {
+                        QueryChips(parts: result.understood)
                         if !result.persons.isEmpty {
                             personsRow
                         }
@@ -45,7 +46,7 @@ struct SearchScreen: View {
                 PersonDetailScreen(library: library, person: p)
             }
         }
-        .searchable(text: $query, prompt: "Person, place, dog, 2019…")
+        .searchable(text: $query, prompt: "Alex and Sam, beach, Spain 2024…")
         // the model unloads after ten idle minutes: load it while the
         // query is being typed, not after it was sent
         .task { await library.client.warmSearch() }

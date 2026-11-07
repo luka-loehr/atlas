@@ -1,12 +1,14 @@
 import SwiftUI
 
 /// Everyone atlas recognized: a three-column grid of round faces with
-/// names and photo counts. Tap -> PersonDetailScreen.
+/// names and photo counts, people first, then pets. Tap ->
+/// PersonDetailScreen; long press to hide someone.
 struct PersonsScreen: View {
     var library: Library
     // the last list, faces already on the phone: the screen opens complete
     @State private var persons: [Person] = PeopleMemo.people
     @State private var loaded = !PeopleMemo.people.isEmpty
+    @State private var showHidden = false
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 20), count: 3)
 
@@ -14,8 +16,40 @@ struct PersonsScreen: View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
             ScrollView {
+                grid(persons.filter { !$0.isPet })
+                if persons.contains(where: \.isPet) {
+                    Text("Pets")
+                        .font(.title3.bold())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 28)
+                    grid(persons.filter(\.isPet))
+                }
+                if persons.isEmpty && loaded {
+                    ContentUnavailableView("No People", systemImage: "person.crop.circle",
+                                           description: Text("People appear here once atlas has recognized faces."))
+                        .padding(.top, 60)
+                }
+            }
+            .scrollIndicators(.hidden)
+            .refreshable { await load() }
+        }
+        .navigationTitle("People")
+        .inlineNavigationTitle()
+        .toolbar {
+            ToolbarItem(placement: .trailingBar) {
+                Button("Hidden People", systemImage: "eye.slash") { showHidden = true }
+            }
+        }
+        .sheet(isPresented: $showHidden) {
+            HiddenPeopleSheet(library: library) { Task { await load() } }
+        }
+        .task { await load() }
+    }
+
+    private func grid(_ shown: [Person]) -> some View {
                 LazyVGrid(columns: cols, spacing: 24) {
-                    ForEach(persons) { person in
+                    ForEach(shown) { person in
                         NavigationLink {
                             PersonDetailScreen(library: library, person: person)
                         } label: {
@@ -36,26 +70,26 @@ struct PersonsScreen: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Hide", systemImage: "eye.slash") { hide(person) }
+                        }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(person.displayName)
                         .accessibilityValue("\(person.photos) \(person.photos == 1 ? "photo" : "photos")")
                         .accessibilityAddTraits(.isButton)
+                        .accessibilityAction(named: "Hide") { hide(person) }
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
-                if persons.isEmpty && loaded {
-                    ContentUnavailableView("No People", systemImage: "person.crop.circle",
-                                           description: Text("People appear here once atlas has recognized faces."))
-                        .padding(.top, 60)
-                }
-            }
-            .scrollIndicators(.hidden)
-            .refreshable { await load() }
+    }
+
+    private func hide(_ person: Person) {
+        persons.removeAll { $0.id == person.id }
+        PeopleMemo.people = persons
+        Task {
+            do { try await library.client.setPersonHidden(person.id, true) } catch { await load() }
         }
-        .navigationTitle("People")
-        .inlineNavigationTitle()
-        .task { await load() }
     }
 
     private func load() async {
@@ -79,6 +113,7 @@ struct PersonDetailScreen: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var changeFailed = false
+    @Environment(\.dismiss) private var dismissScreen
     @Namespace private var zoom
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
@@ -137,10 +172,19 @@ struct PersonDetailScreen: View {
                         newName = person.name ?? ""
                         renaming = true
                     } label: { Label("Rename", systemImage: "pencil") }
+                    Button {
+                        Task {
+                            do {
+                                try await library.client.setPersonHidden(person.id, true)
+                                PeopleMemo.people.removeAll { $0.id == person.id }
+                                dismissScreen()
+                            } catch { changeFailed = true }
+                        }
+                    } label: { Label("Hide", systemImage: "eye.slash") }
                 }
             }
         }
-        .alert("Name This Person", isPresented: $renaming) {
+        .alert(person.isPet ? "Name This Pet" : "Name This Person", isPresented: $renaming) {
             TextField("Name", text: $newName)
             Button("Save") {
                 let name = newName.trimmingCharacters(in: .whitespaces)
@@ -157,7 +201,7 @@ struct PersonDetailScreen: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("What’s this person’s name?")
+            Text(person.isPet ? "What’s this pet’s name?" : "What’s this person’s name?")
         }
         .changeFailedAlert($changeFailed)
         .task { assets = (try? await library.client.personAssets(person.id)) ?? [] }
