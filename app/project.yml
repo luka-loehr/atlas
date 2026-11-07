@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.lukaloehr
   deploymentTarget:
     iOS: "26.1"
+    macOS: "26.0"
   createIntermediateGroups: true
   developmentLanguage: en
 
@@ -27,15 +28,33 @@ packages:
     exactVersion: "1.11.2"
 
 targets:
+  # One app target for iPhone, iPad and Mac. On the Mac it is a native
+  # AppKit-hosted SwiftUI app (not Mac Catalyst, not "Designed for iPad"):
+  # the model, cache and networking layer is shared, each platform has its
+  # own interface, following its Human Interface Guidelines.
+  #   Atlas/       shared by both platforms
+  #   Atlas/iOS/   the iPhone and iPad interface, backup, widget staging
+  #   Mac/         the Mac interface: window, sidebar, menus, settings
   Atlas:
     type: application
-    platform: iOS
+    supportedDestinations: [iOS, macOS]
     sources:
       - path: Atlas
+        excludes:
+          - "iOS/**"
+      - path: Atlas/iOS
+        destinationFilters: [iOS]
+      - path: Mac
+        destinationFilters: [macOS]
+        excludes:
+          - Info.plist
+          - "*.entitlements"
       - path: Shared
+        destinationFilters: [iOS]
     dependencies:
       - package: SwiftTerm
       - target: AtlasWidget
+        destinationFilters: [iOS]
     entitlements:
       path: Atlas/Atlas.entitlements
       properties:
@@ -86,6 +105,14 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lukaloehr.atlas.ios
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        # The Mac app has its own Info.plist and entitlements: App Sandbox
+        # (network client, files the user picks, Downloads) and the
+        # hardened runtime, as Apple requires for Mac apps.
+        INFOPLIST_FILE[sdk=macosx*]: Mac/Info.plist
+        CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: Mac/Atlas.entitlements
+        ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
+        ENABLE_APP_SANDBOX[sdk=macosx*]: YES
+        COMBINE_HIDPI_IMAGES[sdk=macosx*]: YES
     attributes:
       SystemCapabilities:
         com.apple.ApplicationGroups.iOS:

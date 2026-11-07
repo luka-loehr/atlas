@@ -263,7 +263,7 @@ struct ServerStatusScreen: View {
             }
         }
         .navigationTitle("Server")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .overlay {
             if machine.snapshot == nil && machine.latest == nil && session.reachability == .offline {
                 ServerUnavailableView()
@@ -392,7 +392,7 @@ private struct QueueScreen: View {
             }
         }
         .navigationTitle("Processing")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
     }
 }
 

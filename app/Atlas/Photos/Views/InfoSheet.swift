@@ -13,23 +13,37 @@ struct InfoSheet: View {
     @State private var faces: [AssetFace] = []
     @State private var coverSet: Set<Int64> = []   // persons whose avatar now IS this photo
 
+    #if os(macOS)
+    /// On the Mac the info is the window's inspector, and a person chip
+    /// shows that person in the main window.
+    @Environment(\.openPerson) private var openPerson
+    #endif
+
     var body: some View {
+        #if os(iOS)
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    personFlow
-                    dateRow
-                    cameraCard
-                    mapCard
-                    coverSection
-                }
-                .padding(18)
-                .padding(.top, 8)
-            }
-            .toolbar(.hidden, for: .navigationBar)
+            content.toolbar(.hidden, for: .navigationBar)
         }
         .presentationDragIndicator(.visible)
-        .task {
+        #else
+        content
+        #endif
+    }
+
+    private var content: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                personFlow
+                dateRow
+                cameraCard
+                mapCard
+                coverSection
+            }
+            .padding(18)
+            .padding(.top, 8)
+        }
+        .task(id: asset.id) {
+            if info?.id != asset.id { info = nil; faces = []; coverSet = [] }
             // one request: the detail carries the faces
             guard let fresh = try? await library.client.assetInfo(asset.id) else { return }
             info = fresh
@@ -110,7 +124,7 @@ struct InfoSheet: View {
                 .padding(.horizontal, 6)
             }
         }
-        .background(Color(uiColor: .secondarySystemBackground),
+        .background(Color.cardBackground,
                     in: RoundedRectangle(cornerRadius: 14))
     }
 
@@ -177,7 +191,7 @@ struct InfoSheet: View {
                     .padding(14)
                 }
             }
-            .background(Color(uiColor: .secondarySystemBackground))
+            .background(Color.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
     }
@@ -196,35 +210,40 @@ struct InfoSheet: View {
         if !personsOnPhoto.isEmpty {
             FlowLayout(spacing: 8) {
                 ForEach(personsOnPhoto) { f in
+                    let person = Person(id: f.person, name: f.name, coverFace: f.face, photos: 0)
+                    #if os(iOS)
                     NavigationLink {
-                        PersonDetailScreen(
-                            library: library,
-                            person: Person(id: f.person, name: f.name,
-                                           coverFace: f.face, photos: 0))
-                    } label: {
-                        HStack(spacing: 6) {
-                            ZStack {
-                                Circle().fill(Color(.secondarySystemFill))
-                                Thumb(url: library.client.faceCropURL(f.face))
-                            }
-                            .frame(width: 26, height: 26)
-                            .clipShape(Circle())
-                            Text(f.displayName)
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(f.name == nil ? .secondary : .primary)
-                                .lineLimit(1)   // chip stays one line, truncates
-                        }
-                        .padding(.leading, 4)
-                        .padding(.trailing, 12)
-                        .padding(.vertical, 4)
-                        .background(Color(uiColor: .secondarySystemBackground),
-                                    in: Capsule())
-                    }
+                        PersonDetailScreen(library: library, person: person)
+                    } label: { chip(f) }
                     .buttonStyle(.plain)
+                    #else
+                    Button { openPerson(person) } label: { chip(f) }
+                        .buttonStyle(.plain)
+                    #endif
                 }
             }
             .padding(.top, 4)
         }
+    }
+
+    private func chip(_ f: AssetFace) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle().fill(Color.placeholderFill)
+                Thumb(url: library.client.faceCropURL(f.face))
+            }
+            .frame(width: 26, height: 26)
+            .clipShape(Circle())
+            Text(f.displayName)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(f.name == nil ? .secondary : .primary)
+                .lineLimit(1)   // chip stays one line, truncates
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 12)
+        .padding(.vertical, 4)
+        .background(Color.cardBackground,
+                    in: Capsule())
     }
 
     // MARK: - "Als Titelbild festlegen" — one row per person on the photo;
@@ -246,7 +265,7 @@ struct InfoSheet: View {
                     } label: {
                         HStack(spacing: 12) {
                             ZStack {
-                                Circle().fill(Color(.secondarySystemFill))
+                                Circle().fill(Color.placeholderFill)
                                 Thumb(url: library.client.faceCropURL(f.face))
                             }
                             .frame(width: 34, height: 34)
@@ -264,7 +283,7 @@ struct InfoSheet: View {
                                                       : AnyShapeStyle(.secondary))
                         }
                         .padding(12)
-                        .background(Color(uiColor: .secondarySystemBackground),
+                        .background(Color.cardBackground,
                                     in: RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)

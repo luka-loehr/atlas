@@ -1086,9 +1086,6 @@ private struct PlayerLayerView: UIViewRepresentable {
     }
 }
 
-extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
 
 
 /// The audio session for video playback, set up once, off the main thread.

@@ -253,13 +253,6 @@ struct AlbumsScreen: View {
     }
 }
 
-/// The album list as last fetched, so the tab opens complete and refreshes
-/// behind it.
-@MainActor
-enum AlbumsMemo {
-    static var albums: [Album] = []
-    static var fetchedAt: Date?
-}
 
 /// A section title in the Photos style: bold, with an optional "See All".
 private struct SectionHeader<Trailing: View>: View {
@@ -491,29 +484,6 @@ struct AllAlbumsScreen: View {
 
 // MARK: - Special collections
 
-enum SpecialKind: String, Identifiable, Hashable {
-    case favorites, videos, locked, archive, trash
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .favorites: return "Favorites"
-        case .videos:    return "Videos"
-        case .locked:    return "Locked"
-        case .archive:   return "Archive"
-        case .trash:     return "Recently Deleted"
-        }
-    }
-    var icon: String {
-        switch self {
-        case .favorites: return "heart"
-        case .videos:    return "video"
-        case .locked:    return "lock"
-        case .archive:   return "archivebox"
-        case .trash:     return "trash"
-        }
-    }
-}
 
 /// A collection of the Media Types or Utilities lists, with the actions
 /// that fit it in a selection toolbar.

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Photos or an album on their way to a share link, for `.sheet(item:)`.
 struct ShareLinkItem: Identifiable {
@@ -69,7 +68,7 @@ struct ShareLinkSheet: View {
                 }
             }
             .navigationTitle("Share Link")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(share == nil ? "Cancel" : "Done", systemImage: "xmark") { dismiss() }
@@ -77,11 +76,13 @@ struct ShareLinkSheet: View {
             }
             .task(id: share?.id) { await poll() }
             .onChange(of: share?.state) { old, new in
-                if old == .uploading, new == .ready { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+                if old == .uploading, new == .ready { Haptics.success() }
             }
+            #if os(iOS)
             .sheet(item: $sending) { send in
                 ActivitySheet(items: send.items).presentationDetents([.medium, .large])
             }
+            #endif
             .changeFailedAlert($failed)
             .alert("Sharing Isn’t Set Up", isPresented: $notSetUp) {
                 Button("OK", role: .cancel) {}
@@ -108,8 +109,7 @@ struct ShareLinkSheet: View {
             Toggle("Password", isOn: $protect.animation())
             if protect {
                 TextField("Password", text: $password)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                    .plainTextEntry()
             }
         }
         Section {
@@ -172,13 +172,19 @@ struct ShareLinkSheet: View {
         }
         Section {
             Button(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc") {
-                UIPasteboard.general.url = s.url
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Pasteboard.copy(s.url)
+                Haptics.success()
                 withAnimation { copied = true }
             }
+            #if os(macOS)
+            SwiftUI.ShareLink(item: s.url, message: s.password.map { Text("Password: \($0)") }) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+            #else
             Button("Share…", systemImage: "square.and.arrow.up") {
                 sending = LinkSend(s, password: s.password)
             }
+            #endif
         }
         Section {
             Button(role: .destructive) { stop(s) } label: {
@@ -209,7 +215,7 @@ struct ShareLinkSheet: View {
             defer { stopping = false }
             do {
                 try await library.client.stopSharing(s.id)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Haptics.success()
                 dismiss()
             } catch {
                 failed = true
@@ -290,12 +296,18 @@ struct SharedLinksScreen: View {
                     ForEach(shares) { share in
                         Menu {
                             Button("Copy Link", systemImage: "doc.on.doc") {
-                                UIPasteboard.general.url = share.url
-                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                Pasteboard.copy(share.url)
+                                Haptics.success()
                             }
+                            #if os(macOS)
+                            SwiftUI.ShareLink(item: share.url, message: share.password.map { Text("Password: \($0)") }) {
+                                Label("Share…", systemImage: "square.and.arrow.up")
+                            }
+                            #else
                             Button("Share…", systemImage: "square.and.arrow.up") {
                                 sending = LinkSend(share, password: share.password)
                             }
+                            #endif
                             Button("Stop Sharing", systemImage: "xmark.circle", role: .destructive) { stopping = share }
                         } label: {
                             SharedLinkRow(library: library, share: share)
@@ -309,7 +321,7 @@ struct SharedLinksScreen: View {
             }
         }
         .navigationTitle("Shared Links")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .task {
             await load()
             while !Task.isCancelled, shares.contains(where: { $0.state == .uploading }) {
@@ -323,9 +335,11 @@ struct SharedLinksScreen: View {
             Button("Stop Sharing", role: .destructive) { stop(share) }
             Button("Cancel", role: .cancel) {}
         }
+        #if os(iOS)
         .sheet(item: $sending) { send in
             ActivitySheet(items: send.items).presentationDetents([.medium, .large])
         }
+        #endif
         .changeFailedAlert($failed)
     }
 
@@ -357,7 +371,7 @@ private struct SharedLinkRow: View {
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
-                Rectangle().fill(Color(.secondarySystemFill))
+                Rectangle().fill(Color.placeholderFill)
                 if let cover = share.cover {
                     Thumb(url: library.client.thumbURL(cover, 512))
                 } else {
@@ -412,6 +426,7 @@ private struct LinkSend: Identifiable {
     }
 }
 
+#if os(iOS)
 private struct ActivitySheet: UIViewControllerRepresentable {
     let items: [Any]
 
@@ -421,3 +436,4 @@ private struct ActivitySheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
+#endif

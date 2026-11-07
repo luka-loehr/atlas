@@ -836,7 +836,4 @@ final class PhotoCell: UICollectionViewCell {
     }()
 }
 
-extension Notification.Name {
-    /// Re-tap on the Library tab: show the newest photos.
-    static let atlasScrollToNewest = Notification.Name("atlas.scrollToNewest")
-}
+

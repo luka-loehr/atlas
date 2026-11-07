@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import ImageIO
 import os
 
@@ -22,18 +21,18 @@ final class MediaCache {
     static let shared = MediaCache()
 
     /// Grid cells, keyed "id@pixels".
-    private let gridRam = NSCache<NSString, UIImage>()
+    private let gridRam = NSCache<NSString, PlatformImage>()
     /// Small images asked for by URL (album covers, search, filmstrip, faces).
-    private let urlRam = NSCache<NSString, UIImage>()
+    private let urlRam = NSCache<NSString, PlatformImage>()
     /// 2048 previews and originals, kept apart so a few big viewer images
     /// cannot evict the grid working set.
-    private let bigRam = NSCache<NSString, UIImage>()
+    private let bigRam = NSCache<NSString, PlatformImage>()
     /// The viewer's look-ahead: previews of the pages around the current
     /// one, decoded and held until they leave the window.
-    private var windowRam: [NSString: UIImage] = [:]
+    private var windowRam: [NSString: PlatformImage] = [:]
     /// Local thumbnails of photos just taken on this iPhone, shown until the
     /// server's own thumbnail is in the store.
-    private var seeds: [String: UIImage] = [:]
+    private var seeds: [String: PlatformImage] = [:]
 
     nonisolated static let decodeQueue: OperationQueue = {
         let q = OperationQueue()
@@ -55,18 +54,14 @@ final class MediaCache {
         urlRam.countLimit = 600
         bigRam.totalCostLimit = 200 << 20
         bigRam.countLimit = 12
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated {
-                let me = MediaCache.shared
-                me.gridRam.removeAllObjects()
-                me.urlRam.removeAllObjects()
-                me.bigRam.removeAllObjects()
-                me.windowRam.removeAll()
-                // photos just taken: their thumbnails come from the server
-                me.seeds.removeAll()
-            }
+        MemoryPressure.observe {
+            let me = MediaCache.shared
+            me.gridRam.removeAllObjects()
+            me.urlRam.removeAllObjects()
+            me.bigRam.removeAllObjects()
+            me.windowRam.removeAll()
+            // photos just taken: their thumbnails come from the server
+            me.seeds.removeAll()
         }
         // the first pipeline kept up to 4 GB of thumbnails and originals in
         // the shared URL cache; the store replaces it
@@ -111,10 +106,10 @@ final class MediaCache {
         return nil
     }
 
-    // MARK: Grid (UIKit cells)
+    // MARK: Grid (UIKit and AppKit cells)
 
     /// A grid thumbnail that is ready now, or nil.
-    func gridImage(id: String, pixels: Int) -> UIImage? {
+    func gridImage(id: String, pixels: Int) -> PlatformImage? {
         gridRam.object(forKey: Self.gridKey(id, pixels) as NSString) ?? seeds[id]
     }
 
@@ -126,7 +121,7 @@ final class MediaCache {
         let key: String
         let id: String
         let pixels: Int
-        var waiters: [Int: (UIImage?) -> Void] = [:]
+        var waiters: [Int: (PlatformImage?) -> Void] = [:]
         var operation: Operation?
         var network: Task<Void, Never>?
         var triedNetwork = false
@@ -148,7 +143,7 @@ final class MediaCache {
     /// square cell of `pixels`. `done` runs on the main thread, unless the
     /// ticket was cancelled first. Requests for the same image share one job.
     func requestGrid(id: String, pixels: Int, urgent: Bool,
-                     _ done: @escaping (UIImage?) -> Void) -> Ticket {
+                     _ done: @escaping (PlatformImage?) -> Void) -> Ticket {
         let key = Self.gridKey(id, pixels)
         nextToken += 1
         let token = nextToken
@@ -194,7 +189,7 @@ final class MediaCache {
         Self.decodeQueue.addOperation(op)
     }
 
-    private func decoded(_ job: GridJob, _ img: UIImage?, fromStore: Bool) {
+    private func decoded(_ job: GridJob, _ img: PlatformImage?, fromStore: Bool) {
         // the operation has run; its block (which holds the job) goes with it
         job.operation = nil
         if let img {
@@ -214,7 +209,7 @@ final class MediaCache {
         let id = job.id
         let pixels = CGFloat(job.pixels)
         job.network = Task.detached(priority: .userInitiated) {
-            var img: UIImage?
+            var img: PlatformImage?
             let key = MediaStore.Key(.thumb, id)
             do {
                 // on disk but undecodable: drop it and fetch it again
@@ -231,7 +226,7 @@ final class MediaCache {
         }
     }
 
-    private func finish(_ job: GridJob, _ img: UIImage?) {
+    private func finish(_ job: GridJob, _ img: PlatformImage?) {
         guard jobs[job.key] === job else { return }
         jobs[job.key] = nil
         for done in job.waiters.values { done(img) }
@@ -258,7 +253,7 @@ final class MediaCache {
 
     /// Small decodes of big files (album covers) are small images: they go
     /// with the other small ones, not into the few slots of the viewer's.
-    private func ram(for key: MediaStore.Key?, maxPixel: CGFloat? = nil) -> NSCache<NSString, UIImage> {
+    private func ram(for key: MediaStore.Key?, maxPixel: CGFloat? = nil) -> NSCache<NSString, PlatformImage> {
         if let maxPixel, maxPixel <= 1024 { return urlRam }
         switch key?.kind {
         case .preview, .original: return bigRam
@@ -267,7 +262,7 @@ final class MediaCache {
     }
 
     /// A decoded image for `url` that is ready now.
-    func cached(_ url: URL, maxPixel: CGFloat? = nil) -> UIImage? {
+    func cached(_ url: URL, maxPixel: CGFloat? = nil) -> PlatformImage? {
         let k = Self.urlKey(url, maxPixel)
         if let img = windowRam[k] { return img }
         let key = Self.key(of: url)
@@ -278,23 +273,23 @@ final class MediaCache {
 
     /// Puts a locally made thumbnail in place of the server's until that is
     /// on the phone (photos just taken here).
-    func seed(_ url: URL, image: UIImage) {
+    func seed(_ url: URL, image: PlatformImage) {
         let key = Self.key(of: url)
         if let key, key.kind == .thumb { seeds[key.id] = image; return }
         ram(for: key).setObject(image, forKey: Self.urlKey(url, nil), cost: image.decodedCost)
     }
 
     /// Thumbnails, downsampled to `maxPixel` (longest side) if given.
-    func load(_ url: URL, maxPixel: CGFloat? = nil) async -> UIImage? {
+    func load(_ url: URL, maxPixel: CGFloat? = nil) async -> PlatformImage? {
         await fetch(url, maxPixel: maxPixel, priority: .visible)
     }
 
     /// Full-screen viewer image, downsampled to `maxPixel`.
-    func loadFull(_ url: URL, maxPixel: CGFloat) async -> UIImage? {
+    func loadFull(_ url: URL, maxPixel: CGFloat) async -> PlatformImage? {
         await fetch(url, maxPixel: maxPixel, priority: .visible)
     }
 
-    private func fetch(_ url: URL, maxPixel: CGFloat?, priority: MediaFetch.Priority) async -> UIImage? {
+    private func fetch(_ url: URL, maxPixel: CGFloat?, priority: MediaFetch.Priority) async -> PlatformImage? {
         if let img = cached(url, maxPixel: maxPixel) { return img }
         if Task.isCancelled { return nil }
         let key = Self.key(of: url)
@@ -308,7 +303,7 @@ final class MediaCache {
     /// Off the main thread: local file if there is one, else download (into
     /// the store), then decode.
     nonisolated private static func produce(_ url: URL, key: MediaStore.Key?, maxPixel: CGFloat?,
-                                            priority: MediaFetch.Priority) async -> UIImage? {
+                                            priority: MediaFetch.Priority) async -> PlatformImage? {
         let queuePriority: Operation.QueuePriority = priority == .visible ? .veryHigh : .low
         do {
             guard let key else {
@@ -473,7 +468,7 @@ final class MediaCache {
     // MARK: Decoding
 
     nonisolated static func onDecodeQueue(_ priority: Operation.QueuePriority = .normal,
-                                          _ work: @escaping @Sendable () -> UIImage?) async -> UIImage? {
+                                          _ work: @escaping @Sendable () -> PlatformImage?) async -> PlatformImage? {
         if Task.isCancelled { return nil }
         return await withCheckedContinuation { cont in
             let op = BlockOperation { cont.resume(returning: work()) }
@@ -482,13 +477,13 @@ final class MediaCache {
         }
     }
 
-    nonisolated static func decode(file: URL, maxPixel: CGFloat?, fill: Bool) -> UIImage? {
+    nonisolated static func decode(file: URL, maxPixel: CGFloat?, fill: Bool) -> PlatformImage? {
         let opts = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let src = CGImageSourceCreateWithURL(file as CFURL, opts) else { return nil }
         return decode(src, maxPixel: maxPixel, fill: fill)
     }
 
-    nonisolated static func decode(data: Data, maxPixel: CGFloat?, fill: Bool) -> UIImage? {
+    nonisolated static func decode(data: Data, maxPixel: CGFloat?, fill: Bool) -> PlatformImage? {
         let opts = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let src = CGImageSourceCreateWithData(data as CFData, opts) else { return nil }
         return decode(src, maxPixel: maxPixel, fill: fill)
@@ -498,7 +493,7 @@ final class MediaCache {
     /// orientation, and the result is a finished bitmap, so nothing decodes
     /// at render time. `fill`: `maxPixel` is the SHORT side (an aspect-fill
     /// square cell), else the long side.
-    nonisolated static func decode(_ src: CGImageSource, maxPixel: CGFloat?, fill: Bool) -> UIImage? {
+    nonisolated static func decode(_ src: CGImageSource, maxPixel: CGFloat?, fill: Bool) -> PlatformImage? {
         guard CGImageSourceGetCount(src) > 0 else { return nil }
         let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
         let w = (props?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
@@ -515,13 +510,8 @@ final class MediaCache {
             kCGImageSourceThumbnailMaxPixelSize: max(target, 1),
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
-        let img = UIImage(cgImage: cg)
-        return img.preparingForDisplay() ?? img
+        return PlatformImage(cgImage: cg).preparedForDisplay()
     }
-}
-
-extension UIImage {
-    var decodedCost: Int { (cgImage?.bytesPerRow ?? 0) * (cgImage?.height ?? 0) }
 }
 
 /// A thumbnail that shows at once from memory, else appears when loaded.
@@ -535,7 +525,7 @@ struct Thumb: View {
 private struct ThumbInner: View {
     let url: URL?
     var maxPixel: CGFloat?
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     init(url: URL?, maxPixel: CGFloat?) {
         self.url = url
@@ -546,9 +536,9 @@ private struct ThumbInner: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(Color(uiColor: .secondarySystemFill))
+            Rectangle().fill(Color.placeholderFill)
             if let image {
-                Image(uiImage: image)
+                Image(platformImage: image)
                     .resizable()
                     .scaledToFill()
             }

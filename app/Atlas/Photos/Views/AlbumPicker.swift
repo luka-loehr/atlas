@@ -59,7 +59,7 @@ struct AddToAlbumSheet: View {
                         Image(systemName: "plus")
                             .font(.title2)
                             .frame(width: 56, height: 56)
-                            .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .background(Color.placeholderFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         Text("New Album…").foregroundStyle(.tint)
                     }
                 }
@@ -84,7 +84,7 @@ struct AddToAlbumSheet: View {
             .disabled(busy)
             .overlay { if busy { ProgressView() } }
             .navigationTitle(ids.count == 1 ? "Add 1 Item" : "Add \(ids.count.formatted()) Items")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", systemImage: "xmark") { dismiss() }
@@ -113,7 +113,7 @@ struct AddToAlbumSheet: View {
             do {
                 let album = try await target()
                 try await library.client.addToAlbum(album.id, ids)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Haptics.success()
                 NotificationCenter.default.post(name: .atlasAlbumsChanged, object: nil)
                 added(album)
                 dismiss()
@@ -131,7 +131,7 @@ private struct AlbumThumb: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(Color(.secondarySystemFill))
+            Rectangle().fill(Color.placeholderFill)
             if let id {
                 Thumb(url: library.client.thumbURL(id, 512))
             } else {
@@ -142,44 +142,6 @@ private struct AlbumThumb: View {
     }
 }
 
-/// Photos from the library for an album: the Library grid, picking.
-struct PhotoPickerSheet: View {
-    var library: Library
-    let title: String
-    let pick: ([String]) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var selection = Selection()
-    @State private var proxy = PhotoGridProxy()
-
-    var body: some View {
-        NavigationStack {
-            PhotoGrid(library: library, assets: library.assets, revision: library.revision,
-                      selecting: true, selected: selection.ids, proxy: proxy, titleShade: false, contextMenus: false,
-                      onTop: { _ in },
-                      onToggle: { asset in withAnimation(.snappy(duration: 0.26)) { selection.toggle(asset.id) } },
-                      menu: { _ in UIMenu(children: []) },
-                      onRefresh: { await library.refresh() })
-                .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(selection.isEmpty ? title
-                                 : selection.count == 1 ? "1 Item Selected" : "\(selection.count) Items Selected")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", systemImage: "xmark") { dismiss() }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Add", systemImage: "checkmark") {
-                            pick(Array(selection.ids))
-                            dismiss()
-                        }
-                        .disabled(selection.isEmpty)
-                    }
-                }
-                .onAppear { selection.enter() }
-        }
-    }
-}
 
 /// Photos on their way into an album, for `.sheet(item:)`.
 struct AlbumAdd: Identifiable {

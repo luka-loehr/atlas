@@ -54,7 +54,7 @@ struct PersonsScreen: View {
             .refreshable { await load() }
         }
         .navigationTitle("People")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .task { await load() }
     }
 
@@ -67,28 +67,6 @@ struct PersonsScreen: View {
     }
 }
 
-/// Round face-crop avatar with a fallback silhouette.
-struct FaceCircle: View {
-    var library: Library
-    var person: Person
-
-    var body: some View {
-        ZStack {
-            Circle().fill(Color(.secondarySystemFill))
-            if let f = person.coverFace {
-                Thumb(url: library.client.faceCropURL(f))
-            } else {
-                Image(systemName: "person.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(22)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .clipShape(Circle())
-        .accessibilityHidden(true)
-    }
-}
 
 /// One person: big avatar + name + count, then their photo grid.
 /// Rename via the ⋯ menu (alert with text field).
@@ -151,9 +129,9 @@ struct PersonDetailScreen: View {
             .scrollIndicators(.hidden)
         }
         .navigationTitle(person.displayName)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .trailingBar) {
                 Menu("More", systemImage: "ellipsis") {
                     Button {
                         newName = person.name ?? ""
