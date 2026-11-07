@@ -42,10 +42,37 @@ extension PlatformImage {
         #if os(iOS)
         preparingForDisplay() ?? self
         #else
-        self
+        // What UIKit's preparingForDisplay does: the bitmap in the format
+        // Core Animation shows directly (32-bit BGRA, premultiplied, in an
+        // RGB color space). Anything else (ImageIO's RGB without alpha, wide
+        // gamut 16-bit) is converted by Core Animation on the main thread
+        // when the layer is committed, which stalls a fast scroll.
+        guard let cg = cgImage else { return self }
+        // the display's own color space: Core Animation then has nothing to
+        // match on the main thread either
+        let space = DisplayColor.space ?? cg.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        let info = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        guard let context = CGContext(data: nil, width: cg.width, height: cg.height, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space, bitmapInfo: info) else { return self }
+        context.interpolationQuality = .none
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        guard let native = context.makeImage() else { return self }
+        return NSImage(cgImage: native)
         #endif
     }
 }
+
+#if os(macOS)
+/// The color space of the main display, read on the main thread (at launch
+/// and when the displays change) for the decoders to draw into.
+enum DisplayColor {
+    nonisolated(unsafe) static var space: CGColorSpace?
+
+    @MainActor static func update() {
+        space = NSScreen.main?.colorSpace?.cgColorSpace
+    }
+}
+#endif
 
 extension Image {
     init(platformImage image: PlatformImage) {
@@ -64,6 +91,15 @@ extension Color {
         Color(uiColor: .secondarySystemFill)
         #else
         Color(nsColor: .quaternarySystemFill)
+        #endif
+    }
+
+    /// The empty part of a bar (the storage bar).
+    static var trackFill: Color {
+        #if os(iOS)
+        Color(uiColor: .systemGray5)
+        #else
+        Color(nsColor: .quaternaryLabelColor)
         #endif
     }
 

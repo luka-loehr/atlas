@@ -34,9 +34,11 @@ final class Session {
             config = ServerConfig(url: url, token: token)
             Keychain.pinToDevice("server.token")
         }
-        #if targetEnvironment(simulator)
-        // A simulator is connected from the command line instead of by typing:
+        #if targetEnvironment(simulator) || (os(macOS) && DEBUG)
+        // A simulator (or a debug build on the Mac) is connected from the
+        // command line instead of by typing:
         //   SIMCTL_CHILD_ATLAS_URL=... SIMCTL_CHILD_ATLAS_TOKEN=... xcrun simctl launch booted com.lukaloehr.atlas.ios
+        //   ATLAS_URL=... ATLAS_TOKEN=... Atlas.app/Contents/MacOS/Atlas
         let environment = ProcessInfo.processInfo.environment
         if config == nil, let address = environment["ATLAS_URL"], let url = Self.normalize(address), let token = environment["ATLAS_TOKEN"] {
             config = ServerConfig(url: url, token: token)

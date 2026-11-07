@@ -45,6 +45,19 @@
 	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Atlas connects to your server on your network.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.lukaloehr.atlas.asset-id</string>
+			<key>UTTypeDescription</key>
+			<string>Atlas Photo</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

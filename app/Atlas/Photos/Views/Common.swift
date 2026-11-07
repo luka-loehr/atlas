@@ -13,9 +13,14 @@ enum Device {
     }
 }
 
+/// Shows a person's photos: the Mac's inspector asks the window for it.
+struct OpenPersonAction {
+    var run: @MainActor (Person) -> Void = { _ in }
+    @MainActor func callAsFunction(_ person: Person) { run(person) }
+}
+
 extension EnvironmentValues {
-    /// Shows a person's photos: the Mac's inspector asks the window for it.
-    @Entry var openPerson: @MainActor (Person) -> Void = { _ in }
+    @Entry var openPerson = OpenPersonAction()
 }
 
 /// A spinner while a server screen loads; once the request has failed, the
