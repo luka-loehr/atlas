@@ -10,7 +10,7 @@ final class PhotoCellLayer: CALayer {
     private let shade = CAGradientLayer()
     private let dim = CALayer()
     private let ring = CALayer()
-    private let durationLayer = CATextLayer()
+    private let durationLayer = CALayer()
     private let heartLayer = CALayer()
     private let checkLayer = CALayer()
 
@@ -47,10 +47,7 @@ final class PhotoCellLayer: CALayer {
         ring.borderWidth = 3
         ring.isHidden = true
 
-        durationLayer.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        durationLayer.fontSize = 11
-        durationLayer.foregroundColor = NSColor.white.cgColor
-        durationLayer.alignmentMode = .right
+        durationLayer.contentsGravity = .right
         durationLayer.isHidden = true
 
         heartLayer.contentsGravity = .resizeAspect
@@ -78,40 +75,80 @@ final class PhotoCellLayer: CALayer {
         checkLayer.contents = Badges.check(scale: contentsScale, accent: .controlAccentColor)
     }
 
-    /// Shows `asset`: from RAM at once when it is there, else decoded from
-    /// the store (or fetched) and faded in.
+    /// Shows `asset`, never blank: the sharp tile from RAM when it is
+    /// there, else the mini at once (read in microseconds) and the sharp
+    /// tile a frame or two later, swapped in without a fade. Cells bigger
+    /// than the tiles (the two largest zooms) decode the 512 thumbnail.
     func show(_ asset: Asset, pixels: Int, force: Bool = false) {
         let same = assetID == asset.id && self.pixels == pixels && imageLayer.contents != nil
         assetID = asset.id
         self.pixels = pixels
         video = asset.isVideo ? Self.duration(asset.durationS) : nil
         favorite = asset.isFavorite
-        durationLayer.string = video
+        durationLayer.contents = video.flatMap { Badges.text($0, scale: contentsScale) }
         update()
         guard !same || force else { return }
-        ticket?.cancel()
-        ticket = nil
-        if let ready = MediaCache.shared.gridImage(id: asset.id, pixels: pixels) {
+        cancel()
+        let id = asset.id
+        let tiles = GridTiles.shared
+        let big = pixels > GridTiles.sharpSide + 32
+        if !big, let sharp = tiles.cachedSharp(id) {
+            imageLayer.contents = sharp
+            return
+        }
+        if let ready = MediaCache.shared.gridImage(id: id, pixels: pixels) {
             imageLayer.contents = ready.cgImage
             return
         }
-        if !same { imageLayer.contents = nil }
-        let id = asset.id
+        let mini = tiles.mini(id)
+        if !same || mini != nil { imageLayer.contents = mini }
+        let blank = mini == nil && !same
+        if big {
+            loadThumbnail(id, pixels: pixels, fade: blank)
+            return
+        }
+        operation = tiles.requestSharp(id) { [weak self] image in
+            guard let self, self.assetID == id else { return }
+            self.operation = nil
+            if let image {
+                self.set(image, fade: blank)
+            } else {
+                // no tile yet (a photo that just arrived): the thumbnail
+                self.loadThumbnail(id, pixels: pixels, fade: blank)
+            }
+        }
+    }
+
+    private var operation: Operation?
+
+    private func loadThumbnail(_ id: String, pixels: Int, fade: Bool) {
         ticket = MediaCache.shared.requestGrid(id: id, pixels: pixels, urgent: true) { [weak self] image in
             guard let self, self.assetID == id else { return }
             self.ticket = nil
-            let fade = CATransition()
-            fade.duration = 0.15
-            fade.type = .fade
-            self.imageLayer.add(fade, forKey: "fade")
-            self.imageLayer.contents = image?.cgImage
+            self.set(image?.cgImage, fade: fade)
         }
+    }
+
+    private func set(_ image: CGImage?, fade: Bool) {
+        if fade, image != nil {
+            let t = CATransition()
+            t.duration = 0.12
+            t.type = .fade
+            imageLayer.add(t, forKey: "fade")
+        }
+        imageLayer.contents = image
+    }
+
+    private func cancel() {
+        ticket?.cancel()
+        ticket = nil
+        operation?.cancel()
+        operation = nil
     }
 
     /// Back into the pool.
     func reset() {
-        ticket?.cancel()
-        ticket = nil
+        cancel()
         assetID = nil
         imageLayer.contents = nil
         selected = false
@@ -160,6 +197,34 @@ final class PhotoCellLayer: CALayer {
 private enum Badges {
     private static var hearts: [CGFloat: CGImage] = [:]
     private static var checks: [String: CGImage] = [:]
+    private static var texts: [String: CGImage] = [:]
+
+    /// A video's length, white on clear, typeset once per string: a few
+    /// hundred distinct lengths cover a library.
+    static func text(_ string: String, scale: CGFloat) -> CGImage? {
+        let key = "\(scale)-\(string)"
+        if let image = texts[key] { return image }
+        let text = NSAttributedString(string: string, attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: NSColor.white,
+        ])
+        let size = text.size()
+        let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        text.draw(at: .zero)
+        NSGraphicsContext.restoreGraphicsState()
+        let image = rep.cgImage
+        if texts.count > 2000 { texts.removeAll() }
+        texts[key] = image
+        return image
+    }
 
     static func heart(scale: CGFloat) -> CGImage? {
         if let image = hearts[scale] { return image }

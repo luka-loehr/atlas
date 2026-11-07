@@ -78,6 +78,7 @@ final class AppModel {
         async let probe: Void = session.probe()
         async let albums: Void = loadAlbums()
         await library.start()
+        buildTiles()
         CacheWarmer.shared.start(library)
         NetworkWatch.shared.start { [weak self] in
             guard let self, self.session.isConnected else { return }
@@ -86,6 +87,20 @@ final class AppModel {
         }
         _ = await (probe, albums)
     }
+
+    /// The grid's tiles for what is new in the library; again a minute
+    /// later while the thumbnail fill is still bringing thumbnails in.
+    func buildTiles() {
+        GridTiles.shared.build(library.assets.map(\.id))
+        tileRetry?.cancel()
+        tileRetry = Task {
+            try? await Task.sleep(for: .seconds(60))
+            guard !Task.isCancelled, ThumbFill.shared.stored < library.assets.count else { return }
+            buildTiles()
+        }
+    }
+
+    private var tileRetry: Task<Void, Never>?
 
     func loadAlbums() async {
         guard session.isConnected, let fresh = try? await library.client.albums() else { return }
@@ -98,6 +113,7 @@ final class AppModel {
     func refresh() async {
         guard session.isConnected else { return }
         await library.refresh()
+        buildTiles()
         await loadAlbums()
         ThumbFill.shared.resume()
     }

@@ -70,6 +70,17 @@ struct MacPhotoGrid: NSViewRepresentable {
 
 // MARK: - The grid view
 
+/// A thumbnail request, cancellable like a tile operation.
+private final class TicketCancel: Operation, @unchecked Sendable {
+    private let ticket: MediaCache.Ticket
+    init(_ ticket: MediaCache.Ticket) { self.ticket = ticket }
+    override func cancel() {
+        super.cancel()
+        let ticket = ticket
+        DispatchQueue.main.async { MainActor.assumeIsolated { ticket.cancel() } }
+    }
+}
+
 final class PhotoGridView: NSView, NSDraggingSource, NSMenuItemValidation {
     var host: MacPhotoGrid!
     private(set) var revision = -1
@@ -83,7 +94,7 @@ final class PhotoGridView: NSView, NSDraggingSource, NSMenuItemValidation {
     // what is on screen
     private var visible: [Int: PhotoCellLayer] = [:]
     private var pool: [PhotoCellLayer] = []
-    private var prefetches: [Int: MediaCache.Ticket] = [:]
+    private var prefetches: [Int: Operation] = [:]
     private var lastTop = -1
     private var lastY: CGFloat = 0
     /// The photo in the middle of the window as last laid out: a resize
@@ -337,24 +348,32 @@ final class PhotoGridView: NSView, NSDraggingSource, NSMenuItemValidation {
         pool.append(cell)
     }
 
-    /// A screen of rows in the direction of travel (and a few behind) is
-    /// decoded ahead, at low priority; what fell out of reach is cancelled.
+    /// Three screens of rows in the direction of travel (and one behind)
+    /// are decoded ahead into RAM; what fell out of reach is cancelled.
     private func prefetch(around rect: CGRect, pixels px: Int) {
         let down = rect.minY >= lastY
         lastY = rect.minY
-        let ahead = rect.height * 1.5, behind = rect.height * 0.5
+        let ahead = rect.height * 3, behind = rect.height
         let reach = CGRect(x: 0, y: rect.minY - (down ? behind : ahead), width: rect.width,
                            height: rect.height + ahead + behind)
         let wanted = indices(in: reach)
-        for (i, t) in prefetches where !wanted.contains(i) {
-            t.cancel()
+        for (i, op) in prefetches where !wanted.contains(i) {
+            op.cancel()
             prefetches[i] = nil
         }
+        let tiles = GridTiles.shared
+        let big = px > GridTiles.sharpSide + 32
         for i in wanted where visible[i] == nil && prefetches[i] == nil {
             let id = assets[i].id
-            guard MediaCache.shared.gridImage(id: id, pixels: px) == nil else { continue }
-            prefetches[i] = MediaCache.shared.requestGrid(id: id, pixels: px, urgent: false) { [weak self] _ in
-                self?.prefetches[i] = nil
+            if big {
+                guard MediaCache.shared.gridImage(id: id, pixels: px) == nil else { continue }
+                let ticket = MediaCache.shared.requestGrid(id: id, pixels: px, urgent: false) { [weak self] _ in
+                    self?.prefetches[i] = nil
+                }
+                prefetches[i] = TicketCancel(ticket)
+            } else {
+                guard tiles.cachedSharp(id) == nil else { continue }
+                prefetches[i] = tiles.requestSharp(id, priority: .low) { [weak self] _ in self?.prefetches[i] = nil }
             }
         }
     }

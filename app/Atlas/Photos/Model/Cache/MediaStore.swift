@@ -208,6 +208,11 @@ final class MediaStore: @unchecked Sendable {
         return dest
     }
 
+    /// Told when a grid thumbnail leaves the store (made again on the
+    /// server, or undecodable): copies derived from it go too (the Mac's
+    /// grid tiles).
+    nonisolated(unsafe) static var thumbRemoved: (@Sendable (String) -> Void)?
+
     /// A file that failed to decode is removed so it is fetched again.
     func remove(_ key: Key) {
         if key.kind == .thumb {
@@ -215,6 +220,7 @@ final class MediaStore: @unchecked Sendable {
             let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
             try? FileManager.default.removeItem(at: url)
             lock.withLock { if thumbs.remove(key.id) != nil { thumbBytes = max(thumbBytes - size, 0) } }
+            Self.thumbRemoved?(key.id)
             return
         }
         let gone: Entry? = lock.withLock {

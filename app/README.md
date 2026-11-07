@@ -82,9 +82,13 @@ Built to the macOS Human Interface Guidelines:
   (Library ⌘1 … Server ⌘7), Window (Terminal ⌥⌘T). Toolbars and context
   menus repeat them; unavailable items are disabled, not hidden.
 - **The photo grid** is one view drawing a recycled pool of Core Animation
-  layers (no view per cell), fed from the same pinned thumbnail store as
-  the phone; thumbnails are decoded and converted to the display's format
-  on the decode queue, so scrolling never decodes on the main thread.
+  layers (no view per cell). It never shows a blank cell: from the pinned
+  WebP thumbnails (5 ms to decode) the Mac makes its own **grid tiles**
+  once, in the background (`Mac/Grid/GridTiles.swift`, ~1 GB for 26,000
+  photos): a 64 px mini of every photo in one memory-mapped file, shown the
+  instant a cell appears, and a 256 px square JPEG (0.5 ms to decode) that
+  replaces it a frame later and stays in RAM. A thumbnail made again on the
+  server drops its tiles; the two largest zooms decode the 512 WebP.
   Click, ⌘-click, ⇧-click, a selection rectangle from below the photos,
   arrow keys (⇧ extends), ⌘A, Return/Space/double-click opens, `.`
   favorites, pinch or the toolbar slider zooms.
