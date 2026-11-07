@@ -12,7 +12,7 @@
 | [`crates/ml/`](../crates/ml/) | `atlas-ml`: the model worker. Semantic embeddings through llama.cpp, faces on ONNX Runtime |
 | [`crates/core/`](../crates/core/) | What the two share: database setup, migrations, the job queue protocol |
 | [`crates/cli/`](../crates/cli/) | `atlas`, the CLI for the Mac: `boot` (Wake-on-LAN) \| `shutdown` \| `status` \| `deploy` \| `connect` \| `build` \| `dev` \| `secrets` \| any remote command. Full table in its [README](../crates/cli/README.md) |
-| [`app/`](../app/) | **Atlas**, the iOS app (SwiftUI): Fotos, Alben, Dateien, Einstellungen, search |
+| [`app/`](../app/) | **Atlas**, the app (SwiftUI, one target for iOS and macOS): library, albums, people, files, server, search |
 | [`share/`](../share/) | `atlas-share`: the optional Cloudflare Worker + R2 bucket behind share links. atlas-server uploads a link's files, the Worker serves the page; every link expires within 7 days |
 | [`db/`](../db/) | Postgres 17 + pgvector in Docker, and the schema migrations |
 | [`builder/`](../builder/) | The images `atlas build` / `atlas dev` run in: one [universal Dockerfile](../builder/universal/Dockerfile) with three targets (`build`, `dev`, `mobile`), base-pinned |

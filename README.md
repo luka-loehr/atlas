@@ -2,9 +2,9 @@
 
 # Atlas – Your photos and files on your own server
 
-[![Rust](https://img.shields.io/badge/Rust-server%20%26%20CLI-DEA584?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org) [![Swift](https://img.shields.io/badge/SwiftUI-iOS%20app-F05138?style=flat&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/) [![Postgres](https://img.shields.io/badge/Postgres%2017-pgvector-4169E1?style=flat&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector) [![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20macOS%20%7C%20iOS-lightgrey?style=flat)](docs/SETUP.md) [![License](https://img.shields.io/badge/License-MIT-orange?style=flat)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-server%20%26%20CLI-DEA584?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org) [![Swift](https://img.shields.io/badge/SwiftUI-iOS%20%26%20Mac%20app-F05138?style=flat&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/) [![Postgres](https://img.shields.io/badge/Postgres%2017-pgvector-4169E1?style=flat&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector) [![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20macOS%20%7C%20iOS-lightgrey?style=flat)](docs/SETUP.md) [![License](https://img.shields.io/badge/License-MIT-orange?style=flat)](LICENSE)
 
-**Atlas** is a self-hosted photo library and drive for a single home server, with one iOS app in front of it. The backend is Rust end to end; it runs on your own hardware and is reached over a Tailscale tailnet.
+**Atlas** is a self-hosted photo library and drive for a single home server, with one app for iPhone, iPad and Mac in front of it. The backend is Rust end to end; it runs on your own hardware and is reached over a Tailscale tailnet.
 
 ---
 
@@ -16,7 +16,7 @@
 - **Backup** the iPhone uploads originals, deduplicated by content hash, and can clear backed-up items off the phone
 - **Share links** albums or a few photos as a link (optional password), served from your own Cloudflare account so links work while the server sleeps, and gone after 7 days at the latest
 - **Drive** folders over content-addressed files, with previews, full-text search and a trash
-- **One app** Fotos, Alben, Dateien and Einstellungen, with live server status, power control and a terminal
+- **One app, native everywhere** one SwiftUI codebase: the iPhone app (library, albums, files, settings) and a true Mac app with a sidebar, menu bar commands, an inspector and drag and drop with the Finder; both with live server status, power control and a terminal
 - **Built to feel instant** precomputed and compressed timeline, immutable media URLs, streaming uploads, video renditions on the GPU
 - **agentbrain sync** keep a copy of your agents' agentbrain memories on your server: every memory and version, hourly, verified and versioned ([setup](scripts/agentbrain-backup/README.md))
 - **Wake-on-LAN CLI** `atlas boot` wakes the server, `atlas deploy` installs the services, `atlas build` and `atlas dev` build other projects on it

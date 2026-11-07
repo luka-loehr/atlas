@@ -1,7 +1,12 @@
-# Atlas — the iOS app
+# Atlas — the app for iPhone, iPad and Mac
 
 One app for the whole server: the photo library, the drive, and the machine
-itself. SwiftUI, iOS 26, English UI.
+itself. SwiftUI, English UI, one Xcode target with two destinations:
+
+- **iPhone and iPad** (iOS 26.1): the tabs below.
+- **Mac** (macOS 26): a native Mac app, not Mac Catalyst and not the iPad
+  app in a window. It shares the model, cache and network layer with the
+  iPhone app and has its own interface, see [The Mac app](#the-mac-app).
 
 | Tab | |
 |---|---|
@@ -19,6 +24,19 @@ cd app && xcodegen                      # regenerates Atlas.xcodeproj from proje
 open Atlas.xcodeproj                    # pick your team under Signing, then run
 ```
 
+Pick the run destination: an iPhone (or simulator), or **My Mac**. From the
+command line:
+
+```bash
+xcodebuild -project app/Atlas.xcodeproj -scheme Atlas -destination 'platform=macOS' \
+  -derivedDataPath build-mac -configuration Release \
+  DEVELOPMENT_TEAM=<team> -allowProvisioningUpdates build
+# build-mac/Build/Products/Release/Atlas.app
+```
+
+A debug build on the Mac connects from the environment, like the simulator:
+`ATLAS_URL=… ATLAS_TOKEN=… build-mac/Build/Products/Debug/Atlas.app/Contents/MacOS/Atlas`.
+
 The app embeds a widget extension (`AtlasWidget`) and shares the App Group
 `group.com.lukaloehr.atlas.ios` with it, so signing needs a team that can
 register the group: sign in under Xcode > Settings > Accounts, then build
@@ -32,18 +50,58 @@ keychain.
 
 ## Layout
 
+`Atlas/` compiles for both platforms, `Atlas/iOS/` for iPhone and iPad only,
+`Mac/` for the Mac only (`destinationFilters` in `project.yml`).
+
 | Path | |
 |---|---|
-| `Atlas/AtlasApp.swift` | entry point, tabs, the connect screen, background backup task, `atlas://photo|album` links |
-| `Atlas/Core/` | `Session` (server address + token), `API` (JSON and WebSocket client), formatting |
+| `Atlas/iOS/AtlasApp.swift` | iOS entry point, tabs, the connect screen, background backup task, `atlas://photo|album` links |
+| `Atlas/iOS/` | the iPhone interface (`Photos/Views`, `Settings`), `BackupService`, `WidgetShelf`, `SyncStatus` |
+| `Atlas/Core/` | `Session` (server address + token), `API` (JSON and WebSocket client), formatting, `Platform` (UIKit/AppKit differences: images, colors, pasteboard, haptics, memory pressure) |
 | `Atlas/Photos/Model/` | `Library` (timeline state and its on-disk cache), `PhotoClient` and `DriveClient`, `DeviceSync` (iPhone backup) |
 | `Atlas/Photos/Model/Cache/` | the media cache: `MediaStore` (disk), `MediaFetch` (download queue), `MediaCache` (RAM, decoding, viewer look-ahead), `VideoCache` (streaming through the cache), `ThumbFill`, `CacheWarmer` |
 | `Atlas/Photos/Model/ShareFiles.swift` | what Share hands the share sheet: originals named by date and people |
 | `Atlas/Photos/Model/WidgetShelf.swift` | stages the Album widgets' photos in the App Group |
 | `Shared/` | compiled into app and widget: `WidgetData` (the App Group layout), the widget's configuration intent and album entity |
 | `AtlasWidget/` | the Album widget (WidgetKit extension) |
-| `Atlas/Photos/Views/` | the timeline grid, viewer and pager, info sheet, search, albums, people, drive, settings |
-| `Atlas/Settings/` | server status, activity, network, terminal |
+| `Atlas/Photos/Views/` | shared views: info sheet (the Mac's inspector), share links, add to album, face avatars |
+| `Atlas/Settings/` | server status, storage bar, the terminal bridge (SwiftTerm on both platforms) |
+| `Mac/` | the Mac app: `AtlasMacApp` (scenes), `AtlasCommands` (menu bar), `MacRootView` (sidebar window, people, search, connect), `Grid/` (the photo grid), `Photos/` (browser and viewer), `Files/`, `MacSettings` (Settings and Terminal windows) |
+
+## The Mac app
+
+Built to the macOS Human Interface Guidelines:
+
+- **One window per ⌘N**, a split view: the sidebar (Photos, Albums,
+  Utilities, Files, atlas) restores its selection on relaunch; the content;
+  an **inspector** with the photo's info, map and people (⌘I).
+- **The menu bar has every command**, with shortcuts: File (New Album ⌥⌘N,
+  New Folder ⇧⌘N, Upload Files ⇧⌘I, Export Originals ⇧⌘E), Image (Favorite,
+  Add to Album ⌃⌘A, Share as Link ⇧⌘L, Archive, Lock ⌃⌘L, Delete ⌘⌫), View
+  (Show Info, Zoom In/Out ⌘+ ⌘−, Refresh ⌘R, sidebar and toolbar), Go
+  (Library ⌘1 … Server ⌘7), Window (Terminal ⌥⌘T). Toolbars and context
+  menus repeat them; unavailable items are disabled, not hidden.
+- **The photo grid** is one view drawing a recycled pool of Core Animation
+  layers (no view per cell), fed from the same pinned thumbnail store as
+  the phone; thumbnails are decoded and converted to the display's format
+  on the decode queue, so scrolling never decodes on the main thread.
+  Click, ⌘-click, ⇧-click, a selection rectangle from below the photos,
+  arrow keys (⇧ extends), ⌘A, Return/Space/double-click opens, `.`
+  favorites, pinch or the toolbar slider zooms.
+- **Drag and drop**: photos drag out as their originals (Finder, Mail, …)
+  and onto an album in the sidebar; files drop into Files from the Finder to
+  upload and drag out to download.
+- **The viewer** zooms like Preview (pinch, double-click, scroll to pan),
+  steps with ← → or a two-finger swipe, plays videos in the system player
+  (Picture in Picture, full screen); Esc returns to the grid.
+- **Files** is the Finder's list view: sortable columns, Finder icons, Quick
+  Look with Space, Move to…, Deleted Files.
+- **Settings** (⌘,) has panes for the server and storage; the **Terminal**
+  opens in its own window after Touch ID or the login password, as does the
+  Locked album.
+- Sandboxed with the hardened runtime: network client, files the user
+  picks or drops, Downloads (`Mac/Atlas.entitlements`). The backup of the
+  photo library and the widget are iPhone features.
 
 ## Notes
 
