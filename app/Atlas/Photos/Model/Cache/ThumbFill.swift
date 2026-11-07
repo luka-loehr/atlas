@@ -2,8 +2,11 @@ import Foundation
 import Observation
 import os
 
-/// Downloads every grid thumbnail of the library into `MediaStore`, once,
-/// in the background: newest photos first, a few at a time, resuming where
+/// Downloads every grid thumbnail of the library, once, in the background:
+/// on the iPhone the square JPEG tiles of `GridTiles` (after which the old
+/// pinned 512 WebPs are deleted), on the Mac the 512 WebPs its own tiles
+/// are made from.
+/// newest photos first, a few at a time, resuming where
 /// it stopped after a relaunch, and topping up new photos after each
 /// timeline refresh. Its downloads are `MediaFetch`'s background work: they
 /// wait for an inexpensive network (no cellular, no Low Data Mode) and
@@ -32,6 +35,20 @@ final class ThumbFill {
     private static let concurrency = 6
 
     var running: Bool { task != nil }
+
+    /// What the fill downloads: tiles on the phone, WebPs on the Mac.
+    nonisolated private static var tiles: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// Whether `id` is on the device in the form the grid draws.
+    nonisolated private static func stored(_ id: String) -> Bool {
+        tiles ? GridTiles.shared.has(id) : MediaStore.shared.contains(.init(.thumb, id))
+    }
     var complete: Bool { total > 0 && stored >= total }
 
     /// The library as it is now, oldest first (the timeline order). Starts or
@@ -76,13 +93,26 @@ final class ThumbFill {
     }
 
     private func refreshCounts() {
-        stored = min(MediaStore.shared.thumbStats.count, total)
+        stored = min(Self.tiles ? GridTiles.shared.count : MediaStore.shared.thumbStats.count, total)
+    }
+
+    /// Downloads one tile and takes it in.
+    nonisolated private static func fetchTile(_ id: String, from url: URL) async throws {
+        try await MediaFetch.shared.run("tile/\(id)", priority: .background) { _ in
+            var req = AtlasAuth.request(url, timeoutInterval: 60)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            req.allowsExpensiveNetworkAccess = false
+            req.allowsConstrainedNetworkAccess = false
+            let (data, resp) = try await MediaFetch.shared.session.data(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+            guard GridTiles.shared.store(id, jpeg: data) else { throw URLError(.cannotDecodeContentData) }
+        }
     }
 
     private func run(ids: [String], client: PhotoClient, generation gen: Int, attempt: Int = 0) async {
         // 25,000 lookups: off the main thread
         let missing = await Task.detached(priority: .utility) {
-            ids.filter { !MediaStore.shared.contains(.init(.thumb, $0)) }
+            ids.filter { !ThumbFill.stored($0) }
         }.value
         refreshCounts()
         log.info("thumb fill: \(missing.count) of \(ids.count) missing")
@@ -100,10 +130,15 @@ final class ThumbFill {
             await withTaskGroup(of: (String, Error?).self) { group in
                 var it = batch.makeIterator()
                 func next() {
-                    guard let id = it.next(), let url = client.thumbURL(id, 512) else { return }
+                    guard let id = it.next(),
+                          let url = Self.tiles ? client.tileURL(id) : client.thumbURL(id, 512) else { return }
                     group.addTask(priority: .utility) {
                         do {
-                            _ = try await MediaFetch.shared.file(.init(.thumb, id), from: url, priority: .background)
+                            if Self.tiles {
+                                try await Self.fetchTile(id, from: url)
+                            } else {
+                                _ = try await MediaFetch.shared.file(.init(.thumb, id), from: url, priority: .background)
+                            }
                             return (id, nil)
                         } catch {
                             return (id, error)
@@ -122,6 +157,7 @@ final class ThumbFill {
                     if networkDown == nil { next() }
                 }
             }
+            if Self.tiles { GridTiles.shared.flush() }
             guard !Task.isCancelled, generation == gen else { return }
             refreshCounts()
             if let networkDown {
@@ -138,6 +174,12 @@ final class ThumbFill {
         refreshCounts()
         paused = nil
         log.info("thumb fill finished: \(self.stored)/\(self.total), \(self.failed) failed")
+        // every tile is here: the 512 WebPs the grid used to draw go
+        if Self.tiles, complete, !UserDefaults.standard.bool(forKey: Self.purgedKey) {
+            await Task.detached(priority: .utility) { MediaStore.shared.removeAllThumbs() }.value
+            UserDefaults.standard.set(true, forKey: Self.purgedKey)
+            log.info("thumb fill: all tiles here, pinned 512 thumbnails deleted")
+        }
         // what failed is tried again in a while (2, 4, ... 32 min), not only
         // at the next launch; a thumbnail atlas cannot make is not asked for
         // every two minutes forever
@@ -149,6 +191,8 @@ final class ThumbFill {
             await run(ids: ids, client: client, generation: gen, attempt: attempt + 1)
         }
     }
+
+    private static let purgedKey = "thumbs.512Removed"
 
     private static func pauseReason() -> String? {
         let info = ProcessInfo.processInfo

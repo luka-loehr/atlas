@@ -81,6 +81,8 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     private var lastTopMonth: String?
     private var pinchBase: CGFloat = 1
     private var prefetchTickets: [String: MediaCache.Ticket] = [:]
+    /// Sharp tiles being decoded ahead of the cells.
+    private var prefetchOps: [String: Operation] = [:]
     /// The first seconds of the videos on screen, fetched when the grid rests.
     private var headTickets: [String: MediaFetch.Ticket] = [:]
     /// The photo the viewer shows now: where its zoom transition returns to.
@@ -479,10 +481,19 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         let order: [Int] = scrollingUp
             ? Array(range.lowerBound..<max(visible.lowerBound, range.lowerBound)).reversed() + Array(min(visible.upperBound, range.upperBound)..<range.upperBound)
             : Array(min(visible.upperBound, range.upperBound)..<range.upperBound) + Array(range.lowerBound..<max(visible.lowerBound, range.lowerBound)).reversed()
+        let tiles = GridTiles.shared
         for i in order {
             let id = assets[i].id
             keep.insert(id)
-            guard prefetchTickets[id] == nil, MediaCache.shared.gridImage(id: id, pixels: px) == nil else { continue }
+            guard prefetchTickets[id] == nil, prefetchOps[id] == nil, tiles.cachedSharp(id) == nil else { continue }
+            if tiles.mini(id) != nil {
+                // the tile into RAM ahead of the cell
+                prefetchOps[id] = tiles.requestSharp(id, priority: .low) { [weak self] _ in
+                    self?.prefetchOps[id] = nil
+                }
+                continue
+            }
+            guard MediaCache.shared.gridImage(id: id, pixels: px) == nil else { continue }
             prefetchTickets[id] = MediaCache.shared.requestGrid(id: id, pixels: px, urgent: false) { [weak self] _ in
                 self?.prefetchTickets[id] = nil
             }
@@ -490,6 +501,10 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         for (id, t) in prefetchTickets where !keep.contains(id) {
             t.cancel()
             prefetchTickets[id] = nil
+        }
+        for (id, op) in prefetchOps where !keep.contains(id) {
+            op.cancel()
+            prefetchOps[id] = nil
         }
     }
 
@@ -602,6 +617,8 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         layout.columns = levels[next]
         for t in prefetchTickets.values { t.cancel() }
         prefetchTickets = [:]
+        for op in prefetchOps.values { op.cancel() }
+        prefetchOps = [:]
         prefetchRange = 0..<0
         collectionView.reloadData()
         collectionView.layoutIfNeeded()
@@ -685,6 +702,8 @@ final class PhotoCell: UICollectionViewCell {
     private var isVideo = false
     private var pixels = 0
     private var ticket: MediaCache.Ticket?
+    /// The sharp tile being decoded for this cell.
+    private var tileOp: Operation?
     private var sharpTask: Task<Void, Never>?
     private var selecting = false
     private var picked = false
@@ -752,7 +771,20 @@ final class PhotoCell: UICollectionViewCell {
         #if targetEnvironment(simulator)
         Self.shown += 1
         #endif
-        if let img = MediaCache.shared.gridImage(id: id, pixels: pixels) {
+        let tiles = GridTiles.shared
+        if let sharp = tiles.cachedSharp(id) {
+            // decoded already (scrolling back)
+            imageView.image = UIImage(cgImage: sharp)
+        } else if let mini = tiles.mini(id) {
+            // the mini at once, the sharp tile a frame or two later
+            imageView.image = UIImage(cgImage: mini)
+            tileOp = tiles.requestSharp(id) { [weak self] sharp in
+                guard let self, self.assetID == id, let sharp else { return }
+                self.tileOp = nil
+                self.imageView.image = UIImage(cgImage: sharp)
+            }
+        } else if let img = MediaCache.shared.gridImage(id: id, pixels: pixels) {
+            // no tile on the phone yet: the thumbnail, as before
             imageView.image = img
         } else {
             #if targetEnvironment(simulator)
@@ -779,6 +811,8 @@ final class PhotoCell: UICollectionViewCell {
     func stopLoading() {
         ticket?.cancel()
         ticket = nil
+        tileOp?.cancel()
+        tileOp = nil
         sharpTask?.cancel()
         sharpTask = nil
     }

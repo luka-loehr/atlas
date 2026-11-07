@@ -37,6 +37,35 @@ pub fn resize(src: &RgbImage, dw: u32, dh: u32) -> Result<RgbImage> {
     RgbImage::from_raw(dw, dh, dst.into_vec()).context("resize: buffer size mismatch")
 }
 
+/// The side of a grid tile: a square JPEG cropped as an aspect-fill cell
+/// shows the photo. 384 px covers an iPhone cell at three and five columns
+/// (3x screens: 396 and 237 px).
+pub const TILE: u32 = 384;
+
+/// The grid tile of a 2048 thumbnail: the center square, `TILE` px, JPEG,
+/// with the thumbnail's ICC profile (Display P3 for iPhone photos: without
+/// it the colors would be read as sRGB and look pale). A JPEG because every
+/// phone decodes it in hardware, in a fraction of a WebP's time.
+pub fn make_tile(thumb: &Path) -> Result<Vec<u8>> {
+    use image::ImageDecoder;
+    use image::codecs::jpeg::JpegEncoder;
+    let file = std::io::BufReader::new(std::fs::File::open(thumb)?);
+    let mut decoder = image::codecs::webp::WebPDecoder::new(file).context("not a WebP thumbnail")?;
+    let icc = decoder.icc_profile().ok().flatten();
+    let rgb = image::DynamicImage::from_decoder(decoder)?.into_rgb8();
+    let (w, h) = rgb.dimensions();
+    let side = w.min(h);
+    let square = image::imageops::crop_imm(&rgb, (w - side) / 2, (h - side) / 2, side, side).to_image();
+    let tile = if side > TILE { resize(&square, TILE, TILE)? } else { square };
+    let mut out = Vec::with_capacity(48 << 10);
+    let mut encoder = JpegEncoder::new_with_quality(&mut out, 80);
+    if let Some(icc) = icc {
+        let _ = image::ImageEncoder::set_icc_profile(&mut encoder, icc);
+    }
+    image::ImageEncoder::write_image(encoder, tile.as_raw(), tile.width(), tile.height(), image::ExtendedColorType::Rgb8)?;
+    Ok(out)
+}
+
 /// Lossy WebP, with the ICC profile carried in the extended container.
 pub fn encode_webp(img: &RgbImage, quality: f32, icc: Option<&[u8]>) -> Vec<u8> {
     let simple = webp::Encoder::from_rgb(img.as_raw(), img.width(), img.height()).encode(quality);

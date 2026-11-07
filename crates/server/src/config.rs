@@ -115,6 +115,11 @@ impl Config {
     pub fn thumb_path(&self, id: &str, size: u32) -> PathBuf {
         self.thumbs_dir().join(format!("{id}.{size}.webp"))
     }
+    /// The phone grid's square tile (made from the 2048 thumbnail on first
+    /// request; removed when the thumbnails are made again).
+    pub fn tile_path(&self, id: &str) -> PathBuf {
+        self.thumbs_dir().join(format!("{id}.tile.jpg"))
+    }
     pub fn preview_path(&self, id: &str) -> PathBuf {
         self.previews_dir.join(format!("{id}.mp4"))
     }

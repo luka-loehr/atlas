@@ -1,29 +1,36 @@
-import AppKit
+import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import os
 
-/// The grid's own copies of every thumbnail, made once on this Mac from the
-/// pinned 512 WebPs, so a cell never waits, however fast the grid moves.
+/// The grid's own copies of every photo, cropped to the square a cell shows,
+/// so a cell never waits, however fast the grid moves.
 ///
 /// Decoding a WebP thumbnail takes ~5 ms; a fling shows hundreds of new
-/// cells a second. So the Mac keeps two more forms of each, cropped to the
-/// square the cell shows:
+/// cells a second. So the grid keeps two forms of each photo:
 ///
-///   • the mini: 64 × 64 raw pixels in one file, read in microseconds and
-///     shown the moment a cell appears (nothing is ever blank);
-///   • the sharp tile: a 256 × 256 JPEG, decoded in under half a
-///     millisecond on the tile queue, which replaces the mini within a frame
-///     or two, and is held in RAM for scrolling back.
+///   • the mini: a few dozen pixels square, raw, all in one memory-mapped
+///     file, read in microseconds and shown the moment a cell appears
+///     (nothing is ever blank);
+///   • the sharp tile: a square JPEG, decoded in under a millisecond (in
+///     hardware on the phone) on the tile queue, which replaces the mini
+///     within a frame or two and is held in RAM for scrolling back.
 ///
-/// About 430 MB of minis and 400 MB of tiles for 26,000 photos, in
-/// Application Support beside the thumbnails, built in the background in
-/// half a minute and kept up to date as thumbnails come and go.
+/// The Mac makes its tiles (256 px) itself from the pinned 512 WebPs. The
+/// iPhone downloads them (384 px, `/assets/{id}/tile`, made by the server)
+/// instead of the WebPs, which it no longer keeps (ThumbFill). Both keep
+/// them in Application Support and follow thumbnails the server makes again
+/// (`MediaStore.thumbRemoved`).
 final class GridTiles: @unchecked Sendable {
     static let shared = GridTiles()
 
+    #if os(macOS)
     static let miniSide = 64
     static let sharpSide = 256
+    #else
+    static let miniSide = 40
+    static let sharpSide = 384
+    #endif
     private static let slotBytes = miniSide * miniSide * 4
 
     private let directory: URL
@@ -64,6 +71,11 @@ final class GridTiles: @unchecked Sendable {
         indexURL = directory.appendingPathComponent("index.json")
         sharpDirectory = directory.appendingPathComponent("sharp", isDirectory: true)
         try? FileManager.default.createDirectory(at: sharpDirectory, withIntermediateDirectories: true)
+        // made again from the server at any time: not in the phone's backup
+        var excluded = URLResourceValues()
+        excluded.isExcludedFromBackup = true
+        var dir = directory
+        try? dir.setResourceValues(excluded)
         if !FileManager.default.fileExists(atPath: miniURL.path) {
             FileManager.default.createFile(atPath: miniURL.path, contents: nil)
         }
@@ -77,7 +89,11 @@ final class GridTiles: @unchecked Sendable {
         }
         remap()
         let memory = ProcessInfo.processInfo.physicalMemory
+        #if os(macOS)
         ram.totalCostLimit = Int(min(memory / 10, 2 << 30))
+        #else
+        ram.totalCostLimit = Int(min(memory / 16, 512 << 20))
+        #endif
         // a thumbnail made again on the server: its tiles are made again too
         MediaStore.thumbRemoved = { id in GridTiles.shared.forget(id) }
     }
@@ -106,6 +122,14 @@ final class GridTiles: @unchecked Sendable {
                        bytesPerRow: Self.miniSide * 4, space: Self.space, bitmapInfo: Self.bitmapInfo,
                        provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
     }
+
+    /// Whether `id` has its mini and its sharp tile.
+    func has(_ id: String) -> Bool {
+        lock.withLock { slots[id] != nil } && FileManager.default.fileExists(atPath: sharpURL(id).path)
+    }
+
+    /// How many photos have their tiles.
+    var count: Int { lock.withLock { slots.count } }
 
     /// A sharp tile already decoded in RAM.
     func cachedSharp(_ id: String) -> CGImage? { ram.object(forKey: id as NSString)?.image }
@@ -139,6 +163,25 @@ final class GridTiles: @unchecked Sendable {
     }
 
     // MARK: Building
+
+    /// Takes in a tile the server made (a square JPEG): kept as it is, and
+    /// its mini made from it. Off the main thread.
+    @discardableResult
+    func store(_ id: String, jpeg: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary),
+              let mini = Self.redraw(image, side: Self.miniSide, crop: true) else { return false }
+        let url = sharpURL(id)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard (try? jpeg.write(to: url, options: .atomic)) != nil else { return false }
+        return writeMini(id, mini)
+    }
+
+    /// The index and the mapping, after a batch was stored.
+    func flush() {
+        saveIndex()
+        remap()
+    }
 
     /// Makes what is missing for `ids` (newest first), in the background.
     /// Thumbnails not on the Mac yet are skipped; the next call makes them.
@@ -193,7 +236,13 @@ final class GridTiles: @unchecked Sendable {
         CGImageDestinationAddImage(dest, sharp, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return false }
         _ = try? FileManager.default.replaceItemAt(url, withItemAt: tmp)
-        // the mini, tightly packed rows
+        _ = miniBytes
+        return writeMini(id, mini)
+    }
+
+    /// The mini into its slot of the one file, tightly packed rows.
+    private func writeMini(_ id: String, _ mini: CGImage) -> Bool {
+        guard let miniBytes = mini.dataProvider?.data as Data? else { return false }
         var packed = Data(capacity: Self.slotBytes)
         let row = Self.miniSide * 4
         for y in 0..<Self.miniSide {
@@ -249,7 +298,12 @@ final class GridTiles: @unchecked Sendable {
             .appendingPathComponent(safe + ".jpg")
     }
 
+    #if os(macOS)
     private static var space: CGColorSpace { DisplayColor.space ?? CGColorSpace(name: CGColorSpace.sRGB)! }
+    #else
+    /// The phone's screen is Display P3; iPhone photos are too.
+    private static let space = CGColorSpace(name: CGColorSpace.displayP3)!
+    #endif
     private static let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
 
     /// `image` as a `side`-pixel BGRA bitmap in the display's color space,

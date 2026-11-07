@@ -66,6 +66,7 @@ pub fn routes() -> Router<AppState> {
         .route("/assets/delete", post(assets::delete))
         .route("/assets/{id}", get(assets::info))
         .route("/assets/{id}/thumb/{size}", get(assets::thumb))
+        .route("/assets/{id}/tile", get(assets::tile))
         .route("/assets/{id}/original", get(assets::original))
         .route("/assets/{id}/video", get(assets::video))
         .route("/library/trash/empty", post(assets::empty_trash))

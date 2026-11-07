@@ -130,6 +130,32 @@ pub async fn thumb(
     Ok(media::immutable_file(app.cfg.thumb_path(&id, size), headers).await)
 }
 
+/// The grid tile (imaging::make_tile), made on the first request and kept
+/// beside the thumbnails. Immutable like them: when the thumbnails are made
+/// again, the tile is removed and the asset's thumbhash changes, so the
+/// apps ask again.
+pub async fn tile(State(app): State<AppState>, Path(id): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
+    if !util::is_content_id(&id) {
+        return Err(ApiError::NotFound);
+    }
+    let path = app.cfg.tile_path(&id);
+    if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+        let thumb = app.cfg.thumb_path(&id, 2048);
+        if !tokio::fs::try_exists(&thumb).await.unwrap_or(false) {
+            return Err(ApiError::NotFound);
+        }
+        let out = path.clone();
+        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let bytes = crate::imaging::make_tile(&thumb)?;
+            crate::imaging::write_atomic(&out, &bytes)
+        })
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("tile: {e}")))?
+        .map_err(ApiError::Internal)?;
+    }
+    Ok(media::immutable_file(path, headers).await)
+}
+
 async fn original_path(app: &App, id: &str) -> ApiResult<PathBuf> {
     if !util::is_content_id(id) {
         return Err(ApiError::NotFound);

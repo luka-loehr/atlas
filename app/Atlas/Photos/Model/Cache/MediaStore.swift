@@ -278,6 +278,21 @@ final class MediaStore: @unchecked Sendable {
     /// Grid thumbnails on the phone.
     var thumbStats: (count: Int, bytes: Int64) { lock.withLock { (thumbs.count, thumbBytes) } }
 
+    /// Deletes every pinned 512 thumbnail: the phone's grid draws from its
+    /// tiles (GridTiles) once they are all here. Thumbnails other screens
+    /// ask for later are fetched again one by one. Off the main thread.
+    func removeAllThumbs() {
+        let fm = FileManager.default
+        lock.withLock {
+            thumbs.removeAll()
+            thumbBytes = 0
+            thumbShards.removeAll()
+        }
+        if let shards = try? fm.contentsOfDirectory(at: thumbDirectory, includingPropertiesForKeys: nil) {
+            for shard in shards { try? fm.removeItem(at: shard) }
+        }
+    }
+
     /// Bytes of the budgeted part by kind (Settings' storage bar).
     var bytesByKind: [Kind: Int64] {
         lock.withLock {

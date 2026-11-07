@@ -163,6 +163,28 @@ struct PhotoClient: Sendable {
         /// false when the model worker is down and only names, places and
         /// albums were searched
         var semantic = true
+        /// how the server read the query: people, pets, places, dates, text
+        var understood: [QueryPart] = []
+    }
+
+    /// One part of a search as the server read it ("Alex" a person, "Spain"
+    /// a place, "Summer 2024" a date, "beach" what the photo shows).
+    struct QueryPart: Codable, Hashable, Identifiable, Sendable {
+        let kind: String
+        let label: String
+        var id: String { kind + ":" + label }
+
+        var symbol: String {
+            switch kind {
+            case "person": "person.fill"
+            case "pet": "pawprint.fill"
+            case "place": "mappin.and.ellipse"
+            case "album": "rectangle.stack.fill"
+            case "date": "calendar"
+            case "media": "video.fill"
+            default: "text.magnifyingglass"
+            }
+        }
     }
 
     /// Loads the search model on the server if it went idle, so the first
@@ -180,14 +202,18 @@ struct PhotoClient: Sendable {
             let assets: AssetColumns
             let people: [Person]?
             let semantic: String?
+            let understood: [QueryPart]?
         }
         let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(.init(charactersIn: "&+="))) ?? q
         let r: R = try await get("/search?q=\(enc)")
-        return SearchResult(persons: r.people ?? [], items: r.assets.assets, semantic: r.semantic != "unavailable")
+        return SearchResult(persons: r.people ?? [], items: r.assets.assets, semantic: r.semantic != "unavailable",
+                            understood: r.understood ?? [])
     }
 
     // content-addressed, immutable URLs — safe to cache forever
     func thumbURL(_ id: String, _ size: Int) -> URL? { url("/assets/\(id)/thumb/\(size)") }
+    /// The phone grid's square JPEG tile (GridTiles).
+    func tileURL(_ id: String) -> URL? { url("/assets/\(id)/tile") }
     func originalURL(_ id: String) -> URL? { url("/assets/\(id)/original") }
     /// The streaming rendition where the server made one, else the original.
     func streamURL(_ id: String) -> URL? { url("/assets/\(id)/video") }

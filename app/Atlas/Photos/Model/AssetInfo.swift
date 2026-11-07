@@ -17,8 +17,10 @@ struct AssetInfo: Decodable {
     var favorite: Bool?
     var durationS: Double?
     var exif: ExifBits?
-    /// The faces on the photo, resolved to their persons.
+    /// The faces on the photo, resolved to their persons (and pets).
     var people: [AssetFace] = []
+    /// Everything legible in it, line by line.
+    var text: String?
 
     struct ExifBits: Codable {
         var iso: Int?
@@ -49,7 +51,7 @@ struct AssetInfo: Decodable {
         case sizeBytes = "size"
         case lat, lon, place, favorite
         case durationS = "duration"
-        case exif, people
+        case exif, people, text
     }
 
     init(from decoder: Decoder) throws {
@@ -68,6 +70,7 @@ struct AssetInfo: Decodable {
         exif = try c.decodeIfPresent(ExifBits.self, forKey: .exif)
         // faces that do not decode cost the faces, not the whole sheet
         people = ((try? c.decodeIfPresent([AssetFace].self, forKey: .people)) ?? nil) ?? []
+        text = try c.decodeIfPresent(String.self, forKey: .text)
         // the server sends the place as its parts; the sheet shows one line
         if let p = try c.decodeIfPresent(PlaceBits.self, forKey: .place) {
             place = [p.name, p.region].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
