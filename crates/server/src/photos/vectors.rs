@@ -142,6 +142,42 @@ impl VectorIndex {
         .await?)
     }
 
+    /// How much each of `ids` stands out for the query (z within its kind,
+    /// on the scale of the whole library, so a subset ranks the way the
+    /// library would). Assets without a vector are left out.
+    pub async fn scores(
+        self: &Arc<Self>,
+        pool: &Pool,
+        query: Arc<Questions>,
+        ids: Vec<String>,
+    ) -> Result<HashMap<String, f32>> {
+        self.refresh(pool).await?;
+        let index = self.clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            let matrix = index.matrix.blocking_read();
+            let scores: Vec<f32> = matrix
+                .data
+                .chunks_exact(DIM)
+                .zip(&matrix.video)
+                .map(|(row, &video)| dot(row, if video { &query.clip } else { &query.still }))
+                .collect();
+            let all = Scale::of(scores.clone());
+            let scale = |video: bool| {
+                let kind = Scale::of(scores.iter().zip(&matrix.video).filter(|(_, v)| **v == video).map(|(s, _)| *s).collect());
+                if kind.n >= MIN_KIND { kind } else { all }
+            };
+            let (stills, clips) = (scale(false), scale(true));
+            ids.into_iter()
+                .filter_map(|id| {
+                    let row = *matrix.rows.get(&id)?;
+                    let kind = if matrix.video[row] { &clips } else { &stills };
+                    Some((id, kind.z(scores[row])))
+                })
+                .collect()
+        })
+        .await?)
+    }
+
     pub async fn len(&self) -> usize {
         self.matrix.read().await.ids.len()
     }

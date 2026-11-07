@@ -73,7 +73,7 @@ pub async fn stats(State(app): State<AppState>) -> ApiResult<Json<Value>> {
         .await?;
     let albums: i64 = c.query_one("SELECT count(*) FROM albums", &[]).await?.get(0);
     let people: i64 = c
-        .query_one("SELECT count(*) FROM persons WHERE merged_into IS NULL AND face_count > 0", &[])
+        .query_one("SELECT count(*) FROM persons WHERE merged_into IS NULL AND NOT hidden AND face_count > 0", &[])
         .await?
         .get(0);
     Ok(Json(json!({
@@ -203,4 +203,33 @@ pub async fn place_assets(State(app): State<AppState>, Path(id): Path<i64>, head
             "assets": Columns::from_rows(&rows, app.cfg.tz),
         }),
     ))
+}
+
+/// A photo without a location (a screenshot, a camera without GPS, a photo
+/// sent in a chat) borrows the place of the located photo taken closest to
+/// it, if one was taken within three hours: then "in Croatia" finds the
+/// whole trip, not only what the phone geotagged. Borrowed places are marked
+/// (`props.borrowed`) and never lent on. Run hourly; returns how many were
+/// placed.
+pub async fn borrow_places(app: &crate::App) -> crate::ApiResult<u64> {
+    let c = app.pool.get().await?;
+    Ok(c.execute(
+        "INSERT INTO edges (src_type, src_id, rel, dst_type, dst_id, confidence, props)
+         SELECT 'asset', a.id, 'taken_at', 'place', near.dst_id, 0.5, '{\"borrowed\": true}'::jsonb
+         FROM assets a
+         CROSS JOIN LATERAL (
+             SELECT e.dst_id FROM assets b
+             JOIN edges e ON e.src_type = 'asset' AND e.src_id = b.id AND e.rel = 'taken_at' AND e.dst_type = 'place'
+                         AND NOT coalesce((e.props->>'borrowed')::boolean, false)
+             WHERE b.taken_at BETWEEN a.taken_at - interval '3 hours' AND a.taken_at + interval '3 hours'
+               AND b.id <> a.id
+             ORDER BY abs(extract(epoch FROM b.taken_at - a.taken_at))
+             LIMIT 1
+         ) near
+         WHERE a.taken_at IS NOT NULL AND a.lat IS NULL
+           AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.src_type = 'asset' AND e.src_id = a.id AND e.rel = 'taken_at')
+         ON CONFLICT DO NOTHING",
+        &[],
+    )
+    .await?)
 }

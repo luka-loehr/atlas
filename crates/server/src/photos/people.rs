@@ -1,7 +1,7 @@
 //! People: face clusters the ML worker builds, named and merged here.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use serde::Deserialize;
@@ -14,10 +14,17 @@ use crate::{ApiError, ApiResult, App, AppState, media};
 /// mostly strangers in the background and odd detections.
 const MIN_UNNAMED_PHOTOS: i64 = 3;
 
+#[derive(Deserialize, Default)]
+pub struct ListQuery {
+    /// true: the hidden people instead (to bring someone back)
+    #[serde(default)]
+    hidden: bool,
+}
+
 /// Everyone with a visible photo, unnamed clusters only from
 /// [`MIN_UNNAMED_PHOTOS`] on: named people first, then by how often they
-/// appear.
-pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+/// appear. Pets are people of another kind. Hidden people only on request.
+pub async fn list(State(app): State<AppState>, Query(q): Query<ListQuery>, headers: HeaderMap) -> ApiResult<Response> {
     let c = app.pool.get().await?;
     let rows = c
         .query(
@@ -26,12 +33,12 @@ pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<
                  FROM persons p
                  JOIN faces f ON f.person_id = p.id
                  JOIN assets ON assets.id = f.asset_id
-                 WHERE p.merged_into IS NULL AND {VISIBLE}
+                 WHERE p.merged_into IS NULL AND p.hidden = $2 AND {VISIBLE}
                  GROUP BY p.id
                  HAVING p.display_name IS NOT NULL OR count(DISTINCT f.asset_id) >= $1
                  ORDER BY (p.display_name IS NULL), photos DESC, p.id"
             ),
-            &[&MIN_UNNAMED_PHOTOS],
+            &[&MIN_UNNAMED_PHOTOS, &q.hidden],
         )
         .await?;
     let people: Vec<Value> = rows.iter().map(person_json).collect();
@@ -83,6 +90,8 @@ pub struct Update {
     name: Option<String>,
     /// must be one of this person's faces
     cover_face: Option<i64>,
+    /// out of People, search and the info panel (or back)
+    hidden: Option<bool>,
 }
 
 pub async fn update(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Update>) -> ApiResult<Json<Value>> {
@@ -92,6 +101,9 @@ pub async fn update(State(app): State<AppState>, Path(id): Path<i64>, Json(b): J
         let name = name.trim();
         let value = (!name.is_empty()).then_some(name);
         updated += c.execute("UPDATE persons SET display_name = $2 WHERE id = $1", &[&id, &value]).await?;
+    }
+    if let Some(hidden) = b.hidden {
+        updated += c.execute("UPDATE persons SET hidden = $2 WHERE id = $1", &[&id, &hidden]).await?;
     }
     if let Some(face) = b.cover_face {
         updated += c
@@ -156,6 +168,61 @@ pub async fn merge(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Js
     .await?;
     tx.commit().await?;
     Ok(Json(json!({ "moved": moved })))
+}
+
+#[derive(Deserialize)]
+pub struct HideFaces {
+    /// faces to hide; or
+    #[serde(default)]
+    faces: Vec<i64>,
+    /// every face in these assets
+    #[serde(default)]
+    assets: Vec<String>,
+}
+
+/// Hides the people behind faces (a group photo of strangers): an unnamed
+/// face's person is hidden, and a face nobody was recognized in gets a
+/// hidden person of its own, which then takes that stranger's other faces
+/// too. Named people are never hidden this way.
+pub async fn hide_faces(State(app): State<AppState>, Json(b): Json<HideFaces>) -> ApiResult<Json<Value>> {
+    let mut c = app.pool.get().await?;
+    let tx = c.transaction().await?;
+    let faces: Vec<(i64, Option<i64>, String)> = tx
+        .query(
+            "SELECT f.id, f.person_id, f.kind FROM faces f LEFT JOIN persons p ON p.id = f.person_id
+             WHERE (f.id = ANY($1) OR f.asset_id = ANY($2)) AND p.display_name IS NULL",
+            &[&b.faces, &b.assets],
+        )
+        .await?
+        .iter()
+        .map(|r| (r.get(0), r.get(1), r.get(2)))
+        .collect();
+    let mut hidden = 0u64;
+    for (face, person, kind) in &faces {
+        match person {
+            Some(person) => hidden += tx.execute("UPDATE persons SET hidden = true WHERE id = $1 AND NOT hidden", &[person]).await?,
+            None => {
+                let person: i64 = tx
+                    .query_one(
+                        "INSERT INTO persons (kind, hidden, cover_face_id, face_count) VALUES ($1, true, $2, 1) RETURNING id",
+                        &[kind, face],
+                    )
+                    .await?
+                    .get(0);
+                tx.execute("UPDATE faces SET person_id = $2 WHERE id = $1", &[face, &person]).await?;
+                tx.execute(
+                    "INSERT INTO edges (src_type, src_id, rel, dst_type, dst_id)
+                     SELECT 'asset', asset_id, 'depicts', 'person', $2::text FROM faces WHERE id = $1
+                     ON CONFLICT DO NOTHING",
+                    &[face, &person.to_string()],
+                )
+                .await?;
+                hidden += 1;
+            }
+        }
+    }
+    tx.commit().await?;
+    Ok(Json(json!({ "faces": faces.len(), "hidden": hidden })))
 }
 
 /// The square avatar the face worker wrote. Face ids are never reused, so

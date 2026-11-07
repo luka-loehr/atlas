@@ -58,7 +58,7 @@ pub async fn info(State(app): State<AppState>, Path(id): Path<String>) -> ApiRes
                  SELECT DISTINCT ON (p.id) f.id AS face, p.id, p.display_name AS name, p.kind,
                         coalesce(f.quality, 0) * coalesce(f.width_px, 1) AS worth
                  FROM faces f JOIN persons p ON p.id = f.person_id
-                 WHERE f.asset_id = $1
+                 WHERE f.asset_id = $1 AND NOT p.hidden AND p.merged_into IS NULL
                  ORDER BY p.id, worth DESC
              ) x ORDER BY (name IS NULL), worth DESC",
             &[&id],

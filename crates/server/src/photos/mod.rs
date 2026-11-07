@@ -26,6 +26,7 @@ pub mod albums;
 pub mod assets;
 pub mod library;
 pub mod people;
+pub mod query;
 pub mod search;
 pub mod timeline;
 pub mod vectors;
@@ -76,6 +77,7 @@ pub fn routes() -> Router<AppState> {
         .route("/people/{id}", get(people::assets).patch(people::update))
         .route("/people/{id}/merge", post(people::merge))
         .route("/faces/{id}/crop", get(people::face_crop))
+        .route("/faces/hide", post(people::hide_faces))
         .route("/places", get(library::places))
         .route("/places/{id}", get(library::place_assets))
         .route("/search", get(search::search))
