@@ -11,8 +11,8 @@
 ## Features
 
 - **Photo library** timeline of every photo and video, albums, people, places, favorites, archive, a locked album and a trash
-- **Search by content** "dog in the snow" finds it: one embedding model for photos, videos and text, scanned exactly in memory
-- **Faces** detection and recognition group photos into people you can name and merge
+- **Search that understands you** "alex and sam at the beach", "rex in spain", "summer 2024 videos": names, pets, places, dates and video are read as filters, and the rest ranks by what the photos show and what text is in them
+- **Faces, pets and text** every photo at full resolution and about one frame a second of every video: all the faces of a group photo, dogs and cats told apart individually, and every sign, screenshot and document made searchable; people and pets you can name, merge and hide
 - **Backup** the iPhone uploads originals, deduplicated by content hash, and can clear backed-up items off the phone
 - **Share links** albums or a few photos as a link (optional password), served from your own Cloudflare account so links work while the server sleeps, and gone after 7 days at the latest
 - **Drive** folders over content-addressed files, with previews, full-text search and a trash
@@ -56,7 +56,7 @@ atlas connect     # the link that connects the app
 ## License
 
 MIT License - [View License](LICENSE)  
-Model weights downloaded at setup (WeMM-Embedding-2B under Apache-2.0, InsightFace `buffalo_l` with its non-commercial research license) keep their own licenses. The Inter font in `crates/server/assets/fonts` is under the SIL Open Font License.
+Model weights downloaded at setup keep their own licenses: WeMM-Embedding-2B, RF-DETR, pet-recognition-large and PP-OCRv6 under Apache-2.0; InsightFace's SCRFD (`buffalo_l`) and AdaFace's WebFace12M weights for non-commercial research. The Inter font in `crates/server/assets/fonts` is under the SIL Open Font License.
 
 ---
 

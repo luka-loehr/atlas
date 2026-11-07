@@ -84,8 +84,8 @@ Built to the macOS Human Interface Guidelines:
 - **The photo grid** is one view drawing a recycled pool of Core Animation
   layers (no view per cell). It never shows a blank cell: from the pinned
   WebP thumbnails (5 ms to decode) the Mac makes its own **grid tiles**
-  once, in the background (`Mac/Grid/GridTiles.swift`, ~1 GB for 26,000
-  photos): a 64 px mini of every photo in one memory-mapped file, shown the
+  once, in the background (`Photos/Model/Cache/GridTiles.swift`, shared
+  with the iPhone, ~1 GB for 26,000 photos): a 64 px mini of every photo in one memory-mapped file, shown the
   instant a cell appears, and a 256 px square JPEG (0.5 ms to decode) that
   replaces it a frame later and stays in RAM. A thumbnail made again on the
   server drops its tiles; the two largest zooms decode the 512 WebP.
@@ -123,9 +123,15 @@ Built to the macOS Human Interface Guidelines:
   skips what it already has by content hash.
 - **One media cache.** Every on-device copy of server media goes through
   `Photos/Model/Cache/`:
-  - *Disk* (`MediaStore`): the 512 grid thumbnails are pinned, never
-    evicted; `ThumbFill` downloads all of them once in the background
-    (Wi-Fi, not in Low Power Mode). Everything else (2048 previews,
+  - *Grid tiles* (`GridTiles`): the iPhone grid draws square 384 px JPEG
+    tiles the server makes per photo (`/assets/{id}/tile`, decoded in
+    hardware) and a 40 px mini of each in one memory-mapped file, shown the
+    instant a cell appears; `ThumbFill` downloads every tile once in the
+    background (Wi-Fi, not in Low Power Mode) and then deletes the 512 WebP
+    thumbnails the grid used before. On the Mac the 512 thumbnails stay
+    pinned and the tiles are made from them.
+  - *Disk* (`MediaStore`): 512 thumbnails other screens ask for (and on the
+    Mac all of them, pinned). Everything else (2048 previews,
     originals, video bytes, face crops, drive thumbnails) shares a fixed
     15 GB budget in Caches. Eviction ranks by idle time × kind (faces age
     slowest, originals fastest), keeps photos of the last two months

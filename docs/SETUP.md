@@ -290,7 +290,10 @@ Two units, one installer:
 - **atlas-server** — the API on :8787 (photos, drive, system) and the ingest
   workers: thumbnails, metadata, reverse geocoding, drive text, video
   renditions.
-- **atlas-ml** — the model worker: semantic embeddings and faces.
+- **atlas-ml** — the model worker: semantic embeddings, and the vision
+  stage (faces, animals, text) with the grouping of faces into people and
+  pets. `atlas-ml analyze FILE...` prints what the stage sees in files
+  without storing anything.
 
 ### 6.1 Models
 
@@ -307,9 +310,17 @@ into `/usr/local/lib/atlas/llama-server`, and downloads into `~/models`
 | Model | Size | For |
 |---|---|---|
 | [WeMM-Embedding-2B](https://huggingface.co/tencent/WeMM-Embedding-2B), GGUF Q8_0 + vision projector | 3.2 GB | photos, videos and search text in one 2048-d space (Apache-2.0) |
-| InsightFace buffalo_l (SCRFD + ArcFace, ONNX) | 190 MB | face detection and recognition — non-commercial research license |
+| SCRFD 10G from InsightFace buffalo_l (ONNX) | 17 MB | face detection, at two scales — non-commercial research license |
+| [AdaFace IR-101](https://github.com/mk-minchul/AdaFace) (WebFace12M, ONNX) | 260 MB | face recognition, with a quality estimate per face — non-commercial research |
+| [RF-DETR Large](https://github.com/roboflow/rf-detr) (exported to ONNX at install) | 130 MB | animals (Apache-2.0) |
+| [pet-recognition-large](https://huggingface.co/open-noodle/pet-recognition-large) (ONNX) | 1.2 GB | which dog or cat it is (Apache-2.0) |
+| [PP-OCRv6 medium](https://huggingface.co/PaddlePaddle) detection + recognition (ONNX) | 140 MB | text in photos and videos, 18,708 characters (Apache-2.0) |
 
-Nothing generative runs anywhere. The embedding model is loaded on first use
+The vision models run on ONNX Runtime 1.31 with CUDA (installed from
+NVIDIA's and Microsoft's wheels into `/usr/local/lib/atlas/onnxruntime`),
+within a VRAM budget of the card's memory less 5 GB for the embedding
+model, and on the CPU when there is no room. Nothing generative runs
+anywhere. The embedding model is loaded on first use
 and unloaded after ten idle minutes (`ATLAS_ML_IDLE_S`), which returns its
 4.7 GB of GPU memory.
 

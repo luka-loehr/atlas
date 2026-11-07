@@ -9,7 +9,7 @@
 | Directory | What it is |
 |---|---|
 | [`crates/server/`](../crates/server/) | `atlas-server`: the whole backend in one process. The HTTP API on :8787 (photos, drive, system) and the ingest workers (thumbnails, metadata, geocoding, drive text, video renditions) |
-| [`crates/ml/`](../crates/ml/) | `atlas-ml`: the model worker. Semantic embeddings through llama.cpp, faces on ONNX Runtime |
+| [`crates/ml/`](../crates/ml/) | `atlas-ml`: the model worker. Semantic embeddings through llama.cpp; faces, animals and text on ONNX Runtime (GPU), grouped into people and pets |
 | [`crates/core/`](../crates/core/) | What the two share: database setup, migrations, the job queue protocol |
 | [`crates/cli/`](../crates/cli/) | `atlas`, the CLI for the Mac: `boot` (Wake-on-LAN) \| `shutdown` \| `status` \| `deploy` \| `connect` \| `build` \| `dev` \| `secrets` \| any remote command. Full table in its [README](../crates/cli/README.md) |
 | [`app/`](../app/) | **Atlas**, the app (SwiftUI, one target for iOS and macOS): library, albums, people, files, server, search |
