@@ -23,7 +23,10 @@ use anyhow::Result;
 use pgvector::Vector;
 
 use crate::Worker;
-use crate::vision::{self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_SMALL_FACE, MODEL, SMALL_FACE};
+use crate::vision::{
+    self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_SMALL_FACE, MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP,
+    MODEL, SMALL_FACE,
+};
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
 const EXEMPLARS_PER_PERSON: i64 = 300;
@@ -69,6 +72,8 @@ struct Item {
     id: i64,
     vector: Vec<f32>,
     width: f32,
+    /// clear and sure enough to found a new person
+    founder: bool,
 }
 
 /// One pass over people and every species; (faces assigned, people made).
@@ -93,7 +98,9 @@ pub async fn pass(worker: &Worker) -> Result<(usize, usize)> {
 async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     let face = kind == "person";
     let column = if face { "embedding" } else { "look" };
-    let model_filter = if face { format!("AND f.model = '{MODEL}'") } else { String::new() };
+    // faces: the current recognizer's, clear enough to be named at all
+    let model_filter =
+        if face { format!("AND f.model = '{MODEL}' AND coalesce(f.clarity, 0) >= {MIN_CLARITY_ASSIGN}") } else { String::new() };
     let mut c = worker.pool.get().await?;
     // a spread of each person's looks: the most confident detections
     let known_rows = c
@@ -113,14 +120,16 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     let waiting: Vec<Item> = c
         .query(
             &format!(
-                "SELECT f.id, f.{column}, coalesce(f.width_px, 0) FROM faces f
+                "SELECT f.id, f.{column}, coalesce(f.width_px, 0),
+                        coalesce(f.clarity, 99) >= {MIN_CLARITY_GROUP} AND coalesce(f.quality, 0) >= {MIN_SCORE_GROUP}
+                 FROM faces f
                  WHERE f.kind = $1 AND f.person_id IS NULL AND f.{column} IS NOT NULL {model_filter}"
             ),
             &[&kind],
         )
         .await?
         .iter()
-        .map(|r| Item { id: r.get(0), vector: r.get::<_, Vector>(1).to_vec(), width: r.get(2) })
+        .map(|r| Item { id: r.get(0), vector: r.get::<_, Vector>(1).to_vec(), width: r.get(2), founder: r.get(3) })
         .collect();
     if waiting.is_empty() {
         return Ok((0, 0));
@@ -157,8 +166,9 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     }
     let assigned: usize = assignments.values().map(Vec::len).sum();
 
-    // 2. the rest among themselves
+    // 2. the rest among themselves: only faces clear enough found someone
     let link = if face { LINK_FACE } else { LINK_ANIMAL };
+    rest.retain(|item| !face || item.founder);
     let groups = gather(&rest, link);
 
     let tx = c.transaction().await?;
@@ -284,7 +294,7 @@ mod tests {
         let items: Vec<Item> = [0.0, 0.05, 0.1, 2.0, 2.05, 4.0]
             .iter()
             .enumerate()
-            .map(|(i, &a)| Item { id: i as i64, vector: unit(a), width: 50.0 })
+            .map(|(i, &a)| Item { id: i as i64, vector: unit(a), width: 50.0, founder: true })
             .collect();
         let groups = gather(&items, 0.9);
         assert_eq!(groups.len(), 1);

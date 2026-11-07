@@ -46,6 +46,11 @@ pub struct Face {
     pub score: f32,
     /// unit length
     pub embedding: Vec<f32>,
+    /// AdaFace's own judgment of how recognizable the face is: the length
+    /// of its raw embedding (mean of the face and its mirror image). Blurred,
+    /// tiny, turned-away faces and things that only look like faces score
+    /// low.
+    pub clarity: f32,
 }
 
 pub struct FaceEngine {
@@ -75,7 +80,8 @@ impl FaceEngine {
                 continue;
             }
             let aligned = align(image, &detection.landmarks);
-            faces.push(Face { bbox: detection.bbox, score: detection.score, embedding: self.embed(&aligned)? });
+            let (embedding, clarity) = self.embed(&aligned)?;
+            faces.push(Face { bbox: detection.bbox, score: detection.score, embedding, clarity });
         }
         Ok(faces)
     }
@@ -140,7 +146,7 @@ impl FaceEngine {
     }
 
     /// The face and its mirror image in one batch; their mean, normalized.
-    fn embed(&mut self, aligned: &[u8]) -> Result<Vec<f32>> {
+    fn embed(&mut self, aligned: &[u8]) -> Result<(Vec<f32>, f32)> {
         let plane = FACE_SIZE * FACE_SIZE;
         let mut input = vec![0f32; 2 * 3 * plane];
         for y in 0..FACE_SIZE {
@@ -163,11 +169,13 @@ impl FaceEngine {
         ensure!(dim == 512, "unexpected recognizer output: {} values per face", dim);
         let mut a = values[..dim].to_vec();
         let mut b = values[dim..].to_vec();
+        let norm = |v: &[f32]| v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let clarity = (norm(&a) + norm(&b)) / 2.0;
         pixels::normalize(&mut a);
         pixels::normalize(&mut b);
         let mut embedding: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x + y).collect();
         pixels::normalize(&mut embedding);
-        Ok(embedding)
+        Ok((embedding, clarity))
     }
 }
 

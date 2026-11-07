@@ -23,6 +23,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (12, include_str!("../../../db/migrations/0012_wemm.sql")),
     (13, include_str!("../../../db/migrations/0013_vision.sql")),
     (14, include_str!("../../../db/migrations/0014_hidden.sql")),
+    (15, include_str!("../../../db/migrations/0015_clarity.sql")),
 ];
 
 /// Connection settings, in order of precedence:

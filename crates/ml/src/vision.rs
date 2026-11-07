@@ -64,6 +64,15 @@ pub const ASSIGN_MARGIN: f32 = 0.05;
 /// The same for animals with pet-recognition-large: one individual's photos
 /// sit at about 0.6-0.7, different animals at about 0-0.2.
 pub const ASSIGN_ANIMAL: f32 = 0.45;
+/// A face is named by resemblance only when AdaFace can make it out at
+/// least this well ...
+pub const MIN_CLARITY_ASSIGN: f32 = 17.0;
+/// ... and a new person is gathered only from faces this clear and this
+/// surely detected. Measured 2026-11-07: faces of named people 19-24 (scores
+/// 0.75-0.89); a junk cluster the first grouping made of concert crowds,
+/// walls and toys 13-22, median 17 (scores 0.5-0.7).
+pub const MIN_CLARITY_GROUP: f32 = 20.0;
+pub const MIN_SCORE_GROUP: f32 = 0.7;
 
 pub struct Engines {
     faces: FaceEngine,
@@ -119,6 +128,8 @@ struct Found {
     bbox: [f32; 4],
     width_px: f32,
     score: f32,
+    /// AdaFace's quality estimate (faces only)
+    clarity: Option<f32>,
     embedding: Option<Vec<f32>>,
     look: Option<Vec<f32>>,
     person: Option<i64>,
@@ -236,7 +247,14 @@ pub fn analyze_files(worker_paths: [PathBuf; 7], files: &[String]) -> Result<()>
         let faces = found.iter().filter(|f| f.kind == "person").count();
         println!("  faces: {faces}");
         for f in found.iter().filter(|f| f.kind == "person") {
-            println!("    {:>5.0} px wide, score {:.2}, frame {}, box {:?}", f.width_px, f.score, f.frame, f.bbox);
+            println!(
+                "    {:>5.0} px wide, score {:.2}, clarity {:.1}, frame {}, box {:?}",
+                f.width_px,
+                f.score,
+                f.clarity.unwrap_or(0.0),
+                f.frame,
+                f.bbox
+            );
         }
         for f in found.iter().filter(|f| f.kind != "person") {
             println!("  {}: {:.0} px wide, score {:.2}, identifiable {}, box {:?}", f.kind, f.width_px, f.score, f.look.is_some(), f.bbox);
@@ -365,6 +383,7 @@ fn analyze(engines: &mut Engines, frames: &[Frame]) -> Result<(Vec<Found>, Vec<S
                 bbox: relative(face.bbox),
                 width_px: face.bbox[2] - face.bbox[0],
                 score: face.score,
+                clarity: Some(face.clarity),
                 embedding: Some(face.embedding),
                 look: None,
                 person: None,
@@ -379,6 +398,7 @@ fn analyze(engines: &mut Engines, frames: &[Frame]) -> Result<(Vec<Found>, Vec<S
                     bbox: relative(animal.bbox),
                     width_px: animal.bbox[2] - animal.bbox[0],
                     score: animal.score,
+                    clarity: None,
                     embedding: None,
                     look: animal.look,
                     person: None,
@@ -497,6 +517,7 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
     // the rest by resemblance
     for f in found.iter_mut().filter(|f| f.person.is_none()) {
         f.person = match (&f.embedding, &f.look) {
+            (Some(_), _) if f.clarity.unwrap_or(0.0) < MIN_CLARITY_ASSIGN => None,
             (Some(embedding), _) => assign_face(&tx, embedding, f.width_px).await?,
             (None, Some(look)) => assign_animal(&tx, f.kind, look).await?,
             (None, None) => None,
@@ -516,9 +537,9 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
         let model = f.embedding.as_ref().map(|_| MODEL);
         let face_id: i64 = tx
             .query_one(
-                "INSERT INTO faces (asset_id, person_id, bbox, quality, embedding, kind, look, frame_s, model, width_px)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, 'none'), $10) RETURNING id",
-                &[&id, &f.person, &f.bbox.to_vec(), &f.score, &embedding, &f.kind, &look, &at, &model, &f.width_px],
+                "INSERT INTO faces (asset_id, person_id, bbox, quality, embedding, kind, look, frame_s, model, width_px, clarity)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, 'none'), $10, $11) RETURNING id",
+                &[&id, &f.person, &f.bbox.to_vec(), &f.score, &embedding, &f.kind, &look, &at, &model, &f.width_px, &f.clarity],
             )
             .await?
             .get(0);
@@ -586,8 +607,9 @@ pub async fn assign_face(tx: &Transaction<'_>, embedding: &[f32], width_px: f32)
             "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
              JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
              WHERE f.model = $2 AND f.kind = 'person' AND f.person_id IS NOT NULL
+               AND coalesce(f.clarity, 99) >= $3
              ORDER BY f.embedding <=> $1 LIMIT 40",
-            &[&Vector::from(embedding.to_vec()), &MODEL],
+            &[&Vector::from(embedding.to_vec()), &MODEL, &MIN_CLARITY_ASSIGN],
         )
         .await?;
     let neighbors: Vec<(i64, f32)> = rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).collect();
@@ -720,6 +742,7 @@ mod tests {
             bbox: [0.0; 4],
             width_px: w,
             score: 1.0,
+            clarity: None,
             embedding: Some(e.to_vec()),
             look: None,
             person,
