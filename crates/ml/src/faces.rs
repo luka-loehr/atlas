@@ -21,7 +21,6 @@ use std::path::Path;
 use anyhow::{Result, ensure};
 use fast_image_resize::FilterType;
 use image::RgbImage;
-use ort::session::Session;
 use ort::value::Tensor;
 
 use crate::runtime::{self, Device};
@@ -50,8 +49,8 @@ pub struct Face {
 }
 
 pub struct FaceEngine {
-    detector: Session,
-    recognizer: Session,
+    detector: runtime::Model,
+    recognizer: runtime::Model,
 }
 
 impl FaceEngine {
@@ -98,7 +97,8 @@ impl FaceEngine {
             }
         }
         let tensor = Tensor::from_array(([1usize, 3, canvas_h as usize, canvas_w as usize], input))?;
-        let outputs = self.detector.run(ort::inputs![tensor])?;
+        let options = self.detector.options()?;
+        let outputs = self.detector.session.run_with_options(ort::inputs![tensor], &options)?;
         ensure!(outputs.len() == 9, "unexpected SCRFD model: {} outputs", outputs.len());
 
         // outputs: scores for strides 8/16/32, then boxes, then landmarks
@@ -156,7 +156,8 @@ impl FaceEngine {
             }
         }
         let tensor = Tensor::from_array(([2usize, 3, FACE_SIZE, FACE_SIZE], input))?;
-        let outputs = self.recognizer.run(ort::inputs![tensor])?;
+        let options = self.recognizer.options()?;
+        let outputs = self.recognizer.session.run_with_options(ort::inputs![tensor], &options)?;
         let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
         let dim = values.len() / 2;
         ensure!(dim == 512, "unexpected recognizer output: {} values per face", dim);

@@ -73,10 +73,14 @@ pub struct Engines {
     gpu: bool,
 }
 
-/// Each GPU model's share of the vision stage's VRAM budget: SCRFD, AdaFace,
-/// RF-DETR, the text detector (the largest activations: a 1536 px page),
-/// the text recognizer. The pet model always runs on the CPU.
-const SHARES: [f64; 5] = [0.15, 0.15, 0.2, 0.35, 0.15];
+/// Each GPU model's arena limit as a share of the vision stage's VRAM
+/// budget (SCRFD, AdaFace, RF-DETR, text detector, text recognizer). The
+/// models run one at a time and give back what a run took (runtime::Model),
+/// so each may use most of the budget for its run; what stays resident is
+/// only the weights (about 0.6 GB). Measured peaks above that, 2026-11-07:
+/// faces 0.7 GB, animals 0.6 GB, text 1.6 GB (a 1536 px page). The pet
+/// model always runs on the CPU.
+const SHARES: [f64; 5] = [0.6, 0.6, 0.6, 0.7, 0.6];
 
 fn devices(gpu: bool) -> [Device; 5] {
     match runtime::vision_budget_mb().filter(|_| gpu) {
@@ -85,8 +89,15 @@ fn devices(gpu: bool) -> [Device; 5] {
     }
 }
 
-/// Loaded on the first job, dropped again when the queue runs dry.
-pub type Shared = Arc<Mutex<Option<Engines>>>;
+/// The engines, loaded on the first job and dropped again when the queue
+/// runs dry: on the GPU, and on the CPU for a job the GPU could not run.
+#[derive(Default)]
+pub struct Loaded {
+    gpu: Option<Engines>,
+    cpu: Option<Engines>,
+}
+
+pub type Shared = Arc<Mutex<Loaded>>;
 
 struct Frame {
     image: RgbImage,
@@ -142,21 +153,23 @@ pub async fn run(worker: &Worker, engines: &Shared, id: &str) -> Result<Outcome>
     let (found, lines) = {
         let (engines, frames) = (engines.clone(), frames.clone());
         tokio::task::spawn_blocking(move || -> Result<_> {
-            let mut guard = engines.lock().unwrap_or_else(|e| e.into_inner());
-            if guard.is_none() {
-                let loaded = args.load(true)?;
-                tracing::info!("vision models loaded ({})", if loaded.gpu { "GPU" } else { "CPU" });
-                *guard = Some(loaded);
+            let mut loaded = engines.lock().unwrap_or_else(|e| e.into_inner());
+            if loaded.gpu.is_none() {
+                let engines = args.load(true)?;
+                tracing::info!("vision models loaded ({})", if engines.gpu { "GPU" } else { "CPU" });
+                loaded.gpu = Some(engines);
             }
-            match analyze(guard.as_mut().expect("just loaded"), &frames) {
+            let first = analyze(loaded.gpu.as_mut().expect("just loaded"), &frames);
+            match first {
                 Ok(result) => Ok(result),
-                // the GPU had no room (or failed otherwise): the CPU, until
-                // the models are next unloaded
-                Err(e) if guard.as_ref().is_some_and(|g| g.gpu) => {
-                    tracing::warn!("vision on the GPU failed ({e:#}); continuing on the CPU");
-                    *guard = None;
-                    *guard = Some(args.load(false)?);
-                    analyze(guard.as_mut().expect("just loaded"), &frames)
+                // the GPU had no room for this one (or failed otherwise):
+                // this job on the CPU, the next one on the GPU again
+                Err(e) if loaded.gpu.as_ref().is_some_and(|g| g.gpu) => {
+                    tracing::warn!("vision on the GPU failed ({e:#}); this asset on the CPU");
+                    if loaded.cpu.is_none() {
+                        loaded.cpu = Some(args.load(false)?);
+                    }
+                    analyze(loaded.cpu.as_mut().expect("just loaded"), &frames)
                 }
                 Err(e) => Err(e),
             }

@@ -21,7 +21,6 @@ use std::path::Path;
 use anyhow::{Result, ensure};
 use fast_image_resize::FilterType;
 use image::RgbImage;
-use ort::session::Session;
 use ort::value::Tensor;
 
 use crate::runtime::{self, Device};
@@ -49,8 +48,8 @@ pub struct Animal {
 }
 
 pub struct AnimalEngine {
-    detector: Session,
-    identifier: Session,
+    detector: runtime::Model,
+    identifier: runtime::Model,
 }
 
 impl AnimalEngine {
@@ -62,7 +61,8 @@ impl AnimalEngine {
         let (w, h) = image.dimensions();
         let input = normalized(&pixels::resize(image, DETECT_SIZE, DETECT_SIZE, FilterType::Bilinear)?);
         let tensor = Tensor::from_array(([1usize, 3, DETECT_SIZE as usize, DETECT_SIZE as usize], input))?;
-        let outputs = self.detector.run(ort::inputs![tensor])?;
+        let options = self.detector.options()?;
+        let outputs = self.detector.session.run_with_options(ort::inputs![tensor], &options)?;
         let (_, boxes) = outputs[0].try_extract_tensor::<f32>()?;
         let (shape, logits) = outputs[1].try_extract_tensor::<f32>()?;
         let (queries, classes) = (shape[1] as usize, shape[2] as usize);
@@ -103,7 +103,8 @@ impl AnimalEngine {
             let crop = image::imageops::crop_imm(image, x0, y0, x1 - x0, y1 - y0).to_image();
             let input = normalized(&pixels::resize(&crop, EMBED_SIZE, EMBED_SIZE, FilterType::Bilinear)?);
             let tensor = Tensor::from_array(([1usize, 3, EMBED_SIZE as usize, EMBED_SIZE as usize], input))?;
-            let outputs = self.identifier.run(ort::inputs![tensor])?;
+            let options = self.identifier.options()?;
+        let outputs = self.identifier.session.run_with_options(ort::inputs![tensor], &options)?;
             let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
             let mut look = values.to_vec();
             ensure!(look.len() == 512, "unexpected pet embedding: {} values", look.len());

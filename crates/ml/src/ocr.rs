@@ -19,7 +19,6 @@ use std::path::Path;
 use anyhow::{Context, Result, ensure};
 use fast_image_resize::FilterType;
 use image::RgbImage;
-use ort::session::Session;
 use ort::value::Tensor;
 
 use crate::runtime::{self, Device};
@@ -46,8 +45,8 @@ pub struct Line {
 }
 
 pub struct TextEngine {
-    detector: Session,
-    recognizer: Session,
+    detector: runtime::Model,
+    recognizer: runtime::Model,
     /// index 0 is CTC's blank; the last entry is the space
     characters: Vec<String>,
 }
@@ -91,7 +90,8 @@ impl TextEngine {
             }
         }
         let tensor = Tensor::from_array(([1usize, 3, dh as usize, dw as usize], input))?;
-        let outputs = self.detector.run(ort::inputs![tensor])?;
+        let options = self.detector.options()?;
+        let outputs = self.detector.session.run_with_options(ort::inputs![tensor], &options)?;
         let (_, prob) = outputs[0].try_extract_tensor::<f32>()?;
         ensure!(prob.len() == plane, "unexpected text detector output");
 
@@ -143,7 +143,8 @@ impl TextEngine {
                 }
             }
             let tensor = Tensor::from_array(([batch.len(), 3, LINE_HEIGHT as usize, width], input))?;
-            let outputs = self.recognizer.run(ort::inputs![tensor])?;
+            let options = self.recognizer.options()?;
+        let outputs = self.recognizer.session.run_with_options(ort::inputs![tensor], &options)?;
             let (shape, probs) = outputs[0].try_extract_tensor::<f32>()?;
             let (steps, classes) = (shape[1] as usize, shape[2] as usize);
             ensure!(classes == self.characters.len(), "recognizer has {classes} classes, dictionary {}", self.characters.len());

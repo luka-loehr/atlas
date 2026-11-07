@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use ort::session::Session;
+use ort::session::{RunOptions, Session};
 use ort::session::builder::GraphOptimizationLevel;
 
 /// What the embedding model needs on the card, with headroom (MiB).
@@ -58,8 +58,29 @@ pub fn vision_budget_mb() -> Option<u64> {
     (budget >= MIN_VISION_MB).then_some(budget)
 }
 
+/// A loaded model and where it runs.
+pub struct Model {
+    pub session: Session,
+    gpu: bool,
+}
+
+impl Model {
+    /// Options for one run. On the GPU the arena gives back what the run
+    /// took once it is over: the models run one after another, so the
+    /// stage's footprint is their weights plus the largest single run, not
+    /// the sum of every model's largest run (3.5 GB measured without, about
+    /// 2.5 GB with, 2026-11-07).
+    pub fn options(&self) -> Result<RunOptions> {
+        let mut options = RunOptions::new()?;
+        if self.gpu {
+            options.set("memory.enable_memory_arena_shrinkage", "gpu:0")?;
+        }
+        Ok(options)
+    }
+}
+
 /// A model on `device`.
-pub fn session(path: &Path, device: Device) -> Result<Session> {
+pub fn session(path: &Path, device: Device) -> Result<Model> {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
     let builder = Session::builder()
         .map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
@@ -80,5 +101,6 @@ pub fn session(path: &Path, device: Device) -> Result<Session> {
         }
         Device::Cpu => builder,
     };
-    builder.commit_from_file(path).with_context(|| format!("cannot load {}", path.display()))
+    let session = builder.commit_from_file(path).with_context(|| format!("cannot load {}", path.display()))?;
+    Ok(Model { session, gpu: device != Device::Cpu })
 }

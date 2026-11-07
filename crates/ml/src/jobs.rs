@@ -142,7 +142,7 @@ async fn vision_loop(worker: Arc<Worker>, running: Running) {
             // memory (GPU and RAM) goes back
             drop(slot);
             if slots.available_permits() == worker.cfg.vision_jobs {
-                *engines.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                *engines.lock().unwrap_or_else(|e| e.into_inner()) = vision::Loaded::default();
             }
             continue;
         };
