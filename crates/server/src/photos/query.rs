@@ -279,6 +279,34 @@ fn date(tokens: &[String], today: NaiveDate) -> Option<(When, usize)> {
     }
     let second = tokens.get(1).map(String::as_str);
     let y = today.year();
+    // "last summer", "this august", "letzten sommer": the season or month
+    // of a particular year. "last" is the latest one that is over (in
+    // November, last summer is this year's), "this" the one of this year.
+    let last = matches!(first, "last" | "letztes" | "letzten" | "letzter");
+    let this = matches!(first, "this" | "dieses" | "diesem" | "diesen");
+    if (last || this) && tokens.len() > 1 {
+        if let Some((When::Months { months, label }, 1)) = date(&tokens[1..], today) {
+            let span = |y: i32| -> Option<(NaiveDate, NaiveDate)> {
+                let (m0, m1) = (months[0], *months.last()?);
+                let from = ymd(y, m0)?;
+                let to_year = if m1 < m0 { y + 1 } else { y };
+                let to = if m1 == 12 { ymd(to_year + 1, 1)? } else { ymd(to_year, m1 + 1)? };
+                Some((from, to))
+            };
+            let mut year = y;
+            if last {
+                // not one that is still going on or yet to come
+                while span(year).is_some_and(|(_, to)| to > today) {
+                    year -= 1;
+                }
+            } else if months[0] == 12 && today.month() <= 2 {
+                // in January, this winter began last December
+                year -= 1;
+            }
+            let (from, to) = span(year)?;
+            return Some((range(from, to, format!("{label} {year}")), 2));
+        }
+    }
     match (first, second) {
         ("last" | "letztes" | "letzten", Some("year" | "jahr")) => Some((range(ymd(y - 1, 1)?, ymd(y, 1)?, (y - 1).to_string()), 2)),
         ("this" | "dieses" | "diesem", Some("year" | "jahr")) => Some((range(ymd(y, 1)?, ymd(y + 1, 1)?, y.to_string()), 2)),
@@ -380,6 +408,17 @@ mod tests {
         assert_eq!(p.when, Some(When::Months { months: vec![8], label: "August".into() }));
         let p = parse("letztes jahr", &lexicon(), today());
         assert_eq!(p.when.as_ref().map(When::label), Some("2025"));
+        // today() is in the test's year; last summer is the latest one over
+        let p = parse("alex last summer", &lexicon(), NaiveDate::from_ymd_opt(2026, 11, 7).unwrap());
+        assert_eq!(ids(&p), vec![1]);
+        assert_eq!(p.when.as_ref().map(When::label), Some("Summer 2026"));
+        assert_eq!(p.text, None);
+        let p = parse("last summer", &lexicon(), NaiveDate::from_ymd_opt(2026, 7, 10).unwrap());
+        assert_eq!(p.when.as_ref().map(When::label), Some("Summer 2025"));
+        let p = parse("letzten winter", &lexicon(), NaiveDate::from_ymd_opt(2026, 11, 7).unwrap());
+        assert!(matches!(p.when, Some(When::Range { from, .. }) if from == NaiveDate::from_ymd_opt(2025, 12, 1).unwrap()));
+        let p = parse("this august", &lexicon(), NaiveDate::from_ymd_opt(2026, 11, 7).unwrap());
+        assert_eq!(p.when.as_ref().map(When::label), Some("August 2026"));
     }
 
     #[test]
