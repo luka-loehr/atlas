@@ -335,9 +335,9 @@ async fn filtered(
     if let (Some(text), Some(embedding)) = (&parsed.text, embedding) {
         // what the text says it shows: text in the image first, then the look
         let ids: Vec<String> = items.iter().map(|(i, _)| i.id.clone()).collect();
-        let pattern = format!("%{}%", util::like_escape(&text.to_lowercase()));
+        let pattern = text_pattern(text);
         let reads: HashSet<String> = c
-            .query("SELECT asset_id FROM asset_text WHERE asset_id = ANY($1) AND lower(text) LIKE $2", &[&ids, &pattern])
+            .query("SELECT asset_id FROM asset_text WHERE asset_id = ANY($1) AND lower(text) ~ $2", &[&ids, &pattern])
             .await?
             .iter()
             .map(|r| r.get(0))
@@ -388,7 +388,7 @@ async fn open_search(
     embedding: Embedding,
 ) -> ApiResult<(Columns, &'static str)> {
     let like = format!("%{}%", util::like_escape(term));
-    let text_like = format!("%{}%", util::like_escape(&parsed.text.clone().unwrap_or_else(|| term.to_string()).to_lowercase()));
+    let text_like = text_pattern(&parsed.text.clone().unwrap_or_else(|| term.to_string()));
     let year = (term.len() == 4 && term.chars().all(|ch| ch.is_ascii_digit())).then(|| term.to_string());
     // ranked: person, place, album, text in the image, then filename / year
     let rows = c
@@ -404,7 +404,7 @@ async fn open_search(
                    UNION ALL
                      SELECT aa.asset_id, 2 FROM album_assets aa JOIN albums a ON a.id = aa.album_id WHERE a.title ILIKE $1
                    UNION ALL
-                     SELECT t.asset_id, 3 FROM asset_text t WHERE lower(t.text) LIKE $2
+                     SELECT t.asset_id, 3 FROM asset_text t WHERE lower(t.text) ~ $2
                    UNION ALL
                      SELECT a.id, 4 FROM assets a
                      WHERE a.orig_name ILIKE $1 OR ($3::text IS NOT NULL AND to_char(a.taken_at, 'YYYY') = $3)
@@ -606,9 +606,39 @@ fn confident(hits: &[Hit]) -> bool {
     hits.iter().any(|h| h.similarity >= CONFIDENT_SIMILARITY) && (outlier || many)
 }
 
+/// What text read off a photo must contain to match `text` (a Postgres
+/// regex on the lowercased text): short words whole ("dog" is not in the
+/// Croatian "događaji", but is in "dog's"), longer ones anywhere, so a word
+/// is found inside a German compound ("vertretungsplan" in
+/// "vertretungsplanänderung"). Spaces match any run of whitespace.
+fn text_pattern(text: &str) -> String {
+    const WHOLE_BELOW: usize = 6;
+    let words: Vec<String> = text.to_lowercase().split_whitespace().map(regex_escape).collect();
+    let body = words.join(r"\s+");
+    let short = text.chars().filter(|c| !c.is_whitespace()).count() < WHOLE_BELOW;
+    if short { format!(r"\m{body}\M") } else { body }
+}
+
+fn regex_escape(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| {
+            let special = r"\.+*?()|[]{}^$".contains(c);
+            special.then_some('\\').into_iter().chain(std::iter::once(c))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Hit, confident, country_code};
+    use super::{Hit, confident, country_code, text_pattern};
+
+    #[test]
+    fn short_words_match_whole() {
+        assert_eq!(text_pattern("Dog"), r"\mdog\M");
+        assert_eq!(text_pattern("Vertretungsplan"), "vertretungsplan");
+        assert_eq!(text_pattern("bus  stop"), r"bus\s+stop");
+        assert_eq!(text_pattern("c++"), r"\mc\+\+\M");
+    }
 
     fn hit(z: f32, similarity: f32) -> Hit {
         Hit { id: String::new(), similarity, z, chance_best: 4.0, chance_tail: 3.5 }
