@@ -97,7 +97,9 @@ impl AnimalEngine {
         let mut kept = suppress(found);
         for animal in &mut kept {
             let [x0, y0, x1, y1] = animal.bbox.map(|v| v as u32);
-            if (x1 - x0).min(y1 - y0) < MIN_IDENTIFY_PX {
+            // the identifier knows dogs and cats; a horse or a bird is found,
+            // but never told apart from another one
+            if (x1 - x0).min(y1 - y0) < MIN_IDENTIFY_PX || !matches!(animal.species, "dog" | "cat") {
                 continue;
             }
             let crop = image::imageops::crop_imm(image, x0, y0, x1 - x0, y1 - y0).to_image();
