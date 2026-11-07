@@ -39,7 +39,7 @@ const CONFIDENT_COUNT: usize = 10;
 const SEMANTIC_LIMIT: usize = 300;
 /// Within what a search names ("luka at the beach"), an asset matches the
 /// text when it stands out this far for it (z within its kind) ...
-const FILTERED_TEXT_Z: f32 = 2.0;
+const FILTERED_TEXT_Z: f32 = 2.1;
 /// ... and when none does, the closest few are shown.
 const FILTERED_TEXT_FALLBACK: usize = 24;
 const STRUCTURED_LIMIT: i64 = 2000;
@@ -144,6 +144,9 @@ pub async fn warm(State(app): State<AppState>) -> Json<Value> {
 #[derive(Deserialize)]
 pub struct SearchQuery {
     q: String,
+    /// add each result's score (`scores`): for tuning the thresholds
+    #[serde(default)]
+    debug: bool,
 }
 
 pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery>) -> ApiResult<Json<Value>> {
@@ -209,8 +212,9 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
         )
         .await?;
 
+    let mut scores: Vec<f32> = Vec::new();
     let (assets, semantic) = if parsed.has_filters() {
-        filtered(&app, &c, &parsed, embedding).await?
+        filtered(&app, &c, &parsed, embedding, &mut scores).await?
     } else {
         open_search(&app, &c, &term, &parsed, embedding).await?
     };
@@ -225,6 +229,7 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
         })).collect::<Vec<_>>(),
         "semantic": semantic,
         "understood": understood(&parsed),
+        "scores": if query.debug { json!(scores) } else { Value::Null },
     })))
 }
 
@@ -261,6 +266,7 @@ async fn filtered(
     c: &deadpool_postgres::Object,
     parsed: &query::Parsed,
     embedding: Embedding,
+    debug_scores: &mut Vec<f32>,
 ) -> ApiResult<(Columns, &'static str)> {
     use tokio_postgres::types::ToSql;
     let mut conditions: Vec<String> = vec![VISIBLE.to_string()];
@@ -359,9 +365,11 @@ async fn filtered(
         });
         // what matches; when nothing does, the closest few
         items.truncate(if matching > 0 { matching } else { FILTERED_TEXT_FALLBACK.min(items.len()) });
+        *debug_scores = items.iter().map(|(i, _)| if reads.contains(&i.id) { 99.0 } else { z(&i.id) }).collect();
     } else if !people.is_empty() {
         // the people asked for, the clearest photos of them first
         items.sort_by(|a, b| b.1.total_cmp(&a.1));
+        *debug_scores = items.iter().map(|(_, p)| *p).collect();
     }
     let mut assets = Columns::default();
     for (item, _) in items {
