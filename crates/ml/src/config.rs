@@ -51,7 +51,8 @@ pub struct Config {
     pub text_dictionary: PathBuf,
     /// ATLAS_VISION_JOBS: assets the vision stage prepares side by side
     /// (decoding originals, reading video frames) while one at a time is on
-    /// the GPU (default 3).
+    /// the GPU (default 6: decoding originals and the database work take most
+    /// of an asset's second; the GPU part is a fraction of it).
     pub vision_jobs: usize,
 }
 
@@ -78,7 +79,7 @@ impl Config {
             text_detector: models.join("ocr6/det.onnx"),
             text_recognizer: models.join("ocr6/rec.onnx"),
             text_dictionary: models.join("ocr6/dict.txt"),
-            vision_jobs: env("ATLAS_VISION_JOBS").and_then(|v| v.parse().ok()).unwrap_or(3).clamp(1, 8),
+            vision_jobs: env("ATLAS_VISION_JOBS").and_then(|v| v.parse().ok()).unwrap_or(6).clamp(1, 12),
         })
     }
 
