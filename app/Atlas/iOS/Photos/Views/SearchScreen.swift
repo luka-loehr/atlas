@@ -25,10 +25,7 @@ struct SearchScreen: View {
                     // the same tiles and prefetching, a tap opens exactly the
                     // photo under the finger, newest first
                     VStack(spacing: 0) {
-                        QueryChips(parts: result.understood)
-                        if !result.persons.isEmpty {
-                            personsRow
-                        }
+                        QueryChips(parts: result.understood, persons: result.persons, library: library)
                         AssetGrid(library: library, assets: result.items, selection: nil,
                                   onRefresh: { await run(query) })
                             .id(revision)
@@ -48,35 +45,6 @@ struct SearchScreen: View {
         .onChange(of: query) { old, q in
             if old.isEmpty, !q.isEmpty { Task { await library.client.warmSearch() } }
             Task { await run(q) }
-        }
-    }
-
-    /// Matching persons as tappable face chips above the photo grid.
-    private var personsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                ForEach(result.persons) { p in
-                    NavigationLink(value: p) {
-                        VStack(spacing: 5) {
-                            FaceCircle(library: library, person: p)
-                                .frame(width: 64, height: 64)
-                            Text(p.displayName)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text("\(p.photos) \(p.photos == 1 ? "Item" : "Items")")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        .frame(width: 76)
-                        .accessibilityElement(children: .combine)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
         }
     }
 

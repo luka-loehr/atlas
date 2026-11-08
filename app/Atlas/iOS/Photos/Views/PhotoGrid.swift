@@ -236,6 +236,9 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         }
         guard isViewLoaded else { return }
         collectionView.scrollsToTop = grid.startsAtTop
+        // photos under the title: no blurred band behind the bar (the
+        // shade keeps the title readable)
+        collectionView.topEdgeEffect.isHidden = grid.titleShade
         shade.isHidden = !grid.titleShade
         if grid.revision != revision {
             revision = grid.revision

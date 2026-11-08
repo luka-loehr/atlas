@@ -4,20 +4,42 @@ import SwiftUI
 /// (a person), "Rex" (a pet), "Spain", "Summer 2024", "beach".
 struct QueryChips: View {
     let parts: [PhotoClient.QueryPart]
+    /// The people and pets of the result: a chip that names one shows their
+    /// face instead of an icon, and opens them.
+    var persons: [Person] = []
+    var library: Library?
 
     var body: some View {
         if parts.count > 1 || parts.contains(where: { $0.kind != "text" }) {
             ScrollView(.horizontal) {
                 HStack(spacing: 6) {
                     ForEach(parts) { part in
-                        Label(part.label, systemImage: part.symbol)
-                            .font(.footnote.weight(.medium))
-                            .labelStyle(.titleAndIcon)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(tint(part).opacity(0.15), in: Capsule())
-                            .foregroundStyle(tint(part))
+                        if let library, let who = persons.first(where: { $0.id == part.person }) {
+                            NavigationLink(value: who) {
+                                HStack(spacing: 6) {
+                                    FaceCircle(library: library, person: who)
+                                        .frame(width: 24, height: 24)
+                                    Text(part.label)
+                                }
+                                .font(.footnote.weight(.medium))
+                                .padding(.leading, 3)
+                                .padding(.trailing, 10)
+                                .padding(.vertical, 3)
+                                .background(tint(part).opacity(0.15), in: Capsule())
+                                .foregroundStyle(tint(part))
+                            }
+                            .buttonStyle(.plain)
                             .accessibilityLabel("\(part.kind): \(part.label)")
+                        } else {
+                            Label(part.label, systemImage: part.symbol)
+                                .font(.footnote.weight(.medium))
+                                .labelStyle(.titleAndIcon)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(tint(part).opacity(0.15), in: Capsule())
+                                .foregroundStyle(tint(part))
+                                .accessibilityLabel("\(part.kind): \(part.label)")
+                        }
                     }
                 }
                 .padding(.horizontal, 16)

@@ -172,7 +172,14 @@ struct PhotoClient: Sendable {
     struct QueryPart: Codable, Hashable, Identifiable, Sendable {
         let kind: String
         let label: String
+        /// the person or pet it names
+        var person: Int64?
         var id: String { kind + ":" + label }
+
+        enum CodingKeys: String, CodingKey {
+            case kind, label
+            case person = "id"
+        }
 
         var symbol: String {
             switch kind {
