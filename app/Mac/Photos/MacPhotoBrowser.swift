@@ -55,7 +55,6 @@ struct MacPhotoBrowser: View {
                 inspector.inspectorColumnWidth(min: 260, ideal: 300, max: 420)
             }
             .focusedSceneValue(\.photoActions, gated ? nil : actions(for: targetIDs))
-            .focusedSceneValue(\.viewerOpen, viewing != nil)
             .task(id: source) { await load() }
             .onChange(of: library.revision) { if source == .library { syncInspector() } }
             .onChange(of: selection) { syncInspector() }

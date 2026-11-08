@@ -23,9 +23,6 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var titleShade = true
     /// Long press shows `menu` (off in the photo picker).
     var contextMenus = true
-    /// Opens at the first asset instead of the last, and goes back there when
-    /// the assets change (search results, newest first).
-    var startsAtTop = false
     /// The asset under the top edge, nil when the grid rests at its newest
     /// end. Called when the month (or nil-ness) changes, not every frame.
     var onTop: (Int?) -> Void
@@ -230,12 +227,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     func apply(_ grid: PhotoGrid) {
         config = grid
         MediaCache.shared.client = grid.library.client
-        if grid.startsAtTop {
-            pinnedToBottom = false
-            needsBottom = false
-        }
         guard isViewLoaded else { return }
-        collectionView.scrollsToTop = grid.startsAtTop
         // photos under the title: no blurred band behind the bar (the
         // shade keeps the title readable)
         collectionView.topEdgeEffect.isHidden = grid.titleShade
@@ -254,11 +246,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                 return
             }
             collectionView.reloadData()
-            if grid.startsAtTop {
-                collectionView.layoutIfNeeded()
-                collectionView.setContentOffset(CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: false)
-                reportTop()
-            } else if pinnedToBottom {
+            if pinnedToBottom {
                 needsBottom = true
                 view.setNeedsLayout()
             }
@@ -958,7 +946,7 @@ struct AssetGrid: View {
     var body: some View {
         PhotoGrid(library: library, assets: ordered, revision: revision,
                   selecting: selection?.active ?? false, selected: selection?.ids ?? [], proxy: proxy,
-                  titleShade: underBar, contextMenus: false, startsAtTop: false,
+                  titleShade: underBar, contextMenus: false,
                   onTop: { _ in },
                   onToggle: { asset in withAnimation(.snappy(duration: 0.26)) { selection?.toggle(asset.id) } },
                   menu: { _ in UIMenu(children: []) },

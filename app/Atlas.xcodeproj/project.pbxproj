@@ -15,7 +15,6 @@
 		0AAF8EEA58074547751EEC43 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */; };
 		1199662680F239C8749F4521 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
 		13B202226C6C504C57AE1D1A /* CacheWarmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F88F25AE39FEF329CB1452 /* CacheWarmer.swift */; };
-		1621344FDC622B1DF045DDDC /* SelectableThumb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89B22590D7C3D2C4AA5AD56F /* SelectableThumb.swift */; platformFilters = (ios, ); };
 		190642C0AF7A4BB651F0D451 /* AlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E4D4FABFB344F64AF2AF9B /* AlbumsScreen.swift */; platformFilters = (ios, ); };
 		1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; platformFilters = (ios, ); };
 		1C5AA618CBAF966CFF934ABA /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7678B5765BB60548D5B2A9C /* SettingsScreen.swift */; platformFilters = (ios, ); };
@@ -142,7 +141,6 @@
 		757C41B50F72219EBBF43217 /* MacWindowState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWindowState.swift; sourceTree = "<group>"; };
 		83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumWidgetIntent.swift; sourceTree = "<group>"; };
 		83DBAEE08B909D318A2FE16B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
-		89B22590D7C3D2C4AA5AD56F /* SelectableThumb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableThumb.swift; sourceTree = "<group>"; };
 		8ABD32BC253498FF6D877718 /* PhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGrid.swift; sourceTree = "<group>"; };
 		8C22E76AAD2648E9F8703F7D /* NetworkWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWatch.swift; sourceTree = "<group>"; };
 		8CAC5B1838A9E7D2AD0E89C0 /* Common.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Common.swift; sourceTree = "<group>"; };
@@ -239,7 +237,6 @@
 				D264E2B00B01F24BBCD49CCB /* PhotoPickerSheet.swift */,
 				010213EA6928161BF28FAC00 /* PhotosScreen.swift */,
 				53C25286BF8F8BFB09171786 /* SearchScreen.swift */,
-				89B22590D7C3D2C4AA5AD56F /* SelectableThumb.swift */,
 				D12986C8F368AFE2E5D4B7F3 /* SelectionToolbar.swift */,
 				F7678B5765BB60548D5B2A9C /* SettingsScreen.swift */,
 				AB46753CAED0FAC6623AE30A /* ShareSheet.swift */,
@@ -569,7 +566,6 @@
 				98B7D64229C7AAAEBB869E98 /* PhotosScreen.swift in Sources */,
 				E97FC069CBCB49EE79EAC9BD /* Platform.swift in Sources */,
 				BFD472F06AC8278CC0A9B05A /* SearchScreen.swift in Sources */,
-				1621344FDC622B1DF045DDDC /* SelectableThumb.swift in Sources */,
 				956595182AE767C0B23605C4 /* Selection.swift in Sources */,
 				C27618F0EFAB1C79DF4AA81A /* SelectionToolbar.swift in Sources */,
 				DE50E3876F2ABD874355448A /* ServerStatus.swift in Sources */,

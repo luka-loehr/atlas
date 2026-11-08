@@ -59,15 +59,3 @@ extension View {
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: selection.active)
     }
 }
-
-// MARK: - VoiceOver for photo grid cells
-
-extension View {
-    /// One VoiceOver element per grid cell: kind and date, a button trait,
-    /// and — while selecting (`selected` non-nil) — the selected state.
-    func assetAccessibility(_ asset: Asset, selected: Bool? = nil) -> some View {
-        accessibilityElement(children: .ignore)
-            .accessibilityLabel(asset.spokenDescription)
-            .accessibilityAddTraits(selected == true ? [.isButton, .isSelected] : .isButton)
-    }
-}

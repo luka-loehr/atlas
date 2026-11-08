@@ -7,14 +7,12 @@ struct ServerConfig: Equatable, Sendable {
 }
 
 enum APIError: LocalizedError {
-    case notConnected
     case unauthorized
     case unreachable
     case server(Int)
 
     var errorDescription: String? {
         switch self {
-        case .notConnected: "Not connected to a server."
         case .unauthorized: "The server rejected the access token."
         case .unreachable: "The server can’t be reached. On the tailnet? Is atlas awake?"
         case .server(let code): "The server reported an error (\(code))."

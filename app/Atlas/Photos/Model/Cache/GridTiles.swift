@@ -227,7 +227,7 @@ final class GridTiles: @unchecked Sendable {
               ] as CFDictionary) else { return false }
         guard let sharp = Self.redraw(image, side: Self.sharpSide, crop: true),
               let mini = Self.redraw(image, side: Self.miniSide, crop: true),
-              let miniBytes = mini.dataProvider?.data as Data? else { return false }
+              mini.dataProvider != nil else { return false }
         // the JPEG
         let url = sharpURL(id)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -236,7 +236,6 @@ final class GridTiles: @unchecked Sendable {
         CGImageDestinationAddImage(dest, sharp, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return false }
         _ = try? FileManager.default.replaceItemAt(url, withItemAt: tmp)
-        _ = miniBytes
         return writeMini(id, mini)
     }
 

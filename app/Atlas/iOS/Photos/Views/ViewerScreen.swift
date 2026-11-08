@@ -22,9 +22,6 @@ struct ViewerScreen: View {
     var onClose: (() -> Void)? = nil
     /// The photo now shown, for the zoom transition back into the grid.
     var onPage: ((Asset) -> Void)? = nil
-    /// A photo left the viewer (archived, locked, deleted): the screen
-    /// behind it drops it too.
-    var onRemoved: ((String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -278,7 +275,6 @@ struct ViewerScreen: View {
             defer { busy = false }
             do { try await op(a.id) } catch { changeFailed = true; return }
             library.removeLocally([a.id])
-            onRemoved?(a.id)
             // the page may have moved on while the server answered
             guard let at = pages.firstIndex(where: { $0.id == a.id }) else { return }
             if pages.count <= 1 {

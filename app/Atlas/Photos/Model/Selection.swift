@@ -33,11 +33,6 @@ final class Selection {
         ids.removeAll()
     }
 
-    /// Sind exakt die übergebenen IDs komplett ausgewählt?
-    func allSelected(of all: [String]) -> Bool {
-        !all.isEmpty && ids.count == all.count && all.allSatisfy { ids.contains($0) }
-    }
-
     /// Auswahl-Modus betreten, optional mit einem ersten Asset (aus dem Kontextmenü).
     func enter(with id: String? = nil) {
         active = true

@@ -753,7 +753,6 @@ extension BackupService: URLSessionTaskDelegate {
 }
 
 extension BackupService {
-    /// One line for Einstellungen.
     /// The housekeeping line in Settings.
     var cleanupText: String {
         let freed = freedBytes
