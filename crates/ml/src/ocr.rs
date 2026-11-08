@@ -22,7 +22,7 @@ use image::RgbImage;
 use ort::value::Tensor;
 
 use crate::runtime::{self, Device};
-use crate::pixels;
+use crate::pixels::{self, IMAGENET_MEAN, IMAGENET_STD};
 
 const DETECT_SIDE: u32 = 1536;
 const PIXEL_THRESHOLD: f32 = 0.2;
@@ -34,8 +34,6 @@ const BATCH: usize = 8;
 /// A line read with less confidence than this is noise (an icon read as a
 /// character, a texture read as letters).
 const MIN_CONFIDENCE: f32 = 0.75;
-const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
-const STD: [f32; 3] = [0.229, 0.224, 0.225];
 
 pub struct Line {
     pub text: String,
@@ -86,7 +84,7 @@ impl TextEngine {
         // ordered) statistics, so channel 0 is blue
         for (i, pixel) in resized.pixels().enumerate() {
             for c in 0..3 {
-                input[c * plane + i] = (f32::from(pixel[2 - c]) / 255.0 - MEAN[c]) / STD[c];
+                input[c * plane + i] = (f32::from(pixel[2 - c]) / 255.0 - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
             }
         }
         let tensor = Tensor::from_array(([1usize, 3, dh as usize, dw as usize], input))?;
@@ -144,7 +142,7 @@ impl TextEngine {
             }
             let tensor = Tensor::from_array(([batch.len(), 3, LINE_HEIGHT as usize, width], input))?;
             let options = self.recognizer.options()?;
-        let outputs = self.recognizer.session.run_with_options(ort::inputs![tensor], &options)?;
+            let outputs = self.recognizer.session.run_with_options(ort::inputs![tensor], &options)?;
             let (shape, probs) = outputs[0].try_extract_tensor::<f32>()?;
             let (steps, classes) = (shape[1] as usize, shape[2] as usize);
             ensure!(classes == self.characters.len(), "recognizer has {classes} classes, dictionary {}", self.characters.len());

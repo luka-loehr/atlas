@@ -33,7 +33,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
 ///   PGHOST / PGPORT / PGDATABASE / PGUSER + POSTGRES_PASSWORD
 ///   ATLAS_DB_ENV_FILE    file with a POSTGRES_PASSWORD= line
 ///                        (default ~/atlas/db/.env, the compose secrets file)
-pub fn config() -> Result<tokio_postgres::Config> {
+fn config() -> Result<tokio_postgres::Config> {
     if let Some(url) = env("ATLAS_DATABASE_URL") {
         return url.parse().context("ATLAS_DATABASE_URL is not a valid postgres URL");
     }
@@ -149,10 +149,10 @@ async fn listen_once(
         let _ = tx.send(channel);
     }
     while let Some(name) = nrx.recv().await {
-        if let Some(channel) = channels.iter().find(|c| **c == name) {
-            if tx.send(channel).is_err() {
-                break;
-            }
+        if let Some(channel) = channels.iter().find(|c| **c == name)
+            && tx.send(channel).is_err()
+        {
+            break;
         }
     }
     driver.abort();

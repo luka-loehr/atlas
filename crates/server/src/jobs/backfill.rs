@@ -7,6 +7,7 @@ use atlas_core::queue;
 use clap::Subcommand;
 use deadpool_postgres::Pool;
 
+use super::thumb::THUMB_V;
 use crate::Config;
 
 #[derive(Subcommand)]
@@ -33,7 +34,7 @@ pub async fn run(_cfg: &Config, pool: &Pool, what: Kind) -> Result<()> {
         Kind::Thumbs => (
             queue::THUMB,
             "asset",
-            "SELECT id FROM assets WHERE thumbhash IS NULL OR width IS NULL OR (type = 'video' AND thumb_v < 2)",
+            &*format!("SELECT id FROM assets WHERE thumbhash IS NULL OR width IS NULL OR (type = 'video' AND thumb_v < {THUMB_V})"),
             queue::PRIORITY_DEFAULT + 100,
         ),
         Kind::Dates => (queue::META, "asset", "SELECT id FROM assets WHERE taken_at IS NULL OR tz_offset_s IS NULL", queue::PRIORITY_DEFAULT),

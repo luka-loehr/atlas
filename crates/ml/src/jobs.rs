@@ -1,5 +1,5 @@
 //! The model stages of the job queue: `embed` and `faces` (the vision
-//! stage: faces, animals, text; vision.rs).
+//! stage: faces, animals, text; vision/).
 //!
 //! Two loops side by side: embeddings, as many at once as the embedding
 //! server has slots to spare for the queue, and vision, a few assets
@@ -48,9 +48,10 @@ pub async fn release(worker: &Worker) {
     }
 }
 
-enum Outcome {
+/// How a model job went, short of failing.
+pub enum Outcome {
     Done,
-    /// the thumbnail this stage reads is not there yet
+    /// the thumbnail (or original) this stage reads is not there yet
     NotReady,
 }
 
@@ -150,10 +151,7 @@ async fn vision_loop(worker: Arc<Worker>, running: Running) {
         let (worker, running, engines) = (worker.clone(), running.clone(), engines.clone());
         tokio::spawn(async move {
             let started = Instant::now();
-            let result = vision::run(&worker, &engines, &job.owner_id).await.map(|outcome| match outcome {
-                vision::Outcome::Done => Outcome::Done,
-                vision::Outcome::NotReady => Outcome::NotReady,
-            });
+            let result = vision::run(&worker, &engines, &job.owner_id).await;
             settle(&worker, &job, result, started).await;
             running.lock().unwrap().remove(&job.id);
             drop(slot);

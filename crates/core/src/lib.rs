@@ -1,11 +1,13 @@
 //! What atlas-server and atlas-ml share: how to reach the database, the
-//! schema migrations, the job queue protocol both of them drain, and external
-//! tools with a deadline.
+//! schema migrations, the job queue protocol both of them drain, external
+//! tools with a deadline, image decoding, vector arithmetic and video facts.
 
 pub mod db;
 pub mod decode;
 pub mod process;
 pub mod queue;
+pub mod vector;
+pub mod video;
 
 /// The model behind every asset vector and every query vector:
 /// WeMM-Embedding-2B. Each vector is stored under this name, and only rows

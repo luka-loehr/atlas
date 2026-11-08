@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use atlas_core::process;
+use atlas_core::{process, video};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -103,19 +103,9 @@ pub fn iso6709(s: &str) -> Option<(f64, f64)> {
 impl Probe {
     /// HLG or PQ: frames need tone mapping before they look right in SDR.
     pub fn hdr(&self) -> bool {
-        is_hdr(&self.transfer)
+        video::is_hdr(&self.transfer)
     }
 }
-
-pub fn is_hdr(transfer: &str) -> bool {
-    matches!(transfer, "arib-std-b67" | "smpte2084")
-}
-
-/// HDR to SDR for stills: linear light with HLG/PQ reference white (203
-/// nits, BT.2408) as SDR white, BT.709 primaries, Hable's curve for what is
-/// brighter. Without it an iPhone clip's frame comes out pale and grey.
-pub const TONE_MAP: &str = "zscale=t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,\
-                            tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=pc,format=rgb24";
 
 /// One upright frame as BMP (lossless like PNG, without the seconds a 4K
 /// PNG takes to compress), tone-mapped when the clip is HDR. Seeks to one
@@ -126,7 +116,7 @@ pub fn poster(path: &Path, hdr: bool) -> Result<Vec<u8>> {
         let mut ffmpeg = Command::new("ffmpeg");
         ffmpeg.args(["-v", "error", "-ss", seek, "-i"]).arg(path).args(["-frames:v", "1"]);
         if hdr {
-            ffmpeg.args(["-vf", TONE_MAP]);
+            ffmpeg.args(["-vf", video::TONE_MAP]);
         }
         let out = process::output(ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]), Duration::from_secs(120))?;
         if out.status.success() && !out.stdout.is_empty() {
@@ -136,16 +126,44 @@ pub fn poster(path: &Path, hdr: bool) -> Result<Vec<u8>> {
     anyhow::bail!("ffmpeg produced no frame")
 }
 
+/// One ffmpeg run that writes `tmp` (appended as its output). Ok(Ok) when it
+/// wrote something, Ok(Err) with ffmpeg's last line of complaint when it did
+/// not, Err when it could not run or ran out of time; `tmp` is left behind
+/// only when written.
+pub fn ffmpeg_into(ffmpeg: &mut Command, tmp: &Path, limit: Duration) -> std::io::Result<Result<(), String>> {
+    let output = process::output(ffmpeg.arg(tmp), limit).inspect_err(|_| {
+        let _ = std::fs::remove_file(tmp);
+    })?;
+    if output.status.success() && std::fs::metadata(tmp).is_ok_and(|m| m.len() > 0) {
+        return Ok(Ok(()));
+    }
+    let _ = std::fs::remove_file(tmp);
+    Ok(Err(String::from_utf8_lossy(&output.stderr).lines().last().unwrap_or("").to_string()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_hdr, iso6709};
+    use super::*;
+    use crate::util;
 
     #[test]
-    fn hlg_and_pq_are_hdr() {
-        assert!(is_hdr("arib-std-b67"));
-        assert!(is_hdr("smpte2084"));
-        assert!(!is_hdr("bt709"));
-        assert!(!is_hdr(""));
+    fn a_tool_run_keeps_its_output_only_when_it_wrote_one() {
+        let dir = std::env::temp_dir().join(util::temp_name("ffmpeg-into"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmp = dir.join("out.part.mp4");
+        let limit = Duration::from_secs(5);
+        // the output path comes last, as $0 of the script
+        let wrote = ffmpeg_into(Command::new("sh").args(["-c", "printf x > \"$0\""]), &tmp, limit).unwrap();
+        assert_eq!(wrote, Ok(()));
+        assert!(tmp.is_file());
+        let failed = ffmpeg_into(Command::new("sh").args(["-c", "echo first >&2; echo last >&2; exit 1"]), &tmp, limit).unwrap();
+        assert_eq!(failed, Err("last".to_string()));
+        assert!(!tmp.exists(), "a failed run leaves no part file");
+        let empty = ffmpeg_into(Command::new("sh").args(["-c", ": > \"$0\""]), &tmp, limit).unwrap();
+        assert_eq!(empty, Err(String::new()));
+        assert!(!tmp.exists(), "an empty output is no output");
+        assert!(ffmpeg_into(&mut Command::new("no-such-tool-anywhere"), &tmp, limit).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! every model gets a fixed share as its arena's hard limit, cuDNN picks
 //! convolution algorithms without maximum-size workspaces, and a model that
 //! cannot get the memory it needs fails its run (and the stage falls back
-//! to the CPU, vision.rs) instead of taking the card from the embeddings.
+//! to the CPU, vision/mod.rs) instead of taking the card from the embeddings.
 //! Measured 2026-11-07 on the 8 GB RTX 4060 Ti: unbounded, the stage peaked
 //! at 3.5 GB, which with the embedding model would have filled the card.
 

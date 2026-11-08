@@ -14,8 +14,6 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use atlas_core::process;
-
 use anyhow::{Context, Result, bail};
 
 use super::video::{self, Probe};
@@ -85,12 +83,6 @@ pub fn target_size(probe: &Probe) -> (i32, i32) {
 fn transcode(source: &Path, dest: &Path, probe: &Probe) -> Result<()> {
     let (w, h) = target_size(probe);
     let ten_bit = probe.pixel_format.contains("10");
-    std::fs::create_dir_all(dest.parent().context("no parent directory")?)?;
-    let tmp = dest.with_extension("part.mp4");
-
-    // -noautorotate keeps frames in stored orientation and carries the
-    // rotation over as metadata, which every player honors; rotating on the
-    // GPU would need a filter the hardware path does not have.
     let nvenc = ["-c:v", "hevc_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "27", "-b:v", "0", "-maxrate", "8M", "-bufsize", "16M"];
     let gpu_scale = format!("scale_cuda={w}:{h}:format={}", if ten_bit { "p010le" } else { "nv12" });
     let cpu_scale = format!("scale={w}:{h}:flags=bicubic");
@@ -99,36 +91,38 @@ fn transcode(source: &Path, dest: &Path, probe: &Probe) -> Result<()> {
         (&[], &cpu_scale, &nvenc),
         (&[], &cpu_scale, &["-c:v", "libx265", "-preset", "medium", "-crf", "26"]),
     ];
+    let output = ["-tag:v", "hvc1", "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-map_metadata", "0", "-movflags", "+faststart"];
+    encode(source, dest, &attempts, &output)
+}
 
+/// One encoder after the other, each a (decoder options, video filter,
+/// encoder options), until one writes `dest`; `output` options follow the
+/// encoder's.
+pub fn encode(source: &Path, dest: &Path, attempts: &[(&[&str], &str, &[&str])], output: &[&str]) -> Result<()> {
+    std::fs::create_dir_all(dest.parent().context("no parent directory")?)?;
+    let tmp = dest.with_extension("part.mp4");
     let mut last_error = String::new();
     for (decode, filter, encode) in attempts {
-        let output = process::output(
-            Command::new("ffmpeg")
-                .args(["-v", "error", "-y", "-noautorotate"])
-                .args(decode)
-                .arg("-i")
-                .arg(source)
-                .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", filter])
-                .args(encode)
-                .args(["-tag:v", "hvc1", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
-                .args(["-map_metadata", "0", "-movflags", "+faststart"])
-                .arg(&tmp),
-            TRANSCODE_LIMIT,
-        );
-        let output = match output {
-            Ok(output) => output,
-            Err(e) => {
-                let _ = std::fs::remove_file(&tmp);
-                last_error = e.to_string();
-                continue;
+        // -noautorotate keeps frames in stored orientation and carries the
+        // rotation over as metadata, which every player honors; rotating on
+        // the GPU would need a filter the hardware path does not have.
+        let mut ffmpeg = Command::new("ffmpeg");
+        ffmpeg
+            .args(["-v", "error", "-y", "-noautorotate"])
+            .args(*decode)
+            .arg("-i")
+            .arg(source)
+            .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", filter])
+            .args(*encode)
+            .args(output);
+        match video::ffmpeg_into(&mut ffmpeg, &tmp, TRANSCODE_LIMIT) {
+            Ok(Ok(())) => {
+                std::fs::rename(&tmp, dest)?;
+                return Ok(());
             }
-        };
-        if output.status.success() && std::fs::metadata(&tmp).is_ok_and(|m| m.len() > 0) {
-            std::fs::rename(&tmp, dest)?;
-            return Ok(());
+            Ok(Err(last)) => last_error = last,
+            Err(e) => last_error = e.to_string(),
         }
-        last_error = String::from_utf8_lossy(&output.stderr).lines().last().unwrap_or("").to_string();
-        let _ = std::fs::remove_file(&tmp);
     }
     bail!("every encoder failed; last: {last_error}")
 }

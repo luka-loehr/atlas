@@ -33,8 +33,8 @@ Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
 | System | `GET /system` · `WS /system/live` · `/system/{services,containers,network,activity}` · `WS /system/terminal` · `POST /system/power/{shutdown\|restart}` |
 
 The full list with one line each sits at the top of
-[`photos/mod.rs`](src/photos/mod.rs), [`drive.rs`](src/drive.rs) and
-[`system/mod.rs`](src/system/mod.rs), [`share.rs`](src/share.rs).
+[`photos/mod.rs`](src/photos/mod.rs), [`drive/mod.rs`](src/drive/mod.rs),
+[`system/mod.rs`](src/system/mod.rs) and [`share/mod.rs`](src/share/mod.rs).
 
 ## How it is built
 
@@ -47,7 +47,7 @@ The full list with one line each sits at the top of
 - **Content addressing** ([`media.rs`](src/media.rs)). An asset's id is the
   SHA-256 of its bytes. Uploads are hashed while streaming to disk, duplicates
   cost nothing, and every media response is `immutable` with Range support.
-- **Vector index** ([`photos/vectors.rs`](src/photos/vectors.rs)). All
+- **Vector index** ([`photos/search/vectors.rs`](src/photos/search/vectors.rs)). All
   embeddings in one contiguous `n × 2048` matrix, kept current by `NOTIFY`.
   Search is an exact dot-product scan, photos against the query's photo
   question and videos against its video question, ranked by z-score within

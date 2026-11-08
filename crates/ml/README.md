@@ -38,7 +38,7 @@ Only atlas-server talks to it. Logs: `journalctl -u atlas-ml -f`.
   that device it does not start, the jobs fail visibly and are retried; it
   never falls back to the CPU.
 - **The model's own recipe** (its processor and MMEB evaluation, in
-  [`embedder.rs`](src/embedder.rs) `recipe`): every input is the user turn
+  [`embedder/recipe.rs`](src/embedder/recipe.rs)): every input is the user turn
   closed by the `<embedding>` token, whose last hidden state is the vector.
   **Stills** are resized by `smart_resize` (bicubic, 64 to 1800 visual
   tokens) and end with "Represent the given image." **Videos** are read at

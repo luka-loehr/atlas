@@ -72,6 +72,10 @@ fn write_meta(cfg: &BuildCfg) {
 /// rsync the local working tree (uncommitted edits and all) up to a scratch
 /// dir. Same 0700 hardening as the worktree path; the same excludes keep the
 /// warm output dirs off the wire.
+/// What the sync of a local working tree leaves behind, and `atlas watch`
+/// does not look at.
+pub(crate) const EXCLUDES: [&str; 5] = [".git", "node_modules", "target", ".next", "build"];
+
 pub(crate) fn sync_local(cfg: &BuildCfg, toplevel: &Path) {
     adopt_legacy(cfg);
     let base = cfg.base_dir();
@@ -86,23 +90,12 @@ pub(crate) fn sync_local(cfg: &BuildCfg, toplevel: &Path) {
         exit(1);
     }
     println!("{DIM}sync (local working tree) -> atlas{RESET}");
-    let ok = run_inherit(Command::new("rsync").args([
-        "-az",
-        "--delete",
-        "--chmod=Dgo=,Fgo=",
-        "--exclude",
-        ".git",
-        "--exclude",
-        "target",
-        "--exclude",
-        "node_modules",
-        "--exclude",
-        ".next",
-        "--exclude",
-        "build",
-        &format!("{}/", toplevel.display()),
-        &format!("{}:{}/", ssh_host(), dest),
-    ]));
+    let mut rsync = Command::new("rsync");
+    rsync.args(["-az", "--delete", "--chmod=Dgo=,Fgo="]);
+    for excluded in EXCLUDES {
+        rsync.args(["--exclude", excluded]);
+    }
+    let ok = run_inherit(rsync.args([&format!("{}/", toplevel.display()), &format!("{}:{}/", ssh_host(), dest)]));
     if !ok {
         eprintln!("{RED}rsync -> atlas failed{RESET}");
         exit(1);

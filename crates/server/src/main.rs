@@ -21,6 +21,7 @@ mod media;
 mod photos;
 mod share;
 mod system;
+mod upload;
 mod util;
 
 use std::path::PathBuf;
@@ -173,7 +174,7 @@ async fn serve(pool: Pool) -> Result<()> {
                 Ok(n) => tracing::info!("share: removed {n} expired links"),
                 Err(e) => tracing::warn!("share: expiry sweep failed: {}", e.message()),
             }
-            match photos::library::borrow_places(&trash_app).await {
+            match photos::places::borrow_places(&trash_app).await {
                 Ok(0) => {}
                 Ok(n) => tracing::info!("places: {n} photos without a location placed by the photos taken around them"),
                 Err(e) => tracing::warn!("places: borrowing failed: {}", e.message()),

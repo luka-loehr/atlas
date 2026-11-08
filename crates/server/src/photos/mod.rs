@@ -27,10 +27,9 @@ pub mod albums;
 pub mod assets;
 pub mod library;
 pub mod people;
-pub mod query;
+pub mod places;
 pub mod search;
 pub mod timeline;
-pub mod vectors;
 
 use axum::Router;
 use axum::routing::{get, post, put};
@@ -81,8 +80,8 @@ pub fn routes() -> Router<AppState> {
         .route("/faces/{id}/crop", get(people::face_crop))
         .route("/faces/hide", post(people::hide_faces))
         .route("/faces/unassign", post(people::unassign_faces))
-        .route("/places", get(library::places))
-        .route("/places/{id}", get(library::place_assets))
+        .route("/places", get(places::list))
+        .route("/places/{id}", get(places::assets))
         .route("/search", get(search::search))
         .route("/search/warm", post(search::warm))
 }

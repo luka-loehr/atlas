@@ -52,7 +52,7 @@ a unit naming an interface this box does not have.
 
 ## RAPL
 
-`atlas-server`'s `system/metrics.rs` reads
+`atlas-server`'s `system/metrics/readers.rs` reads
 `/sys/class/powercap/intel-rapl:0/energy_uj` for the energy delta and
 `max_energy_range_uj` to detect counter wrap — both need to be world-readable,
 and both are chmod'ed here. The chmod is per boot: sysfs is recreated every
