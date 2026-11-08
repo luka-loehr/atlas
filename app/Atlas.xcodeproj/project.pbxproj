@@ -18,6 +18,7 @@
 		0F59CD781551DC5AA2FE0E9D /* AllAlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1571FE8626F9D453BE2173B /* AllAlbumsScreen.swift */; platformFilters = (ios, ); };
 		0FD75E9076D37B3FD8DBE730 /* PhotoGridController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B64271D5E11F137FC0F9D729 /* PhotoGridController.swift */; platformFilters = (ios, ); };
 		1199662680F239C8749F4521 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
+		11B54120DD631FA80AFE6305 /* PhotoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F2F9393CA595BD5E89F81D0 /* PhotoSource.swift */; platformFilters = (macos, ); };
 		13B202226C6C504C57AE1D1A /* CacheWarmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F88F25AE39FEF329CB1452 /* CacheWarmer.swift */; };
 		16131A0BC25EEC4AC3DE23DB /* MediaCache+Decode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19280E354F8D76973598DDC3 /* MediaCache+Decode.swift */; };
 		1AAFF587B73205BE1E003768 /* PhotoGridView+Input.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C681663A13E732540CC43 /* PhotoGridView+Input.swift */; platformFilters = (macos, ); };
@@ -183,6 +184,7 @@
 		44D7E2ACA78DC6E21F40D60A /* MacDriveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDriveView.swift; sourceTree = "<group>"; };
 		493F6BA38487AD2D25FAE7A6 /* DriveIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveIcon.swift; sourceTree = "<group>"; };
 		4D37F62453CBAD3DFE4B4C67 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		4F2F9393CA595BD5E89F81D0 /* PhotoSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSource.swift; sourceTree = "<group>"; };
 		512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPicker.swift; sourceTree = "<group>"; };
 		51347611FF441B9BA833289A /* PhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosScreen.swift; sourceTree = "<group>"; };
 		536ECEC16062D6354BC9B4DF /* Machine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Machine.swift; sourceTree = "<group>"; };
@@ -279,6 +281,7 @@
 				B94988A0DF0CD149CEDC3CD8 /* MacPhotoBrowser.swift */,
 				5405CB97203B0FB5E62FC000 /* MacSearchView.swift */,
 				302D28D0A2D8E6C7395EAF4B /* MacViewer.swift */,
+				4F2F9393CA595BD5E89F81D0 /* PhotoSource.swift */,
 			);
 			path = Photos;
 			sourceTree = "<group>";
@@ -776,6 +779,7 @@
 				3C1718BF149629ED776197EF /* PhotoMutations.swift in Sources */,
 				BAD2F54BE759FA49C463497F /* PhotoPager.swift in Sources */,
 				3CB9F7DD1B616FCFA6BD7605 /* PhotoPickerSheet.swift in Sources */,
+				11B54120DD631FA80AFE6305 /* PhotoSource.swift in Sources */,
 				A1536074D55D236A9DE4D56D /* PhotosScreen.swift in Sources */,
 				E97FC069CBCB49EE79EAC9BD /* Platform.swift in Sources */,
 				D8B0F166225B237DFE0552FD /* RootView.swift in Sources */,

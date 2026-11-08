@@ -1,15 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Which photos a browser shows.
-enum PhotoSource: Hashable {
-    case library
-    case special(SpecialKind)
-    case album(Album)
-    case person(Person)
-    case search(String)
-}
-
 /// A set of photos as a grid, and the viewer over it: the library, an
 /// album, a person, a special collection. It owns the selection and offers
 /// what can be done with it in four places that always agree: the menu
@@ -127,7 +118,11 @@ struct MacPhotoBrowser: View {
         } else {
             ZStack {
                 if shown.isEmpty {
-                    if loaded || (source == .library && library.loaded) { empty } else { ProgressView() }
+                    if loaded || (source == .library && library.loaded) {
+                        PhotoSourceEmpty(source: source, online: library.online)
+                    } else {
+                        ProgressView()
+                    }
                 } else {
                     MacPhotoGrid(assets: shown, revision: shownRevision, cellSize: GridZoom.sizes[window.zoom],
                                  selection: $selection, startAtEnd: source == .library, reveal: reveal,
@@ -153,31 +148,6 @@ struct MacPhotoBrowser: View {
                 if busy { BusyOverlay() }
             }
             .animation(.easeOut(duration: 0.18), value: viewing)
-        }
-    }
-
-    @ViewBuilder
-    private var empty: some View {
-        switch source {
-        case .library:
-            if !library.online {
-                ServerUnavailableView()
-            } else {
-                ContentUnavailableView("No Photos", systemImage: "photo.on.rectangle",
-                                       description: Text("Photos backed up from your iPhone appear here."))
-            }
-        case .special(.favorites):
-            ContentUnavailableView("No Favorites", systemImage: "heart",
-                                   description: Text("Press . on a photo, or choose Image › Favorite, to add it here."))
-        case .special(.videos): ContentUnavailableView("No Videos", systemImage: "video")
-        case .special(.trash): ContentUnavailableView("No Recently Deleted Items", systemImage: "trash")
-        case .special(.archive): ContentUnavailableView("No Archived Items", systemImage: "archivebox")
-        case .special(.locked): ContentUnavailableView("No Locked Items", systemImage: "lock")
-        case .album:
-            ContentUnavailableView("No Photos", systemImage: "rectangle.stack",
-                                   description: Text("Drag photos from the library onto the album in the sidebar, or choose Image › Add to Album."))
-        case .person: ContentUnavailableView("No Photos", systemImage: "person.crop.square")
-        case .search(let q): ContentUnavailableView.search(text: q)
         }
     }
 
