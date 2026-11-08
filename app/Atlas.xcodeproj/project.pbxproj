@@ -19,6 +19,7 @@
 		190642C0AF7A4BB651F0D451 /* AlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E4D4FABFB344F64AF2AF9B /* AlbumsScreen.swift */; platformFilters = (ios, ); };
 		1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; platformFilters = (ios, ); };
 		1C5AA618CBAF966CFF934ABA /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7678B5765BB60548D5B2A9C /* SettingsScreen.swift */; platformFilters = (ios, ); };
+		1C9AFDC710803EB66CBE26D8 /* SearchExample.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1186FCEE38EC18469958E6 /* SearchExample.swift */; };
 		1DC3C73849F45BCB707630B6 /* AssetFilePromise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B12CD1DA8A8BEFC121FA0DE /* AssetFilePromise.swift */; platformFilters = (macos, ); };
 		25503606CD81AC4B04AAE776 /* AlbumWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3564974376000E1F3E6417A3 /* AlbumWidget.swift */; };
 		2735579E00860A7EA740C6E7 /* AlbumPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */; };
@@ -117,6 +118,7 @@
 		1D466581E9B47C27D1DBD088 /* StorageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBar.swift; sourceTree = "<group>"; };
 		2363D683E2288F19E1124A51 /* AtlasMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasMacApp.swift; sourceTree = "<group>"; };
 		2B7A800EE898B807A9EA6CE7 /* MacSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettings.swift; sourceTree = "<group>"; };
+		2C1186FCEE38EC18469958E6 /* SearchExample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExample.swift; sourceTree = "<group>"; };
 		2D3BCE530A0E77384A978DA6 /* WidgetShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShelf.swift; sourceTree = "<group>"; };
 		302D28D0A2D8E6C7395EAF4B /* MacViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacViewer.swift; sourceTree = "<group>"; };
 		3564974376000E1F3E6417A3 /* AlbumWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumWidget.swift; sourceTree = "<group>"; };
@@ -409,6 +411,7 @@
 				A58780722FD6A34389F60986 /* Persons.swift */,
 				160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */,
 				960D112EC6584D8D0BA84043 /* PhotoMutations.swift */,
+				2C1186FCEE38EC18469958E6 /* SearchExample.swift */,
 				1546EC722323AA2800B2C62F /* Selection.swift */,
 				E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */,
 				A11A82F97E9C46A16439690B /* Shares.swift */,
@@ -568,6 +571,7 @@
 				3CB9F7DD1B616FCFA6BD7605 /* PhotoPickerSheet.swift in Sources */,
 				98B7D64229C7AAAEBB869E98 /* PhotosScreen.swift in Sources */,
 				E97FC069CBCB49EE79EAC9BD /* Platform.swift in Sources */,
+				1C9AFDC710803EB66CBE26D8 /* SearchExample.swift in Sources */,
 				BFD472F06AC8278CC0A9B05A /* SearchScreen.swift in Sources */,
 				1621344FDC622B1DF045DDDC /* SelectableThumb.swift in Sources */,
 				956595182AE767C0B23605C4 /* Selection.swift in Sources */,

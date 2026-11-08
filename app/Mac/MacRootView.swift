@@ -10,6 +10,7 @@ struct MacRootView: View {
     /// Where the window was, restored on the next launch.
     @SceneStorage("sidebar") private var savedSidebar: Data?
     @State private var newAlbum = false
+    @State private var searchExample = SearchExample.placeholder
     @State private var linkError: String?
 
     var body: some View {
@@ -58,7 +59,8 @@ struct MacRootView: View {
             detail
         }
         .searchable(text: $window.search, placement: .toolbar,
-                    prompt: window.sidebar?.searchesFiles == true ? "Search Files" : "Search Photos")
+                    prompt: window.sidebar?.searchesFiles == true ? "Search Files" : searchExample)
+        .task(id: session.config) { searchExample = await SearchExample.make(client: model.library.client) }
         .focusedSceneValue(\.windowActions, WindowActions(
             state: window,
             newAlbum: { newAlbum = true },

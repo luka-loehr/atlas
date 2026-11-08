@@ -7,6 +7,8 @@ struct SearchScreen: View {
     @State private var searching = false
     /// Bumped with every new result, so the grid reloads (and goes to the top).
     @State private var revision = 0
+    /// From the library: its top people, place and this year.
+    @State private var example = SearchExample.placeholder
 
     var body: some View {
         NavigationStack {
@@ -39,10 +41,11 @@ struct SearchScreen: View {
                 PersonDetailScreen(library: library, person: p)
             }
         }
-        .searchable(text: $query, prompt: "Alex and Sam, beach, Spain 2024…")
+        .searchable(text: $query, prompt: example)
         // the model unloads after ten idle minutes: load it while the
         // query is being typed, not after it was sent
         .task {
+            example = await SearchExample.make(client: library.client)
             await library.client.warmSearch()
         }
         .onChange(of: query) { old, q in
