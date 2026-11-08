@@ -129,7 +129,7 @@ final class CacheWarmer {
         log.info("warming \(missing.count) previews, \(videos.count) video heads")
 
         var done = 0
-        for batch in stride(from: 0, to: missing.count, by: 12).map({ Array(missing[$0..<min($0 + 12, missing.count)]) }) {
+        for batch in missing.chunked(12) {
             guard !Task.isCancelled, await waitUntilIdle() else { return }
             guard await Task.detached(priority: .utility, operation: { Self.roomy() }).value else {
                 log.info("warming stopped: cache full enough")

@@ -48,11 +48,7 @@ struct TerminalBridge: PlatformViewRepresentable {
 
         func attach(_ terminal: TerminalView, api: API) {
             self.terminal = terminal
-            var components = URLComponents(url: api.url("system/terminal"), resolvingAgainstBaseURL: false)!
-            components.scheme = components.scheme == "https" ? "wss" : "ws"
-            var request = URLRequest(url: components.url!)
-            request.setValue("Bearer \(api.config.token)", forHTTPHeaderField: "Authorization")
-            let socket = URLSession.shared.webSocketTask(with: request)
+            let socket = URLSession.shared.webSocketTask(with: api.webSocketRequest("system/terminal"))
             self.socket = socket
             socket.resume()
             receive()

@@ -60,7 +60,7 @@ final class AppModel {
 
     private var started: ServerConfig?
 
-    var userAlbums: [Album] { albums.filter(AddToAlbumSheet.isUserAlbum) }
+    var userAlbums: [Album] { albums.filter(\.isUserAlbum) }
 
     /// Connects the shared layer to the server the session names: the
     /// library from disk, then the server; the cache fill and warmer behind.

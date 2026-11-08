@@ -2,48 +2,6 @@ import SwiftUI
 import QuickLook
 import UniformTypeIdentifiers
 
-// MARK: - Dateien tab (drive)
-
-/// Der Google-Drive-Teil der Atlas-Photos-App: Ordnerbaum + Dateien vom atlas
-/// (content-addressed Blobs). Root trägt Suche + Papierkorb; jede Ebene kann
-/// hochladen, anlegen, umbenennen, verschieben, löschen.
-struct DriveScreen: View {
-    var library: Library
-    /// The search tab opened from Dateien: the root becomes a file search.
-    var searchMode = false
-
-    var body: some View {
-        NavigationStack {
-            DriveFolderScreen(client: DriveClient(host: library.host), isRoot: true, searchMode: searchMode)
-                .navigationDestination(for: DriveFolder.self) { f in
-                    DriveFolderScreen(client: DriveClient(host: library.host),
-                                      folder: f.id, title: f.name)
-                }
-                .navigationDestination(for: DriveCrumb.self) { c in
-                    DriveFolderScreen(client: DriveClient(host: library.host),
-                                      folder: c.id, title: c.name)
-                }
-                .navigationDestination(for: DriveTrashRoute.self) { _ in
-                    DriveTrashScreen(client: DriveClient(host: library.host))
-                }
-        }
-    }
-}
-
-struct DriveTrashRoute: Hashable {}
-
-/// Ziel einer Verschieben-Aktion (Datei oder Ordner) für den Picker-Sheet.
-enum DriveMoveTarget: Identifiable {
-    case file(DriveFile)
-    case folder(DriveFolder)
-    var id: String {
-        switch self {
-        case .file(let f): return "f\(f.id)"
-        case .folder(let d): return "d\(d.id)"
-        }
-    }
-}
-
 struct DriveFolderScreen: View {
     let client: DriveClient
     var folder: Int? = nil
@@ -201,16 +159,11 @@ struct DriveFolderScreen: View {
     private func folderRow(_ f: DriveFolder) -> some View {
         NavigationLink(value: f) {
             HStack(spacing: 12) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .frame(width: 34, height: 34)
-                    .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityHidden(true)
+                DriveIcon(symbol: "folder.fill", color: .blue, size: 17, weight: .medium)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(f.name)
                         .lineLimit(1)
-                    Text("\(f.items) \(f.items == 1 ? "item" : "items") · \(bytes(f.bytes))")
+                    Text("\(f.items) \(f.items == 1 ? "item" : "items") · \(f.bytes.fileSize)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -233,13 +186,7 @@ struct DriveFolderScreen: View {
     private func fileRow(_ f: DriveFile, showFolder: Bool = false) -> some View {
         Button { open(f) } label: {
             HStack(spacing: 12) {
-                let icon = driveIcon(for: f.name)
-                Image(systemName: icon.symbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(icon.color)
-                    .frame(width: 34, height: 34)
-                    .background(icon.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityHidden(true)
+                DriveIcon(file: f.name)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(f.name)
                         .foregroundStyle(.primary)
@@ -283,7 +230,7 @@ struct DriveFolderScreen: View {
     }
 
     private func subtitle(_ f: DriveFile, showFolder: Bool) -> String {
-        var parts = [bytes(f.size)]
+        var parts = [f.size.fileSize]
         if let d = f.modifiedAt {
             parts.append(d.formatted(date: .numeric, time: .omitted))
         }
@@ -409,233 +356,4 @@ struct DriveFolderScreen: View {
         if let fresh = try? await client.list(folder: folder) { listing = fresh }
         loaded = true
     }
-}
-
-// MARK: - Papierkorb
-
-struct DriveTrashScreen: View {
-    let client: DriveClient
-    @State private var files: [DriveFile] = []
-    @State private var loaded = false
-    @State private var confirmEmpty = false
-    @State private var deleting: DriveFile?
-    @State private var changeFailed = false
-
-    var body: some View {
-        List {
-            ForEach(files) { f in
-                HStack(spacing: 12) {
-                    let icon = driveIcon(for: f.name)
-                    Image(systemName: icon.symbol)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(icon.color)
-                        .frame(width: 34, height: 34)
-                        .background(icon.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(f.name)
-                            .lineLimit(1)
-                        Text(ByteCountFormatter.string(fromByteCount: f.size, countStyle: .file))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .swipeActions(edge: .leading) {
-                    Button { restore(f) } label: {
-                        Label("Recover", systemImage: "arrow.uturn.backward")
-                    }
-                    .tint(.blue)
-                }
-                .swipeActions(edge: .trailing) {
-                    Button { deleting = f } label: {
-                        Label("Delete Permanently", systemImage: "trash.slash")
-                    }
-                    .tint(.red)
-                }
-                .contextMenu {
-                    Button { restore(f) } label: {
-                        Label("Recover", systemImage: "arrow.uturn.backward")
-                    }
-                    Button(role: .destructive) { deleting = f } label: {
-                        Label("Delete Permanently", systemImage: "trash.slash")
-                    }
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle("Trash")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if !files.isEmpty {
-                ToolbarItem(placement: .bottomBar) {
-                    Button("Empty Trash", role: .destructive) { confirmEmpty = true }
-                        .confirmationDialog("Empty Trash?", isPresented: $confirmEmpty, titleVisibility: .visible) {
-                            Button("Delete Permanently", role: .destructive) {
-                                Task {
-                                    do { try await client.emptyTrash() } catch { changeFailed = true }
-                                    await load()
-                                }
-                            }
-                        } message: {
-                            Text("All \(files.count) files will be deleted permanently.")
-                        }
-                }
-            }
-        }
-        .overlay {
-            if files.isEmpty && loaded {
-                ContentUnavailableView("Trash Is Empty", systemImage: "trash")
-            }
-        }
-        .confirmationDialog("Delete “\(deleting?.name ?? "")” Permanently?",
-                            isPresented: Binding(get: { deleting != nil },
-                                                 set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible) {
-            Button("Delete Permanently", role: .destructive) {
-                if let f = deleting { delete(f) }
-            }
-        }
-        .task { await load() }
-        .refreshable { await load() }
-        .changeFailedAlert($changeFailed)
-    }
-
-    private func restore(_ f: DriveFile) {
-        remove(f) { try await client.restore([f.id]) }
-    }
-
-    private func delete(_ f: DriveFile) {
-        remove(f) { try await client.deletePermanent([f.id]) }
-    }
-
-    /// The file leaves the trash once the server agreed.
-    private func remove(_ f: DriveFile, _ op: @escaping () async throws -> Void) {
-        Task {
-            do {
-                try await op()
-                withAnimation(.snappy) { files.removeAll { $0.id == f.id } }
-            } catch {
-                changeFailed = true
-            }
-        }
-    }
-
-    private func load() async {
-        // a failed reload keeps what is shown
-        if let fresh = try? await client.trash() { files = fresh }
-        loaded = true
-    }
-}
-
-// MARK: - Verschieben-Picker
-
-/// Ordner-Browser im Sheet: hineinnavigieren (System-Zurück), dann
-/// „Verschieben“. Der Server verhindert Zyklen (Ordner in sich selbst).
-struct DriveMovePicker: View {
-    let client: DriveClient
-    let target: DriveMoveTarget
-    var onDone: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var moveFailed = false
-
-    var body: some View {
-        NavigationStack {
-            DriveMoveLevel(client: client, target: target, folder: nil, title: "Files", move: move)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                }
-                .navigationDestination(for: DriveCrumb.self) { c in
-                    DriveMoveLevel(client: client, target: target, folder: c.id, title: c.name, move: move)
-                }
-        }
-        .presentationDetents([.medium, .large])
-        .changeFailedAlert($moveFailed)
-    }
-
-    private func move(to folder: Int?) async {
-        do {
-            switch target {
-            case .file(let f): try await client.move(files: [f.id], to: folder)
-            case .folder(let d): try await client.move(folders: [d.id], to: folder)
-            }
-        } catch {
-            moveFailed = true
-            return
-        }
-        onDone()
-        dismiss()
-    }
-}
-
-/// Eine Ebene im Verschieben-Sheet.
-private struct DriveMoveLevel: View {
-    let client: DriveClient
-    let target: DriveMoveTarget
-    let folder: Int?
-    let title: String
-    let move: (Int?) async -> Void
-
-    @State private var folders: [DriveFolder] = []
-    @State private var busy = false
-
-    var body: some View {
-        List {
-            ForEach(folders.filter { !isMoving($0) }) { f in
-                NavigationLink(value: DriveCrumb(id: f.id, name: f.name)) {
-                    Label(f.name, systemImage: "folder.fill")
-                        .lineLimit(1)
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                if busy {
-                    ProgressView()
-                } else {
-                    Button("Move") {
-                        busy = true
-                        Task { await move(folder); busy = false }
-                    }
-                }
-            }
-        }
-        .task { folders = (try? await client.list(folder: folder))?.folders ?? [] }
-    }
-
-    private func isMoving(_ f: DriveFolder) -> Bool {
-        if case .folder(let d) = target { return d.id == f.id }
-        return false
-    }
-}
-
-// MARK: - Icons
-
-private func driveIcon(for name: String) -> (symbol: String, color: Color) {
-    let ext = (name as NSString).pathExtension.lowercased()
-    switch ext {
-    case "pdf": return ("doc.richtext.fill", .red)
-    case "jpg", "jpeg", "png", "gif", "webp", "heic", "svg", "bmp", "tif", "tiff":
-        return ("photo.fill", .teal)
-    case "mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac", "aiff":
-        return ("waveform", .purple)
-    case "mp4", "mov", "m4v", "webm", "mkv", "avi": return ("play.rectangle.fill", .indigo)
-    case "zip", "7z", "tar", "gz", "rar": return ("doc.zipper", .brown)
-    case "txt", "md", "rtf", "log": return ("doc.text.fill", .gray)
-    case "csv", "xls", "xlsx", "numbers": return ("tablecells.fill", .green)
-    case "doc", "docx", "pages", "goodnotes": return ("doc.fill", .blue)
-    case "ppt", "pptx", "key": return ("rectangle.stack.fill", .orange)
-    case "json", "xml", "html", "js", "py", "swift", "rs":
-        return ("chevron.left.forwardslash.chevron.right", .cyan)
-    default: return ("doc.fill", Color(.systemGray))
-    }
-}
-
-private func bytes(_ b: Int64) -> String {
-    ByteCountFormatter.string(fromByteCount: b, countStyle: .file)
 }

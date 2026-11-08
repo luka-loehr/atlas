@@ -7,14 +7,12 @@ struct ServerConfig: Equatable, Sendable {
 }
 
 enum APIError: LocalizedError {
-    case notConnected
     case unauthorized
     case unreachable
     case server(Int)
 
     var errorDescription: String? {
         switch self {
-        case .notConnected: "Not connected to a server."
         case .unauthorized: "The server rejected the access token."
         case .unreachable: "The server can’t be reached. On the tailnet? Is atlas awake?"
         case .server(let code): "The server reported an error (\(code))."
@@ -58,6 +56,13 @@ struct API: Sendable {
         var components = URLComponents(url: config.url.appending(path: "v1/" + path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         return components.url!
+    }
+
+    /// A WebSocket request for `path` (ws, or wss behind https), with the token.
+    func webSocketRequest(_ path: String) -> URLRequest {
+        var components = URLComponents(url: url(path), resolvingAgainstBaseURL: false)!
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        return request(components.url!)
     }
 
     func request(_ url: URL, method: String = "GET") -> URLRequest {

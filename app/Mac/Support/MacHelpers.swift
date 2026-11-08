@@ -85,7 +85,7 @@ enum MacShare {
                     }
                     try? FileManager.default.copyItem(at: file, to: dest)
                 }
-                NSWorkspace.shared.activateFileViewerSelecting(files.isEmpty ? [folder] : [folder])
+                NSWorkspace.shared.activateFileViewerSelecting([folder])
             }
         }
         if let window = NSApp.keyWindow { panel.beginSheetModal(for: window, completionHandler: handler) }

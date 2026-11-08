@@ -117,6 +117,4 @@ struct WindowActions {
 extension FocusedValues {
     @Entry var photoActions: PhotoActions?
     @Entry var windowActions: WindowActions?
-    /// The viewer in front: ← → step through the photos, Esc closes it.
-    @Entry var viewerOpen: Bool?
 }

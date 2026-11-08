@@ -33,8 +33,6 @@ struct StorageUse {
 struct StorageBar: View {
     var use: StorageUse
 
-    private func gb(_ b: Int64) -> String { ByteCountFormatter.string(fromByteCount: b, countStyle: .file) }
-
     private var parts: [(String, Color, Int64)] {
         [("Thumbnails", .indigo, use.thumbnails), ("Previews", .blue, use.previews),
          ("Originals", .teal, use.originals), ("Videos", .orange, use.videos), ("Faces & Files", .pink, use.other)]
@@ -45,7 +43,7 @@ struct StorageBar: View {
             HStack {
                 Text("Atlas").font(.headline)
                 Spacer()
-                Text(gb(use.total)).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Text(use.total.fileSize).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
             }
             GeometryReader { geo in
                 let total = CGFloat(max(use.total, 1))
@@ -74,7 +72,7 @@ struct StorageBar: View {
             Circle().fill(color).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.caption)
-                Text(gb(bytes)).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                Text(bytes.fileSize).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
             }
         }
     }

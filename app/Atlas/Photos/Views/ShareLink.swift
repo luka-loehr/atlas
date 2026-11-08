@@ -11,22 +11,8 @@ struct ShareLinkItem: Identifiable {
     static func title(for assets: [Asset]) -> String {
         let dates = assets.compactMap(\.takenAt)
         guard let first = dates.min(), let last = dates.max() else { return "Photos" }
-        if Calendar.current.isDate(first, inSameDayAs: last) { return day.string(from: first) }
-        return range.string(from: first, to: last)
+        return DayRange.text(first, last)
     }
-
-    private static let range: DateIntervalFormatter = {
-        let f = DateIntervalFormatter()
-        f.locale = Locale(identifier: "en_GB")
-        f.dateTemplate = "dMMMyyyy"
-        return f
-    }()
-    private static let day: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_GB")
-        f.setLocalizedDateFormatFromTemplate("dMMMMyyyy")
-        return f
-    }()
 }
 
 /// "Share Link": title, expiry, originals and a password, then the link, at
@@ -80,7 +66,7 @@ struct ShareLinkSheet: View {
             }
             #if os(iOS)
             .sheet(item: $sending) { send in
-                ActivitySheet(items: send.items).presentationDetents([.medium, .large])
+                ShareSheet(items: send.items).presentationDetents([.medium, .large])
             }
             #endif
             .changeFailedAlert($failed)
@@ -149,7 +135,7 @@ struct ShareLinkSheet: View {
                     // a second of glide between the server's reports: it flows
                     ProgressView(value: s.progress ?? 0)
                         .animation(.linear(duration: 1), value: s.progress)
-                    Text("\(Self.mb(s.doneBytes)) of \(Self.mb(s.totalBytes))")
+                    Text("\(s.doneBytes.fileSize) of \(s.totalBytes.fileSize)")
                         .contentTransition(.numericText())
                         .animation(.default, value: s.doneBytes)
                         .font(.subheadline)
@@ -254,10 +240,6 @@ struct ShareLinkSheet: View {
         }
     }
 
-    static func mb(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
     #if targetEnvironment(simulator)
     /// ATLAS_SHARE_DEMO=uploading|ready|failed shows the sheet in that state.
     private static func demo() -> Share? {
@@ -337,7 +319,7 @@ struct SharedLinksScreen: View {
         }
         #if os(iOS)
         .sheet(item: $sending) { send in
-            ActivitySheet(items: send.items).presentationDetents([.medium, .large])
+            ShareSheet(items: send.items).presentationDetents([.medium, .large])
         }
         #endif
         .changeFailedAlert($failed)
@@ -425,15 +407,3 @@ private struct LinkSend: Identifiable {
         self.items = items
     }
 }
-
-#if os(iOS)
-private struct ActivitySheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
-}
-#endif

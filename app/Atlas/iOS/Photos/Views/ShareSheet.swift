@@ -21,7 +21,8 @@ struct ShareBundle: Identifiable {
 /// }
 /// ```
 struct ShareSheet: UIViewControllerRepresentable {
-    let items: [URL]
+    /// File URLs, or a link and its password as text.
+    let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: items, applicationActivities: nil)

@@ -2,9 +2,8 @@ import Foundation
 import Observation
 
 /// Auswahl-Zustand für den Foto-Grid (Apple-Fotos-Stil "Auswählen").
-/// Wird über Asset-IDs (SHA-256-Hash, `Asset.id`) geführt — passt zu `Asset: Hashable`.
-/// Als `@Observable` an Zellen weiterreichen; Reads in `body` registrieren die
-/// Abhängigkeit automatisch, es braucht kein `@State`/`@Bindable` an den Zellen.
+/// Wird über Asset-IDs (SHA-256-Hash, `Asset.id`) geführt. `@Observable`:
+/// der Grid und die Leisten, die ihn in `body` lesen, folgen ihm.
 @MainActor
 @Observable
 final class Selection {
@@ -15,8 +14,6 @@ final class Selection {
 
     var count: Int { ids.count }
     var isEmpty: Bool { ids.isEmpty }
-
-    func contains(_ id: String) -> Bool { ids.contains(id) }
 
     /// Ein einzelnes Asset an-/abwählen.
     func toggle(_ id: String) {
@@ -31,11 +28,6 @@ final class Selection {
     /// Nur die Auswahl leeren, Modus bleibt aktiv.
     func clear() {
         ids.removeAll()
-    }
-
-    /// Sind exakt die übergebenen IDs komplett ausgewählt?
-    func allSelected(of all: [String]) -> Bool {
-        !all.isEmpty && ids.count == all.count && all.allSatisfy { ids.contains($0) }
     }
 
     /// Auswahl-Modus betreten, optional mit einem ersten Asset (aus dem Kontextmenü).

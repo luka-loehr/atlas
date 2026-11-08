@@ -48,40 +48,40 @@ struct PersonsScreen: View {
     }
 
     private func grid(_ shown: [Person]) -> some View {
-                LazyVGrid(columns: cols, spacing: 24) {
-                    ForEach(shown) { person in
-                        NavigationLink {
-                            PersonDetailScreen(library: library, person: person)
-                        } label: {
-                            VStack(spacing: 2) {
-                                FaceCircle(library: library, person: person)
-                                    .aspectRatio(1, contentMode: .fit)
-                                    .padding(.bottom, 6)
-                                Text(person.displayName)
-                                    .font(.subheadline)
-                                    .foregroundStyle(person.name == nil
-                                                     ? .secondary : .primary)
-                                    .lineLimit(1)
-                                Text(person.photos, format: .number)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Hide", systemImage: "eye.slash") { hide(person) }
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(person.displayName)
-                        .accessibilityValue("\(person.photos) \(person.photos == 1 ? "photo" : "photos")")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction(named: "Hide") { hide(person) }
+        LazyVGrid(columns: cols, spacing: 24) {
+            ForEach(shown) { person in
+                NavigationLink {
+                    PersonDetailScreen(library: library, person: person)
+                } label: {
+                    VStack(spacing: 2) {
+                        FaceCircle(library: library, person: person)
+                            .aspectRatio(1, contentMode: .fit)
+                            .padding(.bottom, 6)
+                        Text(person.displayName)
+                            .font(.subheadline)
+                            .foregroundStyle(person.name == nil
+                                             ? .secondary : .primary)
+                            .lineLimit(1)
+                        Text(person.photos, format: .number)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Hide", systemImage: "eye.slash") { hide(person) }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(person.displayName)
+                .accessibilityValue("\(person.photos) \(person.photos == 1 ? "photo" : "photos")")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction(named: "Hide") { hide(person) }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
     }
 
     private func hide(_ person: Person) {
@@ -100,7 +100,6 @@ struct PersonsScreen: View {
         loaded = true
     }
 }
-
 
 /// One person: big avatar + name + count, then their photo grid.
 /// Rename via the ⋯ menu (alert with text field).
