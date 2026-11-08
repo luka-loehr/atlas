@@ -24,7 +24,7 @@ use pgvector::Vector;
 
 use crate::Worker;
 use crate::vision::{
-    self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_SMALL_FACE, MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP,
+    self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_POOR_FACE, ASSIGN_SMALL_FACE, MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP,
     MIN_WIDTH_GROUP, MODEL, SMALL_FACE,
 };
 
@@ -114,7 +114,10 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
         .query(
             &format!(
                 "SELECT person_id, v, named FROM (
-                     SELECT f.person_id, f.{column} AS v, p.display_name IS NOT NULL AS named,
+                     SELECT f.person_id, f.{column} AS v,
+                            p.display_name IS NOT NULL
+                              AND coalesce(f.width_px, 0) >= {MIN_WIDTH_GROUP} AND coalesce(f.clarity, 99) >= {MIN_CLARITY_GROUP}
+                              AND coalesce(f.quality, 0) >= {MIN_SCORE_GROUP} AS named,
                             row_number() OVER (PARTITION BY f.person_id ORDER BY f.quality * f.width_px DESC NULLS LAST) AS n
                      FROM faces f JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
                      WHERE f.kind = $1 AND f.{column} IS NOT NULL {model_filter}
@@ -124,7 +127,8 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
         )
         .await?;
     let known: Vec<(i64, Vec<f32>)> = known_rows.iter().map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec())).collect();
-    // faces that are no founders only join someone named (vision::founder)
+    // faces that are no founders only join someone named, judged against
+    // their clear faces (vision::founder)
     let named: Vec<(i64, Vec<f32>)> =
         known_rows.iter().filter(|r| r.get::<_, bool>(2)).map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec())).collect();
     let waiting: Vec<Item> = c
@@ -165,6 +169,8 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
             neighbors.truncate(k);
             let threshold = if !face {
                 ASSIGN_ANIMAL
+            } else if !item.founder {
+                ASSIGN_POOR_FACE
             } else if item.width < SMALL_FACE {
                 ASSIGN_SMALL_FACE
             } else {

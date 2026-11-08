@@ -56,6 +56,11 @@ pub const ASSIGN_FACE: f32 = 0.38;
 /// ... this for a face narrower than `SMALL_FACE` pixels ...
 pub const ASSIGN_SMALL_FACE: f32 = 0.42;
 pub const SMALL_FACE: f32 = 32.0;
+/// ... and a face that is no [`founder`] (small, blurred or unsure) needs
+/// this much, against the person's clear faces only: such faces carry little
+/// of who it is, and at 0.38 cartoons, memes and motion blur joined named
+/// people (2026-11-08). Genuine pairs have a median of 0.57.
+pub const ASSIGN_POOR_FACE: f32 = 0.50;
 /// ... and beat the runner-up person by this much. Calibrated on the owner's
 /// named faces with AdaFace (2026-11-07): two strangers' faces reach 0.26 in
 /// one pair of a thousand and 0.40 in one of ten thousand; half of all pairs
@@ -652,14 +657,30 @@ pub async fn assign_face(
             "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
              JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
              WHERE f.model = $2 AND f.kind = 'person' AND f.person_id IS NOT NULL
-               AND coalesce(f.clarity, 99) >= $3 AND ($4 OR p.display_name IS NOT NULL)
+               AND coalesce(f.clarity, 99) >= $3
+               AND ($4 OR (p.display_name IS NOT NULL
+                           AND f.width_px >= $5 AND f.clarity >= $6 AND f.quality >= $7))
              ORDER BY f.embedding <=> $1 LIMIT 40",
-            &[&Vector::from(embedding.to_vec()), &MODEL, &MIN_CLARITY_ASSIGN, &founder],
+            &[
+                &Vector::from(embedding.to_vec()),
+                &MODEL,
+                &MIN_CLARITY_ASSIGN,
+                &founder,
+                &MIN_WIDTH_GROUP,
+                &MIN_CLARITY_GROUP,
+                &MIN_SCORE_GROUP,
+            ],
         )
         .await?;
     let neighbors: Vec<(i64, f32)> =
         rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).filter(|(p, _)| !vetoed.contains(p)).collect();
-    let threshold = if width_px < SMALL_FACE { ASSIGN_SMALL_FACE } else { ASSIGN_FACE };
+    let threshold = if !founder {
+        ASSIGN_POOR_FACE
+    } else if width_px < SMALL_FACE {
+        ASSIGN_SMALL_FACE
+    } else {
+        ASSIGN_FACE
+    };
     Ok(decide(&neighbors, threshold, ASSIGN_MARGIN))
 }
 
