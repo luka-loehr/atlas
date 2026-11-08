@@ -15,16 +15,18 @@ struct MacSearchView: View {
                 if let result {
                     // how the search was read, as the iPhone shows it: glass
                     // pills, people and pets with their faces, wrapping
-                    QueryChips(parts: result.understood, persons: result.persons, library: model.library,
-                               onPerson: { window.open($0) })
-                    if !result.semantic {
-                        Label("Searching by content is unavailable right now: names, places and albums only.",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(8)
-                    }
-                    MacPhotoBrowser(source: .search(query), given: result.items)
+                    MacPhotoBrowser(source: .search(query), given: result.items, header: AnyView(
+                        VStack(spacing: 0) {
+                            if !result.semantic {
+                                Label("Searching by content is unavailable right now: names, places and albums only.",
+                                      systemImage: "exclamationmark.triangle")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .padding(8)
+                            }
+                            QueryChips(parts: result.understood, persons: result.persons, library: model.library,
+                                       onPerson: { window.open($0) })
+                        }))
                 } else if failed {
                     ServerUnavailableView()
                 } else {

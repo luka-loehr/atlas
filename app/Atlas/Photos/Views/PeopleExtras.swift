@@ -22,6 +22,9 @@ struct QueryChips: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // exactly as tall as its pills: the glass container would
+            // otherwise take a share of the height next to a grid
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Searched for")
         }

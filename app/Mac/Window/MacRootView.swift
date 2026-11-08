@@ -61,7 +61,13 @@ struct MacRootView: View {
         .searchable(text: $window.search, placement: .toolbar,
                     prompt: window.sidebar?.searchesFiles == true ? "Search Files" : searchExample)
         .searchFocused($searchFocused)
-        .task(id: session.config) { searchExample = await SearchExample.make(client: model.library.client) }
+        .task(id: session.config) {
+            #if DEBUG
+            // ATLAS_QUERY=... opens a debug build with that search
+            if let q = ProcessInfo.processInfo.environment["ATLAS_QUERY"], window.search.isEmpty { window.search = q }
+            #endif
+            searchExample = await SearchExample.make(client: model.library.client)
+        }
         .focusedSceneValue(\.windowActions, WindowActions(
             state: window,
             newAlbum: { newAlbum = true },

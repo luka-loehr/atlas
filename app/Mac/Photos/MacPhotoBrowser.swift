@@ -9,6 +9,10 @@ struct MacPhotoBrowser: View {
     let source: PhotoSource
     /// Search results come with their photos.
     var given: [Asset]? = nil
+    /// Shown above the grid (how a search was read). Inside the browser, so
+    /// it sits right under the toolbar: outside, the inspector's column
+    /// would leave the toolbar's height empty between it and the grid.
+    var header: AnyView? = nil
 
     @Environment(AppModel.self) private var model
     @Environment(MacWindowState.self) private var window
@@ -116,41 +120,49 @@ struct MacPhotoBrowser: View {
             }
             .task { await unlock() }
         } else {
-            ZStack {
-                if shown.isEmpty {
-                    if loaded || (source == .library && library.loaded) {
-                        PhotoSourceEmpty(source: source, online: library.online)
-                    } else {
-                        ProgressView()
-                    }
-                } else {
-                    MacPhotoGrid(assets: shown, revision: shownRevision, cellSize: GridZoom.sizes[window.zoom],
-                                 // every grid reads like the library: oldest at the top,
-                                 // opened at the newest end
-                                 selection: $selection, startAtEnd: true, reveal: reveal,
-                                 onOpen: { open($0) },
-                                 menu: { contextMenu($0) },
-                                 onTopIndex: { i in
-                                     guard source == .library else { return }
-                                     let label = library.month(at: i)?.label
-                                     if label != topMonth { topMonth = label }
-                                 },
-                                 onFavoriteKey: { actions(for: targetIDs).toggleFavorite?() },
-                                 onZoom: { step in withAnimation(.snappy) { step > 0 ? window.zoomIn() : window.zoomOut() } })
-                        .opacity(viewing == nil ? 1 : 0)
-                        .allowsHitTesting(viewing == nil)
-                        .accessibilityHidden(viewing != nil)
-                }
-                if let viewing {
-                    MacViewer(library: library, assets: shown, current: Binding(get: { viewing }, set: { self.viewing = $0 }),
-                              onClose: closeViewer,
-                              onFavorite: { actions(for: [viewing]).toggleFavorite?() })
-                        .transition(.opacity)
-                }
-                if busy { BusyOverlay() }
+            VStack(spacing: 0) {
+                if let header, viewing == nil { header }
+                photos
             }
-            .animation(.easeOut(duration: 0.18), value: viewing)
         }
+    }
+
+    /// The grid, or the viewer over it.
+    private var photos: some View {
+        ZStack {
+            if shown.isEmpty {
+                if loaded || (source == .library && library.loaded) {
+                    PhotoSourceEmpty(source: source, online: library.online)
+                } else {
+                    ProgressView()
+                }
+            } else {
+                MacPhotoGrid(assets: shown, revision: shownRevision, cellSize: GridZoom.sizes[window.zoom],
+                             // every grid reads like the library: oldest at the top,
+                             // opened at the newest end
+                             selection: $selection, startAtEnd: true, underToolbar: given == nil, reveal: reveal,
+                             onOpen: { open($0) },
+                             menu: { contextMenu($0) },
+                             onTopIndex: { i in
+                                 guard source == .library else { return }
+                                 let label = library.month(at: i)?.label
+                                 if label != topMonth { topMonth = label }
+                             },
+                             onFavoriteKey: { actions(for: targetIDs).toggleFavorite?() },
+                             onZoom: { step in withAnimation(.snappy) { step > 0 ? window.zoomIn() : window.zoomOut() } })
+                    .opacity(viewing == nil ? 1 : 0)
+                    .allowsHitTesting(viewing == nil)
+                    .accessibilityHidden(viewing != nil)
+            }
+            if let viewing {
+                MacViewer(library: library, assets: shown, current: Binding(get: { viewing }, set: { self.viewing = $0 }),
+                          onClose: closeViewer,
+                          onFavorite: { actions(for: [viewing]).toggleFavorite?() })
+                    .transition(.opacity)
+            }
+            if busy { BusyOverlay() }
+        }
+        .animation(.easeOut(duration: 0.18), value: viewing)
     }
 
     @ViewBuilder
