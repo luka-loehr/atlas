@@ -46,12 +46,12 @@ struct MacViewer: View {
                         MacPhotoPage(library: library, asset: asset, onSwipe: step, onClick: toggleChrome)
                     }
                 }
+                // the next photo replaces this one at once, no fade
                 .id(asset.id)
-                .transition(.opacity)
+                .transition(.identity)
                 edgeButtons(index)
             }
         }
-        .animation(.easeInOut(duration: 0.12), value: shown)
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
