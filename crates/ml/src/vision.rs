@@ -73,6 +73,16 @@ pub const MIN_CLARITY_ASSIGN: f32 = 17.0;
 /// walls and toys 13-22, median 17 (scores 0.5-0.7).
 pub const MIN_CLARITY_GROUP: f32 = 20.0;
 pub const MIN_SCORE_GROUP: f32 = 0.7;
+pub const MIN_WIDTH_GROUP: f32 = 40.0;
+
+/// Whether a face is clear enough to found a person or join one nobody has
+/// named. Other faces can only join someone named: small, blurred and
+/// face-like things resemble each other more than anyone, and grouped among
+/// themselves they grew into "people" of thousands of faces (2026-11-08:
+/// 7% of such a group's faces passed this test, 79% of named people's).
+pub fn founder(width_px: f32, clarity: f32, score: f32) -> bool {
+    width_px >= MIN_WIDTH_GROUP && clarity >= MIN_CLARITY_GROUP && score >= MIN_SCORE_GROUP
+}
 
 pub struct Engines {
     faces: FaceEngine,
@@ -518,7 +528,10 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
     for f in found.iter_mut().filter(|f| f.person.is_none()) {
         f.person = match (&f.embedding, &f.look) {
             (Some(_), _) if f.clarity.unwrap_or(0.0) < MIN_CLARITY_ASSIGN => None,
-            (Some(embedding), _) => assign_face(&tx, embedding, f.width_px).await?,
+            (Some(embedding), _) => {
+                let founder = founder(f.width_px, f.clarity.unwrap_or(0.0), f.score);
+                assign_face(&tx, embedding, f.width_px, founder).await?
+            }
             (None, Some(look)) => assign_animal(&tx, f.kind, look).await?,
             (None, None) => None,
         };
@@ -601,15 +614,17 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
 }
 
 /// The person whose known faces this face resembles clearly most.
-pub async fn assign_face(tx: &Transaction<'_>, embedding: &[f32], width_px: f32) -> Result<Option<i64>> {
+/// The person a face belongs to, if certain; a face that is not a
+/// [`founder`] is only matched against people someone named.
+pub async fn assign_face(tx: &Transaction<'_>, embedding: &[f32], width_px: f32, founder: bool) -> Result<Option<i64>> {
     let rows = tx
         .query(
             "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
              JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
              WHERE f.model = $2 AND f.kind = 'person' AND f.person_id IS NOT NULL
-               AND coalesce(f.clarity, 99) >= $3
+               AND coalesce(f.clarity, 99) >= $3 AND ($4 OR p.display_name IS NOT NULL)
              ORDER BY f.embedding <=> $1 LIMIT 40",
-            &[&Vector::from(embedding.to_vec()), &MODEL, &MIN_CLARITY_ASSIGN],
+            &[&Vector::from(embedding.to_vec()), &MODEL, &MIN_CLARITY_ASSIGN, &founder],
         )
         .await?;
     let neighbors: Vec<(i64, f32)> = rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).collect();
@@ -705,6 +720,14 @@ fn save_crop(image: &RgbImage, bbox: [f32; 4], margin: f32, path: &Path) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_clear_large_sure_faces_found_people() {
+        assert!(founder(120.0, 22.0, 0.85));
+        assert!(!founder(30.0, 22.0, 0.85)); // tiny
+        assert!(!founder(120.0, 18.0, 0.85)); // blurred
+        assert!(!founder(120.0, 22.0, 0.55)); // barely a face
+    }
 
     #[test]
     fn a_clear_majority_decides() {

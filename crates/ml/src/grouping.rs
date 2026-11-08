@@ -25,7 +25,7 @@ use pgvector::Vector;
 use crate::Worker;
 use crate::vision::{
     self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_SMALL_FACE, MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP,
-    MODEL, SMALL_FACE,
+    MIN_WIDTH_GROUP, MODEL, SMALL_FACE,
 };
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
@@ -34,6 +34,11 @@ const NEIGHBORS: usize = 10;
 /// Two waiting faces this similar may be one person ...
 const LINK_FACE: f32 = 0.45;
 const LINK_ANIMAL: f32 = 0.55;
+/// A new group of faces must hold together: its faces at least this alike
+/// to their mean on average. Every named person does (lowest 0.47,
+/// 2026-11-08); groups chained from cartoons, skulls and motion blur did
+/// not (0.30 to 0.38).
+const MIN_COHESION: f32 = 0.45;
 /// ... and this many linked make one.
 const MIN_GROUP: usize = 3;
 
@@ -106,8 +111,8 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     let known_rows = c
         .query(
             &format!(
-                "SELECT person_id, v FROM (
-                     SELECT f.person_id, f.{column} AS v,
+                "SELECT person_id, v, named FROM (
+                     SELECT f.person_id, f.{column} AS v, p.display_name IS NOT NULL AS named,
                             row_number() OVER (PARTITION BY f.person_id ORDER BY f.quality * f.width_px DESC NULLS LAST) AS n
                      FROM faces f JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
                      WHERE f.kind = $1 AND f.{column} IS NOT NULL {model_filter}
@@ -117,11 +122,15 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
         )
         .await?;
     let known: Vec<(i64, Vec<f32>)> = known_rows.iter().map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec())).collect();
+    // faces that are no founders only join someone named (vision::founder)
+    let named: Vec<(i64, Vec<f32>)> =
+        known_rows.iter().filter(|r| r.get::<_, bool>(2)).map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec())).collect();
     let waiting: Vec<Item> = c
         .query(
             &format!(
                 "SELECT f.id, f.{column}, coalesce(f.width_px, 0),
                         coalesce(f.clarity, 99) >= {MIN_CLARITY_GROUP} AND coalesce(f.quality, 0) >= {MIN_SCORE_GROUP}
+                          AND coalesce(f.width_px, 0) >= {MIN_WIDTH_GROUP}
                  FROM faces f
                  WHERE f.kind = $1 AND f.person_id IS NULL AND f.{column} IS NOT NULL {model_filter}"
             ),
@@ -137,9 +146,10 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
 
     // 1. by now someone may be recognizable
     let decisions: Vec<Option<i64>> = {
-        let known = &known;
+        let (known, named) = (&known, &named);
         parallel_map(&waiting, |item| {
-            let mut neighbors: Vec<(i64, f32)> = known.iter().map(|(p, v)| (*p, dot(&item.vector, v))).collect();
+            let candidates = if face && !item.founder { named } else { known };
+            let mut neighbors: Vec<(i64, f32)> = candidates.iter().map(|(p, v)| (*p, dot(&item.vector, v))).collect();
             let k = neighbors.len().min(40);
             if k == 0 {
                 return None;
@@ -169,7 +179,8 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     // 2. the rest among themselves: only faces clear enough found someone
     let link = if face { LINK_FACE } else { LINK_ANIMAL };
     rest.retain(|item| !face || item.founder);
-    let groups = gather(&rest, link);
+    let groups: Vec<Vec<usize>> =
+        gather(&rest, link).into_iter().filter(|g| !face || cohesion(&rest, g) >= MIN_COHESION).collect();
 
     let tx = c.transaction().await?;
     let mut touched: Vec<i64> = Vec::new();
@@ -256,6 +267,20 @@ fn gather(items: &[Item], link: f32) -> Vec<Vec<usize>> {
     out
 }
 
+/// How alike a group's vectors are to their mean, on average.
+fn cohesion(items: &[Item], group: &[usize]) -> f32 {
+    let dim = items[group[0]].vector.len();
+    let mut mean = vec![0f32; dim];
+    for &i in group {
+        for (m, v) in mean.iter_mut().zip(&items[i].vector) {
+            *m += v;
+        }
+    }
+    let norm = mean.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
+    mean.iter_mut().for_each(|x| *x /= norm);
+    group.iter().map(|&i| dot(&items[i].vector, &mean)).sum::<f32>() / group.len() as f32
+}
+
 /// A dot product LLVM can vectorize: eight independent sums.
 pub fn dot(a: &[f32], b: &[f32]) -> f32 {
     let mut acc = [0f32; 8];
@@ -283,6 +308,15 @@ fn parallel_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cohesion_tells_one_face_from_a_chain() {
+        let item = |v: Vec<f32>| Item { id: 0, vector: v, width: 50.0, founder: true };
+        let same = vec![item(unit(0.0)), item(unit(0.1)), item(unit(0.2))];
+        assert!(cohesion(&same, &[0, 1, 2]) > 0.95);
+        let spread = vec![item(unit(0.0)), item(unit(2.0)), item(unit(4.0))];
+        assert!(cohesion(&spread, &[0, 1, 2]) < MIN_COHESION);
+    }
 
     fn unit(angle: f32) -> Vec<f32> {
         vec![angle.cos(), angle.sin()]
