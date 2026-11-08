@@ -1,19 +1,23 @@
 # atlas-ml — the model worker
 
-The two models of the photo pipeline, in their own process so the server
-never links a GPU runtime and a model crash never takes the API down.
+The models of the photo pipeline, in their own process so the server never
+links a GPU runtime and a model crash never takes the API down.
 
 - **Meaning.** [WeMM-Embedding-2B](https://huggingface.co/tencent/WeMM-Embedding-2B)
   puts photos, videos and search text into one 2048-dimensional space. It
   runs on the GPU as a GGUF model inside a llama.cpp server that atlas-ml
   starts, supervises and stops.
-- **Faces.** InsightFace `buffalo_l` (SCRFD detection, ArcFace recognition) on
-  ONNX Runtime; each face is matched to a person or starts a new one.
+- **Vision** (the `faces` queue, [`vision/`](src/vision/)). On every original
+  at full resolution and about one frame a second of every video (up to 60):
+  faces with SCRFD at two scales and AdaFace IR-101, animals with RF-DETR
+  Large and pet-recognition-large (dogs and cats told apart), and text with
+  PP-OCRv6. On ONNX Runtime with CUDA, within a GPU memory budget.
 
 Nothing generative runs here: no captions, no tagging model.
 
 ```bash
-atlas-ml          # work the embed and faces queues, answer on 127.0.0.1:8786
+atlas-ml                 # work the embed and faces queues, answer on 127.0.0.1:8786
+atlas-ml analyze FILE... # what the vision stage sees in files, nothing stored
 ```
 
 | Route | |
@@ -31,9 +35,14 @@ Only atlas-server talks to it. Logs: `journalctl -u atlas-ml -f`.
   server's thumbnail job queues both once the 2048 thumbnail exists. Two
   loops run side by side: embeddings on the GPU, four at once in the
   llama.cpp server's slots (two slots are always left for a search), and
-  faces on the CPU. The queue lives in Postgres: a restart, a crash or a
-  power-off resumes where it stopped.
-- **GPU only.** The llama.cpp server is pinned to one CUDA device
+  the vision stage (`ATLAS_VISION_JOBS` assets prepared side by side, the
+  models run one at a time). The queue lives in Postgres: a restart, a crash
+  or a power-off resumes where it stopped.
+- **GPU budget** ([`runtime.rs`](src/runtime.rs)). The vision models get the
+  card's memory less 5 GB for the embedding model (`ATLAS_VISION_VRAM_MB`
+  overrides it); every model has a hard arena limit that shrinks after each
+  run, and a job that finds no room runs on the CPU instead.
+- **Embeddings: GPU only.** The llama.cpp server is pinned to one CUDA device
   (`ATLAS_EMBED_DEVICE`) with every layer and the vision tower on it. Without
   that device it does not start, the jobs fail visibly and are retried; it
   never falls back to the CPU.
@@ -54,9 +63,15 @@ Only atlas-server talks to it. Logs: `journalctl -u atlas-ml -f`.
 - **Idle unload.** After `ATLAS_ML_IDLE_S` seconds without work the llama.cpp
   server is stopped and its GPU memory returned; the next job or `/warm`
   starts it again.
-- **People.** A new face joins the person of its nearest known face (cosine
-  above 0.6), else the nearest person centroid (above 0.55), else becomes a
-  new person. Re-running a photo keeps assignments made by hand.
+- **People and pets** ([`vision/assign.rs`](src/vision/assign.rs),
+  [`grouping.rs`](src/grouping.rs)). A face found again where one was before
+  keeps its person, so names survive every re-run; named faces the detector
+  misses are kept. A new face joins someone only when its nearest known faces
+  agree by a clear margin; small, blurred or unsure faces join only people
+  someone named, and only when they clearly resemble their clear faces. Every
+  five minutes the faces nobody was recognized in are grouped into new people
+  along mutual nearest neighbours, and a group must hold together. A face
+  taken away from someone (`POST /faces/unassign`) never goes back to them.
 - **No silent fallback.** If a model is missing or fails, the job fails
   visibly and search reports `semantic: unavailable`.
 
@@ -66,7 +81,9 @@ From `/etc/atlas/atlas.env`, documented in [`config.rs`](src/config.rs).
 
 | Variable | Default | |
 |---|---|---|
-| `ATLAS_MODELS_DIR` | `~/models` | `wemm-embedding/{model,mmproj}.gguf`, `buffalo_l/{det_10g,w600k_r50}.onnx` |
+| `ATLAS_MODELS_DIR` | `~/models` | `wemm-embedding/{model,mmproj}.gguf`, `buffalo_l/det_10g.onnx`, `adaface/ir101.onnx`, `rfdetr/large.onnx`, `pet/model.onnx`, `ocr6/{det,rec}.onnx` + `dict.txt` |
+| `ATLAS_VISION_JOBS` | `6` | assets the vision stage prepares side by side |
+| `ATLAS_VISION_VRAM_MB` | card − 5 GB | GPU memory the vision models may use |
 | `ATLAS_LLAMA_SERVER` | `/usr/local/lib/atlas/llama-server` | built by `models.sh`, with Atlas' video-frames patch |
 | `ATLAS_EMBED_DEVICE` | `CUDA0` | the GPU the embedding model runs on (`llama-server --list-devices`) |
 | `ATLAS_ML_IDLE_S` | `600` | seconds until the embedding model is unloaded |
@@ -76,4 +93,5 @@ From `/etc/atlas/atlas.env`, documented in [`config.rs`](src/config.rs).
 
 Models and the llama.cpp build come from
 [`scripts/atlas/models.sh`](../../scripts/atlas/models.sh). The weights keep
-their own licenses; `buffalo_l` is for non-commercial research use.
+their own licenses; SCRFD (`buffalo_l`) and AdaFace's WebFace12M weights are
+for non-commercial research use.
