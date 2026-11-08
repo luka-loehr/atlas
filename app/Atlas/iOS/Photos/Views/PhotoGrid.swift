@@ -914,6 +914,9 @@ struct AssetGrid: View {
     var selection: Selection?
     var onRefresh: () async -> Void = {}
     var onViewerClosed: () -> Void = {}
+    /// The photos run up under the navigation bar, with the Library's shade
+    /// behind the title (a screen of its own; not under the search chips).
+    var underBar = false
     @State private var proxy = PhotoGridProxy()
 
     /// Changes when the list does (ids in order).
@@ -927,11 +930,12 @@ struct AssetGrid: View {
     var body: some View {
         PhotoGrid(library: library, assets: assets, revision: revision,
                   selecting: selection?.active ?? false, selected: selection?.ids ?? [], proxy: proxy,
-                  titleShade: false, contextMenus: false, startsAtTop: true,
+                  titleShade: underBar, contextMenus: false, startsAtTop: true,
                   onTop: { _ in },
                   onToggle: { asset in withAnimation(.snappy(duration: 0.26)) { selection?.toggle(asset.id) } },
                   menu: { _ in UIMenu(children: []) },
                   onRefresh: onRefresh,
                   onViewerClosed: onViewerClosed)
+            .ignoresSafeArea(edges: underBar ? .all : .bottom)
     }
 }

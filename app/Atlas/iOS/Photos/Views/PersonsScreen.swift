@@ -119,8 +119,7 @@ struct PersonDetailScreen: View {
             Color(.systemBackground).ignoresSafeArea()
             // the library's own grid, newest first
             AssetGrid(library: library, assets: assets, selection: nil,
-                      onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
-                .ignoresSafeArea(edges: .bottom)
+                      onRefresh: { await load() }, onViewerClosed: { Task { await load() } }, underBar: true)
         }
         .navigationTitle(person.displayName)
         .inlineNavigationTitle()

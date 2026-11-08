@@ -554,8 +554,7 @@ struct SpecialCollectionScreen: View {
         // what the viewer did (archive, lock, delete) may move items in or
         // out of this collection: it is read again when the viewer closes
         AssetGrid(library: library, assets: assets, selection: selection,
-                  onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
-            .ignoresSafeArea(edges: .bottom)
+                  onRefresh: { await load() }, onViewerClosed: { Task { await load() } }, underBar: true)
             .selectionToolbar(selection, actions: toolbarActions)
     }
 
@@ -688,8 +687,7 @@ struct AlbumScreen: View {
                 }
             } else {
                 AssetGrid(library: library, assets: assets, selection: selection,
-                          onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
-                    .ignoresSafeArea(edges: .bottom)
+                          onRefresh: { await load() }, onViewerClosed: { Task { await load() } }, underBar: true)
                     .selectionToolbar(selection, actions: [
                     .init(title: "Remove from Album", icon: "minus.circle", role: .destructive) { removeSelected() },
                 ])
