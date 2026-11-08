@@ -79,10 +79,6 @@ struct FaceCircle: View {
     }
 }
 
-extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
-
 /// The album list as last fetched, so the tab opens complete and refreshes
 /// behind it.
 @MainActor
