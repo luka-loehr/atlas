@@ -66,7 +66,7 @@ struct MacViewer: View {
         // space plays and pauses a video, and closes a photo (as before)
         .onKeyPress(.space) {
             if let player = playing, assets[safe: index ?? -1]?.isVideo == true {
-                player.timeControlStatus == .paused ? player.play() : player.pause()
+                player.timeControlStatus == .paused ? player.resume() : player.pause()
             } else {
                 sync()
                 onClose()
@@ -290,7 +290,6 @@ final class ZoomScrollView: NSScrollView {
     var onZoomIn: () -> Void = {}
     /// A single click (not the first of a double click, which zooms).
     var onClick: () -> Void = {}
-    private var pendingClick: DispatchWorkItem?
     private var downAt: NSPoint = .zero
     private var swipeX: CGFloat = 0
 
@@ -362,9 +361,8 @@ final class ZoomScrollView: NSScrollView {
     /// Double-click: 100 % where clicked, or back to the window's size.
     override func mouseDown(with event: NSEvent) {
         downAt = event.locationInWindow
-        pendingClick?.cancel()
-        pendingClick = nil
         if event.clickCount == 2 {
+            onClick()   // undo the first click's toggle: a double click zooms
             let point = imageView.convert(event.locationInWindow, from: nil)
             let fitted = fitMagnification
             if atFit || magnification <= fitted * 1.01 {
@@ -380,15 +378,13 @@ final class ZoomScrollView: NSScrollView {
         super.mouseDown(with: event)
     }
 
-    /// A click that did not drag counts once the double-click time is over
-    /// without a second one.
+    /// A click that did not drag shows or hides the controls at once; the
+    /// second click of a double click (which zooms) undoes it again.
     override func mouseUp(with event: NSEvent) {
         super.mouseUp(with: event)
         let p = event.locationInWindow
-        guard event.clickCount == 1, hypot(p.x - downAt.x, p.y - downAt.y) < 4 else { return }
-        let click = DispatchWorkItem { [weak self] in self?.onClick() }
-        pendingClick = click
-        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: click)
+        guard hypot(p.x - downAt.x, p.y - downAt.y) < 4 else { return }
+        if event.clickCount == 1 { onClick() }
     }
 
     /// A horizontal two-finger swipe at the window's size goes to the next
@@ -542,7 +538,9 @@ private struct VideoSurfaceView: NSViewRepresentable {
 /// progress between the time played and the time left (click or drag to
 /// go anywhere), then mute; back 10 s, play and pause, ahead 10 s; and
 /// Picture in Picture and full screen.
-private struct VideoBar: View {
+struct VideoBar: View {
+    /// Whether a video starts over at its end (the server page's setting).
+    static let loopKey = "video.loop"
     let player: AVPlayer
     let surface: VideoSurface
     @Environment(MacWindowState.self) private var window
@@ -554,6 +552,8 @@ private struct VideoBar: View {
     @State private var hoveringTrack = false
     @State private var observer: Any?
     @State private var columnsBeforeFullScreen: NavigationSplitViewVisibility?
+    @AppStorage(VideoBar.loopKey) private var loop = false
+    @State private var statusWatch: NSKeyValueObservation?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -583,7 +583,7 @@ private struct VideoBar: View {
                 HStack(spacing: 22) {
                     control("gobackward.10", "Back 10 Seconds") { skip(-10) }
                     Button {
-                        playing ? player.pause() : player.play()
+                        playing ? player.pause() : player.resume()
                     } label: {
                         Image(systemName: playing ? "pause.fill" : "play.fill")
                             .font(.system(size: 24, weight: .semibold))
@@ -605,6 +605,18 @@ private struct VideoBar: View {
         .onDisappear {
             if let observer { player.removeTimeObserver(observer) }
             observer = nil
+            statusWatch = nil
+        }
+        // at the end: start over (the setting), or stop with the play button
+        .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification,
+                                                        object: player.currentItem)) { _ in
+            if loop {
+                player.seek(to: .zero)
+                player.play()
+            } else {
+                player.pause()
+                playing = false
+            }
         }
     }
 
@@ -676,10 +688,15 @@ private struct VideoBar: View {
         w.toggleFullScreen(nil)
     }
 
-    /// Four times a second: the time, the length and whether it plays.
+    /// Four times a second (and when it starts or stops): the time, the
+    /// length and whether it plays.
     private func observe() {
         guard observer == nil else { return }
         muted = player.isMuted
+        statusWatch = player.observe(\.timeControlStatus, options: [.initial, .new]) { p, _ in
+            let now = p.timeControlStatus != .paused
+            DispatchQueue.main.async { if now != playing { playing = now } }
+        }
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 4), queue: .main) { t in
             MainActor.assumeIsolated {
                 if scrubbing == nil { current = t.seconds.isFinite ? t.seconds : 0 }
@@ -694,5 +711,16 @@ private struct VideoBar: View {
         let t = Int(max(s, 0).rounded(.down))
         return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
                          : String(format: "%d:%02d", t / 60, t % 60)
+    }
+}
+
+extension AVPlayer {
+    /// Plays on, or from the start when it stood at the end.
+    func resume() {
+        if let item = currentItem, item.duration.isNumeric,
+           currentTime().seconds >= item.duration.seconds - 0.05 {
+            seek(to: .zero)
+        }
+        play()
     }
 }

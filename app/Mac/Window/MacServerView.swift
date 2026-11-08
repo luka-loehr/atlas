@@ -17,6 +17,8 @@ struct MacServerView: View {
     @State private var confirmDisconnect = false
     /// The chosen cache size in bytes; 0 for automatic.
     @State private var cacheChoice: Int64 = MediaStore.chosenBudget ?? 0
+    /// A video starts over at its end; off, it stops there with a play button.
+    @AppStorage(VideoBar.loopKey) private var loopVideos = false
 
     enum Power: String, Identifiable {
         case restart, shutdown
@@ -135,6 +137,12 @@ struct MacServerView: View {
                 Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([MediaStore.shared.directory])
                 }
+            }
+            LabeledContent("Loop videos") {
+                Toggle("Loop videos", isOn: $loopVideos)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
             }
         } header: {
             Text("On This Mac")
