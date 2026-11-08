@@ -17,7 +17,8 @@
 - **Share links** albums or a few photos as a link (optional password), served from your own Cloudflare account so links work while the server sleeps, and gone after 7 days at the latest
 - **Drive** folders over content-addressed files, with previews, full-text search and a trash
 - **One app, native everywhere** one SwiftUI codebase: the iPhone app (library, albums, files, settings) and a true Mac app with a sidebar, menu bar commands, an inspector and drag and drop with the Finder; both with live server status, power control and a terminal
-- **Built to feel instant** precomputed and compressed timeline, immutable media URLs, streaming uploads, video renditions on the GPU
+- **Built to feel instant** precomputed and compressed timeline, every grid drawn from small tiles kept on the device (no blank cells at any scroll speed), immutable media URLs, streaming uploads, video renditions on the GPU
+- **Your GPU, safely shared** the vision models work within the card's memory less what search needs, and fall back to the CPU instead of ever running out
 - **agentbrain sync** keep a copy of your agents' agentbrain memories on your server: every memory and version, hourly, verified and versioned ([setup](scripts/agentbrain-backup/README.md))
 - **Wake-on-LAN CLI** `atlas boot` wakes the server, `atlas deploy` installs the services, `atlas build` and `atlas dev` build other projects on it
 - **Tailnet-first security** one port, firewalled to loopback and the tailnet, one bearer token on every route

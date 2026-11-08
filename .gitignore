@@ -8,8 +8,13 @@ build/
 build-sim/
 build-sim-*/
 build-device/
+build-ios/
 build-mac/
+build-mac-*/
 DerivedData/
+
+# Local tool caches (wrangler's account cache for the share worker).
+.cloudflare/
 
 # Git worktrees that Claude Code creates for parallel agent sessions.
 .claude/worktrees/
