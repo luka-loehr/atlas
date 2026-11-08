@@ -60,14 +60,7 @@ struct MacPhotoBrowser: View {
             .onChange(of: library.revision) { if source == .library { syncInspector() } }
             .onChange(of: selection) { syncInspector() }
             .onChange(of: viewing) { syncInspector() }
-            // the viewer opens with its controls. Hidden, its own toolbar
-            // items go; the window's buttons and the sidebar button stay while
-            // the sidebar shows, and go with the whole toolbar when it is
-            // folded away
-            .onChange(of: viewing == nil) { window.viewerChrome = true }
-            .toolbar(viewing != nil && !window.viewerChrome && window.columns == .detailOnly ? .hidden : .automatic,
-                     for: .windowToolbar)
-            .onDisappear { window.viewerChrome = true }
+            .modifier(ViewerChrome(open: viewing != nil, window: window))
             .onReceive(NotificationCenter.default.publisher(for: .atlasRelock)) { _ in
                 if source == .special(.locked) { unlocked = false; viewing = nil }
             }
@@ -215,6 +208,7 @@ struct MacPhotoBrowser: View {
     }
 
     // MARK: - Toolbar
+
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
@@ -665,5 +659,34 @@ private struct LibraryTitle: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The viewer's controls hidden (a click on the photo): its own toolbar
+/// items go, and the window's search field with them; the window's buttons
+/// and the sidebar button stay while the sidebar shows, and go with the
+/// whole toolbar when it is folded away. The viewer opens with them shown.
+private struct ViewerChrome: ViewModifier {
+    let open: Bool
+    let window: MacWindowState
+
+    private var hidden: Bool { open && !window.viewerChrome }
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: open) { window.viewerChrome = true }
+            .toolbar(hidden && window.columns == .detailOnly ? .hidden : .automatic, for: .windowToolbar)
+            // a `.searchable` field cannot be left out: its AppKit item hides
+            .onChange(of: hidden, initial: true) { _, h in Self.hideSearchField(h) }
+            .onDisappear {
+                window.viewerChrome = true
+                Self.hideSearchField(false)
+            }
+    }
+
+    private static func hideSearchField(_ hidden: Bool) {
+        for item in NSApp.keyWindow?.toolbar?.items ?? [] where item is NSSearchToolbarItem {
+            item.isHidden = hidden
+        }
     }
 }

@@ -89,7 +89,6 @@ struct MacViewer: View {
         .padding(.horizontal, 16)
         .opacity(hovering && window.viewerChrome ? 1 : 0)
         .allowsHitTesting(window.viewerChrome)
-        .animation(.easeOut(duration: 0.2), value: hovering)
     }
 
     private func edgeButton(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -132,7 +131,10 @@ struct MacViewer: View {
     /// A click on the photo or video: every control around it hides, or
     /// comes back.
     private func toggleChrome() {
-        withAnimation(.easeOut(duration: 0.2)) { window.viewerChrome.toggle() }
+        // at once, no fade: as the iPhone's chrome
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { window.viewerChrome.toggle() }
     }
 
     /// The browser's photo becomes the one on screen.
@@ -448,7 +450,6 @@ private struct MacVideoPage: View {
                                 .frame(maxWidth: 620)
                                 .padding(.horizontal, 70)
                                 .padding(.bottom, 24)
-                                .transition(.opacity)
                         }
                     }
             }
