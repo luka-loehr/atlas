@@ -45,6 +45,10 @@ struct SearchScreen: View {
         // the model unloads after ten idle minutes: load it while the
         // query is being typed, not after it was sent
         .task {
+            #if targetEnvironment(simulator)
+            // ATLAS_QUERY=... opens a simulator with that search (with ATLAS_TAB=search)
+            if let q = ProcessInfo.processInfo.environment["ATLAS_QUERY"], query.isEmpty { query = q }
+            #endif
             example = await SearchExample.make(client: library.client)
             await library.client.warmSearch()
         }
