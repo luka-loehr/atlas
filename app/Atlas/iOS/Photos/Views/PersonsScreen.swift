@@ -136,6 +136,11 @@ struct PersonDetailScreen: View {
                         .foregroundStyle(person.name == nil ? .secondary : .primary)
                         .lineLimit(1)
                 }
+                // a glass pill like the viewer's date and place
+                .padding(.leading, 8)
+                .padding(.trailing, 18)
+                .frame(minHeight: 44)
+                .glassEffect(.regular, in: .capsule)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(person.displayName)
                 .accessibilityAddTraits(.isHeader)
