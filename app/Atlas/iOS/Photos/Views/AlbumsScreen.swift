@@ -517,6 +517,7 @@ struct SpecialCollectionScreen: View {
         // the server removes trashed items for good after 30 days
         .navigationSubtitle(kind == .trash ? "Deleted permanently after 30 days" : "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if selection.active {
@@ -701,6 +702,7 @@ struct AlbumScreen: View {
         .navigationSubtitle(loaded ? (assets.count == 1 ? "1 Item" : "\(assets.count.formatted()) Items")
                                    : (album.count == 1 ? "1 Item" : "\(album.count.formatted()) Items"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             if selection.active {
                 ToolbarItem(placement: .topBarTrailing) {
