@@ -145,6 +145,8 @@ struct Found {
     person: Option<i64>,
     /// the earlier face (same place, same asset) this one replaces
     replaces: Option<i64>,
+    /// people it must never be assigned to (faces.vetoed)
+    vetoed: Vec<i64>,
 }
 
 pub enum Outcome {
@@ -398,6 +400,7 @@ fn analyze(engines: &mut Engines, frames: &[Frame]) -> Result<(Vec<Found>, Vec<S
                 look: None,
                 person: None,
                 replaces: None,
+                vetoed: Vec::new(),
             });
         }
         if frame.animals && on("animals") {
@@ -413,6 +416,7 @@ fn analyze(engines: &mut Engines, frames: &[Frame]) -> Result<(Vec<Found>, Vec<S
                     look: animal.look,
                     person: None,
                     replaces: None,
+                    vetoed: Vec::new(),
                 });
             }
         }
@@ -463,6 +467,11 @@ fn tracks(found: Vec<Found>) -> Vec<Found> {
                 if track.replaces.is_none() {
                     track.replaces = f.replaces;
                 }
+                for p in f.vetoed {
+                    if !track.vetoed.contains(&p) {
+                        track.vetoed.push(p);
+                    }
+                }
             }
             None => kept.push(f),
         }
@@ -476,6 +485,7 @@ struct Previous {
     named: bool,
     kind: String,
     bbox: [f32; 4],
+    vetoed: Vec<i64>,
 }
 
 async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, lines: &[String], frames: &[Frame]) -> Result<()> {
@@ -483,7 +493,7 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
     let tx = c.transaction().await?;
     let previous: Vec<Previous> = tx
         .query(
-            "SELECT f.id, f.person_id, p.display_name IS NOT NULL, f.kind, f.bbox
+            "SELECT f.id, f.person_id, p.display_name IS NOT NULL, f.kind, f.bbox, f.vetoed
              FROM faces f LEFT JOIN persons p ON p.id = f.person_id
              WHERE f.asset_id = $1",
             &[&id],
@@ -498,6 +508,7 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
                 named: r.get(2),
                 kind: r.get(3),
                 bbox: [0, 1, 2, 3].map(|i| b.get(i).copied().unwrap_or(0.0)),
+                vetoed: r.get(5),
             }
         })
         .collect();
@@ -520,6 +531,19 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
             found[i].replaces = Some(p.id);
         }
     }
+    // and whom it was taken away from: that stays so
+    for f in found.iter_mut().filter(|f| frames[f.frame].poster) {
+        for p in previous.iter().filter(|p| p.kind == f.kind && iou(&p.bbox, &f.bbox) >= SAME_PLACE) {
+            for &v in &p.vetoed {
+                if !f.vetoed.contains(&v) {
+                    f.vetoed.push(v);
+                }
+            }
+        }
+        if f.person.is_some_and(|p| f.vetoed.contains(&p)) {
+            f.person = None;
+        }
+    }
     if video {
         found = tracks(found);
     }
@@ -530,9 +554,9 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
             (Some(_), _) if f.clarity.unwrap_or(0.0) < MIN_CLARITY_ASSIGN => None,
             (Some(embedding), _) => {
                 let founder = founder(f.width_px, f.clarity.unwrap_or(0.0), f.score);
-                assign_face(&tx, embedding, f.width_px, founder).await?
+                assign_face(&tx, embedding, f.width_px, founder, &f.vetoed).await?
             }
-            (None, Some(look)) => assign_animal(&tx, f.kind, look).await?,
+            (None, Some(look)) => assign_animal(&tx, f.kind, look, &f.vetoed).await?,
             (None, None) => None,
         };
     }
@@ -550,9 +574,9 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
         let model = f.embedding.as_ref().map(|_| MODEL);
         let face_id: i64 = tx
             .query_one(
-                "INSERT INTO faces (asset_id, person_id, bbox, quality, embedding, kind, look, frame_s, model, width_px, clarity)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, 'none'), $10, $11) RETURNING id",
-                &[&id, &f.person, &f.bbox.to_vec(), &f.score, &embedding, &f.kind, &look, &at, &model, &f.width_px, &f.clarity],
+                "INSERT INTO faces (asset_id, person_id, bbox, quality, embedding, kind, look, frame_s, model, width_px, clarity, vetoed)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, 'none'), $10, $11, $12) RETURNING id",
+                &[&id, &f.person, &f.bbox.to_vec(), &f.score, &embedding, &f.kind, &look, &at, &model, &f.width_px, &f.clarity, &f.vetoed],
             )
             .await?
             .get(0);
@@ -616,7 +640,13 @@ async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, li
 /// The person whose known faces this face resembles clearly most.
 /// The person a face belongs to, if certain; a face that is not a
 /// [`founder`] is only matched against people someone named.
-pub async fn assign_face(tx: &Transaction<'_>, embedding: &[f32], width_px: f32, founder: bool) -> Result<Option<i64>> {
+pub async fn assign_face(
+    tx: &Transaction<'_>,
+    embedding: &[f32],
+    width_px: f32,
+    founder: bool,
+    vetoed: &[i64],
+) -> Result<Option<i64>> {
     let rows = tx
         .query(
             "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
@@ -627,12 +657,13 @@ pub async fn assign_face(tx: &Transaction<'_>, embedding: &[f32], width_px: f32,
             &[&Vector::from(embedding.to_vec()), &MODEL, &MIN_CLARITY_ASSIGN, &founder],
         )
         .await?;
-    let neighbors: Vec<(i64, f32)> = rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).collect();
+    let neighbors: Vec<(i64, f32)> =
+        rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).filter(|(p, _)| !vetoed.contains(p)).collect();
     let threshold = if width_px < SMALL_FACE { ASSIGN_SMALL_FACE } else { ASSIGN_FACE };
     Ok(decide(&neighbors, threshold, ASSIGN_MARGIN))
 }
 
-pub async fn assign_animal(tx: &Transaction<'_>, species: &str, look: &[f32]) -> Result<Option<i64>> {
+pub async fn assign_animal(tx: &Transaction<'_>, species: &str, look: &[f32], vetoed: &[i64]) -> Result<Option<i64>> {
     let rows = tx
         .query(
             "SELECT f.person_id, 1 - (f.look <=> $1) FROM faces f
@@ -642,7 +673,8 @@ pub async fn assign_animal(tx: &Transaction<'_>, species: &str, look: &[f32]) ->
             &[&Vector::from(look.to_vec()), &species],
         )
         .await?;
-    let neighbors: Vec<(i64, f32)> = rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).collect();
+    let neighbors: Vec<(i64, f32)> =
+        rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).filter(|(p, _)| !vetoed.contains(p)).collect();
     Ok(decide(&neighbors, ASSIGN_ANIMAL, ASSIGN_MARGIN))
 }
 
@@ -770,6 +802,7 @@ mod tests {
             look: None,
             person,
             replaces: None,
+            vetoed: Vec::new(),
         };
         let kept = tracks(vec![f(40.0, [1.0, 0.0], Some(7)), f(80.0, [0.99, 0.14], None), f(50.0, [0.0, 1.0], None)]);
         assert_eq!(kept.len(), 2);

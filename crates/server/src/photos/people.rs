@@ -180,6 +180,50 @@ pub struct HideFaces {
     assets: Vec<String>,
 }
 
+#[derive(Deserialize)]
+pub struct Unassign {
+    faces: Vec<i64>,
+}
+
+/// Takes faces away from the people they were filed under, for good: each
+/// face remembers whom it is not (faces.vetoed), so neither the grouping
+/// pass nor a re-analysis files it there again.
+pub async fn unassign_faces(State(app): State<AppState>, Json(b): Json<Unassign>) -> ApiResult<Json<Value>> {
+    let mut c = app.pool.get().await?;
+    let tx = c.transaction().await?;
+    let rows = tx
+        .query(
+            "UPDATE faces f SET vetoed = array_append(f.vetoed, old.person_id), person_id = NULL
+             FROM (SELECT id, person_id FROM faces WHERE id = ANY($1) AND person_id IS NOT NULL FOR UPDATE) old
+             WHERE f.id = old.id
+             RETURNING old.person_id, f.asset_id, f.id",
+            &[&b.faces],
+        )
+        .await?;
+    for r in &rows {
+        let (person, asset, face): (i64, String, i64) = (r.get(0), r.get(1), r.get(2));
+        tx.execute(
+            "DELETE FROM edges WHERE src_type = 'asset' AND src_id = $1 AND rel = 'depicts'
+               AND dst_type = 'person' AND dst_id = $3
+               AND NOT EXISTS (SELECT 1 FROM faces WHERE asset_id = $1 AND person_id = $2)",
+            &[&asset, &person, &person.to_string()],
+        )
+        .await?;
+        tx.execute("UPDATE persons SET cover_face_id = NULL WHERE id = $1 AND cover_face_id = $2", &[&person, &face]).await?;
+    }
+    let people: Vec<i64> = rows.iter().map(|r| r.get(0)).collect();
+    tx.execute(
+        "UPDATE persons p SET face_count = (SELECT count(*) FROM faces f WHERE f.person_id = p.id),
+                cover_face_id = coalesce(p.cover_face_id,
+                    (SELECT f.id FROM faces f WHERE f.person_id = p.id ORDER BY f.quality * f.width_px DESC NULLS LAST LIMIT 1))
+         WHERE p.id = ANY($1)",
+        &[&people],
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({ "unassigned": rows.len() })))
+}
+
 /// Hides the people behind faces (a group photo of strangers): an unnamed
 /// face's person is hidden, and a face nobody was recognized in gets a
 /// hidden person of its own, which then takes that stranger's other faces

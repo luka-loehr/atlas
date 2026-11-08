@@ -19,6 +19,7 @@
 //!   POST/DELETE /v1/albums/{id}/assets
 //!   GET  /v1/people, GET/PATCH /v1/people/{id}, POST /v1/people/{id}/merge
 //!   GET  /v1/faces/{id}/crop
+//!   POST /v1/faces/hide, /v1/faces/unassign
 //!   GET  /v1/places, GET /v1/places/{id}
 //!   GET  /v1/search?q=                    people, places, albums + semantic
 
@@ -79,6 +80,7 @@ pub fn routes() -> Router<AppState> {
         .route("/people/{id}/merge", post(people::merge))
         .route("/faces/{id}/crop", get(people::face_crop))
         .route("/faces/hide", post(people::hide_faces))
+        .route("/faces/unassign", post(people::unassign_faces))
         .route("/places", get(library::places))
         .route("/places/{id}", get(library::place_assets))
         .route("/search", get(search::search))

@@ -79,6 +79,8 @@ struct Item {
     width: f32,
     /// clear and sure enough to found a new person
     founder: bool,
+    /// people it must never join (faces.vetoed)
+    vetoed: Vec<i64>,
 }
 
 /// One pass over people and every species; (faces assigned, people made).
@@ -130,7 +132,8 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
             &format!(
                 "SELECT f.id, f.{column}, coalesce(f.width_px, 0),
                         coalesce(f.clarity, 99) >= {MIN_CLARITY_GROUP} AND coalesce(f.quality, 0) >= {MIN_SCORE_GROUP}
-                          AND coalesce(f.width_px, 0) >= {MIN_WIDTH_GROUP}
+                          AND coalesce(f.width_px, 0) >= {MIN_WIDTH_GROUP},
+                        f.vetoed
                  FROM faces f
                  WHERE f.kind = $1 AND f.person_id IS NULL AND f.{column} IS NOT NULL {model_filter}"
             ),
@@ -138,7 +141,7 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
         )
         .await?
         .iter()
-        .map(|r| Item { id: r.get(0), vector: r.get::<_, Vector>(1).to_vec(), width: r.get(2), founder: r.get(3) })
+        .map(|r| Item { id: r.get(0), vector: r.get::<_, Vector>(1).to_vec(), width: r.get(2), founder: r.get(3), vetoed: r.get(4) })
         .collect();
     if waiting.is_empty() {
         return Ok((0, 0));
@@ -149,7 +152,11 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
         let (known, named) = (&known, &named);
         parallel_map(&waiting, |item| {
             let candidates = if face && !item.founder { named } else { known };
-            let mut neighbors: Vec<(i64, f32)> = candidates.iter().map(|(p, v)| (*p, dot(&item.vector, v))).collect();
+            let mut neighbors: Vec<(i64, f32)> = candidates
+                .iter()
+                .filter(|(p, _)| !item.vetoed.contains(p))
+                .map(|(p, v)| (*p, dot(&item.vector, v)))
+                .collect();
             let k = neighbors.len().min(40);
             if k == 0 {
                 return None;
@@ -311,7 +318,7 @@ mod tests {
 
     #[test]
     fn cohesion_tells_one_face_from_a_chain() {
-        let item = |v: Vec<f32>| Item { id: 0, vector: v, width: 50.0, founder: true };
+        let item = |v: Vec<f32>| Item { id: 0, vector: v, width: 50.0, founder: true, vetoed: Vec::new() };
         let same = vec![item(unit(0.0)), item(unit(0.1)), item(unit(0.2))];
         assert!(cohesion(&same, &[0, 1, 2]) > 0.95);
         let spread = vec![item(unit(0.0)), item(unit(2.0)), item(unit(4.0))];
@@ -328,7 +335,7 @@ mod tests {
         let items: Vec<Item> = [0.0, 0.05, 0.1, 2.0, 2.05, 4.0]
             .iter()
             .enumerate()
-            .map(|(i, &a)| Item { id: i as i64, vector: unit(a), width: 50.0, founder: true })
+            .map(|(i, &a)| Item { id: i as i64, vector: unit(a), width: 50.0, founder: true, vetoed: Vec::new() })
             .collect();
         let groups = gather(&items, 0.9);
         assert_eq!(groups.len(), 1);
