@@ -39,7 +39,9 @@ struct MacPhotoGrid: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        scroll.automaticallyAdjustsContentInsets = true
+        // the photos start at the window's top, under the floating toolbar
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
         let grid = PhotoGridView()
         grid.host = self
         scroll.documentView = grid

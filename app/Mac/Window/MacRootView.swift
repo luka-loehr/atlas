@@ -58,6 +58,9 @@ struct MacRootView: View {
         } detail: {
             detail
         }
+        // no bar: the title, buttons and search float over the photos, as
+        // on the iPhone
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .searchable(text: $window.search, placement: .toolbar,
                     prompt: window.sidebar?.searchesFiles == true ? "Search Files" : searchExample)
         .searchFocused($searchFocused)

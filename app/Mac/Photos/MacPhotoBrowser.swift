@@ -148,6 +148,8 @@ struct MacPhotoBrowser: View {
                              },
                              onFavoriteKey: { actions(for: targetIDs).toggleFavorite?() },
                              onZoom: { step in withAnimation(.snappy) { step > 0 ? window.zoomIn() : window.zoomOut() } })
+                    // up to the window's top edge, under the floating toolbar
+                    .ignoresSafeArea(edges: .top)
                     .opacity(viewing == nil ? 1 : 0)
                     .allowsHitTesting(viewing == nil)
                     .accessibilityHidden(viewing != nil)
