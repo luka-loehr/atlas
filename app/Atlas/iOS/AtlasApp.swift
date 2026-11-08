@@ -131,6 +131,8 @@ struct RootView: View {
                     }
                 }
                 .tabBarMinimizeBehavior(.onScrollDown)
+                // choosing Search opens its field, the system's way (as Photos)
+                .tabViewSearchActivation(.searchTabSelection)
                 .onChange(of: tab) { old, new in
                     if new == "search", old != "search" { searchFrom = old }
                 }

@@ -76,8 +76,7 @@ struct ViewerScreen: View {
         .statusBarHidden(!chrome)
         .preferredColorScheme(chrome ? nil : .dark)
         .onAppear {
-            // ready before the first video page needs it
-            PlaybackAudio.activate()
+            // no audio session here: a photo never interrupts the owner's music
             pages = assets
             index = assets.firstIndex(of: start) ?? 0
             ViewerNow.show(pages[safe: index]?.id)
@@ -90,6 +89,8 @@ struct ViewerScreen: View {
         .onDisappear {
             ViewerNow.show(nil)
             MediaCache.shared.viewerClosed()
+            // music a video interrupted (Spotify ...) carries on
+            PlaybackAudio.deactivate()
         }
         .sheet(item: $infoAsset) { a in
             InfoSheet(library: library, asset: a)
@@ -913,7 +914,11 @@ private struct VideoPlayer: View {
             guard let player else { return }
             if ViewerNow.id == id {
                 // swiped back to it: carry on like Photos does
-                if !playing, duration <= 0 || current < duration - 0.05 { player.play(); playing = true }
+                if !playing, duration <= 0 || current < duration - 0.05 {
+                    PlaybackAudio.activate()
+                    player.play()
+                    playing = true
+                }
             } else if playing {
                 player.pause()
                 playing = false
@@ -996,6 +1001,7 @@ private struct VideoPlayer: View {
                 player.seek(to: .zero)
                 current = 0
             }
+            PlaybackAudio.activate()
             player.play()
         }
         playing.toggle()
@@ -1004,10 +1010,6 @@ private struct VideoPlayer: View {
     @MainActor
     private func setup() async {
         guard player == nil, let url else { return }
-        // play sound even with the ringer/Focus on silent (like Photos/YouTube);
-        // activating the audio session can block for most of a second, so it
-        // never happens on the main thread, and only once
-        PlaybackAudio.activate()
         // through the media cache: its first seconds are usually on the
         // phone already (the viewer fetches them ahead), the rest streams
         let item = AVPlayerItem(asset: VideoCache.shared.asset(id: id, remote: url))
@@ -1030,6 +1032,9 @@ private struct VideoPlayer: View {
         }
         // a page built ahead of a swipe waits until it is on screen
         if ViewerNow.id == id {
+            // sound even with the ringer on silent (like Photos); only now,
+            // when it plays: a video built ahead of a swipe leaves music alone
+            PlaybackAudio.activate()
             p.play()
             playing = true
         }
@@ -1102,6 +1107,14 @@ enum PlaybackAudio {
             let session = AVAudioSession.sharedInstance()
             if session.category != .playback { try? session.setCategory(.playback, mode: .moviePlayback) }
             try? session.setActive(true)
+        }
+    }
+
+    /// Gives the audio back: other apps' audio (music the video interrupted)
+    /// is told it may resume.
+    static func deactivate() {
+        queue.async {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }
 }

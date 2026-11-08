@@ -552,10 +552,18 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     }
 
     private func open(_ asset: Asset) {
-        guard let config, presentedViewController == nil else { return }
+        // an active search field is a presented search controller: the
+        // viewer opens over it (anything else presented: not now)
+        let presenter: UIViewController
+        switch presentedViewController {
+        case nil: presenter = self
+        case let search as UISearchController where search.presentedViewController == nil: presenter = search
+        default: return
+        }
+        guard let config else { return }
         viewerAssetID = asset.id
         let viewer = ViewerScreen(library: config.library, assets: assets, start: asset,
-                                  onClose: { [weak self] in self?.dismiss(animated: true) },
+                                  onClose: { [weak presenter] in presenter?.dismiss(animated: true) },
                                   onPage: { [weak self] in self?.viewerAssetID = $0.id })
             // the viewer's chrome is monochrome, like Photos; the rest of the app is system blue
             .tint(.primary)
@@ -571,7 +579,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
             return context.willBegin && v.dy > 0 && v.dy > abs(v.dx) * 1.5
         }
         host.preferredTransition = .zoom(options: options) { [weak self] _ in self?.zoomSource() }
-        present(host, animated: true)
+        presenter.present(host, animated: true)
     }
 
     /// The cell of the photo the viewer shows, scrolled into view if needed.
