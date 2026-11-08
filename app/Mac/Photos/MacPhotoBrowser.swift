@@ -46,8 +46,8 @@ struct MacPhotoBrowser: View {
     var body: some View {
         content
             // the Library draws its own title over the photos, as on the iPhone
-            .navigationTitle(libraryHeader ? "" : title)
-            .navigationSubtitle(libraryHeader ? "" : subtitle)
+            .navigationTitle(ownTitle ? "" : title)
+            .navigationSubtitle(ownTitle ? "" : subtitle)
             .toolbar { toolbar }
             .inspector(isPresented: Bindable(window).showInspector) {
                 inspector.inspectorColumnWidth(min: 260, ideal: 300, max: 420)
@@ -123,8 +123,14 @@ struct MacPhotoBrowser: View {
             }
             .task { await unlock() }
         } else {
-            photos.overlay(alignment: .top) {
-                if let header, viewing == nil { header }
+            photos.overlay(alignment: .topLeading) {
+                // a search's pills take the title's place, top left
+                if let header, viewing == nil {
+                    header
+                        .padding(.top, selection.isEmpty ? 0 : 52)
+                        .padding(.trailing, 440)
+                        .ignoresSafeArea(edges: .top)
+                }
             }
             .overlay(alignment: .topLeading) {
                 if libraryHeader { libraryTitle }
@@ -310,6 +316,9 @@ struct MacPhotoBrowser: View {
     /// The Library's header is drawn over the photos while the grid shows
     /// and nothing is selected (a selection keeps its count in the title).
     private var libraryHeader: Bool { source == .library && viewing == nil && selection.isEmpty }
+
+    /// The window title gives way to the Library's header or a search's pills.
+    private var ownTitle: Bool { viewing == nil && selection.isEmpty && (libraryHeader || header != nil) }
 
     /// As the iPhone's Library: a large white title and the days on screen,
     /// with a soft shadow, at the top left over the photos.
