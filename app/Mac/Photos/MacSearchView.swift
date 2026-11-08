@@ -7,6 +7,11 @@ struct MacSearchView: View {
     @Environment(AppModel.self) private var model
     @Environment(MacWindowState.self) private var window
     @State private var result: PhotoClient.SearchResult?
+    /// The query `result` answers. The browser is keyed by it, not by what
+    /// is typed now: keyed by the typing, it took the previous result's
+    /// photos the moment a key was pressed and never reloaded when the new
+    /// result arrived (the iPhone keys its grid by each new result too).
+    @State private var answered = ""
     @State private var failed = false
 
     var body: some View {
@@ -15,7 +20,7 @@ struct MacSearchView: View {
                 if let result {
                     // how the search was read, as the iPhone shows it: glass
                     // pills, people and pets with their faces, wrapping
-                    MacPhotoBrowser(source: .search(query), given: result.items, header: AnyView(
+                    MacPhotoBrowser(source: .search(answered), given: result.items, header: AnyView(
                         VStack(spacing: 0) {
                             if !result.semantic {
                                 Label("Searching by content is unavailable right now: names, places and albums only.",
@@ -39,7 +44,11 @@ struct MacSearchView: View {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             do {
-                result = try await model.library.client.search(query.trimmingCharacters(in: .whitespaces))
+                let term = query.trimmingCharacters(in: .whitespaces)
+                let found = try await model.library.client.search(term)
+                guard !Task.isCancelled else { return }
+                answered = term
+                result = found
                 failed = false
             } catch is CancellationError {
             } catch {
