@@ -12,23 +12,24 @@ struct MacPeopleView: View {
     @State private var showHidden = false
 
     private var size: CGFloat { max(90, GridZoom.sizes[window.zoom]) }
+    /// Split once per load, not filtered on every update of the page.
+    private var humans: [Person] { split.humans }
+    private var pets: [Person] { split.pets }
+    @State private var split = (humans: [Person](), pets: [Person]())
 
     var body: some View {
         @Bindable var window = window
         NavigationStack(path: $window.peoplePath) {
-            ScrollView {
-                grid(persons.filter { !$0.isPet })
-                if persons.contains(where: \.isPet) {
-                    Text("Pets")
-                        .font(.title2.bold())
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                    grid(persons.filter(\.isPet))
-                }
+            Group {
                 if persons.isEmpty && loaded {
                     ContentUnavailableView("No People", systemImage: "person.crop.circle",
                                            description: Text("People appear here once atlas has recognized faces."))
-                        .padding(.top, 60)
+                } else {
+                    PeopleGrid(library: model.library, humans: humans, pets: pets, size: size,
+                               onOpen: { window.peoplePath.append($0) },
+                               onRename: { newName = $0.name ?? ""; renaming = $0 },
+                               onHide: { hide($0) })
+                        .ignoresSafeArea(edges: .top)
                 }
             }
             .overlay { if persons.isEmpty && !loaded { ProgressView() } }
@@ -53,7 +54,10 @@ struct MacPeopleView: View {
                     }
             }
         }
-        .task { await load() }
+        .task {
+            if split.humans.isEmpty { split = Self.split(persons) }
+            await load()
+        }
         .alert("Name This Person", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Save") { rename() }
@@ -62,51 +66,24 @@ struct MacPeopleView: View {
         .changeFailedAlert($changeFailed)
     }
 
-    private func grid(_ shown: [Person]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: size, maximum: size * 1.4), spacing: 24)], spacing: 24) {
-            ForEach(shown) { person in
-                NavigationLink(value: person) {
-                    VStack(spacing: 6) {
-                        FaceCircle(library: model.library, person: person)
-                            .aspectRatio(1, contentMode: .fit)
-                        Text(person.displayName)
-                            .font(.callout)
-                            .foregroundStyle(person.name == nil ? .secondary : .primary)
-                            .lineLimit(1)
-                        Text(person.photos, format: .number)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Rename…") { newName = person.name ?? ""; renaming = person }
-                    Button("Hide") { hide(person) }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(person.displayName)
-                .accessibilityValue("\(person.photos) photos")
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction(named: "Hide") { hide(person) }
-            }
-        }
-        .padding(24)
-    }
-
     private func hide(_ person: Person) {
         persons.removeAll { $0.id == person.id }
         PeopleMemo.people = persons
+        split = Self.split(persons)
         Task {
             do { try await model.library.client.setPersonHidden(person.id, true) } catch { await load() }
         }
+    }
+
+    private static func split(_ all: [Person]) -> (humans: [Person], pets: [Person]) {
+        (all.filter { !$0.isPet }, all.filter(\.isPet))
     }
 
     private func load() async {
         if let fresh = try? await model.library.client.persons() {
             persons = fresh
             PeopleMemo.people = fresh
+            split = Self.split(fresh)
         }
         loaded = true
     }

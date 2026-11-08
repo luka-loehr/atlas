@@ -104,6 +104,7 @@
 		C27618F0EFAB1C79DF4AA81A /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12986C8F368AFE2E5D4B7F3 /* SelectionToolbar.swift */; platformFilters = (ios, ); };
 		C36C93A68B159912AABA81A0 /* DriveMovePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */; platformFilters = (ios, ); };
 		C411DDB0DAFF27B07CEB36B2 /* DriveTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA499FFCE1D33558571A14FF /* DriveTable.swift */; platformFilters = (macos, ); };
+		D0EC6C6B39BD10F0300FFAB2 /* PeopleGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE424C9BBD9236FEA7E19FA /* PeopleGrid.swift */; platformFilters = (macos, ); };
 		D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		D36B152669348685926167B1 /* RollingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E36321770160B47B8ADCCD2 /* RollingText.swift */; };
 		D7345699CBC7C0C2AD68DBA9 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */; platformFilters = (macos, ); };
@@ -268,6 +269,7 @@
 		FBD35A2042E918FFCD8B58A6 /* CircleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleButton.swift; sourceTree = "<group>"; };
 		FD5E9FDC02055957662190D2 /* Collections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Collections.swift; sourceTree = "<group>"; };
 		FE4E14294240A0263A471F0C /* VideoCache+File.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VideoCache+File.swift"; sourceTree = "<group>"; };
+		FFE424C9BBD9236FEA7E19FA /* PeopleGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleGrid.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -289,6 +291,7 @@
 				B94988A0DF0CD149CEDC3CD8 /* MacPhotoBrowser.swift */,
 				5405CB97203B0FB5E62FC000 /* MacSearchView.swift */,
 				302D28D0A2D8E6C7395EAF4B /* MacViewer.swift */,
+				FFE424C9BBD9236FEA7E19FA /* PeopleGrid.swift */,
 				4F2F9393CA595BD5E89F81D0 /* PhotoSource.swift */,
 			);
 			path = Photos;
@@ -778,6 +781,7 @@
 				34AF8E717DCAA36AF2ACB2EF /* MediaStore.swift in Sources */,
 				03DAF593759C996097AEF39B /* NetworkWatch.swift in Sources */,
 				2BDFE2896DBB4356E6D786A8 /* PeopleExtras.swift in Sources */,
+				D0EC6C6B39BD10F0300FFAB2 /* PeopleGrid.swift in Sources */,
 				6A4BD7467FAA1D79D86CECA1 /* Persons.swift in Sources */,
 				83D0D5DFD1952C0163DA124C /* PersonsScreen.swift in Sources */,
 				F948043CAF2FDC0D1C3E6030 /* PhotoCell.swift in Sources */,

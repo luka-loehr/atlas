@@ -9,6 +9,8 @@ struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showTerminal = false
+    /// ATLAS_SCREEN=server opens a simulator on the server screen.
+    @State private var showServer = ProcessInfo.processInfo.environment["ATLAS_SCREEN"] == "server"
     @State private var storage = StorageUse()
     /// Live share links, for the count on their row.
     @State private var links: Int?
@@ -50,6 +52,7 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
+            .navigationDestination(isPresented: $showServer) { ServerStatusScreen() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

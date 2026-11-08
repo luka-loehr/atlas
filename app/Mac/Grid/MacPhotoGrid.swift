@@ -37,13 +37,10 @@ struct MacPhotoGrid: NSViewRepresentable {
     var onZoom: (Int) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll = ToolbarInsetScrollView()
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        // the photos start at the window's top, under the floating toolbar
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsetsZero
         let grid = PhotoGridView()
         grid.host = self
         scroll.documentView = grid
@@ -69,5 +66,22 @@ struct MacPhotoGrid: NSViewRepresentable {
 
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: ()) {
         (scroll.documentView as? PhotoGridView)?.teardown()
+    }
+}
+
+/// Runs from the window's top edge, under the floating toolbar, and keeps
+/// the toolbar's height as inset: the first photos rest below the toolbar's
+/// controls and scroll under them. (Without it a short grid sat behind the
+/// toolbar; with the system's automatic insets the photos never reached
+/// the top edge.)
+final class ToolbarInsetScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+        guard let window, let content = window.contentView else { return }
+        let toolbar = max(content.bounds.height - window.contentLayoutRect.height, 0)
+        if contentInsets.top != toolbar {
+            automaticallyAdjustsContentInsets = false
+            contentInsets = NSEdgeInsets(top: toolbar, left: 0, bottom: 0, right: 0)
+        }
     }
 }

@@ -13,35 +13,8 @@ struct ServerStatusScreen: View {
 
     var body: some View {
         Form {
-            // always laid out: placeholder values until the first sample, so
-            // the section never pops in under the user's finger
-            let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
-            Section {
-                    MetricRow(title: "CPU", value: latest.cpu / 100, color: .blue, series: machine.series(\.cpu),
-                              detail: [machine.snapshot?.cpu.model, latest.cpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
-                    if let gpu = machine.snapshot?.gpu ?? (machine.snapshot == nil ? SystemSnapshot.GPU(name: "GPU", mem_total_mb: 0) : nil) {
-                        MetricRow(title: "GPU", value: latest.gpu / 100, color: .purple, series: machine.series(\.gpu),
-                                  detail: [gpu.name, "\(Int(latest.gpu_mem_mb).formatted()) / \(Int(gpu.mem_total_mb).formatted()) MB",
-                                           latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
-                    }
-                    MetricRow(title: "Memory", value: latest.mem / 100, color: .teal, series: machine.series(\.mem),
-                              detail: String(format: "%.1f / %.0f GB", latest.mem_gb, machine.snapshot?.mem_total_gb ?? 0))
-                    LabeledContent("Network") {
-                        let rate = machine.throughput
-                        Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s")
-                            .monospacedDigit()
-                            .contentTransition(.numericText(value: rate.down + rate.up))
-                            .animation(.smooth, value: rate.down + rate.up)
-                    }
-                    LabeledContent("Power") {
-                        Text(latest.system_w.map { "\(Int($0)) W" } ?? "–").monospacedDigit()
-                            .contentTransition(.numericText(value: latest.system_w ?? 0))
-                            .animation(.smooth, value: latest.system_w ?? 0)
-                    }
-                } header: {
-                    Text("Live")
-                }
-                .redacted(reason: machine.latest == nil ? .placeholder : [])
+            // its own view: a sample (twice a second) updates only this section
+            LiveSection(machine: machine)
 
             if let snapshot = machine.snapshot {
                 Section("Storage") {
@@ -158,17 +131,17 @@ private struct MetricRow: View {
     let color: Color
     let series: [LiveSparkline.Point]
     let detail: String
+    @State private var previous: Double = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.headline)
                 Spacer()
-                Text(value, format: .percent.precision(.fractionLength(0)))
-                    .font(.title3.weight(.semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: value))
-                    .animation(.smooth, value: value)
+                // rolls in on Core Animation layers: `.numericText` redrew
+                // the glyphs through a blur on every frame of every change
+                RollingText("\(Int((value * 100).rounded())) %", rising: value >= previous, size: 20, weight: .semibold)
+                    .onChange(of: value) { old, _ in previous = old }
             }
             // like the old dashboard: a 60 s window that slides every frame, the
             // newest value glides in instead of popping
@@ -226,5 +199,38 @@ private struct QueueScreen: View {
         }
         .navigationTitle("Processing")
         .inlineNavigationTitle()
+    }
+}
+
+/// CPU, GPU and memory with their curves, then network and power: the only
+/// part of the screen that reads the live samples.
+private struct LiveSection: View {
+    let machine: Machine
+
+    var body: some View {
+            // always laid out: placeholder values until the first sample, so
+            // the section never pops in under the user's finger
+        let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
+        Section {
+                    MetricRow(title: "CPU", value: latest.cpu / 100, color: .blue, series: machine.series(\.cpu),
+                              detail: [machine.snapshot?.cpu.model, latest.cpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
+                    if let gpu = machine.snapshot?.gpu ?? (machine.snapshot == nil ? SystemSnapshot.GPU(name: "GPU", mem_total_mb: 0) : nil) {
+                        MetricRow(title: "GPU", value: latest.gpu / 100, color: .purple, series: machine.series(\.gpu),
+                                  detail: [gpu.name, "\(Int(latest.gpu_mem_mb).formatted()) / \(Int(gpu.mem_total_mb).formatted()) MB",
+                                           latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
+                    }
+                    MetricRow(title: "Memory", value: latest.mem / 100, color: .teal, series: machine.series(\.mem),
+                              detail: String(format: "%.1f / %.0f GB", latest.mem_gb, machine.snapshot?.mem_total_gb ?? 0))
+                    LabeledContent("Network") {
+                        let rate = machine.throughput
+                        RollingText("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s", size: 17, secondary: true)
+                    }
+                    LabeledContent("Power") {
+                        RollingText(latest.system_w.map { "\(Int($0)) W" } ?? "–", size: 17, secondary: true)
+                    }
+                } header: {
+                    Text("Live")
+                }
+                .redacted(reason: machine.latest == nil ? .placeholder : [])
     }
 }
