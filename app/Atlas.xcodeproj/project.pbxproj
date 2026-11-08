@@ -20,6 +20,7 @@
 		1199662680F239C8749F4521 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; };
 		13B202226C6C504C57AE1D1A /* CacheWarmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F88F25AE39FEF329CB1452 /* CacheWarmer.swift */; };
 		16131A0BC25EEC4AC3DE23DB /* MediaCache+Decode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19280E354F8D76973598DDC3 /* MediaCache+Decode.swift */; };
+		1AAFF587B73205BE1E003768 /* PhotoGridView+Input.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C681663A13E732540CC43 /* PhotoGridView+Input.swift */; platformFilters = (macos, ); };
 		1C483D794B0A9EB4EAAF897C /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; platformFilters = (ios, ); };
 		1C5AA618CBAF966CFF934ABA /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7678B5765BB60548D5B2A9C /* SettingsScreen.swift */; platformFilters = (ios, ); };
 		1DC3C73849F45BCB707630B6 /* AssetFilePromise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B12CD1DA8A8BEFC121FA0DE /* AssetFilePromise.swift */; platformFilters = (macos, ); };
@@ -112,6 +113,7 @@
 		EA1FD7A429811C09898F23A9 /* AtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 390213B3FA050526C922DC25 /* AtlasApp.swift */; platformFilters = (ios, ); };
 		F45040BDCB80CED4F4DD9893 /* ViewerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D24117C37CCB53D354C45C1 /* ViewerScreen.swift */; platformFilters = (ios, ); };
 		F49B5DEFB2AB1D5C348C0952 /* ViewerVideo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 445EAD3725120CC480E8D707 /* ViewerVideo.swift */; platformFilters = (ios, ); };
+		F81D83357E86B83EE85BD012 /* PhotoGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4C46A56CF0AE11FC5693F5 /* PhotoGridView.swift */; platformFilters = (macos, ); };
 		F948043CAF2FDC0D1C3E6030 /* PhotoCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26C359A999A4D3D3F47A8EF /* PhotoCell.swift */; platformFilters = (ios, ); };
 		FB5A87CC4B24F2F03C5659CD /* PhotoCellLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE981BED49E785537EA3219F /* PhotoCellLayer.swift */; platformFilters = (macos, ); };
 		FC2888F450CC0447098823FE /* FilmstripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3205C41D9219504698B954F2 /* FilmstripView.swift */; platformFilters = (ios, ); };
@@ -147,6 +149,7 @@
 		07A3751A674451EDAC49585F /* MacHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacHelpers.swift; sourceTree = "<group>"; };
 		0B100252163A1C92DF1B14BC /* AlbumsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsScreen.swift; sourceTree = "<group>"; };
 		0B2E9CE6FE054663230344C1 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
+		0C1C681663A13E732540CC43 /* PhotoGridView+Input.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhotoGridView+Input.swift"; sourceTree = "<group>"; };
 		0D9BA233409E8D2ECF8E3EB6 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
 		0E4AE35D3606457E9607B926 /* ShareLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareLink.swift; sourceTree = "<group>"; };
 		1009B90FB453CB8788A7D88E /* DriveRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveRow.swift; sourceTree = "<group>"; };
@@ -187,6 +190,7 @@
 		5405CB97203B0FB5E62FC000 /* MacSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSearchView.swift; sourceTree = "<group>"; };
 		57DCD414C30D14BACDA77E4C /* MediaFetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaFetch.swift; sourceTree = "<group>"; };
 		5B154AE6158E42E13D7C2129 /* AtlasWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtlasWidget.entitlements; sourceTree = "<group>"; };
+		5B4C46A56CF0AE11FC5693F5 /* PhotoGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGridView.swift; sourceTree = "<group>"; };
 		5C388AFC38B8DE719B0C9F29 /* SpecialCollectionScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialCollectionScreen.swift; sourceTree = "<group>"; };
 		5F72E19C094BB7170FA00CE4 /* TimeScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeScrubber.swift; sourceTree = "<group>"; };
 		5F874C93ED96E81BF56AA172 /* MacWindowState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWindowState.swift; sourceTree = "<group>"; };
@@ -496,6 +500,8 @@
 				1B12CD1DA8A8BEFC121FA0DE /* AssetFilePromise.swift */,
 				43DD1BC1C950C364DA8711C6 /* MacPhotoGrid.swift */,
 				CE981BED49E785537EA3219F /* PhotoCellLayer.swift */,
+				5B4C46A56CF0AE11FC5693F5 /* PhotoGridView.swift */,
+				0C1C681663A13E732540CC43 /* PhotoGridView+Input.swift */,
 			);
 			path = Grid;
 			sourceTree = "<group>";
@@ -765,6 +771,8 @@
 				7D1FB000D131EBA29F5CDBBA /* PhotoGridBenchmark.swift in Sources */,
 				0FD75E9076D37B3FD8DBE730 /* PhotoGridController.swift in Sources */,
 				B0FF094F224D1B9A1B089912 /* PhotoGridLayout.swift in Sources */,
+				1AAFF587B73205BE1E003768 /* PhotoGridView+Input.swift in Sources */,
+				F81D83357E86B83EE85BD012 /* PhotoGridView.swift in Sources */,
 				3C1718BF149629ED776197EF /* PhotoMutations.swift in Sources */,
 				BAD2F54BE759FA49C463497F /* PhotoPager.swift in Sources */,
 				3CB9F7DD1B616FCFA6BD7605 /* PhotoPickerSheet.swift in Sources */,
