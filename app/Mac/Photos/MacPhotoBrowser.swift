@@ -211,11 +211,16 @@ struct MacPhotoBrowser: View {
                         .font(.headline)
                         .lineLimit(1)
                 }
-                .padding(.trailing, 8)
+                .padding(.leading, 4)
+                .padding(.trailing, 12)
+                .frame(minHeight: 34)
+                // its own glass, not the back button's: a pill like a search's
+                .glassEffect(.regular, in: .capsule)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(person.displayName)
                 .accessibilityAddTraits(.isHeader)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         if viewing != nil {
             ToolbarItem(placement: .navigation) {
