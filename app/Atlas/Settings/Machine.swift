@@ -52,7 +52,9 @@ struct ServiceReport: Decodable {
         var id: String { unit }
     }
     struct Database: Decodable { var version: String; var bytes: Int64 }
-    struct Model: Decodable { var embedder: String; var faces: Bool }
+    /// The model worker. `vision` replaced `faces` on the server; neither is
+    /// required, so a renamed field never again fails the whole report.
+    struct Model: Decodable { var embedder: String; var vision: Bool?; var faces: Bool? }
     struct Failed: Decodable, Identifiable {
         var kind: String
         var owner: String
@@ -67,6 +69,45 @@ struct ServiceReport: Decodable {
     var failed: [Failed]
 
     var pending: Int { queue.values.reduce(0) { $0 + ($1["pending"] ?? 0) + ($1["running"] ?? 0) } }
+}
+
+/// The drives inside the server, with SMART health (`/system/drives`).
+struct DriveReport: Decodable {
+    struct Drive: Decodable, Identifiable {
+        struct Mount: Decodable, Identifiable {
+            var mount: String
+            var size: Int64
+            var used: Int64
+            var id: String { mount }
+            var fraction: Double { size > 0 ? Double(used) / Double(size) : 0 }
+        }
+        struct Health: Decodable {
+            var asleep: Bool?
+            var passed: Bool?
+            var temperature: Int?
+            var hours: Int?
+            var rpm: Int?
+            var wear: Int?
+            var spare: Int?
+            var written: Int64?
+            var media_errors: Int?
+            var reallocated: Int?
+            var pending: Int?
+            var uncorrectable: Int?
+            /// Sectors or media errors the drive reports.
+            var problems: Int { (reallocated ?? 0) + (pending ?? 0) + (uncorrectable ?? 0) + (media_errors ?? 0) }
+        }
+        var name: String
+        var model: String?
+        var kind: String
+        var transport: String?
+        var size: Int64
+        var mounts: [Mount]
+        var health: Health?
+        var id: String { name }
+        var isSSD: Bool { kind == "ssd" }
+    }
+    var drives: [Drive]
 }
 
 /// Live machine metrics over the server's WebSocket: ten minutes of history
@@ -101,6 +142,7 @@ final class Machine {
     private(set) var samples: [MetricSample] = []
     private(set) var snapshot: SystemSnapshot?
     private(set) var services: ServiceReport?
+    private(set) var drives: DriveReport?
     @ObservationIgnored private let decoder = JSONDecoder()
 
     var latest: MetricSample? { samples.last }
@@ -116,8 +158,10 @@ final class Machine {
     func refresh(_ api: API) async {
         async let snapshot = try? api.get("system", as: SystemSnapshot.self)
         async let services = try? api.get("system/services", as: ServiceReport.self)
+        async let drives = try? api.get("system/drives", as: DriveReport.self)
         if let fresh = await snapshot { self.snapshot = fresh }
         if let fresh = await services { self.services = fresh }
+        if let fresh = await drives { self.drives = fresh }
     }
 
     /// Runs until the calling task is cancelled; reconnects on drops.

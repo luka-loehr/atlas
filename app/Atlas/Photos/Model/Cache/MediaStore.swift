@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import os
 
 /// Every on-device copy of server media, on disk: the one store behind
@@ -50,9 +51,45 @@ final class MediaStore: @unchecked Sendable {
         var name: String { "\(kind.rawValue)/\(id)" }
     }
 
-    /// The budget of everything but the grid thumbnails. Fixed on purpose:
-    /// the cache looks after itself, there is nothing to set.
-    static let budget: Int64 = 15 << 30
+    /// The budget of everything but the grid thumbnails: what the owner set
+    /// (on the Mac), else what this device can spare. The trim keeps the
+    /// cache within it and the warmer fills it.
+    static var budget: Int64 { chosenBudget ?? automaticBudget }
+
+    /// The size chosen in the server page; nil for automatic.
+    static var chosenBudget: Int64? {
+        get {
+            let v = Int64(UserDefaults.standard.integer(forKey: "cache.budget"))
+            return v > 0 ? v : nil
+        }
+        set {
+            UserDefaults.standard.set(Int(newValue ?? 0), forKey: "cache.budget")
+            // smaller: make room now; larger: the warmer fills it
+            shared.scheduleTrim()
+        }
+    }
+
+    /// What this device can spare. The iPhone keeps 15 GB. A Mac gives a
+    /// tenth of its free space plus what the cache already holds, between
+    /// 5 and 100 GB; measured again at most every ten minutes.
+    static var automaticBudget: Int64 {
+        #if os(macOS)
+        return automatic.withLock { memo in
+            if let (at, bytes) = memo, Date().timeIntervalSince(at) < 600 { return bytes }
+            let home = URL(fileURLWithPath: NSHomeDirectory())
+            let free = (try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+                .volumeAvailableCapacityForImportantUsage ?? (50 << 30)
+            let held = shared.cacheBytes
+            let gb: Int64 = 1 << 30
+            let bytes = min(max((free + held) / 10 / gb * gb, 5 * gb), 100 * gb)
+            memo = (Date(), bytes)
+            return bytes
+        }
+        #else
+        return 15 << 30
+        #endif
+    }
+    private static let automatic = Mutex<(Date, Int64)?>(nil)
 
     private struct Entry {
         var url: URL

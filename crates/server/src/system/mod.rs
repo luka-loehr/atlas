@@ -3,6 +3,7 @@
 //!   GET  /v1/system                    snapshot: load, memory, GPU, disks, power
 //!   GET  /v1/system/live               WebSocket: 10 min of history, then 2 Hz
 //!   GET  /v1/system/services           Atlas services, database, job queue
+//!   GET  /v1/system/drives             each drive: SSD or HDD, mounts, SMART health
 //!   GET  /v1/system/containers         Docker containers
 //!   GET  /v1/system/containers/{name}  one container with its recent logs
 //!   GET  /v1/system/network            the tailnet: this node and its peers
@@ -10,6 +11,7 @@
 //!   GET  /v1/system/terminal           WebSocket: a login shell on a PTY
 //!   POST /v1/system/power/{action}     shutdown | restart
 
+pub mod drives;
 pub mod host;
 pub mod metrics;
 pub mod terminal;
@@ -24,6 +26,7 @@ pub fn routes() -> Router<AppState> {
         .route("/system", get(metrics::snapshot))
         .route("/system/live", get(metrics::live))
         .route("/system/services", get(host::services))
+        .route("/system/drives", get(drives::drives))
         .route("/system/containers", get(host::containers))
         .route("/system/containers/{name}", get(host::container))
         .route("/system/network", get(host::network))

@@ -1,11 +1,11 @@
 import SwiftUI
 import AppKit
 
-/// The server, all on one page made for a wide window: who it is and
-/// whether it answers, its live load, its disks next to what Atlas keeps on
-/// this Mac, its services and what is still processing, and the connection.
-/// Restart, shut down and the terminal sit in the toolbar. There is no
-/// separate Settings window: this page is it (⌘,).
+/// The server, in the form System Settings uses: grouped sections of
+/// labelled rows. Activity (live curves), the drives with their health,
+/// what Atlas keeps on this Mac, the services and what is still
+/// processing, and the server and connection. Restart, shut down and the
+/// terminal sit in the toolbar. It is the app's settings too (⌘,).
 struct MacServerView: View {
     @Environment(Session.self) private var session
     @Environment(AppModel.self) private var model
@@ -15,43 +15,43 @@ struct MacServerView: View {
     @State private var measured = false
     @State private var power: Power?
     @State private var confirmDisconnect = false
+    /// The chosen cache size in bytes; 0 for automatic.
+    @State private var cacheChoice: Int64 = MediaStore.chosenBudget ?? 0
+    private static let cacheSizes = [5, 10, 25, 50, 100, 200]
 
     enum Power: String, Identifiable {
         case restart, shutdown
         var id: String { rawValue }
     }
 
-    private static let roles = ["atlas-server": "API and Processing", "atlas-ml": "Search, Faces, Pets and Text"]
+    private static let roles = ["atlas-server": "API and processing", "atlas-ml": "Search, faces, pets and text"]
     private static let queueNames: [String: String] = [
-        "thumb": "Thumbnails", "meta": "Metadata", "geocode": "Places", "embed": "Search Index",
-        "faces": "Faces, Pets and Text", "preview": "Video Streams", "drive_text": "File Text",
+        "thumb": "Thumbnails", "meta": "Metadata", "geocode": "Places", "embed": "Search index",
+        "faces": "Faces, pets and text", "preview": "Video streams", "drive_text": "File text",
     ]
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    header
-                    if session.isConnected {
-                        live
-                        storageRow
-                        servicesRow
-                    }
-                    connection
+            Form {
+                if session.isConnected {
+                    activity
+                    drives
+                    thisMac
+                    services
+                    processing
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-                .frame(maxWidth: 1180, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                server
             }
+            .formStyle(.grouped)
             .navigationTitle("Server")
+            .navigationSubtitle(statusText)
             .toolbar { toolbar }
         }
         .task(id: session.config) {
             guard let api = session.api else { return }
             await machine.keepLive(api)
         }
-        // services, the queue and the disks change while the page is open
+        // services, the queue and the drives change while the page is open
         .task(id: session.config) {
             guard let api = session.api else { return }
             while !Task.isCancelled {
@@ -81,278 +81,211 @@ struct MacServerView: View {
         }
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(.tint)
-                .frame(width: 56, height: 56)
-                .background(.tint.opacity(0.12), in: .rect(cornerRadius: 14))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(machine.snapshot?.hostname ?? session.info?.hostname ?? "atlas")
-                    .font(.system(size: 26, weight: .bold))
-                Text(about)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            StateLabel(healthy: online, text: statusText)
-                .font(.headline)
-        }
-    }
-
-    private var online: Bool { session.reachability != .offline && session.reachability != .unauthorized }
-
     private var statusText: String {
         switch session.reachability {
         case .online: "Online"
         case .offline: "Offline"
-        case .unauthorized: "Token Rejected"
+        case .unauthorized: "Token rejected"
         case .unknown: model.library.online ? "Online" : "Connecting…"
         }
     }
 
-    private var about: String {
-        guard let s = machine.snapshot else { return session.base }
-        let uptime = Duration.seconds(s.uptime_s).formatted(.units(allowed: [.days, .hours, .minutes], width: .abbreviated))
-        return ["Atlas \(s.version)", s.os, "up \(uptime)"].compactMap { $0 }.joined(separator: " · ")
-    }
+    // MARK: - Activity
 
-    // MARK: - Live
-
-    private var live: some View {
+    private var activity: some View {
         let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
         let snapshot = machine.snapshot
-        return Section {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
-                LiveCard(title: "CPU", value: latest.cpu / 100, color: .blue, series: machine.series(\.cpu),
-                         detail: [snapshot?.cpu.model, snapshot.map { "\($0.cpu.cores) cores" },
-                                  latest.cpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
-                if snapshot == nil || snapshot?.gpu != nil {
-                    LiveCard(title: "GPU", value: latest.gpu / 100, color: .purple, series: machine.series(\.gpu),
-                             detail: [snapshot?.gpu?.name,
-                                      snapshot?.gpu.map { "\(Int(latest.gpu_mem_mb / 1024)) / \(Int($0.mem_total_mb / 1024)) GB" },
-                                      latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
-                }
-                LiveCard(title: "Memory", value: latest.mem / 100, color: .teal, series: machine.series(\.mem),
-                         detail: String(format: "%.1f of %.0f GB", latest.mem_gb, snapshot?.mem_total_gb ?? 0))
-                FactCard(title: "Network", symbol: "arrow.up.arrow.down") {
-                    let rate = machine.throughput
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("↓ \(Int64(rate.down).fileSize)/s").font(.title2.weight(.semibold))
-                        Text("↑ \(Int64(rate.up).fileSize)/s").font(.title3).foregroundStyle(.secondary)
+        let rate = machine.throughput
+        return Section("Activity") {
+            // each value once: the three loads with their curves, then
+            // network, power and load average, all gliding as they change
+            Grid(horizontalSpacing: 28, verticalSpacing: 18) {
+                GridRow {
+                    Meter(title: "CPU", value: latest.cpu, color: .blue, series: machine.series(\.cpu),
+                          detail: latest.cpu_temp.map { "\(Int($0)) °C" } ?? "")
+                    if snapshot?.gpu != nil || snapshot == nil {
+                        Meter(title: "GPU", value: latest.gpu, color: .purple, series: machine.series(\.gpu),
+                              detail: [snapshot?.gpu.map { String(format: "%.1f of %.0f GB", latest.gpu_mem_mb / 1024, $0.mem_total_mb / 1024) },
+                                       latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
                     }
-                    .monospacedDigit()
+                    Meter(title: "Memory", value: latest.mem, color: .teal, series: machine.series(\.mem),
+                          detail: String(format: "%.1f of %.0f GB", latest.mem_gb, snapshot?.mem_total_gb ?? 0))
                 }
-                FactCard(title: "Power", symbol: "bolt.fill") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(latest.system_w.map { "\(Int($0)) W" } ?? "–").font(.title2.weight(.semibold))
-                        Text([latest.cpu_w.map { "CPU \(Int($0)) W" }, latest.gpu_w.map { "GPU \(Int($0)) W" }]
-                                .compactMap { $0 }.joined(separator: " · "))
-                            .font(.subheadline).foregroundStyle(.secondary)
+                Divider().gridCellUnsizedAxes(.horizontal)
+                GridRow {
+                    Fact(title: "Network", value: rate.down + rate.up) {
+                        Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s")
                     }
-                    .monospacedDigit()
-                }
-                if let load = snapshot?.load, load.count == 3 {
-                    FactCard(title: "Load", symbol: "gauge.with.dots.needle.33percent") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(String(format: "%.2f", load[0])).font(.title2.weight(.semibold))
-                            Text(String(format: "5 min %.2f · 15 min %.2f", load[1], load[2]))
-                                .font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        .monospacedDigit()
+                    Fact(title: "Power", value: latest.system_w ?? 0) {
+                        Text([latest.system_w.map { "\(Int($0)) W" }, latest.cpu_w.map { "CPU \(Int($0))" },
+                              latest.gpu_w.map { "GPU \(Int($0))" }].compactMap { $0 }.joined(separator: " · "))
+                    }
+                    Fact(title: "Load average", value: snapshot?.load.first ?? 0) {
+                        Text(snapshot.map { $0.load.map { String(format: "%.2f", $0) }.joined(separator: " · ") } ?? "–")
                     }
                 }
             }
+            .padding(.vertical, 6)
             .redacted(reason: machine.latest == nil ? .placeholder : [])
-        } header: {
-            SectionTitle("Live")
         }
     }
 
-    // MARK: - Storage
+    // MARK: - Drives
 
-    private var storageRow: some View {
-        Section {
-            HStack(alignment: .top, spacing: 14) {
-                Card {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label("On atlas", systemImage: "internaldrive").font(.headline)
-                        if let disks = machine.snapshot?.disks {
-                            ForEach(disks) { disk in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text(disk.mount == "/" ? "System" : disk.mount)
-                                        Spacer()
-                                        Text("\((disk.total - disk.used).fileSize) free of \(disk.total.fileSize)")
-                                            .foregroundStyle(.secondary).monospacedDigit()
-                                    }
-                                    Gauge(value: disk.fraction) { EmptyView() }
-                                        .gaugeStyle(.linearCapacity)
-                                        .tint(disk.fraction > 0.9 ? .red : .accentColor)
-                                        .accessibilityLabel(disk.mount)
-                                        .accessibilityValue(Text(disk.fraction, format: .percent.precision(.fractionLength(0))))
-                                }
-                            }
-                            if let db = machine.services?.database {
-                                HStack {
-                                    Text("Database")
-                                    Spacer()
-                                    Text(db.bytes.fileSize).foregroundStyle(.secondary).monospacedDigit()
-                                }
-                            }
-                        } else {
-                            ProgressView().frame(maxWidth: .infinity)
-                        }
-                    }
+    @ViewBuilder
+    private var drives: some View {
+        Section("Drives") {
+            if let drives = machine.drives?.drives {
+                // the system drive first, then the others by size
+                ForEach(drives.sorted { a, b in
+                    let sa = a.mounts.contains { $0.mount == "/" }, sb = b.mounts.contains { $0.mount == "/" }
+                    return sa != sb ? sa : a.size > b.size
+                }) { drive in ServerDriveRow(drive: drive) }
+            } else if let disks = machine.snapshot?.disks {
+                // before the drives answer: the filesystems from the snapshot
+                ForEach(disks) { disk in
+                    UsageRow(title: disk.mount == "/" ? "System" : disk.mount, used: disk.used, total: disk.total)
                 }
-                Card {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Label("On this Mac", systemImage: "laptopcomputer").font(.headline)
-                            Spacer()
-                            Button("Show in Finder") {
-                                NSWorkspace.shared.activateFileViewerSelecting([MediaStore.shared.directory])
-                            }
-                            .controlSize(.small)
-                        }
-                        StorageBar(use: storage)
-                            .redacted(reason: measured ? [] : .placeholder)
-                        Text("Every grid thumbnail stays on this Mac, so the library opens complete, also offline. Previews, originals and videos share \(MediaStore.budget.fileSize) and make room on their own, least used first.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+            } else {
+                LabeledContent("Drives") { ProgressView().controlSize(.small) }
+            }
+        }
+    }
+
+    // MARK: - This Mac
+
+    private var thisMac: some View {
+        Section {
+            StorageBar(use: storage)
+                .redacted(reason: measured ? [] : .placeholder)
+            Picker("Cache size", selection: Binding(
+                get: { cacheChoice },
+                set: { choice in
+                    cacheChoice = choice
+                    MediaStore.chosenBudget = choice == 0 ? nil : choice
+                    Task { storage = await StorageUse.measure() }
+                })) {
+                Text("Automatic (\(MediaStore.automaticBudget.fileSize))").tag(Int64(0))
+                Divider()
+                ForEach(Self.cacheSizes, id: \.self) { gb in
+                    Text("\(gb) GB").tag(Int64(gb) << 30)
+                }
+            }
+            LabeledContent("Cache folder") {
+                Button("Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([MediaStore.shared.directory])
                 }
             }
         } header: {
-            SectionTitle("Storage")
+            Text("On This Mac")
+        } footer: {
+            Text("Every grid thumbnail stays on this Mac, so the library opens complete, also offline. Previews, originals and videos fill up to \(MediaStore.budget.fileSize) as you browse and make room on their own, least used first, and sooner when the disk runs low. Automatic is a tenth of the free space.")
+                .foregroundStyle(.secondary)
         }
     }
 
     // MARK: - Services and processing
 
-    private var servicesRow: some View {
-        Section {
-            HStack(alignment: .top, spacing: 14) {
-                Card {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("Services", systemImage: "gearshape.2").font(.headline)
-                        if let services = machine.services {
-                            ForEach(services.units) { unit in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(unit.unit)
-                                        Text(Self.roles[unit.unit] ?? unit.role).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if let memory = unit.memory {
-                                        Text(memory.fileSize).foregroundStyle(.secondary).monospacedDigit()
-                                    }
-                                    StateLabel(healthy: unit.state == "active", text: unit.state == "active" ? "Active" : "Stopped")
-                                }
-                            }
-                            Divider()
-                            row("Database", "Postgres \(services.database.version.split(separator: " ").first.map(String.init) ?? "")")
-                            HStack {
-                                Text("Search Model")
-                                Spacer()
-                                if let ml = services.ml {
-                                    StateLabel(healthy: true, text: ml.embedder == "loaded" ? "Loaded" : "Ready")
-                                } else {
-                                    StateLabel(healthy: false, text: "Offline")
-                                }
-                            }
-                            row("Searchable by content", services.vectors.formatted())
-                        } else {
-                            ProgressView().frame(maxWidth: .infinity)
+    @ViewBuilder
+    private var services: some View {
+        Section("Services") {
+            if let services = machine.services {
+                ForEach(services.units) { unit in
+                    LabeledContent {
+                        HStack(spacing: 10) {
+                            if let memory = unit.memory { Text(memory.fileSize).foregroundStyle(.secondary).monospacedDigit() }
+                            StateLabel(healthy: unit.state == "active", text: unit.state == "active" ? "Running" : "Stopped")
                         }
+                    } label: {
+                        Text(unit.unit)
+                        Text(Self.roles[unit.unit] ?? unit.role)
                     }
                 }
-                Card {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Label("Processing", systemImage: "arrow.triangle.2.circlepath").font(.headline)
-                            Spacer()
-                            if let services = machine.services {
-                                Text(services.pending == 0 ? "All done" : "\(services.pending.formatted()) waiting")
-                                    .foregroundStyle(.secondary).monospacedDigit()
-                            }
-                        }
-                        if let services = machine.services {
-                            ForEach(services.queue.keys.sorted(), id: \.self) { kind in
-                                let counts = services.queue[kind] ?? [:]
-                                let waiting = (counts["pending"] ?? 0) + (counts["running"] ?? 0)
-                                HStack {
-                                    Text(Self.queueNames[kind] ?? kind)
-                                    Spacer()
-                                    Text("\((counts["done"] ?? 0).formatted()) done").foregroundStyle(.secondary)
-                                    Text(waiting == 0 ? "✓" : "\(waiting.formatted()) waiting")
-                                        .foregroundStyle(waiting == 0 ? .green : .orange)
-                                        .frame(minWidth: 90, alignment: .trailing)
-                                }
-                                .monospacedDigit()
-                            }
-                            if !services.failed.isEmpty {
-                                Divider()
-                                Text("Failed").font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
-                                ForEach(services.failed) { job in
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(Self.queueNames[job.kind] ?? job.kind)
-                                        Text(job.error ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                                    }
-                                }
-                            }
-                        } else {
-                            ProgressView().frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-            }
-        } header: {
-            SectionTitle("Services")
-        }
-    }
-
-    // MARK: - Connection
-
-    private var connection: some View {
-        Section {
-            Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    if session.isConnected {
-                        row("Address", session.base)
-                        if let info = session.info {
-                            row("Version", info.version)
-                            row("Time Zone", info.timezone)
-                        }
-                        row("Library", model.library.assets.count == 1 ? "1 item" : "\(model.library.assets.count.formatted()) items")
-                        Divider()
-                        HStack {
-                            Text("The access token is kept in your keychain on this Mac.")
-                                .font(.callout).foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Disconnect…") { confirmDisconnect = true }
-                        }
+                LabeledContent("Database", value: "Postgres \(services.database.version.split(separator: " ").first.map(String.init) ?? "") · \(services.database.bytes.fileSize)")
+                LabeledContent("Search model") {
+                    if let ml = services.ml {
+                        StateLabel(healthy: true, text: ml.embedder == "loaded" ? "Loaded" : "Ready")
                     } else {
-                        Text("Not connected. Connect in the main window, or open the link “atlas connect” prints.")
-                            .foregroundStyle(.secondary)
+                        StateLabel(healthy: false, text: "Offline")
                     }
                 }
+            } else {
+                LabeledContent("Services") { ProgressView().controlSize(.small) }
             }
-        } header: {
-            SectionTitle("Connection")
         }
     }
 
-    private func row(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(value).foregroundStyle(.secondary).monospacedDigit().textSelection(.enabled)
+    @ViewBuilder
+    private var processing: some View {
+        if let services = machine.services {
+            Section {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 24, alignment: .leading)],
+                          alignment: .leading, spacing: 10) {
+                    ForEach(services.queue.keys.sorted { (Self.queueNames[$0] ?? $0) < (Self.queueNames[$1] ?? $1) }, id: \.self) { kind in
+                        let counts = services.queue[kind] ?? [:]
+                        let waiting = (counts["pending"] ?? 0) + (counts["running"] ?? 0)
+                        HStack(spacing: 8) {
+                            Image(systemName: waiting == 0 ? "checkmark.circle.fill" : "clock.fill")
+                                .foregroundStyle(waiting == 0 ? .green : .orange)
+                            Text(Self.queueNames[kind] ?? kind)
+                            Spacer(minLength: 6)
+                            Text(waiting == 0 ? (counts["done"] ?? 0).formatted() : "\(waiting.formatted()) left")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                                .contentTransition(.numericText(value: Double(waiting)))
+                                .animation(.smooth, value: waiting)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                ForEach(services.failed) { job in
+                    LabeledContent {
+                        Text(job.error ?? "").lineLimit(2).foregroundStyle(.secondary)
+                    } label: {
+                        Label(Self.queueNames[job.kind] ?? job.kind, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+            } header: {
+                Text("Processing")
+            } footer: {
+                Text(services.pending == 0 ? "Everything is processed." : "\(services.pending.formatted()) jobs are waiting.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Server and connection
+
+    private var server: some View {
+        Section {
+            if session.isConnected {
+                if let s = machine.snapshot {
+                    LabeledContent("Name", value: s.hostname)
+                    LabeledContent("Atlas", value: s.version)
+                    if let os = s.os { LabeledContent("System", value: os) }
+                    if let kernel = s.kernel { LabeledContent("Kernel", value: kernel) }
+                    if let cpu = s.cpu.model { LabeledContent("Processor", value: "\(cpu), \(s.cpu.cores) threads") }
+                    if let gpu = s.gpu { LabeledContent("Graphics", value: gpu.name) }
+                    LabeledContent("Uptime", value: Duration.seconds(s.uptime_s)
+                        .formatted(.units(allowed: [.days, .hours, .minutes], width: .wide)))
+                }
+                LabeledContent("Address") { Text(session.base).textSelection(.enabled) }
+                if let info = session.info { LabeledContent("Time zone", value: info.timezone) }
+                LabeledContent("Library", value: model.library.assets.count == 1 ? "1 item" : "\(model.library.assets.count.formatted()) items")
+                LabeledContent("Access token") {
+                    Button("Disconnect…") { confirmDisconnect = true }
+                }
+            } else {
+                Text("Not connected. Connect in the main window, or open the link “atlas connect” prints.")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Server")
+        } footer: {
+            if session.isConnected {
+                Text("The access token is kept in your keychain on this Mac.").foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -361,11 +294,11 @@ struct MacServerView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Button("Terminal", systemImage: "terminal") { openWindow(id: "terminal") }
+            Button("Terminal", systemImage: "apple.terminal") { openWindow(id: "terminal") }
                 .help("Open a shell on atlas")
             Menu("Power", systemImage: "power") {
                 Button("Restart atlas…", systemImage: "arrow.clockwise") { Task { await ask(.restart) } }
-                Button("Shut Down atlas…", systemImage: "power", role: .destructive) { Task { await ask(.shutdown) } }
+                Button("Shut Down atlas…", systemImage: "power") { Task { await ask(.shutdown) } }
             }
             .help("Restart or shut down atlas")
             .disabled(!session.isConnected)
@@ -379,28 +312,9 @@ struct MacServerView: View {
     }
 }
 
-/// A rounded panel on the page.
-private struct Card<Content: View>: View {
-    @ViewBuilder var content: Content
-    var body: some View {
-        content
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.secondary, in: .rect(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
-    }
-}
-
-private struct SectionTitle: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text).font(.title3.weight(.semibold)).padding(.bottom, 2)
-    }
-}
-
-/// One live measure: its value, a 60 s curve and what it is.
-private struct LiveCard: View {
+/// One live measure: name, value gliding as it changes, its last minute as
+/// a curve, and what it is in absolute terms.
+private struct Meter: View {
     let title: String
     let value: Double
     let color: Color
@@ -408,44 +322,134 @@ private struct LiveCard: View {
     let detail: String
 
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.headline)
-                    Spacer()
-                    Text(value, format: .percent.precision(.fractionLength(0)))
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-                        .contentTransition(.numericText(value: value))
-                        .animation(.smooth, value: value)
-                }
-                LiveSparkline(series: series, color: color)
-                    .frame(height: 64)
-                Text(detail.isEmpty ? " " : detail)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).foregroundStyle(.secondary)
+                Spacer()
+                Text(value / 100, format: .percent.precision(.fractionLength(0)))
+                    .font(.system(size: 22, weight: .semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: value))
+                    .animation(.smooth, value: value)
             }
+            LiveSparkline(series: series, color: color)
+                .frame(height: 48)
+            Text(detail.isEmpty ? " " : detail)
+                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.smooth, value: detail)
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
-        .accessibilityValue(Text(value, format: .percent.precision(.fractionLength(0))))
+        .accessibilityValue(Text(value / 100, format: .percent.precision(.fractionLength(0))))
     }
 }
 
-/// A measure without a curve, as tall as a live card.
-private struct FactCard<Content: View>: View {
+/// A value without a curve, its digits gliding as they change.
+private struct Fact<Content: View>: View {
     let title: String
-    let symbol: String
+    let value: Double
     @ViewBuilder var content: Content
 
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 10) {
-                Label(title, systemImage: symbol).font(.headline)
-                content
-                Spacer(minLength: 0)
-            }
-            .frame(height: 120, alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).foregroundStyle(.secondary)
+            content
+                .font(.system(size: 15, weight: .medium))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: value))
+                .animation(.smooth, value: value)
+                .lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A drive: what it is and its health, then each filesystem on it with how
+/// full it is.
+private struct ServerDriveRow: View {
+    let drive: DriveReport.Drive
+
+    var body: some View {
+        LabeledContent {
+            health
+        } label: {
+            Label {
+                Text(drive.model ?? drive.name)
+                Text(detail)
+            } icon: {
+                Image(systemName: drive.transport == "usb" ? "externaldrive" : "internaldrive")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        ForEach(drive.mounts) { mount in
+            UsageRow(title: mount.mount == "/" ? "System (/)" : mount.mount, used: mount.used, total: mount.size)
+                .padding(.leading, 28)
+        }
+    }
+
+    private var detail: String {
+        let kind = drive.isSSD ? (drive.transport == "nvme" ? "NVMe SSD" : "SSD") : "Hard disk"
+        let via = drive.transport.map { $0 == "nvme" ? nil : $0.uppercased() } ?? nil
+        var parts = [kind, via, drive.size.fileSize].compactMap { $0 }
+        if let h = drive.health {
+            if let t = h.temperature { parts.append("\(t) °C") }
+            if let hours = h.hours { parts.append("\(hours.formatted()) h") }
+            if let rpm = h.rpm { parts.append("\(rpm.formatted()) rpm") }
+            if let wear = h.wear { parts.append("\(wear) % worn") }
+            if let written = h.written { parts.append("\(written.fileSize) written") }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder
+    private var health: some View {
+        if let h = drive.health {
+            if h.asleep == true {
+                Label("Asleep", systemImage: "moon.zzz.fill").foregroundStyle(.secondary)
+            } else if h.passed == false {
+                StateLabel(healthy: false, text: "Failing")
+            } else if h.problems > 0 {
+                StateLabel(healthy: false, text: "\(h.problems) bad sectors")
+            } else {
+                StateLabel(healthy: true, text: "Healthy")
+            }
+        } else {
+            Text("No health data").foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A filesystem and how full it is: a plain bar, not a control.
+private struct UsageRow: View {
+    let title: String
+    let used: Int64
+    let total: Int64
+
+    private var fraction: Double { total > 0 ? Double(used) / Double(total) : 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\((total - used).fileSize) free of \(total.fileSize)")
+                    .foregroundStyle(.secondary).monospacedDigit()
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.trackFill)
+                    Capsule().fill(fraction > 0.9 ? Color.red : fraction > 0.75 ? Color.orange : Color.accentColor)
+                        .frame(width: max(geo.size.width * fraction, 4))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(title))
+        .accessibilityValue(Text("\((total - used).fileSize) free of \(total.fileSize)"))
     }
 }

@@ -11,6 +11,9 @@ struct StorageUse {
     var other: Int64 = 0
 
     var total: Int64 { thumbnails + previews + originals + videos + other }
+    /// What Atlas may take: every thumbnail (kept for good) plus the budget
+    /// the rest shares and keeps itself within.
+    var capacity: Int64 { max(thumbnails + MediaStore.budget, total) }
 
     /// Read off the main thread: walking the caches touches the disk.
     static func measure() async -> StorageUse {
@@ -43,10 +46,13 @@ struct StorageBar: View {
             HStack {
                 Text("Atlas").font(.headline)
                 Spacer()
-                Text(use.total.fileSize).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Text("\(use.total.fileSize) of \(use.capacity.fileSize)")
+                    .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
             }
             GeometryReader { geo in
-                let total = CGFloat(max(use.total, 1))
+                // against the room Atlas may take, not what it uses: a full
+                // bar would read as a full cache
+                let total = CGFloat(max(use.capacity, 1))
                 HStack(spacing: 1.5) {
                     ForEach(parts.filter { $0.2 > 0 }, id: \.0) { part in
                         Rectangle().fill(part.1)
