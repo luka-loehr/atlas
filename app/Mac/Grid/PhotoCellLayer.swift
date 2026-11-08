@@ -102,7 +102,7 @@ final class PhotoCellLayer: CALayer {
         let same = assetID == asset.id && self.pixels == pixels && imageLayer.contents != nil
         assetID = asset.id
         self.pixels = pixels
-        video = asset.isVideo ? Self.duration(asset.durationS) : nil
+        video = asset.isVideo ? VideoLength.text(asset.durationS ?? 0) : nil
         favorite = asset.isFavorite
         update()
         guard !same || force else { return }
@@ -216,12 +216,6 @@ final class PhotoCellLayer: CALayer {
         dim.opacity = 1
         checkLayer.isHidden = !selected || small
         CATransaction.commit()
-    }
-
-    private static func duration(_ seconds: Double?) -> String {
-        let s = Int((seconds ?? 0).rounded())
-        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
-            : String(format: "%d:%02d", s / 60, s % 60)
     }
 }
 

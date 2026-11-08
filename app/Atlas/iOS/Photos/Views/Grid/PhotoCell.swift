@@ -69,13 +69,8 @@ final class PhotoCell: UICollectionViewCell {
     func configure(_ asset: Asset, pixels: Int, single: Bool, selecting: Bool, picked: Bool) {
         let same = asset.id == assetID && pixels == self.pixels
         isVideo = asset.isVideo
-        if let secs = asset.durationS, asset.isVideo {
-            let t = Int(secs.rounded())
-            duration.text = t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
-                                      : String(format: "%d:%02d", t / 60, t % 60)
-        } else {
-            duration.text = nil
-        }
+        let length = asset.isVideo ? asset.durationS.map(VideoLength.text) : nil
+        if duration.text != length { duration.text = length }
         setSelection(selecting: selecting, picked: picked, animated: false, entering: false)
         guard !same || imageView.image == nil else { return }
         stopLoading()
