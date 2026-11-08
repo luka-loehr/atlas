@@ -26,6 +26,8 @@
 		25503606CD81AC4B04AAE776 /* AlbumWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3564974376000E1F3E6417A3 /* AlbumWidget.swift */; };
 		2735579E00860A7EA740C6E7 /* AlbumPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */; };
 		2BDFE2896DBB4356E6D786A8 /* PeopleExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9477B3B5FE3E1C8645BF496E /* PeopleExtras.swift */; };
+		2C8B18C21804435B1436A6D7 /* DriveTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C254F95A6D6C2FB56F955308 /* DriveTransfer.swift */; platformFilters = (macos, ); };
+		2F01A3D26969CC20CD595BA6 /* MacDriveSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D1532D784DB08C28A758B4 /* MacDriveSearch.swift */; platformFilters = (macos, ); };
 		2FA9C21860CA1D9F4737F0A5 /* AlbumsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B100252163A1C92DF1B14BC /* AlbumsScreen.swift */; platformFilters = (ios, ); };
 		3000C718B6D51574404EE4C6 /* PhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */; };
 		30D4DB0531F2A5B7DFD9DD60 /* DriveScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E739EAC13043E9656ECD129 /* DriveScreen.swift */; platformFilters = (ios, ); };
@@ -46,9 +48,9 @@
 		4AE67758C738BA77C94A8ED6 /* TerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D9BA233409E8D2ECF8E3EB6 /* TerminalScreen.swift */; platformFilters = (ios, ); };
 		4E34BB3326631D75081F2FE9 /* AtlasMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2363D683E2288F19E1124A51 /* AtlasMacApp.swift */; platformFilters = (macos, ); };
 		57116F3329D0BA5DA957D292 /* ConnectScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B246155FFF051E0A8C4DA911 /* ConnectScreen.swift */; platformFilters = (ios, ); };
-		57633DA6E9D12542AC679EFF /* MacDrive.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA7D35ACDA43CB574CEE3AE /* MacDrive.swift */; platformFilters = (macos, ); };
 		5A7EF456EA5C6C75BD08F40A /* AssetGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = F646C38308085E1520FF4D0C /* AssetGrid.swift */; platformFilters = (ios, ); };
 		5E21D44E09283739FFE6C30D /* LiveChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9328AC789B96004034ABEEA /* LiveChart.swift */; };
+		5E57388F9963D2BC508EFEB4 /* DriveMoveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E2484C9557983B13809B9C /* DriveMoveSheet.swift */; platformFilters = (macos, ); };
 		5E60F762C60F6A0CA366D8E8 /* CircleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD35A2042E918FFCD8B58A6 /* CircleButton.swift */; platformFilters = (ios, ); };
 		654B65372B48D8EC7413AB02 /* AtlasWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8ED4F3E575257EFF453CA22B /* AtlasWidget.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		67FA2CB8826FFED9471D8DE9 /* DriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DFCE51C82D8ACBDDF63B5E /* DriveClient.swift */; };
@@ -60,7 +62,9 @@
 		71BD9FB440361A58D7CDBB0A /* Biometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = B889991DE1B8C307BA3F6226 /* Biometric.swift */; };
 		7349349CB51C60EF9013502D /* TimeScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F72E19C094BB7170FA00CE4 /* TimeScrubber.swift */; platformFilters = (ios, ); };
 		739FCA36A39E130CEA6CE2AD /* MediaCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E189ACB18C2FDCA2C246C6 /* MediaCache.swift */; };
+		788F8B500CD74A88F39A7F6C /* MacDriveTrash.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1308C4D08C4AFC70CD583C5B /* MacDriveTrash.swift */; platformFilters = (macos, ); };
 		78DA201665FCAAF4B05BE173 /* ShareLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E4AE35D3606457E9607B926 /* ShareLink.swift */; };
+		7A8D1A844468CE57A1814978 /* MacDriveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44D7E2ACA78DC6E21F40D60A /* MacDriveView.swift */; platformFilters = (macos, ); };
 		7CDABC7FABCF9B885358AC61 /* Machine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536ECEC16062D6354BC9B4DF /* Machine.swift */; };
 		7D1FB000D131EBA29F5CDBBA /* PhotoGridBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F8A42319F8B11277D48163 /* PhotoGridBenchmark.swift */; platformFilters = (ios, ); };
 		7D2D9384F9D63B5761431FF5 /* DriveIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493F6BA38487AD2D25FAE7A6 /* DriveIcon.swift */; platformFilters = (ios, ); };
@@ -68,6 +72,7 @@
 		8BC2873A668A9E87D96CCA11 /* MacPhotoBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94988A0DF0CD149CEDC3CD8 /* MacPhotoBrowser.swift */; platformFilters = (macos, ); };
 		8D28FE030C7EE76B688E65BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA986E23356244005C7DA505 /* Assets.xcassets */; };
 		9193B9D88BABA79F14CED4A1 /* Shares.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A82F97E9C46A16439690B /* Shares.swift */; };
+		93EAE5CEB230A8A9683207E0 /* DriveRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1009B90FB453CB8788A7D88E /* DriveRow.swift */; platformFilters = (macos, ); };
 		9422F3C631E518A918BA3884 /* Common.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAC5B1838A9E7D2AD0E89C0 /* Common.swift */; };
 		956595182AE767C0B23605C4 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1546EC722323AA2800B2C62F /* Selection.swift */; };
 		97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FBC23EEED736F63F0D8977 /* AssetInfo.swift */; };
@@ -94,6 +99,7 @@
 		BFD472F06AC8278CC0A9B05A /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C25286BF8F8BFB09171786 /* SearchScreen.swift */; platformFilters = (ios, ); };
 		C27618F0EFAB1C79DF4AA81A /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12986C8F368AFE2E5D4B7F3 /* SelectionToolbar.swift */; platformFilters = (ios, ); };
 		C36C93A68B159912AABA81A0 /* DriveMovePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */; platformFilters = (ios, ); };
+		C411DDB0DAFF27B07CEB36B2 /* DriveTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA499FFCE1D33558571A14FF /* DriveTable.swift */; platformFilters = (macos, ); };
 		D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		D7345699CBC7C0C2AD68DBA9 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */; platformFilters = (macos, ); };
 		D7A3F1D61545872937141A54 /* MacSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C797FD9BA8EE2135C72A00 /* MacSidebar.swift */; platformFilters = (macos, ); };
@@ -143,6 +149,8 @@
 		0B2E9CE6FE054663230344C1 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		0D9BA233409E8D2ECF8E3EB6 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
 		0E4AE35D3606457E9607B926 /* ShareLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareLink.swift; sourceTree = "<group>"; };
+		1009B90FB453CB8788A7D88E /* DriveRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveRow.swift; sourceTree = "<group>"; };
+		1308C4D08C4AFC70CD583C5B /* MacDriveTrash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDriveTrash.swift; sourceTree = "<group>"; };
 		151313760EDC071BADFEF3E8 /* MediaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaStore.swift; sourceTree = "<group>"; };
 		1546EC722323AA2800B2C62F /* Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Selection.swift; sourceTree = "<group>"; };
 		160ABAEFD43A45A7F54F7A37 /* PhotoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoClient.swift; sourceTree = "<group>"; };
@@ -169,6 +177,7 @@
 		42382391BF98FCFBC6652A25 /* GridTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridTiles.swift; sourceTree = "<group>"; };
 		43DD1BC1C950C364DA8711C6 /* MacPhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhotoGrid.swift; sourceTree = "<group>"; };
 		445EAD3725120CC480E8D707 /* ViewerVideo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerVideo.swift; sourceTree = "<group>"; };
+		44D7E2ACA78DC6E21F40D60A /* MacDriveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDriveView.swift; sourceTree = "<group>"; };
 		493F6BA38487AD2D25FAE7A6 /* DriveIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveIcon.swift; sourceTree = "<group>"; };
 		4D37F62453CBAD3DFE4B4C67 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 		512A6A1FD56B4A789D7AC17B /* AlbumPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPicker.swift; sourceTree = "<group>"; };
@@ -183,6 +192,7 @@
 		5F874C93ED96E81BF56AA172 /* MacWindowState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWindowState.swift; sourceTree = "<group>"; };
 		66752A0E5CAB0A73CD97F23C /* BackupService+PhotoKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BackupService+PhotoKit.swift"; sourceTree = "<group>"; };
 		677A717860B41C9019B758B6 /* AlbumScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumScreen.swift; sourceTree = "<group>"; };
+		68D1532D784DB08C28A758B4 /* MacDriveSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDriveSearch.swift; sourceTree = "<group>"; };
 		6A0BBA486E6F66F89D14D5F5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6B63373AC907672AFAB7EA74 /* TerminalBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBridge.swift; sourceTree = "<group>"; };
 		6DBB2D8DA3BA7AA013C6D346 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -212,7 +222,6 @@
 		A58780722FD6A34389F60986 /* Persons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persons.swift; sourceTree = "<group>"; };
 		AA986E23356244005C7DA505 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB46753CAED0FAC6623AE30A /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
-		AEA7D35ACDA43CB574CEE3AE /* MacDrive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDrive.swift; sourceTree = "<group>"; };
 		AF8B301C402F482F178FB754 /* Thumb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thumb.swift; sourceTree = "<group>"; };
 		B246155FFF051E0A8C4DA911 /* ConnectScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectScreen.swift; sourceTree = "<group>"; };
 		B64271D5E11F137FC0F9D729 /* PhotoGridController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGridController.swift; sourceTree = "<group>"; };
@@ -220,6 +229,8 @@
 		B889991DE1B8C307BA3F6226 /* Biometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Biometric.swift; sourceTree = "<group>"; };
 		B94988A0DF0CD149CEDC3CD8 /* MacPhotoBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhotoBrowser.swift; sourceTree = "<group>"; };
 		BA0B00FC420C2CE93AC9FF9E /* SyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatus.swift; sourceTree = "<group>"; };
+		BA499FFCE1D33558571A14FF /* DriveTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTable.swift; sourceTree = "<group>"; };
+		C254F95A6D6C2FB56F955308 /* DriveTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTransfer.swift; sourceTree = "<group>"; };
 		C46DFF7D27408F7CD27FB8C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMovePicker.swift; sourceTree = "<group>"; };
 		CE981BED49E785537EA3219F /* PhotoCellLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCellLayer.swift; sourceTree = "<group>"; };
@@ -233,6 +244,7 @@
 		E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareFiles.swift; sourceTree = "<group>"; };
 		E3856AB17EC39E376E1CC478 /* InfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoSheet.swift; sourceTree = "<group>"; };
 		E6DFCE51C82D8ACBDDF63B5E /* DriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveClient.swift; sourceTree = "<group>"; };
+		E6E2484C9557983B13809B9C /* DriveMoveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMoveSheet.swift; sourceTree = "<group>"; };
 		E6F8A42319F8B11277D48163 /* PhotoGridBenchmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGridBenchmark.swift; sourceTree = "<group>"; };
 		E76871E3F07CC864F93E10B7 /* WidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetData.swift; sourceTree = "<group>"; };
 		EB9F3DAEDC44088BC9A6F5BA /* DriveTrashScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTrashScreen.swift; sourceTree = "<group>"; };
@@ -558,7 +570,13 @@
 		D75FE72C0AB49310C8D56B61 /* Files */ = {
 			isa = PBXGroup;
 			children = (
-				AEA7D35ACDA43CB574CEE3AE /* MacDrive.swift */,
+				E6E2484C9557983B13809B9C /* DriveMoveSheet.swift */,
+				1009B90FB453CB8788A7D88E /* DriveRow.swift */,
+				BA499FFCE1D33558571A14FF /* DriveTable.swift */,
+				C254F95A6D6C2FB56F955308 /* DriveTransfer.swift */,
+				68D1532D784DB08C28A758B4 /* MacDriveSearch.swift */,
+				1308C4D08C4AFC70CD583C5B /* MacDriveTrash.swift */,
+				44D7E2ACA78DC6E21F40D60A /* MacDriveView.swift */,
 			);
 			path = Files;
 			sourceTree = "<group>";
@@ -702,7 +720,11 @@
 				AAFB964E17832FE8B8F82814 /* DriveFolderScreen.swift in Sources */,
 				7D2D9384F9D63B5761431FF5 /* DriveIcon.swift in Sources */,
 				C36C93A68B159912AABA81A0 /* DriveMovePicker.swift in Sources */,
+				5E57388F9963D2BC508EFEB4 /* DriveMoveSheet.swift in Sources */,
+				93EAE5CEB230A8A9683207E0 /* DriveRow.swift in Sources */,
 				30D4DB0531F2A5B7DFD9DD60 /* DriveScreen.swift in Sources */,
+				C411DDB0DAFF27B07CEB36B2 /* DriveTable.swift in Sources */,
+				2C8B18C21804435B1436A6D7 /* DriveTransfer.swift in Sources */,
 				E7144EF64398F7D562607D12 /* DriveTrashScreen.swift in Sources */,
 				FC2888F450CC0447098823FE /* FilmstripView.swift in Sources */,
 				E89F181377BFC33F6C836E9B /* FlowLayout.swift in Sources */,
@@ -712,7 +734,9 @@
 				999C72BE2AF36F496E7EAF1C /* Library.swift in Sources */,
 				5E21D44E09283739FFE6C30D /* LiveChart.swift in Sources */,
 				AEDA86A3624F4C1014277734 /* MacConnectView.swift in Sources */,
-				57633DA6E9D12542AC679EFF /* MacDrive.swift in Sources */,
+				2F01A3D26969CC20CD595BA6 /* MacDriveSearch.swift in Sources */,
+				788F8B500CD74A88F39A7F6C /* MacDriveTrash.swift in Sources */,
+				7A8D1A844468CE57A1814978 /* MacDriveView.swift in Sources */,
 				B376C03F3D86FC924FB2E6B9 /* MacHelpers.swift in Sources */,
 				B715D14F86A5C436C32E7456 /* MacPeopleView.swift in Sources */,
 				8BC2873A668A9E87D96CCA11 /* MacPhotoBrowser.swift in Sources */,
