@@ -251,3 +251,15 @@ fn frame_at(path: &Path, seek: f64, hdr: bool) -> Result<Option<RgbImage>> {
     }
     Ok(Some(image::load_from_memory(&out.stdout)?.into_rgb8()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fit_never_enlarges_and_keeps_the_aspect() {
+        assert_eq!(fit(RgbImage::new(4000, 3000), 2048).unwrap().dimensions(), (2048, 1536));
+        assert_eq!(fit(RgbImage::new(1080, 1920), 1920).unwrap().dimensions(), (1080, 1920));
+        assert_eq!(fit(RgbImage::new(300, 200), 4096).unwrap().dimensions(), (300, 200));
+    }
+}

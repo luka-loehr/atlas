@@ -143,7 +143,28 @@ pub fn ffmpeg_into(ffmpeg: &mut Command, tmp: &Path, limit: Duration) -> std::io
 
 #[cfg(test)]
 mod tests {
-    use super::iso6709;
+    use super::*;
+    use crate::util;
+
+    #[test]
+    fn a_tool_run_keeps_its_output_only_when_it_wrote_one() {
+        let dir = std::env::temp_dir().join(util::temp_name("ffmpeg-into"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmp = dir.join("out.part.mp4");
+        let limit = Duration::from_secs(5);
+        // the output path comes last, as $0 of the script
+        let wrote = ffmpeg_into(Command::new("sh").args(["-c", "printf x > \"$0\""]), &tmp, limit).unwrap();
+        assert_eq!(wrote, Ok(()));
+        assert!(tmp.is_file());
+        let failed = ffmpeg_into(Command::new("sh").args(["-c", "echo first >&2; echo last >&2; exit 1"]), &tmp, limit).unwrap();
+        assert_eq!(failed, Err("last".to_string()));
+        assert!(!tmp.exists(), "a failed run leaves no part file");
+        let empty = ffmpeg_into(Command::new("sh").args(["-c", ": > \"$0\""]), &tmp, limit).unwrap();
+        assert_eq!(empty, Err(String::new()));
+        assert!(!tmp.exists(), "an empty output is no output");
+        assert!(ffmpeg_into(&mut Command::new("no-such-tool-anywhere"), &tmp, limit).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn parses_quicktime_locations() {

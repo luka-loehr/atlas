@@ -286,6 +286,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_kind_too_small_for_its_own_scale_uses_the_librarys() {
+        // 60 stills along one axis, 3 clips along another
+        let mut matrix = Matrix::default();
+        for i in 0..63 {
+            let video = i >= 60;
+            let mut row = vec![0f32; DIM];
+            row[usize::from(video)] = 1.0;
+            row[2] = (i % 7) as f32 * 0.1;
+            normalize(&mut row);
+            matrix.rows.insert(i.to_string(), matrix.ids.len());
+            matrix.ids.push(i.to_string());
+            matrix.video.push(video);
+            matrix.data.extend_from_slice(&row);
+        }
+        let mut still = vec![0f32; DIM];
+        still[0] = 1.0;
+        let query = Questions { clip: still.clone(), still };
+        let scored = matrix.score(&query);
+        assert_eq!(scored.scores.len(), 63);
+        assert_eq!(scored.stills.n, 60, "enough stills for a scale of their own");
+        assert_eq!(scored.clips.n, 63, "three clips are measured against everything");
+        assert!(!std::ptr::eq(scored.kind(true), scored.kind(false)));
+    }
+
+    #[test]
     fn the_scale_ignores_a_cluster_of_matches() {
         // 80 unrelated scores around 0.2, 20 matches far above
         let mut scores: Vec<f32> = (0..80).map(|i| 0.2 + (i % 9) as f32 * 0.005 - 0.02).collect();
