@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AVKit
+import Combine
 
 /// One photo or video at the size of the window, over the grid it was
 /// opened from (Photos on the Mac does the same).
@@ -20,8 +21,17 @@ struct MacViewer: View {
     @FocusState private var focused: Bool
     @State private var hovering = false
     @State private var lastIndex = 0
+    /// The page on screen. The viewer's own: a step redraws the viewer
+    /// only. `current` (the browser's, for its title and toolbar) follows
+    /// at once after a single step; while steps come faster than 150 ms
+    /// apart, it skips the pages in between and catches up 120 ms after
+    /// the last, so holding an arrow never queues work for the window.
+    @State private var shown: String?
+    @State private var shownIndex: Int?
+    @State private var lastStep = Date.distantPast
+    @State private var catchUp: Task<Void, Never>?
 
-    private var index: Int? { current.flatMap { id in assets.firstIndex { $0.id == id } } }
+    private var index: Int? { shownIndex }
 
     var body: some View {
         ZStack {
@@ -39,16 +49,19 @@ struct MacViewer: View {
                 edgeButtons(index)
             }
         }
-        .animation(.easeInOut(duration: 0.12), value: current)
+        .animation(.easeInOut(duration: 0.12), value: shown)
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
-        .onAppear { focused = true; focusCache() }
-        .onChange(of: current) { focusCache() }
+        .onAppear { show(current); focused = true; focusCache() }
+        // opened on another photo, or a deleted photo left: follow the browser
+        .onChange(of: current) { if current != shown && catchUp == nil { show(current); focusCache() } }
+        .onChange(of: assets.count) { show(shown) }
+        .onChange(of: shown) { focusCache() }
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
-        .onKeyPress(.space) { onClose(); return .handled }
-        .onKeyPress(characters: ["."], phases: .down) { _ in onFavorite(); return .handled }
+        .onKeyPress(.space) { sync(); onClose(); return .handled }
+        .onKeyPress(characters: ["."], phases: .down) { _ in sync(); onFavorite(); return .handled }
         .onHover { hovering = $0 }
         .accessibilityAction(named: "Next Photo") { step(1) }
         .accessibilityAction(named: "Previous Photo") { step(-1) }
@@ -84,7 +97,33 @@ struct MacViewer: View {
         guard let index else { return }
         let next = index + delta
         guard let asset = assets[safe: next] else { NSSound.beep(); return }
-        current = asset.id
+        shown = asset.id
+        shownIndex = next
+        let now = Date()
+        let rapid = now.timeIntervalSince(lastStep) < 0.15
+        lastStep = now
+        catchUp?.cancel()
+        if rapid {
+            catchUp = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                sync()
+            }
+        } else {
+            sync()
+        }
+    }
+
+    /// The browser's photo becomes the one on screen.
+    private func sync() {
+        catchUp?.cancel()
+        catchUp = nil
+        if current != shown { current = shown }
+    }
+
+    private func show(_ id: String?) {
+        shown = id
+        shownIndex = id.flatMap { id in assets.firstIndex { $0.id == id } }
     }
 
     /// The pages around this one, downloaded and decoded ahead.
@@ -97,42 +136,51 @@ struct MacViewer: View {
 
 // MARK: - Photo
 
-/// A photo: the 2048 preview at once (usually decoded ahead), then the
-/// original once the photo stays on screen, for zooming in.
+/// A photo, in its first frame with the best image already on the Mac:
+/// the preview the look-ahead decoded, else the thumbnail, else the grid's
+/// tile. Nothing waits for a download: the sharp preview swaps in when it
+/// is there, and the original only once the photo is zoomed in (fitted to
+/// the window, the preview is as sharp as the screen).
 private struct MacPhotoPage: View {
     var library: Library
     let asset: Asset
     var onSwipe: (Int) -> Void
 
     @State private var image: NSImage?
-    @State private var sharp = false
+    @State private var zoomed = false
+
+    init(library: Library, asset: Asset, onSwipe: @escaping (Int) -> Void) {
+        self.library = library
+        self.asset = asset
+        self.onSwipe = onSwipe
+        let client = library.client
+        _image = State(initialValue: client.thumbURL(asset.id, 2048).flatMap {
+            MediaCache.shared.cached($0, maxPixel: MediaCache.viewerPixels(asset))
+        })
+    }
 
     var body: some View {
         ZStack {
             if let image {
-                ZoomableImage(image: image, pixelSize: pixelSize, onSwipe: onSwipe)
+                ZoomableImage(image: image, pixelSize: pixelSize, onSwipe: onSwipe, onZoomIn: { zoomed = true })
             } else {
-                // the grid's thumbnail, scaled up, while the preview comes
-                Thumb(url: library.client.thumbURL(asset.id, 512))
-                    .aspectRatio(CGFloat(asset.width ?? 4) / CGFloat(max(asset.height ?? 3, 1)), contentMode: .fit)
-                    .padding(1)
-                ProgressView().controlSize(.small)
+                InstantPoster(library: library, asset: asset)
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(asset.spokenDescription)
         .accessibilityAddTraits(.isImage)
         .task(id: asset.id) {
-            let client = library.client
-            if let preview = client.thumbURL(asset.id, 2048) {
-                image = await MediaCache.shared.loadFull(preview, maxPixel: MediaCache.viewerPixels(asset))
+            guard image == nil, let preview = library.client.thumbURL(asset.id, 2048) else { return }
+            if let img = await MediaCache.shared.loadFull(preview, maxPixel: MediaCache.viewerPixels(asset)),
+               !Task.isCancelled {
+                image = img
             }
-            // dwell first: arrowing through the library downloads no originals
-            try? await Task.sleep(for: .milliseconds(450))
-            guard !Task.isCancelled, let original = client.originalURL(asset.id) else { return }
+        }
+        .task(id: zoomed) {
+            guard zoomed, let original = library.client.originalURL(asset.id) else { return }
             if let full = await MediaCache.shared.loadFull(original, maxPixel: 8192), !Task.isCancelled {
                 image = full
-                sharp = true
             }
         }
     }
@@ -145,22 +193,59 @@ private struct MacPhotoPage: View {
     }
 }
 
+/// What stands in for a photo or a video until the real thing is there:
+/// the 512 thumbnail when it is in memory, else the grid's own tile (on
+/// the Mac for every photo), at the photo's shape. No spinner.
+private struct InstantPoster: View {
+    var library: Library
+    let asset: Asset
+    @State private var image: NSImage?
+
+    init(library: Library, asset: Asset) {
+        self.library = library
+        self.asset = asset
+        let tiles = GridTiles.shared
+        let first = library.client.thumbURL(asset.id, 512).flatMap { MediaCache.shared.cached($0) }
+            ?? (tiles.cachedSharp(asset.id) ?? tiles.mini(asset.id)).map { NSImage(cgImage: $0, size: .zero) }
+        _image = State(initialValue: first)
+    }
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(CGFloat(asset.width ?? 4) / CGFloat(max(asset.height ?? 3, 1)), contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(nsImage: image).resizable().interpolation(.medium).scaledToFill()
+                }
+            }
+            .clipped()
+            .task(id: asset.id) {
+                guard let url = library.client.thumbURL(asset.id, 512) else { return }
+                if MediaCache.shared.cached(url) != nil { return }
+                if let img = await MediaCache.shared.load(url), !Task.isCancelled { image = img }
+            }
+    }
+}
+
 /// `NSScrollView` magnification around an image view: fit to the window by
 /// default, up to 8 × its pixels, centred when smaller than the window.
 private struct ZoomableImage: NSViewRepresentable {
     let image: NSImage
     let pixelSize: CGSize
     var onSwipe: (Int) -> Void
+    var onZoomIn: () -> Void
 
     func makeNSView(context: Context) -> ZoomScrollView {
         let scroll = ZoomScrollView()
         scroll.onSwipe = onSwipe
+        scroll.onZoomIn = onZoomIn
         scroll.set(image: image, pixelSize: pixelSize)
         return scroll
     }
 
     func updateNSView(_ scroll: ZoomScrollView, context: Context) {
         scroll.onSwipe = onSwipe
+        scroll.onZoomIn = onZoomIn
         scroll.set(image: image, pixelSize: pixelSize)
     }
 }
@@ -170,6 +255,8 @@ final class ZoomScrollView: NSScrollView {
     private var pixelSize: CGSize = .zero
     private var atFit = true
     var onSwipe: (Int) -> Void = { _ in }
+    /// Zoomed in past the window's size: time for the original.
+    var onZoomIn: () -> Void = {}
     private var swipeX: CGFloat = 0
 
     override init(frame: NSRect) {
@@ -229,6 +316,7 @@ final class ZoomScrollView: NSScrollView {
 
     @objc private func zoomEnded() {
         atFit = magnification <= fitMagnification * 1.01
+        if !atFit { onZoomIn() }
     }
 
     /// Double-click: 100 % where clicked, or back to the window's size.
@@ -238,6 +326,7 @@ final class ZoomScrollView: NSScrollView {
             let fitted = fitMagnification
             if atFit || magnification <= fitted * 1.01 {
                 atFit = false
+                onZoomIn()
                 animator().setMagnification(max(1, fitted * 2), centeredAt: point)
             } else {
                 atFit = true
@@ -279,28 +368,35 @@ final class CenteringClipView: NSClipView {
 // MARK: - Video
 
 /// A video in the system player, streaming through the cache (what was
-/// watched or prefetched plays at once and offline).
+/// watched or prefetched plays at once and offline). Its thumbnail stands
+/// in until the first frame can show, so a step never lands on black.
 private struct MacVideoPage: View {
     var library: Library
     let asset: Asset
     @State private var player: AVPlayer?
+    @State private var ready = false
 
     var body: some View {
         ZStack {
             if let player {
                 PlayerView(player: player)
-            } else {
-                Thumb(url: library.client.thumbURL(asset.id, 512))
-                    .aspectRatio(CGFloat(asset.width ?? 16) / CGFloat(max(asset.height ?? 9, 1)), contentMode: .fit)
-                ProgressView().controlSize(.small)
+            }
+            if !ready {
+                InstantPoster(library: library, asset: asset)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.15), value: ready)
         .task(id: asset.id) {
             guard let remote = library.client.streamURL(asset.id) else { return }
             let item = AVPlayerItem(asset: VideoCache.shared.asset(id: asset.id, remote: remote))
             let player = AVPlayer(playerItem: item)
             self.player = player
             player.play()
+            for await status in item.publisher(for: \.status).values {
+                if status != .unknown { ready = true; break }
+            }
         }
         .onDisappear {
             player?.pause()

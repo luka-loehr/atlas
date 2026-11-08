@@ -41,17 +41,13 @@ struct ViewerVideo: View {
 
     var body: some View {
         ZStack {
+            // the poster (cached from the grid) under the player: it shows
+            // through until the first frame is there, never an empty black box
+            Thumb(url: poster)
+                .aspectRatio(contentMode: .fit)
             if let player {
                 PlayerLayerView(player: player)
                     .ignoresSafeArea()
-            } else {
-                // no empty black box while the stream prepares: show the poster
-                // thumbnail (cached from the grid) with a spinner over it
-                Thumb(url: poster)
-                    .aspectRatio(contentMode: .fit)
-                ProgressView()
-                    .tint(.white)
-                    .controlSize(.large)
             }
         }
         .contentShape(Rectangle())

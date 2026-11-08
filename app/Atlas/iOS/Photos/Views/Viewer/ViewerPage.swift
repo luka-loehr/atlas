@@ -30,8 +30,10 @@ struct ViewerPage: View {
 }
 
 /// Shows the 2048 preview at once (the viewer's look-ahead decoded it before
-/// the swipe; else the grid's thumbnail first), swaps in the downsampled
-/// original, then hosts it in a UIScrollView for zoom. At zoom 1
+/// the swipe; else the grid's thumbnail first) in a UIScrollView for zoom.
+/// The original (downsampled) comes only once the photo is zoomed in: at
+/// the screen's size the preview is as sharp, and downloading and decoding
+/// an original after every swipe made paging feel heavy. At zoom 1
 /// the scroll view doesn't consume drags, so the pager (horizontal) and the
 /// zoom-transition dismiss (down) keep working — exactly like Apple Photos.
 struct ZoomablePhoto: View {
@@ -42,6 +44,7 @@ struct ZoomablePhoto: View {
     var previewPixels: CGFloat
     var onTap: () -> Void = {}
     @State private var image: UIImage?
+    @State private var zoomed = false
 
     init(thumb: URL?, preview: URL?, full: URL?, previewPixels: CGFloat, onTap: @escaping () -> Void = {}) {
         self.thumb = thumb
@@ -59,13 +62,17 @@ struct ZoomablePhoto: View {
     var body: some View {
         Group {
             if let image {
-                ZoomableScrollView(image: { image }, onSingleTap: onTap)
+                ZoomableScrollView(image: { image }, onSingleTap: onTap, onZoomIn: { zoomed = true })
             } else {
                 Thumb(url: thumb)
                     .aspectRatio(contentMode: .fit)
                     .contentShape(Rectangle())
                     .onTapGesture { onTap() }
             }
+        }
+        .task(id: zoomed) {
+            guard zoomed, let f = full else { return }
+            if let img = await MediaCache.shared.loadFull(f, maxPixel: 2800), !Task.isCancelled { image = img }
         }
         .task(id: full) {
             // 1) the grid's 512 thumb is already cached → show the photo (blurry)
@@ -82,14 +89,6 @@ struct ZoomablePhoto: View {
                     image = img
                 }
             }
-            // full quality ONLY when the user actually settles on this photo:
-            // while scrubbing through the strip each page lives < 600ms, its
-            // task gets cancelled here and no original is ever downloaded
-            try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            if let f = full, let img = await MediaCache.shared.loadFull(f, maxPixel: 2800) {
-                image = img
-            }
         }
     }
 }
@@ -99,9 +98,11 @@ struct ZoomablePhoto: View {
 struct ZoomableScrollView: UIViewRepresentable {
     let image: UIImage
     var onSingleTap: () -> Void = {}
-    init(image: () -> UIImage, onSingleTap: @escaping () -> Void = {}) {
+    var onZoomIn: () -> Void = {}
+    init(image: () -> UIImage, onSingleTap: @escaping () -> Void = {}, onZoomIn: @escaping () -> Void = {}) {
         self.image = image()
         self.onSingleTap = onSingleTap
+        self.onZoomIn = onZoomIn
     }
 
     func makeUIView(context: Context) -> UIScrollView {
@@ -136,6 +137,7 @@ struct ZoomableScrollView: UIViewRepresentable {
         scroll.addGestureRecognizer(st)
 
         context.coordinator.onSingleTap = onSingleTap
+        context.coordinator.onZoomIn = onZoomIn
         // at zoom 1 the photo's own pan stays out of the way: the pager (left,
         // right) and swipe-to-close (down) get every drag at once
         scroll.panGestureRecognizer.isEnabled = false
@@ -146,6 +148,7 @@ struct ZoomableScrollView: UIViewRepresentable {
         // the chrome toggling re-renders every page; only a new image is news
         if context.coordinator.imageView.image !== image { context.coordinator.imageView.image = image }
         context.coordinator.onSingleTap = onSingleTap
+        context.coordinator.onZoomIn = onZoomIn
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -153,12 +156,18 @@ struct ZoomableScrollView: UIViewRepresentable {
     final class Coordinator: NSObject, UIScrollViewDelegate {
         let imageView = UIImageView()
         var onSingleTap: () -> Void = {}
+        var onZoomIn: () -> Void = {}
+        private var askedForFull = false
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
             // panning around only makes sense while zoomed in
             scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > 1.01
+            if scrollView.zoomScale > 1.01, !askedForFull {
+                askedForFull = true
+                onZoomIn()
+            }
         }
 
         @objc func singleTap(_ g: UITapGestureRecognizer) { onSingleTap() }

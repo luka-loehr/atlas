@@ -370,12 +370,12 @@ final class MediaCache {
         var wantedTickets: [String: MediaFetch.Ticket] = [:]
         var wantedImages: Set<NSString> = []
         var originals: [(String, URL)] = []
-        // the page on screen: its original (a video's too) first of all, so
-        // Share finds the file on the phone
-        if let current = pages[safe: index], let o = client.originalURL(current.id) {
-            let name = "current:\(current.id)"
-            wantedTickets[name] = windowTickets[name]
-                ?? MediaFetch.shared.ensure(.init(.original, current.id), from: o, priority: .visible)
+        // the photo on screen: its original once every preview is on its
+        // way, so Share and zooming find it here. Never a video's: the player
+        // streams it, and a whole video at top priority took the bandwidth
+        // the next photos needed (a step showed the old photo for seconds)
+        if let current = pages[safe: index], !current.isVideo, let o = client.originalURL(current.id) {
+            originals.append((current.id, o))
         }
         for (i, d) in order {
             guard let asset = pages[safe: i] else { continue }
@@ -417,9 +417,8 @@ final class MediaCache {
                     Self.decodeQueue.addOperation(op)
                 }
             }
-            if d <= 2, let o = client.originalURL(id) { originals.append((id, o)) }
         }
-        // originals after every preview: they are big, and only matter once
+        // the original after every preview: it is big, and only matters once
         // the user stops on a photo and zooms in
         for (id, url) in originals {
             let name = "original:\(id)"
