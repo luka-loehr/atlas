@@ -164,6 +164,26 @@ impl Columns {
         self.id.push(item.id);
     }
 
+    /// Newest first (undated last), as the timeline reads; returns the order
+    /// applied (old index per new position), so parallel lists can follow.
+    pub fn sort_newest_first(&mut self) -> Vec<usize> {
+        let mut order: Vec<usize> = (0..self.id.len()).collect();
+        // stable: equal times keep the order they came in
+        order.sort_by_key(|&i| (self.t[i] == 0, std::cmp::Reverse(self.t[i])));
+        fn apply<T: Clone>(v: &mut Vec<T>, order: &[usize]) {
+            *v = order.iter().map(|&i| v[i].clone()).collect();
+        }
+        apply(&mut self.id, &order);
+        apply(&mut self.t, &order);
+        apply(&mut self.w, &order);
+        apply(&mut self.h, &order);
+        apply(&mut self.v, &order);
+        apply(&mut self.d, &order);
+        apply(&mut self.f, &order);
+        apply(&mut self.p, &order);
+        order
+    }
+
     pub fn from_rows(rows: &[Row], tz: Tz) -> Self {
         let mut columns = Columns::default();
         for row in rows {
@@ -188,6 +208,17 @@ pub struct IdsValue {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn results_read_newest_first_with_undated_last() {
+        let mut c = Columns::default();
+        for (id, t) in [("a", 100), ("b", 0), ("c", 300), ("d", 200)] {
+            c.push(Item { id: id.into(), video: false, local: (t > 0).then_some(t), width: 1, height: 1, duration: 0.0, favorite: false, thumbhash: None });
+        }
+        let order = c.sort_newest_first();
+        assert_eq!(c.id, vec!["c", "d", "a", "b"]);
+        assert_eq!(order, vec![2, 3, 0, 1]);
+    }
 
     #[test]
     fn local_time_prefers_the_cameras_own_offset() {

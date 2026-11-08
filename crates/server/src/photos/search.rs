@@ -213,11 +213,17 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
         .await?;
 
     let mut scores: Vec<f32> = Vec::new();
-    let (assets, semantic) = if parsed.has_filters() {
+    let (mut assets, semantic) = if parsed.has_filters() {
         filtered(&app, &c, &parsed, embedding, &mut scores).await?
     } else {
         open_search(&app, &c, &term, &parsed, embedding).await?
     };
+    // relevance decides what is found; it is shown in time, newest first,
+    // like the library itself
+    let order = assets.sort_newest_first();
+    if scores.len() == order.len() {
+        scores = order.iter().map(|&i| scores[i]).collect();
+    }
 
     Ok(Json(json!({
         "assets": assets,
