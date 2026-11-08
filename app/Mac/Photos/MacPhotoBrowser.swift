@@ -454,7 +454,9 @@ struct MacPhotoBrowser: View {
         guard let id = viewing else { return }
         viewing = nil
         MediaCache.shared.viewerClosed()
-        selection = [id]
+        // back in the grid, scrolled to the photo last shown, nothing
+        // selected: viewing a photo is not choosing it
+        selection = []
         reveal = id
     }
 
