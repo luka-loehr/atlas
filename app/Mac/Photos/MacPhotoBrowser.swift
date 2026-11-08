@@ -122,8 +122,6 @@ struct MacPhotoBrowser: View {
             photos.overlay(alignment: .top) {
                 if let header, viewing == nil { header }
             }
-                }
-            }
         }
     }
 
