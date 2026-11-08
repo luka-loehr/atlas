@@ -55,18 +55,18 @@ keychain.
 
 | Path | |
 |---|---|
-| `Atlas/iOS/AtlasApp.swift` | iOS entry point, tabs, the connect screen, background backup task, `atlas://photo|album` links |
-| `Atlas/iOS/` | the iPhone interface (`Photos/Views`, `Settings`), `BackupService`, `WidgetShelf`, `SyncStatus` |
-| `Atlas/Core/` | `Session` (server address + token), `API` (JSON and WebSocket client), formatting, `Platform` (UIKit/AppKit differences: images, colors, pasteboard, haptics, memory pressure) |
-| `Atlas/Photos/Model/` | `Library` (timeline state and its on-disk cache), `PhotoClient` and `DriveClient`, `DeviceSync` (iPhone backup) |
-| `Atlas/Photos/Model/Cache/` | the media cache: `MediaStore` (disk), `MediaFetch` (download queue), `MediaCache` (RAM, decoding, viewer look-ahead), `VideoCache` (streaming through the cache), `ThumbFill`, `CacheWarmer` |
+| `Atlas/iOS/AtlasApp.swift` | iOS entry point and background tasks; `RootView` (tabs, `atlas://photo|album` links), `ConnectScreen` |
+| `Atlas/iOS/Photos/Views/` | the iPhone interface, a folder per area: `Library/` (the timeline, its scrubber), `Grid/` (the `UICollectionView` grid, `AssetGrid`), `Viewer/` (pager, filmstrip, photo and video pages), `Albums/`, `Drive/`, then search, people, settings |
+| `Atlas/iOS/Photos/Model/` | `BackupService` (and its PhotoKit helpers), `WidgetShelf` (stages the Album widgets' photos in the App Group), `SyncStatus` |
+| `Atlas/Core/` | `Session` (server address + token), `API` (JSON and WebSocket client), formatting, collection helpers, `Platform` (UIKit/AppKit differences: images, colors, pasteboard, haptics, memory pressure) |
+| `Atlas/Photos/Model/` | `Library` (timeline state and its on-disk cache), `PhotoClient` and `DriveClient` |
+| `Atlas/Photos/Model/Cache/` | the media cache: `MediaStore` (disk), `MediaFetch` (download queue), `MediaCache` (RAM, decoding, viewer look-ahead), `VideoCache` (streaming through the cache), `GridTiles`, `ThumbFill`, `CacheWarmer` |
 | `Atlas/Photos/Model/ShareFiles.swift` | what Share hands the share sheet: originals named by date and people |
-| `Atlas/Photos/Model/WidgetShelf.swift` | stages the Album widgets' photos in the App Group |
 | `Shared/` | compiled into app and widget: `WidgetData` (the App Group layout), the widget's configuration intent and album entity |
 | `AtlasWidget/` | the Album widget (WidgetKit extension) |
-| `Atlas/Photos/Views/` | shared views: info sheet (the Mac's inspector), share links, add to album, face avatars |
-| `Atlas/Settings/` | server status, storage bar, the terminal bridge (SwiftTerm on both platforms) |
-| `Mac/` | the Mac app: `AtlasMacApp` (scenes), `AtlasCommands` (menu bar), `MacRootView` (sidebar window, people, search, connect), `Grid/` (the photo grid), `Photos/` (browser and viewer), `Files/`, `MacSettings` (Settings and Terminal windows) |
+| `Atlas/Photos/Views/` | shared views: `Thumb`, info sheet (the Mac's inspector), share links, add to album, face avatars, search chips |
+| `Atlas/Settings/` | server status (`Machine`, the screen, live charts), storage bar, the terminal bridge (SwiftTerm on both platforms) |
+| `Mac/` | the Mac app: `AtlasMacApp` (scenes), `AtlasCommands` (menu bar), `Window/` (root view, sidebar, window state, connect), `Grid/` (the photo grid), `Photos/` (browser, viewer, people, search), `Files/`, `MacSettings` (Settings and Terminal windows) |
 
 ## The Mac app
 

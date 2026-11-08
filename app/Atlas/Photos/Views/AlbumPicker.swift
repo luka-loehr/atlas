@@ -138,7 +138,6 @@ private struct AlbumThumb: View {
     }
 }
 
-
 /// Photos on their way into an album, for `.sheet(item:)`.
 struct AlbumAdd: Identifiable {
     let id = UUID()

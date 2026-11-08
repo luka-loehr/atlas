@@ -101,7 +101,6 @@ struct PersonsScreen: View {
     }
 }
 
-
 /// One person: big avatar + name + count, then their photo grid.
 /// Rename via the ⋯ menu (alert with text field).
 struct PersonDetailScreen: View {
