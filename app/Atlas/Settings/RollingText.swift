@@ -103,6 +103,7 @@ final class RollingTextView: PlatformView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         var kept: [CATextLayer] = []
+        var retired: [CALayer] = []
         for (i, c) in next.enumerated() {
             let x = width(of: String(next[..<i]))
             if i < old.count, old[i] == c, i < slots.count {
@@ -115,9 +116,16 @@ final class RollingTextView: PlatformView {
             root.addSublayer(l)
             kept.append(l)
             if animate { roll(l, from: rising ? shift : -shift, to: 0, fadeIn: true) }
-            if i < slots.count { retire(slots[i], to: rising ? -shift : shift, animate: animate) }
+            if i < slots.count { retired.append(slots[i]) }
         }
-        for l in slots.dropFirst(next.count) { retire(l, to: rising ? -shift : shift, animate: animate) }
+        retired += slots.dropFirst(next.count).map { $0 as CALayer }
+        // one completion for all: a transaction keeps only its last block
+        if animate {
+            CATransaction.setCompletionBlock { for l in retired { l.removeFromSuperlayer() } }
+            for l in retired { retire(l, to: rising ? -shift : shift) }
+        } else {
+            for l in retired { l.removeFromSuperlayer() }
+        }
         slots = kept
         CATransaction.commit()
         invalidateSize()
@@ -151,11 +159,9 @@ final class RollingTextView: PlatformView {
         l.add(group, forKey: "roll")
     }
 
-    private func retire(_ l: CALayer, to: CGFloat, animate: Bool) {
-        guard animate else { l.removeFromSuperlayer(); return }
+    private func retire(_ l: CALayer, to: CGFloat) {
         l.opacity = 0
         l.transform = CATransform3DMakeTranslation(0, flipped(to), 0)
-        CATransaction.setCompletionBlock { [weak l] in l?.removeFromSuperlayer() }
         roll(l, from: 0, to: to, fadeIn: false)
     }
 
@@ -200,13 +206,7 @@ final class RollingTextView: PlatformView {
         CATransaction.commit()
     }
 
-    private func invalidateSize() {
-        #if os(macOS)
-        invalidateIntrinsicContentSize()
-        #else
-        invalidateIntrinsicContentSize()
-        #endif
-    }
+    private func invalidateSize() { invalidateIntrinsicContentSize() }
 
     override var intrinsicContentSize: CGSize { textSize }
 
