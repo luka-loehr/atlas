@@ -1,5 +1,4 @@
 import SwiftUI
-import ImageIO
 import os
 
 /// The image side of the media cache: what every view asks for a picture.
@@ -462,96 +461,6 @@ final class MediaCache {
                 Self.log.error("original \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
             return nil
-        }
-    }
-
-    // MARK: Decoding
-
-    nonisolated static func onDecodeQueue(_ priority: Operation.QueuePriority = .normal,
-                                          _ work: @escaping @Sendable () -> PlatformImage?) async -> PlatformImage? {
-        if Task.isCancelled { return nil }
-        return await withCheckedContinuation { cont in
-            let op = BlockOperation { cont.resume(returning: work()) }
-            op.queuePriority = priority
-            decodeQueue.addOperation(op)
-        }
-    }
-
-    nonisolated static func decode(file: URL, maxPixel: CGFloat?, fill: Bool) -> PlatformImage? {
-        let opts = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let src = CGImageSourceCreateWithURL(file as CFURL, opts) else { return nil }
-        return decode(src, maxPixel: maxPixel, fill: fill)
-    }
-
-    nonisolated static func decode(data: Data, maxPixel: CGFloat?, fill: Bool) -> PlatformImage? {
-        let opts = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let src = CGImageSourceCreateWithData(data as CFData, opts) else { return nil }
-        return decode(src, maxPixel: maxPixel, fill: fill)
-    }
-
-    /// One pass: ImageIO decodes and downsamples together, applies the
-    /// orientation, and the result is a finished bitmap, so nothing decodes
-    /// at render time. `fill`: `maxPixel` is the SHORT side (an aspect-fill
-    /// square cell), else the long side.
-    nonisolated static func decode(_ src: CGImageSource, maxPixel: CGFloat?, fill: Bool) -> PlatformImage? {
-        guard CGImageSourceGetCount(src) > 0 else { return nil }
-        let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
-        let w = (props?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
-        let h = (props?[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
-        let long = max(w, h), short = max(min(w, h), 1)
-        var target = long > 0 ? long : 4096
-        if let maxPixel {
-            target = fill ? min(long, (maxPixel * long / short).rounded(.up)) : min(long, maxPixel)
-        }
-        let opts: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(target, 1),
-        ]
-        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
-        return PlatformImage(cgImage: cg).preparedForDisplay()
-    }
-}
-
-/// A thumbnail that shows at once from memory, else appears when loaded.
-/// `maxPixel` downsamples the decode (longest side).
-struct Thumb: View {
-    let url: URL?
-    var maxPixel: CGFloat? = nil
-    var body: some View { ThumbInner(url: url, maxPixel: maxPixel) }
-}
-
-private struct ThumbInner: View {
-    let url: URL?
-    var maxPixel: CGFloat?
-    @State private var image: PlatformImage?
-
-    init(url: URL?, maxPixel: CGFloat?) {
-        self.url = url
-        self.maxPixel = maxPixel
-        // a cached image is there in the very first frame, no grey flash
-        _image = State(initialValue: url.flatMap { MediaCache.shared.cached($0, maxPixel: maxPixel) })
-    }
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(Color.placeholderFill)
-            if let image {
-                Image(platformImage: image)
-                    .resizable()
-                    .scaledToFill()
-            }
-        }
-        .clipped()
-        .contentShape(Rectangle())
-        .task(id: url) {
-            guard let url else { return }
-            if let c = MediaCache.shared.cached(url, maxPixel: maxPixel) {
-                if image !== c { image = c }
-                return
-            }
-            image = await MediaCache.shared.load(url, maxPixel: maxPixel)
         }
     }
 }
