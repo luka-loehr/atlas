@@ -63,7 +63,9 @@ final class MacWindowState {
     /// selected in a grid.
     var inspected: Asset?
     /// Grid density, 0 (smallest) ... `GridZoom.sizes.count - 1`.
-    var zoom = GridZoom.standard
+    /// The grids' size: the default of the server page's setting when the
+    /// window opens, then whatever a pinch or ⌘+ and ⌘− chose.
+    var zoom = GridZoom.chosenDefault
 
     /// The People column's navigation: a person opened from the inspector
     /// lands here.
@@ -90,6 +92,13 @@ final class MacWindowState {
 enum GridZoom {
     static let sizes: [CGFloat] = [56, 84, 120, 170, 240, 340]
     static let standard = 2
+    static let defaultKey = "grid.defaultZoom"
+    static let names = ["Smallest", "Small", "Medium", "Large", "Larger", "Largest"]
+
+    static var chosenDefault: Int {
+        guard UserDefaults.standard.object(forKey: defaultKey) != nil else { return standard }
+        return min(max(UserDefaults.standard.integer(forKey: defaultKey), 0), sizes.count - 1)
+    }
 }
 
 /// What the menu bar's Image menu acts on: the photos selected in the key

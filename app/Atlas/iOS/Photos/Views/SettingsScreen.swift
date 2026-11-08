@@ -13,6 +13,8 @@ struct SettingsScreen: View {
     @State private var showServer = ProcessInfo.processInfo.environment["ATLAS_SCREEN"] == "server"
     @State private var storage = StorageUse()
     @State private var cacheChoice: Int64 = MediaStore.chosenBudget ?? 0
+    /// The photos per row the grids open with; a pinch still changes them.
+    @AppStorage(PhotoGridController.defaultColumnsKey) private var gridColumns = 5
     /// Live share links, for the count on their row.
     @State private var links: Int?
 
@@ -60,6 +62,11 @@ struct SettingsScreen: View {
                         Text("Automatic (\(MediaStore.automaticBudget.fileSize))").tag(Int64(0))
                         ForEach(MediaStore.budgetChoices, id: \.self) { gb in
                             Text("\(gb) GB").tag(Int64(gb) << 30)
+                        }
+                    }
+                    Picker("Grid Size", selection: $gridColumns) {
+                        ForEach(PhotoGridController.zoomLevels, id: \.self) { n in
+                            Text(n == 1 ? "1 per row" : "\(n) per row").tag(n)
                         }
                     }
                 } header: {

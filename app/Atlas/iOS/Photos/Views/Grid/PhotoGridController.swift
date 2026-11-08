@@ -3,8 +3,12 @@ import UIKit
 
 final class PhotoGridController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate,
                                  UIGestureRecognizerDelegate {
-    private static let zoomLevels = [1, 3, 5, 9]
-    private static let columnsKey = "photos.gridColumns"
+    static let zoomLevels = [1, 3, 5, 9]
+    /// The photos per row every grid opens with (Settings).
+    static let defaultColumnsKey = "photos.gridColumnsDefault"
+    /// What a pinch chose, for every grid until the app quits: the next
+    /// launch opens at the default again.
+    private static var pinched: Int?
 
     let layout = PhotoGridLayout()
     private(set) var collectionView: UICollectionView!
@@ -35,11 +39,13 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     #endif
 
     private var columns: Int {
-        get {
-            let n = UserDefaults.standard.integer(forKey: Self.columnsKey)
-            return Self.zoomLevels.contains(n) ? n : 5
-        }
-        set { UserDefaults.standard.set(newValue, forKey: Self.columnsKey) }
+        get { Self.pinched ?? Self.defaultColumns }
+        set { Self.pinched = newValue }
+    }
+
+    static var defaultColumns: Int {
+        let n = UserDefaults.standard.integer(forKey: defaultColumnsKey)
+        return zoomLevels.contains(n) ? n : 5
     }
 
     /// Decode size of a cell, in pixels.

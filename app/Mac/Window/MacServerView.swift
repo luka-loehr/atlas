@@ -19,6 +19,8 @@ struct MacServerView: View {
     @State private var cacheChoice: Int64 = MediaStore.chosenBudget ?? 0
     /// A video starts over at its end; off, it stops there with a play button.
     @AppStorage(VideoBar.loopKey) private var loopVideos = false
+    /// The size the grids open with (a pinch or ⌘+ and ⌘− still change it).
+    @AppStorage(GridZoom.defaultKey) private var gridZoom = GridZoom.standard
 
     enum Power: String, Identifiable {
         case restart, shutdown
@@ -137,6 +139,15 @@ struct MacServerView: View {
                 Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([MediaStore.shared.directory])
                 }
+            }
+            LabeledContent("Grid size") {
+                Picker("Grid size", selection: $gridZoom) {
+                    ForEach(GridZoom.names.indices, id: \.self) { i in
+                        Text(GridZoom.names[i]).tag(i)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
             }
             LabeledContent("Loop videos") {
                 Toggle("Loop videos", isOn: $loopVideos)
