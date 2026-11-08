@@ -7,7 +7,6 @@ struct SearchScreen: View {
     @State private var searching = false
     /// Bumped with every new result, so the grid reloads (and goes to the top).
     @State private var revision = 0
-    @State private var gridProxy = PhotoGridProxy()
 
     var body: some View {
         NavigationStack {
@@ -30,13 +29,9 @@ struct SearchScreen: View {
                         if !result.persons.isEmpty {
                             personsRow
                         }
-                        PhotoGrid(library: library, assets: result.items, revision: revision,
-                                  selecting: false, selected: [], proxy: gridProxy,
-                                  titleShade: false, contextMenus: false, startsAtTop: true,
-                                  onTop: { _ in },
-                                  onToggle: { _ in },
-                                  menu: { _ in UIMenu(children: []) },
+                        AssetGrid(library: library, assets: result.items, selection: nil,
                                   onRefresh: { await run(query) })
+                            .id(revision)
                             .ignoresSafeArea(edges: .bottom)
                     }
                 }

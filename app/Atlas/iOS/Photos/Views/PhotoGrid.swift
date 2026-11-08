@@ -37,6 +37,9 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var onToggle: (Asset) -> Void
     var menu: (Asset) -> UIMenu
     var onRefresh: () async -> Void
+    /// The viewer opened from the grid was closed (it may have archived,
+    /// deleted or moved what the grid shows).
+    var onViewerClosed: () -> Void = {}
 
     func makeUIViewController(context: Context) -> PhotoGridController {
         let c = PhotoGridController()
@@ -271,6 +274,15 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     private let titleAnchor = UIScrollView(frame: .zero)
     private let shade = CAGradientLayer()
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // back from the viewer (however it was closed)
+        if viewerAssetID != nil, presentedViewController == nil {
+            viewerAssetID = nil
+            config?.onViewerClosed()
+        }
+    }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -890,3 +902,36 @@ final class PhotoCell: UICollectionViewCell {
 }
 
 
+
+
+/// A list of photos in the library's own grid (search results, a person, an
+/// album, Favorites ...): pinch through 1/3/5/9 columns, the local tiles,
+/// the zoom transition, a tap opens exactly the photo under the finger, and
+/// selection with check marks. Shown from the top, in the order given.
+struct AssetGrid: View {
+    var library: Library
+    var assets: [Asset]
+    var selection: Selection?
+    var onRefresh: () async -> Void = {}
+    var onViewerClosed: () -> Void = {}
+    @State private var proxy = PhotoGridProxy()
+
+    /// Changes when the list does (ids in order).
+    private var revision: Int {
+        var h = Hasher()
+        h.combine(assets.count)
+        for a in assets { h.combine(a.id); h.combine(a.favorite) }
+        return h.finalize()
+    }
+
+    var body: some View {
+        PhotoGrid(library: library, assets: assets, revision: revision,
+                  selecting: selection?.active ?? false, selected: selection?.ids ?? [], proxy: proxy,
+                  titleShade: false, contextMenus: false, startsAtTop: true,
+                  onTop: { _ in },
+                  onToggle: { asset in withAnimation(.snappy(duration: 0.26)) { selection?.toggle(asset.id) } },
+                  menu: { _ in UIMenu(children: []) },
+                  onRefresh: onRefresh,
+                  onViewerClosed: onViewerClosed)
+    }
+}

@@ -109,59 +109,36 @@ struct PersonDetailScreen: View {
     @State var person: Person
 
     @State private var assets: [Asset] = []
-    @State private var pick: Asset?
     @State private var renaming = false
     @State private var newName = ""
     @State private var changeFailed = false
     @Environment(\.dismiss) private var dismissScreen
-    @Namespace private var zoom
-
-    private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 10) {
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
                     FaceCircle(library: library, person: person)
-                        .frame(width: 108, height: 108)
-                    Text(person.displayName)
-                        .font(.title.bold())
-                        .foregroundStyle(person.name == nil ? .secondary : .primary)
-                        .multilineTextAlignment(.center)
-                    Text("\(assets.count) \(assets.count == 1 ? "Item" : "Items")")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 12)
-                .padding(.bottom, 18)
-
-                LazyVGrid(columns: cols, spacing: 2) {
-                    ForEach(assets) { asset in
-                        Color.clear.aspectRatio(1, contentMode: .fill)
-                            .overlay {
-                                Thumb(url: library.client.thumbURL(asset.id, 512)).clipped()
-                            }
-                            .clipped()
-                            .overlay(alignment: .bottomTrailing) {
-                                if asset.isVideo {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .shadow(radius: 2)
-                                        .padding(5)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                            .matchedTransitionSource(id: asset.id, in: zoom)
-                            .onTapGesture { pick = asset }
-                            .assetAccessibility(asset)
+                        .frame(width: 64, height: 64)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(person.displayName)
+                            .font(.title2.bold())
+                            .foregroundStyle(person.name == nil ? .secondary : .primary)
+                            .lineLimit(1)
+                        Text("\(assets.count.formatted()) \(assets.count == 1 ? "Item" : "Items")")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                // the library's own grid, newest first
+                AssetGrid(library: library, assets: assets, selection: nil,
+                          onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
+                    .ignoresSafeArea(edges: .bottom)
             }
-            .scrollIndicators(.hidden)
         }
         .navigationTitle(person.displayName)
         .inlineNavigationTitle()
@@ -204,11 +181,10 @@ struct PersonDetailScreen: View {
             Text(person.isPet ? "What’s this pet’s name?" : "What’s this person’s name?")
         }
         .changeFailedAlert($changeFailed)
-        .task { assets = (try? await library.client.personAssets(person.id)) ?? [] }
-        .fullScreenCover(item: $pick) { a in
-            ViewerScreen(library: library, assets: assets, start: a,
-                         onRemoved: { id in assets.removeAll { $0.id == id } })
-                .navigationTransition(.zoom(sourceID: a.id, in: zoom))
-        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        if let fresh = try? await library.client.personAssets(person.id) { assets = fresh }
     }
 }

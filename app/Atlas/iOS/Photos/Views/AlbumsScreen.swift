@@ -493,15 +493,12 @@ struct SpecialCollectionScreen: View {
 
     @State private var assets: [Asset] = []
     @State private var loaded = false
-    @State private var pick: Asset?
     @State private var selection = Selection()
     @State private var confirmEmpty = false
     @State private var confirmDelete = false
     @State private var busy = false
     @State private var changeFailed = false
-    @Namespace private var zoom
 
-    private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
     var body: some View {
         ZStack {
@@ -542,12 +539,6 @@ struct SpecialCollectionScreen: View {
             }
         }
         .task { await load() }
-        // what the viewer did (archive, lock, delete) may move items in or
-        // out of this collection: it is read again
-        .fullScreenCover(item: $pick, onDismiss: { Task { await load() } }) { a in
-            ViewerScreen(library: library, assets: assets, start: a)
-                .navigationTransition(.zoom(sourceID: a.id, in: zoom))
-        }
         .confirmationDialog(selection.count == 1 ? "Delete 1 Item Permanently?" : "Delete \(selection.count) Items Permanently?",
                             isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete Permanently", role: .destructive) {
@@ -560,20 +551,12 @@ struct SpecialCollectionScreen: View {
     }
 
     private var grid: some View {
-        ScrollView {
-            LazyVGrid(columns: cols, spacing: 2) {
-                ForEach(assets) { asset in
-                    SelectableThumb(asset: asset,
-                                    thumbURL: library.client.thumbURL(asset.id, 512),
-                                    selection: selection, namespace: zoom) { pick = asset }
-                        .assetAccessibility(asset, selected: selection.active ? selection.contains(asset.id) : nil)
-                }
-            }
-            .padding(.horizontal, 2)
-        }
-        .scrollIndicators(.hidden)
-        .refreshable { await load() }
-        .selectionToolbar(selection, actions: toolbarActions)
+        // what the viewer did (archive, lock, delete) may move items in or
+        // out of this collection: it is read again when the viewer closes
+        AssetGrid(library: library, assets: assets, selection: selection,
+                  onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
+            .ignoresSafeArea(edges: .bottom)
+            .selectionToolbar(selection, actions: toolbarActions)
     }
 
     /// Restore/delete actions depend on the collection.
@@ -685,7 +668,6 @@ struct AlbumScreen: View {
     @State private var title = ""
     @State private var assets: [Asset] = []
     @State private var loaded = false
-    @State private var pick: Asset?
     @State private var selection = Selection()
     @State private var picking = false
     @State private var renaming = false
@@ -693,8 +675,6 @@ struct AlbumScreen: View {
     @State private var busy = false
     @State private var changeFailed = false
     @State private var shareLink: ShareLinkItem?
-    @Namespace private var zoom
-    private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
     var body: some View {
         ZStack {
@@ -707,20 +687,10 @@ struct AlbumScreen: View {
                         .buttonStyle(.borderedProminent)
                 }
             } else {
-                ScrollView {
-                    LazyVGrid(columns: cols, spacing: 2) {
-                        ForEach(assets) { asset in
-                            SelectableThumb(asset: asset,
-                                            thumbURL: library.client.thumbURL(asset.id, 512),
-                                            selection: selection, namespace: zoom) { pick = asset }
-                                .assetAccessibility(asset, selected: selection.active ? selection.contains(asset.id) : nil)
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                }
-                .scrollIndicators(.hidden)
-                .refreshable { await load() }
-                .selectionToolbar(selection, actions: [
+                AssetGrid(library: library, assets: assets, selection: selection,
+                          onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
+                    .ignoresSafeArea(edges: .bottom)
+                    .selectionToolbar(selection, actions: [
                     .init(title: "Remove from Album", icon: "minus.circle", role: .destructive) { removeSelected() },
                 ])
             }
@@ -761,11 +731,6 @@ struct AlbumScreen: View {
             }
         }
         .task { await load() }
-        .fullScreenCover(item: $pick) { a in
-            ViewerScreen(library: library, assets: assets, start: a,
-                         onRemoved: { id in assets.removeAll { $0.id == id } })
-                .navigationTransition(.zoom(sourceID: a.id, in: zoom))
-        }
         .sheet(isPresented: $picking) {
             PhotoPickerSheet(library: library, title: "Add to “\(title.isEmpty ? album.title : title)”") { ids in
                 act { try await library.client.addToAlbum(album.id, ids) }
