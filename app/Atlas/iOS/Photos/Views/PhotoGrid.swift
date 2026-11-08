@@ -23,6 +23,9 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var titleShade = true
     /// Long press shows `menu` (off in the photo picker).
     var contextMenus = true
+    /// Opens at the first asset instead of the last, and goes back there when
+    /// the assets change (search results, newest first).
+    var startsAtTop = false
     /// The asset under the top edge, nil when the grid rests at its newest
     /// end. Called when the month (or nil-ness) changes, not every frame.
     var onTop: (Int?) -> Void
@@ -224,7 +227,12 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     func apply(_ grid: PhotoGrid) {
         config = grid
         MediaCache.shared.client = grid.library.client
+        if grid.startsAtTop {
+            pinnedToBottom = false
+            needsBottom = false
+        }
         guard isViewLoaded else { return }
+        collectionView.scrollsToTop = grid.startsAtTop
         shade.isHidden = !grid.titleShade
         if grid.revision != revision {
             revision = grid.revision
@@ -240,7 +248,14 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                 return
             }
             collectionView.reloadData()
-            if pinnedToBottom { needsBottom = true; view.setNeedsLayout() }
+            if grid.startsAtTop {
+                collectionView.layoutIfNeeded()
+                collectionView.setContentOffset(CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: false)
+                reportTop()
+            } else if pinnedToBottom {
+                needsBottom = true
+                view.setNeedsLayout()
+            }
             return
         }
         if grid.selecting != selecting || grid.selected != selected {

@@ -5,9 +5,9 @@ struct SearchScreen: View {
     @State private var query = ""
     @State private var result = PhotoClient.SearchResult()
     @State private var searching = false
-    @State private var pick: Asset?
-
-    private let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
+    /// Bumped with every new result, so the grid reloads (and goes to the top).
+    @State private var revision = 0
+    @State private var gridProxy = PhotoGridProxy()
 
     var body: some View {
         NavigationStack {
@@ -22,23 +22,23 @@ struct SearchScreen: View {
                         ContentUnavailableView.search(text: query)
                     }
                 } else {
-                    ScrollView {
+                    // the library's own grid: pinch through 1/3/5/9 columns,
+                    // the same tiles and prefetching, a tap opens exactly the
+                    // photo under the finger, newest first
+                    VStack(spacing: 0) {
                         QueryChips(parts: result.understood)
                         if !result.persons.isEmpty {
                             personsRow
                         }
-                        LazyVGrid(columns: cols, spacing: 2) {
-                            ForEach(result.items) { asset in
-                                Color.clear.aspectRatio(1, contentMode: .fill)
-                                    .overlay { Thumb(url: library.client.thumbURL(asset.id, 512)).clipped() }
-                                    .clipped()
-                                    .onTapGesture { pick = asset }
-                                    .assetAccessibility(asset)
-                            }
-                        }
-                        .padding(.horizontal, 2)
+                        PhotoGrid(library: library, assets: result.items, revision: revision,
+                                  selecting: false, selected: [], proxy: gridProxy,
+                                  titleShade: false, contextMenus: false, startsAtTop: true,
+                                  onTop: { _ in },
+                                  onToggle: { _ in },
+                                  menu: { _ in UIMenu(children: []) },
+                                  onRefresh: { await run(query) })
+                            .ignoresSafeArea(edges: .bottom)
                     }
-                    .scrollIndicators(.hidden)
                 }
             }
             .navigationTitle("Search")
@@ -53,10 +53,6 @@ struct SearchScreen: View {
         .onChange(of: query) { old, q in
             if old.isEmpty, !q.isEmpty { Task { await library.client.warmSearch() } }
             Task { await run(q) }
-        }
-        .fullScreenCover(item: $pick) { a in
-            ViewerScreen(library: library, assets: result.items, start: a,
-                         onRemoved: { id in result.items.removeAll { $0.id == id } })
         }
     }
 
@@ -98,6 +94,7 @@ struct SearchScreen: View {
         let found = (try? await library.client.search(term)) ?? PhotoClient.SearchResult()
         guard term == query.trimmingCharacters(in: .whitespaces) else { return }
         result = found
+        revision &+= 1
         searching = false
     }
 
