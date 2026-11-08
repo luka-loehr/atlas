@@ -440,19 +440,20 @@ private struct MacVideoPage: View {
                     // bar's button play and pause
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onClick)
-                    .overlay(alignment: .bottom) {
-                        if window.viewerChrome {
-                            VideoBar(player: player, surface: surface)
-                                .frame(maxWidth: 620)
-                                .padding(.horizontal, 70)
-                                .padding(.bottom, 24)
-                        }
-                    }
             }
             if !ready {
                 InstantPoster(library: library, asset: asset)
                     .allowsHitTesting(false)
                     .transition(.opacity)
+            }
+        }
+        // the bar over everything, the thumbnail that stands in included
+        .overlay(alignment: .bottom) {
+            if let player, window.viewerChrome {
+                VideoBar(player: player, surface: surface)
+                    .frame(maxWidth: 620)
+                    .padding(.horizontal, 70)
+                    .padding(.bottom, 24)
             }
         }
         .animation(.easeOut(duration: 0.15), value: ready)

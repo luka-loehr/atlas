@@ -684,9 +684,24 @@ private struct ViewerChrome: ViewModifier {
             }
     }
 
+    /// At once, as the other controls: AppKit would let the field and its
+    /// text fly back in.
     private static func hideSearchField(_ hidden: Bool) {
         for item in NSApp.keyWindow?.toolbar?.items ?? [] where item is NSSearchToolbarItem {
-            item.isHidden = hidden
+            guard item.isHidden != hidden else { continue }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                context.allowsImplicitAnimation = false
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                item.isHidden = hidden
+                item.view?.superview?.layoutSubtreeIfNeeded()
+                CATransaction.commit()
+            }
+            for view in [item.view, item.view?.superview].compactMap({ $0 }) {
+                view.layer?.removeAllAnimations()
+                view.layer?.sublayers?.forEach { $0.removeAllAnimations() }
+            }
         }
     }
 }
