@@ -26,7 +26,7 @@ done
 sudo rm -f /etc/systemd/system/atlas-rtcwake*.disabled-by-owner /usr/local/sbin/atlas-rtcwake.bak-*
 
 # A root-owned copy, not the checkout: a root unit must not run a file that
-# luka, or anything running as luka, can rewrite.
+# the login user, or anything running as the login user, can rewrite.
 sudo install -o root -g root -m 0755 atlas-rtcwake /usr/local/sbin/atlas-rtcwake
 
 sudo cp atlas-wol.service atlas-rapl-readable.service atlas-rtcwake.service \

@@ -1,6 +1,5 @@
 //! `atlas share status | ls | rm`: through the server's API, on the server.
 
-
 use super::setup::health;
 use super::{ENV_FILE, fail};
 use crate::ssh::{ensure_up, shq, ssh_capture};
@@ -20,19 +19,38 @@ pub(super) fn api(method: &str, path: &str, format: &str) -> String {
 
 pub(super) fn status() {
     ensure_up();
-    let url = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_URL=//p' {ENV_FILE}")).trim().to_string();
+    let url = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_URL=//p' {ENV_FILE}"))
+        .trim()
+        .to_string();
     if url.is_empty() {
-        println!("atlas-share is not set up. Run {GREEN}atlas share setup{RESET} in an atlas checkout.");
+        println!(
+            "atlas-share is not set up. Run {GREEN}atlas share setup{RESET} in an atlas checkout."
+        );
         return;
     }
-    let token = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_TOKEN=//p' {ENV_FILE}")).trim().to_string();
+    let token = ssh_capture(&format!(
+        "sudo sed -n 's/^ATLAS_SHARE_TOKEN=//p' {ENV_FILE}"
+    ))
+    .trim()
+    .to_string();
     let live = health(&url, &token);
     println!(
         "{}  {url}",
-        if live { format!("{GREEN}● live{RESET}") } else { format!("{RED}● not answering{RESET}") }
+        if live {
+            format!("{GREEN}● live{RESET}")
+        } else {
+            format!("{RED}● not answering{RESET}")
+        }
     );
-    let n = api("GET", "/shares", "import json,sys; print(len(json.load(sys.stdin)['shares']))");
-    println!("{DIM}{} live links · every link expires after 7 days at the latest{RESET}", n.trim());
+    let n = api(
+        "GET",
+        "/shares",
+        "import json,sys; print(len(json.load(sys.stdin)['shares']))",
+    );
+    println!(
+        "{DIM}{} live links · every link expires after 7 days at the latest{RESET}",
+        n.trim()
+    );
 }
 
 pub(super) fn list() {
@@ -60,7 +78,11 @@ pub(super) fn stop(id: &str) {
         fail("not a share id");
     }
     ensure_up();
-    let out = api("DELETE", &format!("/shares/{id}"), "import json,sys; print(json.load(sys.stdin).get('deleted'))");
+    let out = api(
+        "DELETE",
+        &format!("/shares/{id}"),
+        "import json,sys; print(json.load(sys.stdin).get('deleted'))",
+    );
     if out.trim() == "True" {
         println!("{GREEN}✓ stopped sharing {id}{RESET}");
     } else {

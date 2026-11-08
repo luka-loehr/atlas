@@ -73,8 +73,16 @@ pub fn routes() -> Router<AppState> {
         .route("/library/trash/empty", post(assets::empty_trash))
         .route("/library/{view}", get(library::view))
         .route("/albums", get(albums::list).post(albums::create))
-        .route("/albums/{id}", get(albums::assets).patch(albums::rename).delete(albums::remove))
-        .route("/albums/{id}/assets", post(albums::add_assets).delete(albums::remove_assets))
+        .route(
+            "/albums/{id}",
+            get(albums::assets)
+                .patch(albums::rename)
+                .delete(albums::remove),
+        )
+        .route(
+            "/albums/{id}/assets",
+            post(albums::add_assets).delete(albums::remove_assets),
+        )
         .route("/people", get(people::list))
         .route("/people/{id}", get(people::assets).patch(people::update))
         .route("/people/{id}/merge", post(people::merge))
@@ -214,7 +222,16 @@ mod tests {
     fn results_read_newest_first_with_undated_last() {
         let mut c = Columns::default();
         for (id, t) in [("a", 100), ("b", 0), ("c", 300), ("d", 200)] {
-            c.push(Item { id: id.into(), video: false, local: (t > 0).then_some(t), width: 1, height: 1, duration: 0.0, favorite: false, thumbhash: None });
+            c.push(Item {
+                id: id.into(),
+                video: false,
+                local: (t > 0).then_some(t),
+                width: 1,
+                height: 1,
+                duration: 0.0,
+                favorite: false,
+                thumbhash: None,
+            });
         }
         let order = c.sort_newest_first();
         assert_eq!(c.id, vec!["c", "d", "a", "b"]);
@@ -227,9 +244,21 @@ mod tests {
         // 2024-07-31 23:30 UTC is already August 1st in Berlin (UTC+2)
         let taken = Utc.with_ymd_and_hms(2024, 7, 31, 23, 30, 0).unwrap();
         let local = local_seconds(taken, None, berlin);
-        assert_eq!(DateTime::from_timestamp(local, 0).unwrap().format("%Y-%m-%d %H:%M").to_string(), "2024-08-01 01:30");
+        assert_eq!(
+            DateTime::from_timestamp(local, 0)
+                .unwrap()
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
+            "2024-08-01 01:30"
+        );
         // taken in New York (UTC-4): still July 31st there
         let local = local_seconds(taken, Some(-4 * 3600), berlin);
-        assert_eq!(DateTime::from_timestamp(local, 0).unwrap().format("%Y-%m-%d %H:%M").to_string(), "2024-07-31 19:30");
+        assert_eq!(
+            DateTime::from_timestamp(local, 0)
+                .unwrap()
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
+            "2024-07-31 19:30"
+        );
     }
 }

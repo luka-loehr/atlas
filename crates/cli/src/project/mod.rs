@@ -13,7 +13,9 @@ mod load;
 mod names;
 
 pub(crate) use load::{load_config, load_config_at};
-pub(crate) use names::{branch_of_slug, dns_branch, host_label, slug_of, valid_branch, valid_host_label};
+pub(crate) use names::{
+    branch_of_slug, dns_branch, host_label, slug_of, valid_branch, valid_host_label,
+};
 
 /// What atlas keeps per project, relative to atlas' $HOME:
 ///
@@ -29,7 +31,6 @@ pub(crate) const REMOTE_BASE: &str = "atlas-builds";
 /// Secrets live OUTSIDE the build tree (which gets reset every run): a 0600
 /// file in a 0700 dir, injected as environment variables at run time.
 pub(crate) const SECRETS_BASE: &str = "atlas-secrets";
-
 
 pub(crate) struct BuildCfg {
     pub(crate) root: PathBuf,     // dir holding the config (the local checkout)
@@ -210,4 +211,3 @@ pub(crate) fn ensure_image(spec: &ImageSpec) {
         exit(1);
     }
 }
-

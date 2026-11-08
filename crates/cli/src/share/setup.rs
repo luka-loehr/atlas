@@ -23,11 +23,15 @@ pub(super) enum Place {
 
 pub(super) fn setup(args: &[String]) {
     let asked = match args {
-        [flag, zone] if flag == "--domain" => Some(Place::Domain(zone.trim().trim_end_matches('.').to_lowercase())),
+        [flag, zone] if flag == "--domain" => Some(Place::Domain(
+            zone.trim().trim_end_matches('.').to_lowercase(),
+        )),
         [flag] if flag == "--workers-dev" => Some(Place::WorkersDev),
         [flag, url] if flag == "--url" => Some(Place::Url(url.trim_end_matches('/').to_string())),
         [] => None,
-        _ => fail("usage: atlas share setup [--domain example.com | --workers-dev | --url https://…]"),
+        _ => fail(
+            "usage: atlas share setup [--domain example.com | --workers-dev | --url https://…]",
+        ),
     };
     let dir = prepare();
     let wrangler = |args: &[&str]| wrangler(&dir, args);
@@ -38,24 +42,40 @@ pub(super) fn setup(args: &[String]) {
     if let Place::Domain(zone) = &place
         && !cf.zones().iter().any(|z| &z.name == zone)
     {
-        fail(&format!("{zone} is not a domain on this Cloudflare account"));
+        fail(&format!(
+            "{zone} is not a domain on this Cloudflare account"
+        ));
     }
 
     step("R2 bucket");
     let made = wrangler(&["r2", "bucket", "create", BUCKET]).output();
     match made {
         Ok(o) if o.status.success() => println!("  created {BUCKET}"),
-        Ok(o) if String::from_utf8_lossy(&[o.stdout.as_slice(), o.stderr.as_slice()].concat()).contains("already exists") => {
+        Ok(o)
+            if String::from_utf8_lossy(&[o.stdout.as_slice(), o.stderr.as_slice()].concat())
+                .contains("already exists") =>
+        {
             println!("  {BUCKET} exists")
         }
-        _ => fail("could not create the R2 bucket (is R2 enabled on the account? dash.cloudflare.com → R2)"),
+        _ => fail(
+            "could not create the R2 bucket (is R2 enabled on the account? dash.cloudflare.com → R2)",
+        ),
     }
     // the backstop for the 7-day rule: whatever is left in s/ goes after 8 days
     let rules = wrangler(&["r2", "bucket", "lifecycle", "list", BUCKET]).output();
     if rules.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("expire-shares")) {
         println!("  lifecycle rule exists");
     } else if wrangler(&[
-        "r2", "bucket", "lifecycle", "add", BUCKET, "expire-shares", "s/", "--expire-days", "8", "--force",
+        "r2",
+        "bucket",
+        "lifecycle",
+        "add",
+        BUCKET,
+        "expire-shares",
+        "s/",
+        "--expire-days",
+        "8",
+        "--force",
     ])
     .output()
     .is_ok_and(|o| o.status.success())
@@ -76,14 +96,19 @@ pub(super) fn setup(args: &[String]) {
     if let Some(host) = &host {
         deploy.extend(["--domain", host.as_str()]);
     }
-    let record = std::env::temp_dir().join(format!("atlas-share-deploy-{}.ndjson", std::process::id()));
+    let record =
+        std::env::temp_dir().join(format!("atlas-share-deploy-{}.ndjson", std::process::id()));
     let ok = run_inherit(wrangler(&deploy).env("WRANGLER_OUTPUT_FILE_PATH", &record));
     let printed = std::fs::read_to_string(&record).unwrap_or_default();
     let _ = std::fs::remove_file(&record);
     if !ok {
         fail(match &host {
-            Some(_) => "wrangler deploy failed (is there already a DNS record with that name? remove it, or pick another domain)",
-            None => "wrangler deploy failed (a first deploy may ask you to pick a workers.dev subdomain in the dashboard)",
+            Some(_) => {
+                "wrangler deploy failed (is there already a DNS record with that name? remove it, or pick another domain)"
+            }
+            None => {
+                "wrangler deploy failed (a first deploy may ask you to pick a workers.dev subdomain in the dashboard)"
+            }
         });
     }
     let url = match &place {
@@ -96,16 +121,25 @@ pub(super) fn setup(args: &[String]) {
     // a domain chosen before stays attached until it is replaced
     for (account, id, hostname) in cf.worker_domains() {
         if Some(&hostname) != host.as_ref() {
-            cf.call("DELETE", &format!("/accounts/{account}/workers/domains/{id}"));
+            cf.call(
+                "DELETE",
+                &format!("/accounts/{account}/workers/domains/{id}"),
+            );
             println!("  removed {hostname}");
         }
     }
 
     step("secrets");
     // keep the server's token when there is one, so re-running changes nothing
-    let existing = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_TOKEN=//p' {ENV_FILE}"));
-    let token = Some(existing.trim().to_string()).filter(|t| t.len() >= 32).unwrap_or_else(random_hex);
-    let secrets = wrangler(&["secret", "list"]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned());
+    let existing = ssh_capture(&format!(
+        "sudo sed -n 's/^ATLAS_SHARE_TOKEN=//p' {ENV_FILE}"
+    ));
+    let token = Some(existing.trim().to_string())
+        .filter(|t| t.len() >= 32)
+        .unwrap_or_else(random_hex);
+    let secrets = wrangler(&["secret", "list"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned());
     put_secret(&dir, "SHARE_TOKEN", &token);
     // a new session secret would sign every recipient out: only once
     if !secrets.unwrap_or_default().contains("SESSION_SECRET") {
@@ -142,9 +176,13 @@ pub(super) fn setup(args: &[String]) {
         if current.as_deref().is_some_and(|c| c != url) {
             println!("{DIM}every link now uses this address{RESET}");
         }
-        println!("{DIM}links expire after 7 days at the latest; share from an album or a selection in the app{RESET}");
+        println!(
+            "{DIM}links expire after 7 days at the latest; share from an album or a selection in the app{RESET}"
+        );
     } else {
-        fail(&format!("deployed to {url}, but it does not answer yet; try `atlas share status` in a minute"));
+        fail(&format!(
+            "deployed to {url}, but it does not answer yet; try `atlas share status` in a minute"
+        ));
     }
 }
 
@@ -155,18 +193,31 @@ pub(super) fn prepare() -> PathBuf {
     let dir = share_dir().unwrap_or_else(|| {
         fail("run this inside an atlas checkout (it needs share/), or set ATLAS_SHARE_DIR")
     });
-    if Command::new("npx").arg("--version").stdout(Stdio::null()).status().map(|s| !s.success()).unwrap_or(true) {
-        fail("Node.js is needed for wrangler, Cloudflare's CLI: https://nodejs.org (or brew install node)");
+    if Command::new("npx")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .status()
+        .map(|s| !s.success())
+        .unwrap_or(true)
+    {
+        fail(
+            "Node.js is needed for wrangler, Cloudflare's CLI: https://nodejs.org (or brew install node)",
+        );
     }
     ensure_up();
 
     step("installing wrangler");
-    if !run_inherit(Command::new("npm").args(["install", "--no-audit", "--no-fund", "--silent"]).current_dir(&dir)) {
+    if !run_inherit(
+        Command::new("npm")
+            .args(["install", "--no-audit", "--no-fund", "--silent"])
+            .current_dir(&dir),
+    ) {
         fail("npm install failed in share/");
     }
     step("Cloudflare account");
     let logged_in = wrangler(&dir, &["whoami"]).output().map(|o| {
-        o.status.success() && !String::from_utf8_lossy(&o.stdout).contains("You are not authenticated")
+        o.status.success()
+            && !String::from_utf8_lossy(&o.stdout).contains("You are not authenticated")
     });
     if !logged_in.unwrap_or(false) && !run_inherit(&mut wrangler(&dir, &["login"])) {
         fail("wrangler login did not finish");
@@ -184,23 +235,40 @@ pub(super) fn wrangler(dir: &Path, args: &[&str]) -> Command {
 /// (Enter) what is set up now.
 pub(super) fn choose(cf: &Cf, current: &Option<String>) -> Place {
     let zones = cf.zones();
-    let keep = current.as_ref().map(|u| match u.strip_prefix(&format!("https://{SUBDOMAIN}.")) {
-        Some(zone) if zones.iter().any(|z| z.name == zone) => Place::Domain(zone.to_string()),
-        _ if u.ends_with(".workers.dev") => Place::WorkersDev,
-        _ => Place::Url(u.clone()),
-    });
+    let keep = current
+        .as_ref()
+        .map(|u| match u.strip_prefix(&format!("https://{SUBDOMAIN}.")) {
+            Some(zone) if zones.iter().any(|z| z.name == zone) => Place::Domain(zone.to_string()),
+            _ if u.ends_with(".workers.dev") => Place::WorkersDev,
+            _ => Place::Url(u.clone()),
+        });
     if !std::io::stdin().is_terminal() {
         return keep.unwrap_or(Place::WorkersDev);
     }
     println!("\nWhere should share links live?");
     for (i, z) in zones.iter().enumerate() {
-        let mark = if keep == Some(Place::Domain(z.name.clone())) { "  (current)" } else { "" };
+        let mark = if keep == Some(Place::Domain(z.name.clone())) {
+            "  (current)"
+        } else {
+            ""
+        };
         println!("  {:>2}  {SUBDOMAIN}.{}{mark}", i + 1, z.name);
     }
-    let mark = if keep == Some(Place::WorkersDev) { "  (current)" } else { "" };
+    let mark = if keep == Some(Place::WorkersDev) {
+        "  (current)"
+    } else {
+        ""
+    };
     println!("  {:>2}  the free workers.dev address{mark}", 0);
     loop {
-        print!("{}", if keep.is_some() { "Choose [Enter keeps the current one]: " } else { "Choose: " });
+        print!(
+            "{}",
+            if keep.is_some() {
+                "Choose [Enter keeps the current one]: "
+            } else {
+                "Choose: "
+            }
+        );
         let _ = std::io::stdout().flush();
         let mut line = String::new();
         if std::io::stdin().lock().read_line(&mut line).unwrap_or(0) == 0 {
@@ -209,7 +277,11 @@ pub(super) fn choose(cf: &Cf, current: &Option<String>) -> Place {
         match line.trim() {
             "" if keep.is_some() => return keep.unwrap(),
             "0" => return Place::WorkersDev,
-            n => match n.parse::<usize>().ok().and_then(|n| zones.get(n.wrapping_sub(1))) {
+            n => match n
+                .parse::<usize>()
+                .ok()
+                .and_then(|n| zones.get(n.wrapping_sub(1)))
+            {
                 Some(z) => return Place::Domain(z.name.clone()),
                 None => println!("{RED}a number from the list{RESET}"),
             },
@@ -242,7 +314,11 @@ pub(super) fn put_secret(dir: &PathBuf, name: &str, value: &str) {
         .stdout(Stdio::null())
         .spawn()
         .unwrap_or_else(|_| fail("wrangler failed"));
-    let _ = child.stdin.take().expect("stdin").write_all(value.as_bytes());
+    let _ = child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(value.as_bytes());
     if !child.wait().map(|s| s.success()).unwrap_or(false) {
         fail(&format!("could not set the {name} secret"));
     }
@@ -260,10 +336,13 @@ pub(super) fn random_hex() -> String {
 /// `https://atlas-share.<subdomain>.workers.dev` from wrangler's output
 /// record (one JSON object per line; the deploy entry lists its targets).
 pub(super) fn workers_dev_url(printed: &str) -> Option<String> {
-    printed.split(|c: char| c.is_whitespace() || c == '"' || c == ',' || c == '[' || c == ']').find_map(|word| {
-        let word = word.trim_matches(|c: char| !c.is_ascii_graphic() || c == '(' || c == ')');
-        (word.starts_with("https://") && word.ends_with(".workers.dev")).then(|| word.to_string())
-    })
+    printed
+        .split(|c: char| c.is_whitespace() || c == '"' || c == ',' || c == '[' || c == ']')
+        .find_map(|word| {
+            let word = word.trim_matches(|c: char| !c.is_ascii_graphic() || c == '(' || c == ')');
+            (word.starts_with("https://") && word.ends_with(".workers.dev"))
+                .then(|| word.to_string())
+        })
 }
 
 pub(super) fn health(url: &str, token: &str) -> bool {
@@ -277,9 +356,15 @@ mod tests {
     #[test]
     fn finds_the_workers_dev_address() {
         let record = r#"{"type":"deploy","version":1,"worker_name":"atlas-share","targets":["https://atlas-share.someone.workers.dev"]}"#;
-        assert_eq!(workers_dev_url(record).as_deref(), Some("https://atlas-share.someone.workers.dev"));
+        assert_eq!(
+            workers_dev_url(record).as_deref(),
+            Some("https://atlas-share.someone.workers.dev")
+        );
         let out = "Uploaded atlas-share (3.1 sec)\nDeployed atlas-share triggers (0.4 sec)\n  https://atlas-share.someone.workers.dev\n  schedule: 0 4 * * *";
-        assert_eq!(workers_dev_url(out).as_deref(), Some("https://atlas-share.someone.workers.dev"));
+        assert_eq!(
+            workers_dev_url(out).as_deref(),
+            Some("https://atlas-share.someone.workers.dev")
+        );
         assert_eq!(workers_dev_url("nothing here"), None);
     }
 }

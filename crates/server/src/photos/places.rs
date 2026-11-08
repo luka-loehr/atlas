@@ -34,7 +34,10 @@ pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<
         )
         .await?;
     let places: Vec<Value> = rows.iter().map(place_json).collect();
-    Ok(media::json_validated(&headers, &json!({ "places": places })))
+    Ok(media::json_validated(
+        &headers,
+        &json!({ "places": places }),
+    ))
 }
 
 pub fn place_json(r: &tokio_postgres::Row) -> Value {
@@ -51,7 +54,11 @@ pub fn place_json(r: &tokio_postgres::Row) -> Value {
     })
 }
 
-pub async fn assets(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn assets(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let c = app.pool.get().await?;
     let place = c
         .query_opt("SELECT name, admin1, cc FROM places WHERE id = $1", &[&id])

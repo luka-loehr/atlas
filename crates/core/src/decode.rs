@@ -10,7 +10,9 @@ use image::{DynamicImage, ImageDecoder, ImageReader, RgbImage};
 /// Decoded pixels may not exceed this (default 500 MP): thumbnail jobs read
 /// untrusted uploads, and a crafted few-KB PNG can declare gigapixels.
 fn max_pixels() -> u64 {
-    crate::env("ATLAS_MAX_IMAGE_PIXELS").and_then(|v| v.parse().ok()).unwrap_or(500_000_000)
+    crate::env("ATLAS_MAX_IMAGE_PIXELS")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500_000_000)
 }
 
 pub struct Decoded {
@@ -21,30 +23,44 @@ pub struct Decoded {
 /// Decode any supported still image upright (EXIF orientation applied), as
 /// 8-bit RGB with transparency flattened onto white.
 pub fn decode(path: &Path) -> Result<Decoded> {
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     if matches!(ext.as_str(), "heic" | "heif" | "avif") || is_heif(path) {
         return decode_heif(path);
     }
-    let mut reader = ImageReader::new(BufReader::new(std::fs::File::open(path)?)).with_guessed_format()?;
+    let mut reader =
+        ImageReader::new(BufReader::new(std::fs::File::open(path)?)).with_guessed_format()?;
     let mut limits = image::Limits::default();
     limits.max_alloc = Some(max_pixels() * 4);
     reader.limits(limits);
-    let mut decoder = reader.into_decoder().context("unsupported or corrupt image")?;
+    let mut decoder = reader
+        .into_decoder()
+        .context("unsupported or corrupt image")?;
     let (w, h) = decoder.dimensions();
     if u64::from(w) * u64::from(h) > max_pixels() {
         bail!("image is {w}x{h}, over the pixel limit");
     }
     let icc = decoder.icc_profile().ok().flatten();
-    let orientation = decoder.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut img = DynamicImage::from_decoder(decoder)?;
     img.apply_orientation(orientation);
-    Ok(Decoded { rgb: flatten(img), icc })
+    Ok(Decoded {
+        rgb: flatten(img),
+        icc,
+    })
 }
 
 /// Decode a JPEG/PNG frame held in memory (video poster frames from ffmpeg).
 pub fn decode_bytes(bytes: &[u8]) -> Result<Decoded> {
     let img = image::load_from_memory(bytes).context("cannot decode frame")?;
-    Ok(Decoded { rgb: flatten(img), icc: None })
+    Ok(Decoded {
+        rgb: flatten(img),
+        icc: None,
+    })
 }
 
 fn flatten(img: DynamicImage) -> RgbImage {
@@ -66,9 +82,14 @@ fn flatten(img: DynamicImage) -> RgbImage {
 fn is_heif(path: &Path) -> bool {
     use std::io::Read;
     let mut head = [0u8; 12];
-    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok()
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok()
         && &head[4..8] == b"ftyp"
-        && matches!(&head[8..12], b"heic" | b"heix" | b"hevc" | b"mif1" | b"msf1" | b"avif" | b"heim" | b"heis")
+        && matches!(
+            &head[8..12],
+            b"heic" | b"heix" | b"hevc" | b"mif1" | b"msf1" | b"avif" | b"heim" | b"heis"
+        )
 }
 
 /// libheif applies the container's rotation and mirroring itself, so the
@@ -85,7 +106,9 @@ fn decode_heif(path: &Path) -> Result<Decoded> {
     let image = lib.decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)?;
     let (w, h) = (image.width(), image.height());
     let planes = image.planes();
-    let plane = planes.interleaved.context("heif: no interleaved RGB plane")?;
+    let plane = planes
+        .interleaved
+        .context("heif: no interleaved RGB plane")?;
     let mut buf = Vec::with_capacity((w * h * 3) as usize);
     for row in 0..h as usize {
         let start = row * plane.stride;
@@ -94,4 +117,3 @@ fn decode_heif(path: &Path) -> Result<Decoded> {
     let rgb = RgbImage::from_raw(w, h, buf).context("heif: plane size mismatch")?;
     Ok(Decoded { rgb, icc })
 }
-

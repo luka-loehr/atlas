@@ -23,14 +23,16 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
         .context("asset is gone")?;
     let original: String = row.get(0);
     let is_video = row.get::<_, &str>(1) == "video";
-    let dimensions_known = row.get::<_, Option<i32>>(2).is_some() && row.get::<_, Option<i32>>(3).is_some();
+    let dimensions_known =
+        row.get::<_, Option<i32>>(2).is_some() && row.get::<_, Option<i32>>(3).is_some();
     let has_hash: bool = row.get(4);
     let made_by: i16 = row.get(5);
     drop(c);
 
     let grid = app.cfg.thumb_path(id, imaging::GRID);
     let screen = app.cfg.thumb_path(id, imaging::SCREEN);
-    let on_disk = tokio::fs::try_exists(&grid).await.unwrap_or(false) && tokio::fs::try_exists(&screen).await.unwrap_or(false);
+    let on_disk = tokio::fs::try_exists(&grid).await.unwrap_or(false)
+        && tokio::fs::try_exists(&screen).await.unwrap_or(false);
     // only the video recipe changed since version 1
     let current = !is_video || made_by >= THUMB_V;
 
@@ -44,7 +46,11 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
             })
             .await??;
             let c = app.pool.get().await?;
-            c.execute("UPDATE assets SET thumbhash = $2 WHERE id = $1", &[&id, &hash]).await?;
+            c.execute(
+                "UPDATE assets SET thumbhash = $2 WHERE id = $1",
+                &[&id, &hash],
+            )
+            .await?;
         }
         return queue_models(app, id, priority, false).await;
     }
@@ -58,10 +64,18 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
             let hdr = probe.as_ref().is_some_and(video::Probe::hdr);
             let decoded = imaging::decode_bytes(&video::poster(&path, hdr)?)?;
             let duration = probe.and_then(|p| p.duration);
-            Ok((imaging::write_thumbs(&decoded, &grid, &screen)?, duration, hdr))
+            Ok((
+                imaging::write_thumbs(&decoded, &grid, &screen)?,
+                duration,
+                hdr,
+            ))
         } else {
             let decoded = imaging::decode(&path)?;
-            Ok((imaging::write_thumbs(&decoded, &grid, &screen)?, None, false))
+            Ok((
+                imaging::write_thumbs(&decoded, &grid, &screen)?,
+                None,
+                false,
+            ))
         }
     })
     .await??;
@@ -74,7 +88,14 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
             SET width = COALESCE(width, $2), height = COALESCE(height, $3),
                 duration_s = COALESCE(duration_s, $4), thumbhash = $5, thumb_v = $6
           WHERE id = $1",
-        &[&id, &(thumbs.width as i32), &(thumbs.height as i32), &duration, &thumbs.thumbhash, &THUMB_V],
+        &[
+            &id,
+            &(thumbs.width as i32),
+            &(thumbs.height as i32),
+            &duration,
+            &thumbs.thumbhash,
+            &THUMB_V,
+        ],
     )
     .await?;
     drop(c);
@@ -86,7 +107,11 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
 /// right behind it, a backlog's at the default. Model jobs that gave up
 /// while there was no thumbnail start over.
 async fn queue_models(app: &AppState, id: &str, priority: i32, embed_again: bool) -> Result<()> {
-    let follow = if priority < queue::PRIORITY_DEFAULT { queue::PRIORITY_INTERACTIVE + 20 } else { queue::PRIORITY_DEFAULT };
+    let follow = if priority < queue::PRIORITY_DEFAULT {
+        queue::PRIORITY_INTERACTIVE + 20
+    } else {
+        queue::PRIORITY_DEFAULT
+    };
     let c = app.pool.get().await?;
     if embed_again {
         queue::requeue(&c, queue::EMBED, "asset", id, queue::PRIORITY_BACKGROUND).await?;

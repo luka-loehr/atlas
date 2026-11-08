@@ -25,7 +25,11 @@ pub async fn thumb(
 /// beside the thumbnails. Immutable like them: when the thumbnails are made
 /// again, the tile is removed and the asset's thumbhash changes, so the
 /// apps ask again.
-pub async fn tile(State(app): State<AppState>, Path(id): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn tile(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     if !util::is_content_id(&id) {
         return Err(ApiError::NotFound);
     }
@@ -52,13 +56,23 @@ async fn original_path(app: &App, id: &str) -> ApiResult<PathBuf> {
         return Err(ApiError::NotFound);
     }
     let c = app.pool.get().await?;
-    let row = c.query_opt("SELECT orig_path FROM assets WHERE id = $1", &[&id]).await?.ok_or(ApiError::NotFound)?;
-    util::confine(&app.cfg.photos_dir, std::path::Path::new(row.get::<_, &str>(0)))
-        .await
-        .ok_or(ApiError::NotFound)
+    let row = c
+        .query_opt("SELECT orig_path FROM assets WHERE id = $1", &[&id])
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    util::confine(
+        &app.cfg.photos_dir,
+        std::path::Path::new(row.get::<_, &str>(0)),
+    )
+    .await
+    .ok_or(ApiError::NotFound)
 }
 
-pub async fn original(State(app): State<AppState>, Path(id): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn original(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     Ok(media::immutable_file(original_path(&app, &id).await?, headers).await)
 }
 

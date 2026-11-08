@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# atlas-alert — mail Luka through the Luka Mail API (mail.lukaloehr.com).
+# atlas-alert — mail the owner through an HTTP mail API.
 #
 #   atlas-alert KEY SUBJECT < body     send, at most once per KEY every 24 h
 #                                      (ATLAS_ALERT_REPEAT_S=0: always, no state)
 #   atlas-alert --resolve KEY SUBJECT  send only if KEY was alerted, then forget it
 #   atlas-alert --unit UNIT            a failed systemd unit (OnFailure=atlas-alert@%n)
 #
-# The API key (mail:send for atlas@lukaloehr.com only) is root-only in
+# Where mail goes is configured in /etc/atlas/alerts.env (see README):
+# ATLAS_ALERT_FROM, ATLAS_ALERT_TO and LMAIL_ENDPOINT, an API that takes
+# `POST /v1/messages/send` with a JSON {from, to, subject, text} body.
+# The API key (allowed to send from ATLAS_ALERT_FROM only) is root-only in
 # /etc/atlas/credentials/lmail-alerts, or $CREDENTIALS_DIRECTORY/lmail when run
 # from a unit with LoadCredential=. If the mail cannot be sent the alert stays
 # unsent (no state written) and the next check tries again.
 set -euo pipefail
 
-FROM=${ATLAS_ALERT_FROM:-atlas@lukaloehr.com}
-TO=${ATLAS_ALERT_TO:-luka@lukaloehr.com}
-ENDPOINT=${LMAIL_ENDPOINT:-https://mail.lukaloehr.com}
+# shellcheck disable=SC1091
+[ -r /etc/atlas/alerts.env ] && . /etc/atlas/alerts.env
+FROM=${ATLAS_ALERT_FROM:?set ATLAS_ALERT_FROM in /etc/atlas/alerts.env}
+TO=${ATLAS_ALERT_TO:?set ATLAS_ALERT_TO in /etc/atlas/alerts.env}
+ENDPOINT=${LMAIL_ENDPOINT:?set LMAIL_ENDPOINT in /etc/atlas/alerts.env}
 STATE=${ATLAS_ALERT_STATE:-/var/lib/atlas-alerts}
 REPEAT_S=${ATLAS_ALERT_REPEAT_S:-86400}
 

@@ -8,8 +8,8 @@ use axum::http::HeaderMap;
 use chrono::Utc;
 use serde_json::{Value, json};
 
-use super::blobs::{collect_blobs, mime_for};
 use super::blob_path;
+use super::blobs::{collect_blobs, mime_for};
 use crate::upload::{check_claimed_hash, header_time, receive};
 use crate::{ApiError, ApiResult, App, AppState, util};
 
@@ -22,9 +22,25 @@ use crate::{ApiError, ApiResult, App, AppState, util};
 ///
 /// A file of the same name in the same folder is replaced, as on any
 /// filesystem; its old blob goes if that was the last reference.
-pub(super) async fn upload(State(app): State<AppState>, headers: HeaderMap, body: Body) -> ApiResult<Json<Value>> {
-    let received = receive(body, &app.cfg.blobs_dir().join(".incoming"), app.cfg.max_upload).await?;
-    let outcome = store_upload(&app, &headers, &received.path, &received.hash, received.size).await;
+pub(super) async fn upload(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> ApiResult<Json<Value>> {
+    let received = receive(
+        body,
+        &app.cfg.blobs_dir().join(".incoming"),
+        app.cfg.max_upload,
+    )
+    .await?;
+    let outcome = store_upload(
+        &app,
+        &headers,
+        &received.path,
+        &received.hash,
+        received.size,
+    )
+    .await;
     let _ = tokio::fs::remove_file(&received.path).await; // already moved on success
     outcome
 }
@@ -38,12 +54,17 @@ async fn store_upload(
 ) -> ApiResult<Json<Value>> {
     check_claimed_hash(headers, hash)?;
     let name = util::client_filename(headers.get("x-filename").and_then(|v| v.to_str().ok()));
-    let folder: Option<i64> = headers.get("x-folder-id").and_then(|v| v.to_str().ok()).and_then(|s| s.trim().parse().ok());
+    let folder: Option<i64> = headers
+        .get("x-folder-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse().ok());
     let modified = header_time(headers, "x-modified-at").unwrap_or_else(Utc::now);
 
     let c = app.pool.get().await?;
     if let Some(folder) = folder
-        && c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&folder]).await?.is_none()
+        && c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&folder])
+            .await?
+            .is_none()
     {
         return Err(ApiError::BadRequest("unknown folder"));
     }
@@ -87,11 +108,20 @@ async fn store_upload(
         }
     };
     // make the new content searchable
-    queue::requeue(&c, queue::DRIVE_TEXT, "drive_file", &id.to_string(), queue::PRIORITY_INTERACTIVE).await?;
+    queue::requeue(
+        &c,
+        queue::DRIVE_TEXT,
+        "drive_file",
+        &id.to_string(),
+        queue::PRIORITY_INTERACTIVE,
+    )
+    .await?;
     drop(c);
     app.jobs_wake.notify_waiters();
     if let Some(old) = orphan {
         collect_blobs(app, &[old]).await?;
     }
-    Ok(Json(json!({ "id": id, "hash": hash, "replaced": replaced })))
+    Ok(Json(
+        json!({ "id": id, "hash": hash, "replaced": replaced }),
+    ))
 }

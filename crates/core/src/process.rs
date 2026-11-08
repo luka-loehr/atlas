@@ -25,8 +25,18 @@ pub fn output(cmd: &mut Command, limit: Duration) -> Result<Output> {
             bytes
         })
     };
-    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stdout = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let stderr = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
     let deadline = Instant::now() + limit;
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -36,11 +46,18 @@ pub fn output(cmd: &mut Command, limit: Duration) -> Result<Output> {
             let _ = child.kill();
             let _ = child.wait();
             let _ = (stdout.join(), stderr.join());
-            return Err(Error::new(ErrorKind::TimedOut, format!("{program} ran longer than {limit:?} and was stopped")));
+            return Err(Error::new(
+                ErrorKind::TimedOut,
+                format!("{program} ran longer than {limit:?} and was stopped"),
+            ));
         }
         std::thread::sleep(Duration::from_millis(10));
     };
-    Ok(Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
+    Ok(Output {
+        status,
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    })
 }
 
 #[cfg(test)]
@@ -49,7 +66,11 @@ mod tests {
 
     #[test]
     fn returns_what_the_tool_printed() {
-        let out = output(Command::new("sh").args(["-c", "echo out; echo err >&2"]), Duration::from_secs(5)).unwrap();
+        let out = output(
+            Command::new("sh").args(["-c", "echo out; echo err >&2"]),
+            Duration::from_secs(5),
+        )
+        .unwrap();
         assert!(out.status.success());
         assert_eq!(out.stdout, b"out\n");
         assert_eq!(out.stderr, b"err\n");
@@ -65,6 +86,12 @@ mod tests {
 
     #[test]
     fn a_missing_tool_is_an_error() {
-        assert!(output(&mut Command::new("no-such-tool-anywhere"), Duration::from_secs(1)).is_err());
+        assert!(
+            output(
+                &mut Command::new("no-such-tool-anywhere"),
+                Duration::from_secs(1)
+            )
+            .is_err()
+        );
     }
 }

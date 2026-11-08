@@ -34,9 +34,14 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
 
     for path in paths {
         let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
-        let mut archive = ZipArchive::new(file).with_context(|| format!("{} is not a complete zip", path.display()))?;
+        let mut archive = ZipArchive::new(file)
+            .with_context(|| format!("{} is not a complete zip", path.display()))?;
         let entries: Vec<usize> = (0..archive.len())
-            .filter(|&i| archive.by_index_raw(i).is_ok_and(|e| !e.is_dir() && e.name().is_ok_and(|n| n.starts_with(PREFIX))))
+            .filter(|&i| {
+                archive
+                    .by_index_raw(i)
+                    .is_ok_and(|e| !e.is_dir() && e.name().is_ok_and(|n| n.starts_with(PREFIX)))
+            })
             .collect();
         println!("{}: {} files", path.display(), entries.len());
 
@@ -45,8 +50,16 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
                 let mut entry = archive.by_index(*index)?;
                 let relative = entry.name()?[PREFIX.len()..].to_string();
                 let modified = entry.last_modified().and_then(|t| {
-                    NaiveDate::from_ymd_opt(i32::from(t.year()), u32::from(t.month()), u32::from(t.day()))?
-                        .and_hms_opt(u32::from(t.hour()), u32::from(t.minute()), u32::from(t.second()))
+                    NaiveDate::from_ymd_opt(
+                        i32::from(t.year()),
+                        u32::from(t.month()),
+                        u32::from(t.day()),
+                    )?
+                    .and_hms_opt(
+                        u32::from(t.hour()),
+                        u32::from(t.minute()),
+                        u32::from(t.second()),
+                    )
                 });
                 Ok((relative, modified, extract_hashed(&mut entry, &incoming)?))
             })?;
@@ -131,7 +144,14 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
                 }
             };
             if let Some(id) = changed {
-                queue::requeue(&c, queue::DRIVE_TEXT, "drive_file", &id.to_string(), queue::PRIORITY_DEFAULT).await?;
+                queue::requeue(
+                    &c,
+                    queue::DRIVE_TEXT,
+                    "drive_file",
+                    &id.to_string(),
+                    queue::PRIORITY_DEFAULT,
+                )
+                .await?;
             }
             if (n + 1) % 200 == 0 {
                 println!("  {}/{}", n + 1, entries.len());

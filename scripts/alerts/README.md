@@ -1,9 +1,17 @@
-# alerts — mail Luka when a backup job fails or goes stale
+# alerts — mail the owner when a backup job fails or goes stale
 
-Mail goes from `atlas@lukaloehr.com` to `luka@lukaloehr.com` through the Luka
-Mail API (`POST https://mail.lukaloehr.com/v1/messages/send`). The API key is a
-device key bound to the `atlas@lukaloehr.com` identity only, so it can send
-from that address and read that (empty) mailbox, nothing of Luka's own.
+Mail goes through an HTTP mail API that takes `POST <endpoint>/v1/messages/send`
+with a JSON `{from, to, subject, text}` body and a bearer key. Where it goes is
+configured in `/etc/atlas/alerts.env`:
+
+```bash
+ATLAS_ALERT_FROM=atlas@your-domain.com   # the address the key may send from
+ATLAS_ALERT_TO=you@your-domain.com
+LMAIL_ENDPOINT=https://mail.your-domain.com
+```
+
+Give the API key the narrowest scope your mail service offers: sending from
+the alert address only.
 
 | Path | What it is |
 |---|---|
@@ -25,11 +33,11 @@ ls /var/lib/atlas-alerts/                           # problems alerted and not y
 
 Root-only at `/etc/atlas/credentials/lmail-alerts`, expiry date in
 `lmail-alerts.expires` (the check warns 30 days ahead). It expires 2027-10-08.
-To renew, from the Mac:
+To renew, issue a new key with your mail service, then from the Mac:
 
 ```bash
-lmail --profile admin --json --confirm-admin key device --identity atlas@lukaloehr.com --name atlas-backup-alerts \
-  | jq -j .token | ssh atlas 'sudo sh -c "umask 077; cat > /etc/atlas/credentials/lmail-alerts"'
-ssh atlas 'echo 2028-MM-DD | sudo tee /etc/atlas/credentials/lmail-alerts.expires'   # expiresAt from the output
-lmail --profile admin --confirm-admin key revoke <old key id>
+printf '%s' "$NEW_KEY" | ssh atlas 'sudo sh -c "umask 077; cat > /etc/atlas/credentials/lmail-alerts"'
+ssh atlas 'echo 2028-MM-DD | sudo tee /etc/atlas/credentials/lmail-alerts.expires'   # the new key's expiry
 ```
+
+and revoke the old key.

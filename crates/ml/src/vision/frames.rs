@@ -29,7 +29,11 @@ pub(super) struct Frame {
 }
 
 /// The pixels to look at; None when there is nothing to read yet.
-pub(super) fn frames(original: &Path, thumb: Option<&Path>, video: bool) -> Result<Option<Vec<Frame>>> {
+pub(super) fn frames(
+    original: &Path,
+    thumb: Option<&Path>,
+    video: bool,
+) -> Result<Option<Vec<Frame>>> {
     if !video {
         let image = match atlas_core::decode::decode(original) {
             Ok(decoded) => decoded.rgb,
@@ -45,20 +49,38 @@ pub(super) fn frames(original: &Path, thumb: Option<&Path>, video: bool) -> Resu
             },
         };
         let image = fit(image, MAX_SIDE)?;
-        return Ok(Some(vec![Frame { image, at: None, poster: true, animals: true, text: true }]));
+        return Ok(Some(vec![Frame {
+            image,
+            at: None,
+            poster: true,
+            animals: true,
+            text: true,
+        }]));
     }
 
-    let sampled = original.exists().then(|| sample_video(original)).transpose();
+    let sampled = original
+        .exists()
+        .then(|| sample_video(original))
+        .transpose();
     match sampled {
         Ok(Some(frames)) if !frames.is_empty() => Ok(Some(frames)),
         other => {
             if let Err(e) = other {
-                tracing::warn!("{}: cannot read frames: {e:#}; using the poster", original.display());
+                tracing::warn!(
+                    "{}: cannot read frames: {e:#}; using the poster",
+                    original.display()
+                );
             }
             // the poster the server made, as the clip's only frame
             let Some(thumb) = thumb else { return Ok(None) };
             let image = pixels::open(thumb)?;
-            Ok(Some(vec![Frame { image, at: Some(1.0), poster: true, animals: true, text: true }]))
+            Ok(Some(vec![Frame {
+                image,
+                at: Some(1.0),
+                poster: true,
+                animals: true,
+                text: true,
+            }]))
         }
     }
 }
@@ -95,7 +117,10 @@ fn poster_time(duration: f64) -> f64 {
 /// poster's moment.
 fn sample_times(duration: f64) -> Vec<f64> {
     let step = (duration / MAX_FRAMES as f64).max(1.0);
-    let mut times: Vec<f64> = (0..MAX_FRAMES).map(|k| k as f64 * step).take_while(|&t| t <= duration).collect();
+    let mut times: Vec<f64> = (0..MAX_FRAMES)
+        .map(|k| k as f64 * step)
+        .take_while(|&t| t <= duration)
+        .collect();
     if times.is_empty() {
         times.push(0.0);
     }
@@ -110,7 +135,10 @@ fn sample_times(duration: f64) -> Vec<f64> {
 /// Which sampled frames are read for text: the first and three spread over
 /// the clip.
 fn text_frames(count: usize) -> HashSet<usize> {
-    [0, count / 4, count / 2, 3 * count / 4].into_iter().filter(|&i| i < count).collect()
+    [0, count / 4, count / 2, 3 * count / 4]
+        .into_iter()
+        .filter(|&i| i < count)
+        .collect()
 }
 
 #[cfg(test)]

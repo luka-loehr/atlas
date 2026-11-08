@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install/refresh the backup alerting: atlas-alert (mail through the Luka Mail
+# Install/refresh the backup alerting: atlas-alert (mail through an HTTP mail
 # API), OnFailure target atlas-alert@.service, the hourly check, the weekly
 # report and the smartd hook. Safe to re-run.
 #

@@ -31,26 +31,52 @@ pub(super) async fn list(State(app): State<AppState>, headers: HeaderMap) -> Api
     Ok(media::json_validated(&headers, &json!({ "files": files })))
 }
 
-pub(super) async fn put(State(app): State<AppState>, Json(b): Json<FileIds>) -> ApiResult<Json<Value>> {
+pub(super) async fn put(
+    State(app): State<AppState>,
+    Json(b): Json<FileIds>,
+) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
-    let n = c.execute("UPDATE drive_files SET trashed_at = now() WHERE id = ANY($1)", &[&b.ids]).await?;
+    let n = c
+        .execute(
+            "UPDATE drive_files SET trashed_at = now() WHERE id = ANY($1)",
+            &[&b.ids],
+        )
+        .await?;
     Ok(Json(json!({ "updated": n })))
 }
 
-pub(super) async fn restore(State(app): State<AppState>, Json(b): Json<FileIds>) -> ApiResult<Json<Value>> {
+pub(super) async fn restore(
+    State(app): State<AppState>,
+    Json(b): Json<FileIds>,
+) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
-    let n = c.execute("UPDATE drive_files SET trashed_at = NULL WHERE id = ANY($1)", &[&b.ids]).await?;
+    let n = c
+        .execute(
+            "UPDATE drive_files SET trashed_at = NULL WHERE id = ANY($1)",
+            &[&b.ids],
+        )
+        .await?;
     Ok(Json(json!({ "updated": n })))
 }
 
-pub(super) async fn delete(State(app): State<AppState>, Json(b): Json<FileIds>) -> ApiResult<Json<Value>> {
+pub(super) async fn delete(
+    State(app): State<AppState>,
+    Json(b): Json<FileIds>,
+) -> ApiResult<Json<Value>> {
     Ok(Json(json!({ "deleted": purge(&app, &b.ids).await? })))
 }
 
 pub(super) async fn empty(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     let ids: Vec<i64> = {
         let c = app.pool.get().await?;
-        c.query("SELECT id FROM drive_files WHERE trashed_at IS NOT NULL", &[]).await?.iter().map(|r| r.get(0)).collect()
+        c.query(
+            "SELECT id FROM drive_files WHERE trashed_at IS NOT NULL",
+            &[],
+        )
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect()
     };
     Ok(Json(json!({ "deleted": purge(&app, &ids).await? })))
 }
@@ -78,14 +104,23 @@ async fn purge(app: &App, ids: &[i64]) -> ApiResult<u64> {
     }
     let c = app.pool.get().await?;
     let hashes: Vec<String> = c
-        .query("SELECT DISTINCT hash FROM drive_files WHERE id = ANY($1)", &[&ids])
+        .query(
+            "SELECT DISTINCT hash FROM drive_files WHERE id = ANY($1)",
+            &[&ids],
+        )
         .await?
         .iter()
         .map(|r| r.get(0))
         .collect();
     let owners: Vec<String> = ids.iter().map(i64::to_string).collect();
-    c.execute("DELETE FROM ingest_jobs WHERE owner_type = 'drive_file' AND owner_id = ANY($1)", &[&owners]).await?;
-    let n = c.execute("DELETE FROM drive_files WHERE id = ANY($1)", &[&ids]).await?;
+    c.execute(
+        "DELETE FROM ingest_jobs WHERE owner_type = 'drive_file' AND owner_id = ANY($1)",
+        &[&owners],
+    )
+    .await?;
+    let n = c
+        .execute("DELETE FROM drive_files WHERE id = ANY($1)", &[&ids])
+        .await?;
     drop(c);
     collect_blobs(app, &hashes).await?;
     Ok(n)

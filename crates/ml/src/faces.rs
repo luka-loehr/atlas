@@ -24,8 +24,8 @@ use fast_image_resize::FilterType;
 use image::RgbImage;
 use ort::value::Tensor;
 
-use crate::runtime::{self, Device};
 use crate::pixels;
+use crate::runtime::{self, Device};
 
 /// The sides SCRFD sees the image at, longest edge in pixels.
 const SCALES: [u32; 2] = [640, 1600];
@@ -38,8 +38,13 @@ const NMS_THRESHOLD: f32 = 0.4;
 pub const MIN_FACE_PX: f32 = 14.0;
 const FACE_SIZE: usize = 112;
 /// Where ArcFace expects the eyes, nose and mouth corners in its 112x112 input.
-const TEMPLATE: [[f32; 2]; 5] =
-    [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366], [41.5493, 92.3655], [70.7299, 92.2041]];
+const TEMPLATE: [[f32; 2]; 5] = [
+    [38.2946, 51.6963],
+    [73.5318, 51.5014],
+    [56.0252, 71.7366],
+    [41.5493, 92.3655],
+    [70.7299, 92.2041],
+];
 
 pub struct Face {
     /// x1, y1, x2, y2 in pixels of the source image
@@ -61,7 +66,10 @@ pub struct FaceEngine {
 
 impl FaceEngine {
     pub fn load(detector: &Path, recognizer: &Path, devices: [Device; 2]) -> Result<Self> {
-        Ok(FaceEngine { detector: runtime::session(detector, devices[0])?, recognizer: runtime::session(recognizer, devices[1])? })
+        Ok(FaceEngine {
+            detector: runtime::session(detector, devices[0])?,
+            recognizer: runtime::session(recognizer, devices[1])?,
+        })
     }
 
     pub fn analyze(&mut self, image: &RgbImage) -> Result<Vec<Face>> {
@@ -82,7 +90,12 @@ impl FaceEngine {
             }
             let aligned = align(image, &detection.landmarks);
             let (embedding, clarity) = self.embed(&aligned)?;
-            faces.push(Face { bbox: detection.bbox, score: detection.score, embedding, clarity });
+            faces.push(Face {
+                bbox: detection.bbox,
+                score: detection.score,
+                embedding,
+                clarity,
+            });
         }
         Ok(faces)
     }
@@ -91,7 +104,10 @@ impl FaceEngine {
         // fit the long side to `side` keeping the aspect; pad to strides of 32
         let (w, h) = image.dimensions();
         let scale = f64::from(side) / f64::from(w.max(h));
-        let (new_w, new_h) = (((f64::from(w) * scale) as u32).max(1), ((f64::from(h) * scale) as u32).max(1));
+        let (new_w, new_h) = (
+            ((f64::from(w) * scale) as u32).max(1),
+            ((f64::from(h) * scale) as u32).max(1),
+        );
         let (canvas_w, canvas_h) = (new_w.div_ceil(32) * 32, new_h.div_ceil(32) * 32);
         let resized = pixels::resize(image, new_w, new_h, FilterType::Bilinear)?;
         let plane = (canvas_w * canvas_h) as usize;
@@ -103,10 +119,18 @@ impl FaceEngine {
                 input[channel * plane + at] = (f32::from(pixel[channel]) - 127.5) / 128.0;
             }
         }
-        let tensor = Tensor::from_array(([1usize, 3, canvas_h as usize, canvas_w as usize], input))?;
+        let tensor =
+            Tensor::from_array(([1usize, 3, canvas_h as usize, canvas_w as usize], input))?;
         let options = self.detector.options()?;
-        let outputs = self.detector.session.run_with_options(ort::inputs![tensor], &options)?;
-        ensure!(outputs.len() == 9, "unexpected SCRFD model: {} outputs", outputs.len());
+        let outputs = self
+            .detector
+            .session
+            .run_with_options(ort::inputs![tensor], &options)?;
+        ensure!(
+            outputs.len() == 9,
+            "unexpected SCRFD model: {} outputs",
+            outputs.len()
+        );
 
         // outputs: scores for strides 8/16/32, then boxes, then landmarks
         let mut found = Vec::new();
@@ -115,7 +139,10 @@ impl FaceEngine {
             let (_, boxes) = outputs[level + 3].try_extract_tensor::<f32>()?;
             let (_, points) = outputs[level + 6].try_extract_tensor::<f32>()?;
             let (cells_w, cells_h) = (canvas_w as usize / stride, canvas_h as usize / stride);
-            ensure!(scores.len() == cells_w * cells_h * ANCHORS_PER_CELL, "unexpected SCRFD output shape");
+            ensure!(
+                scores.len() == cells_w * cells_h * ANCHORS_PER_CELL,
+                "unexpected SCRFD output shape"
+            );
             for (anchor, &score) in scores.iter().enumerate() {
                 if score < DETECT_THRESHOLD {
                     continue;
@@ -164,10 +191,17 @@ impl FaceEngine {
         }
         let tensor = Tensor::from_array(([2usize, 3, FACE_SIZE, FACE_SIZE], input))?;
         let options = self.recognizer.options()?;
-        let outputs = self.recognizer.session.run_with_options(ort::inputs![tensor], &options)?;
+        let outputs = self
+            .recognizer
+            .session
+            .run_with_options(ort::inputs![tensor], &options)?;
         let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
         let dim = values.len() / 2;
-        ensure!(dim == 512, "unexpected recognizer output: {} values per face", dim);
+        ensure!(
+            dim == 512,
+            "unexpected recognizer output: {} values per face",
+            dim
+        );
         let mut a = values[..dim].to_vec();
         let mut b = values[dim..].to_vec();
         let norm = |v: &[f32]| v.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -193,8 +227,10 @@ fn suppress(mut detections: Vec<Detection>) -> Vec<Detection> {
     let mut kept: Vec<Detection> = Vec::new();
     for candidate in detections {
         let overlaps = kept.iter().any(|k| {
-            let w = (k.bbox[2].min(candidate.bbox[2]) - k.bbox[0].max(candidate.bbox[0]) + 1.0).max(0.0);
-            let h = (k.bbox[3].min(candidate.bbox[3]) - k.bbox[1].max(candidate.bbox[1]) + 1.0).max(0.0);
+            let w = (k.bbox[2].min(candidate.bbox[2]) - k.bbox[0].max(candidate.bbox[0]) + 1.0)
+                .max(0.0);
+            let h = (k.bbox[3].min(candidate.bbox[3]) - k.bbox[1].max(candidate.bbox[1]) + 1.0)
+                .max(0.0);
             let intersection = w * h;
             intersection / (area(&k.bbox) + area(&candidate.bbox) - intersection) > NMS_THRESHOLD
         });
@@ -209,7 +245,9 @@ fn suppress(mut detections: Vec<Detection>) -> Vec<Detection> {
 /// translation) taking `from` onto `to`, as the rows [a, -b, tx; b, a, ty].
 fn similarity(from: &[[f32; 2]; 5], to: &[[f32; 2]; 5]) -> [f32; 6] {
     let mean = |pts: &[[f32; 2]; 5]| {
-        let (sx, sy) = pts.iter().fold((0.0, 0.0), |(x, y), p| (x + p[0], y + p[1]));
+        let (sx, sy) = pts
+            .iter()
+            .fold((0.0, 0.0), |(x, y), p| (x + p[0], y + p[1]));
         (sx / 5.0, sy / 5.0)
     };
     let (fx, fy) = mean(from);
@@ -222,7 +260,11 @@ fn similarity(from: &[[f32; 2]; 5], to: &[[f32; 2]; 5]) -> [f32; 6] {
         cross += x * v - y * u;
         norm += x * x + y * y;
     }
-    let (a, b) = if norm > 0.0 { (dot / norm, cross / norm) } else { (1.0, 0.0) };
+    let (a, b) = if norm > 0.0 {
+        (dot / norm, cross / norm)
+    } else {
+        (1.0, 0.0)
+    };
     [a, -b, tx - (a * fx - b * fy), b, a, ty - (b * fx + a * fy)]
 }
 
@@ -237,7 +279,11 @@ fn align(image: &RgbImage, landmarks: &[[f32; 2]; 5]) -> Vec<u8> {
     let (w, h) = (image.width() as i32, image.height() as i32);
     let raw = image.as_raw();
     let sample = |x: i32, y: i32, channel: usize| -> f32 {
-        if x < 0 || y < 0 || x >= w || y >= h { 0.0 } else { f32::from(raw[((y * w + x) * 3) as usize + channel]) }
+        if x < 0 || y < 0 || x >= w || y >= h {
+            0.0
+        } else {
+            f32::from(raw[((y * w + x) * 3) as usize + channel])
+        }
     };
     let mut out = vec![0u8; FACE_SIZE * FACE_SIZE * 3];
     for v in 0..FACE_SIZE {
@@ -251,8 +297,10 @@ fn align(image: &RgbImage, landmarks: &[[f32; 2]; 5]) -> Vec<u8> {
             let (x0, y0) = (x0 as i32, y0 as i32);
             for channel in 0..3 {
                 let top = sample(x0, y0, channel) * (1.0 - fx) + sample(x0 + 1, y0, channel) * fx;
-                let bottom = sample(x0, y0 + 1, channel) * (1.0 - fx) + sample(x0 + 1, y0 + 1, channel) * fx;
-                out[(v * FACE_SIZE + u) * 3 + channel] = (top * (1.0 - fy) + bottom * fy).round().clamp(0.0, 255.0) as u8;
+                let bottom =
+                    sample(x0, y0 + 1, channel) * (1.0 - fx) + sample(x0 + 1, y0 + 1, channel) * fx;
+                out[(v * FACE_SIZE + u) * 3 + channel] =
+                    (top * (1.0 - fy) + bottom * fy).round().clamp(0.0, 255.0) as u8;
             }
         }
     }
@@ -277,12 +325,19 @@ mod tests {
     fn aligning_template_landmarks_is_the_identity() {
         let image = RgbImage::from_fn(112, 112, |x, y| image::Rgb([x as u8, y as u8, 7]));
         let out = align(&image, &TEMPLATE);
-        assert_eq!(&out[(40 * 112 + 30) * 3..(40 * 112 + 30) * 3 + 3], &[30, 40, 7]);
+        assert_eq!(
+            &out[(40 * 112 + 30) * 3..(40 * 112 + 30) * 3 + 3],
+            &[30, 40, 7]
+        );
     }
 
     #[test]
     fn overlapping_detections_collapse_to_the_best() {
-        let d = |x: f32, score: f32| Detection { bbox: [x, 0.0, x + 100.0, 100.0], score, landmarks: [[0.0; 2]; 5] };
+        let d = |x: f32, score: f32| Detection {
+            bbox: [x, 0.0, x + 100.0, 100.0],
+            score,
+            landmarks: [[0.0; 2]; 5],
+        };
         let kept = suppress(vec![d(0.0, 0.6), d(5.0, 0.9), d(300.0, 0.7)]);
         assert_eq!(kept.len(), 2);
         assert_eq!(kept[0].score, 0.9);

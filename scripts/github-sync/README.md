@@ -1,6 +1,6 @@
 # github-sync — every GitHub repo, hourly, on both disks, versioned
 
-A working clone of every repo of Luka's account and his orgs (private,
+A working clone of every repo of the account and its orgs (private,
 archived and forks included), at `/srv/bulk/github/<owner>/<repo>`, checked
 out on the default branch.
 

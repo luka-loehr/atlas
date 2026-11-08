@@ -32,7 +32,8 @@ pub fn resize(src: &RgbImage, dw: u32, dh: u32) -> Result<RgbImage> {
     let (w, h) = src.dimensions();
     let view = fr::images::ImageRef::new(w, h, src.as_raw(), fr::PixelType::U8x3)?;
     let mut dst = fr::images::Image::new(dw, dh, fr::PixelType::U8x3);
-    let options = fr::ResizeOptions::new().resize_alg(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
+    let options =
+        fr::ResizeOptions::new().resize_alg(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
     fr::Resizer::new().resize(&view, &mut dst, &options)?;
     RgbImage::from_raw(dw, dh, dst.into_vec()).context("resize: buffer size mismatch")
 }
@@ -50,19 +51,31 @@ pub fn make_tile(thumb: &Path) -> Result<Vec<u8>> {
     use image::ImageDecoder;
     use image::codecs::jpeg::JpegEncoder;
     let file = std::io::BufReader::new(std::fs::File::open(thumb)?);
-    let mut decoder = image::codecs::webp::WebPDecoder::new(file).context("not a WebP thumbnail")?;
+    let mut decoder =
+        image::codecs::webp::WebPDecoder::new(file).context("not a WebP thumbnail")?;
     let icc = decoder.icc_profile().ok().flatten();
     let rgb = image::DynamicImage::from_decoder(decoder)?.into_rgb8();
     let (w, h) = rgb.dimensions();
     let side = w.min(h);
-    let square = image::imageops::crop_imm(&rgb, (w - side) / 2, (h - side) / 2, side, side).to_image();
-    let tile = if side > TILE { resize(&square, TILE, TILE)? } else { square };
+    let square =
+        image::imageops::crop_imm(&rgb, (w - side) / 2, (h - side) / 2, side, side).to_image();
+    let tile = if side > TILE {
+        resize(&square, TILE, TILE)?
+    } else {
+        square
+    };
     let mut out = Vec::with_capacity(48 << 10);
     let mut encoder = JpegEncoder::new_with_quality(&mut out, 80);
     if let Some(icc) = icc {
         let _ = image::ImageEncoder::set_icc_profile(&mut encoder, icc);
     }
-    image::ImageEncoder::write_image(encoder, tile.as_raw(), tile.width(), tile.height(), image::ExtendedColorType::Rgb8)?;
+    image::ImageEncoder::write_image(
+        encoder,
+        tile.as_raw(),
+        tile.width(),
+        tile.height(),
+        image::ExtendedColorType::Rgb8,
+    )?;
     Ok(out)
 }
 
@@ -70,7 +83,9 @@ pub fn make_tile(thumb: &Path) -> Result<Vec<u8>> {
 pub fn encode_webp(img: &RgbImage, quality: f32, icc: Option<&[u8]>) -> Vec<u8> {
     let simple = webp::Encoder::from_rgb(img.as_raw(), img.width(), img.height()).encode(quality);
     match icc {
-        Some(profile) if !profile.is_empty() => with_icc(&simple, img.width(), img.height(), profile),
+        Some(profile) if !profile.is_empty() => {
+            with_icc(&simple, img.width(), img.height(), profile)
+        }
         _ => simple.to_vec(),
     }
 }
@@ -111,7 +126,11 @@ pub fn thumbhash(img: &RgbImage) -> Result<Vec<u8>> {
     for p in small.pixels() {
         rgba.extend_from_slice(&[p[0], p[1], p[2], 255]);
     }
-    Ok(thumbhash::rgba_to_thumb_hash(small.width() as usize, small.height() as usize, &rgba))
+    Ok(thumbhash::rgba_to_thumb_hash(
+        small.width() as usize,
+        small.height() as usize,
+        &rgba,
+    ))
 }
 
 /// Write atomically: a reader never sees a half-written thumbnail.
@@ -141,7 +160,11 @@ pub fn write_thumbs(decoded: &Decoded, grid: &Path, screen: &Path) -> Result<Thu
     // the grid size comes from the screen size: same result, a fraction of the work
     let small = fit(&large, GRID)?;
     write_atomic(grid, &encode_webp(&small, 82.0, icc))?;
-    Ok(Thumbs { width, height, thumbhash: thumbhash(&small)? })
+    Ok(Thumbs {
+        width,
+        height,
+        thumbhash: thumbhash(&small)?,
+    })
 }
 
 #[cfg(test)]
@@ -154,10 +177,14 @@ mod tests {
         let profile = vec![7u8; 33]; // odd length exercises the padding byte
         let bytes = encode_webp(&img, 80.0, Some(&profile));
         assert_eq!(&bytes[..4], b"RIFF");
-        assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize, bytes.len() - 8);
+        assert_eq!(
+            u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize,
+            bytes.len() - 8
+        );
         assert_eq!(&bytes[12..16], b"VP8X");
         use image::ImageDecoder;
-        let mut decoder = image::codecs::webp::WebPDecoder::new(std::io::Cursor::new(&bytes)).unwrap();
+        let mut decoder =
+            image::codecs::webp::WebPDecoder::new(std::io::Cursor::new(&bytes)).unwrap();
         assert_eq!(decoder.dimensions(), (64, 40));
         assert_eq!(decoder.icc_profile().unwrap().unwrap(), profile);
     }
@@ -166,7 +193,10 @@ mod tests {
     fn fit_never_enlarges_and_keeps_the_aspect() {
         let img = RgbImage::new(4000, 3000);
         assert_eq!(fit(&img, 2048).unwrap().dimensions(), (2048, 1536));
-        assert_eq!(fit(&RgbImage::new(300, 200), 512).unwrap().dimensions(), (300, 200));
+        assert_eq!(
+            fit(&RgbImage::new(300, 200), 512).unwrap().dimensions(),
+            (300, 200)
+        );
     }
 
     #[test]
@@ -176,14 +206,26 @@ mod tests {
         let img = RgbImage::from_fn(400, 300, |x, _| if x < 200 { red } else { blue });
         let out = resize(&img, 100, 75).unwrap();
         assert_eq!(out.dimensions(), (100, 75));
-        let near = |a: &image::Rgb<u8>, b: &image::Rgb<u8>| a.0.iter().zip(b.0).all(|(x, y)| x.abs_diff(y) <= 2);
-        assert!(near(out.get_pixel(10, 37), &red), "{:?}", out.get_pixel(10, 37));
-        assert!(near(out.get_pixel(90, 37), &blue), "{:?}", out.get_pixel(90, 37));
+        let near = |a: &image::Rgb<u8>, b: &image::Rgb<u8>| {
+            a.0.iter().zip(b.0).all(|(x, y)| x.abs_diff(y) <= 2)
+        };
+        assert!(
+            near(out.get_pixel(10, 37), &red),
+            "{:?}",
+            out.get_pixel(10, 37)
+        );
+        assert!(
+            near(out.get_pixel(90, 37), &blue),
+            "{:?}",
+            out.get_pixel(90, 37)
+        );
     }
 
     #[test]
     fn thumbhash_is_small() {
-        let img = RgbImage::from_fn(512, 384, |x, y| image::Rgb([(x / 2) as u8, (y / 2) as u8, 128]));
+        let img = RgbImage::from_fn(512, 384, |x, y| {
+            image::Rgb([(x / 2) as u8, (y / 2) as u8, 128])
+        });
         let hash = thumbhash(&img).unwrap();
         assert!((5..=30).contains(&hash.len()), "{} bytes", hash.len());
     }

@@ -63,7 +63,8 @@ pub async fn run(app: &AppState, id: &str) -> Result<()> {
 
     if made {
         let c = app.pool.get().await?;
-        c.execute("UPDATE assets SET preview_at = now() WHERE id = $1", &[&id]).await?;
+        c.execute("UPDATE assets SET preview_at = now() WHERE id = $1", &[&id])
+            .await?;
     }
     Ok(())
 }
@@ -77,28 +78,75 @@ pub fn target_size(probe: &Probe) -> (i32, i32) {
         return (w & !1, h & !1);
     }
     let scale = f64::from(MAX_SHORT_SIDE) / f64::from(short);
-    (((f64::from(w) * scale).round() as i32) & !1, ((f64::from(h) * scale).round() as i32) & !1)
+    (
+        ((f64::from(w) * scale).round() as i32) & !1,
+        ((f64::from(h) * scale).round() as i32) & !1,
+    )
 }
 
 fn transcode(source: &Path, dest: &Path, probe: &Probe) -> Result<()> {
     let (w, h) = target_size(probe);
     let ten_bit = probe.pixel_format.contains("10");
-    let nvenc = ["-c:v", "hevc_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "27", "-b:v", "0", "-maxrate", "8M", "-bufsize", "16M"];
-    let gpu_scale = format!("scale_cuda={w}:{h}:format={}", if ten_bit { "p010le" } else { "nv12" });
+    let nvenc = [
+        "-c:v",
+        "hevc_nvenc",
+        "-preset",
+        "p5",
+        "-rc",
+        "vbr",
+        "-cq",
+        "27",
+        "-b:v",
+        "0",
+        "-maxrate",
+        "8M",
+        "-bufsize",
+        "16M",
+    ];
+    let gpu_scale = format!(
+        "scale_cuda={w}:{h}:format={}",
+        if ten_bit { "p010le" } else { "nv12" }
+    );
     let cpu_scale = format!("scale={w}:{h}:flags=bicubic");
     let attempts: [(&[&str], &str, &[&str]); 3] = [
-        (&["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"], &gpu_scale, &nvenc),
+        (
+            &["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"],
+            &gpu_scale,
+            &nvenc,
+        ),
         (&[], &cpu_scale, &nvenc),
-        (&[], &cpu_scale, &["-c:v", "libx265", "-preset", "medium", "-crf", "26"]),
+        (
+            &[],
+            &cpu_scale,
+            &["-c:v", "libx265", "-preset", "medium", "-crf", "26"],
+        ),
     ];
-    let output = ["-tag:v", "hvc1", "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-map_metadata", "0", "-movflags", "+faststart"];
+    let output = [
+        "-tag:v",
+        "hvc1",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ac",
+        "2",
+        "-map_metadata",
+        "0",
+        "-movflags",
+        "+faststart",
+    ];
     encode(source, dest, &attempts, &output)
 }
 
 /// One encoder after the other, each a (decoder options, video filter,
 /// encoder options), until one writes `dest`; `output` options follow the
 /// encoder's.
-pub fn encode(source: &Path, dest: &Path, attempts: &[(&[&str], &str, &[&str])], output: &[&str]) -> Result<()> {
+pub fn encode(
+    source: &Path,
+    dest: &Path,
+    attempts: &[(&[&str], &str, &[&str])],
+    output: &[&str],
+) -> Result<()> {
     std::fs::create_dir_all(dest.parent().context("no parent directory")?)?;
     let tmp = dest.with_extension("part.mp4");
     let mut last_error = String::new();

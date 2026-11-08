@@ -16,8 +16,8 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use ort::session::{RunOptions, Session};
 use ort::session::builder::GraphOptimizationLevel;
+use ort::session::{RunOptions, Session};
 
 /// What the embedding model needs on the card, with headroom (MiB).
 const EMBEDDING_RESERVE_MB: u64 = 5 * 1024;
@@ -28,7 +28,9 @@ const MIN_VISION_MB: u64 = 1536;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Device {
     /// on the GPU with at most this many bytes of arena
-    Gpu { limit: usize },
+    Gpu {
+        limit: usize,
+    },
     Cpu,
 }
 
@@ -52,8 +54,16 @@ pub fn vision_budget_mb() -> Option<u64> {
     if let Some(mb) = atlas_core::env("ATLAS_VISION_VRAM_MB").and_then(|v| v.parse::<u64>().ok()) {
         return (mb >= MIN_VISION_MB).then_some(mb);
     }
-    let out = Command::new("nvidia-smi").args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"]).output().ok()?;
-    let total: u64 = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().parse().ok()?;
+    let out = Command::new("nvidia-smi")
+        .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+        .output()
+        .ok()?;
+    let total: u64 = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()?
+        .trim()
+        .parse()
+        .ok()?;
     let budget = total.saturating_sub(EMBEDDING_RESERVE_MB);
     (budget >= MIN_VISION_MB).then_some(budget)
 }
@@ -81,7 +91,10 @@ impl Model {
 
 /// A model on `device`.
 pub fn session(path: &Path, device: Device) -> Result<Model> {
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(8);
     let builder = Session::builder()
         .map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
         .with_optimization_level(GraphOptimizationLevel::Level3)
@@ -97,10 +110,17 @@ pub fn session(path: &Path, device: Device) -> Result<Model> {
                 .with_conv_max_workspace(false)
                 .build()
                 .error_on_failure();
-            builder.with_execution_providers([cuda]).map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
+            builder
+                .with_execution_providers([cuda])
+                .map_err(|e| anyhow::anyhow!("onnxruntime: {e}"))?
         }
         Device::Cpu => builder,
     };
-    let session = builder.commit_from_file(path).with_context(|| format!("cannot load {}", path.display()))?;
-    Ok(Model { session, gpu: device != Device::Cpu })
+    let session = builder
+        .commit_from_file(path)
+        .with_context(|| format!("cannot load {}", path.display()))?;
+    Ok(Model {
+        session,
+        gpu: device != Device::Cpu,
+    })
 }

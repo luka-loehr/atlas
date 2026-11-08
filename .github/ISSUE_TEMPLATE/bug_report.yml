@@ -1,0 +1,36 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options: [iPhone app, Mac app, Server, ML (faces, search), CLI, Share links, Setup and scripts]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The app version (About Atlas on the Mac, or the release you installed) or the server's commit
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open …\n2. Click …"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Leave out personal photos, names, hostnames and tokens.

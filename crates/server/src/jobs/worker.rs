@@ -42,7 +42,11 @@ fn limit(kind: &str) -> Duration {
 
 /// This process in `locked_by`.
 pub fn worker_name() -> String {
-    format!("{PREFIX}{}:{}", crate::system::metrics::hostname(), std::process::id())
+    format!(
+        "{PREFIX}{}:{}",
+        crate::system::metrics::hostname(),
+        std::process::id()
+    )
 }
 
 /// At a clean shutdown: the jobs this process holds go back to the queue
@@ -64,7 +68,12 @@ pub fn spawn(app: AppState) {
     let running = Arc::new(Mutex::new(HashSet::new()));
     tokio::spawn(heartbeat(app.clone(), running.clone()));
     tokio::spawn(checkups(app.clone()));
-    tokio::spawn(drain(app.clone(), CPU_KINDS, app.cfg.workers, running.clone()));
+    tokio::spawn(drain(
+        app.clone(),
+        CPU_KINDS,
+        app.cfg.workers,
+        running.clone(),
+    ));
     if app.cfg.video_previews {
         tokio::spawn(drain(app, &[queue::PREVIEW], 1, running));
     }
@@ -111,7 +120,10 @@ async fn checkups(app: AppState) {
             Ok(r) if r.dropped + r.queued + r.healed.retried + r.healed.stuck == 0 => {}
             Ok(r) => tracing::info!(
                 "check-up: {} jobs queued that were missing, {} without an owner dropped, {} failed retried, {} parked as stuck",
-                r.queued, r.dropped, r.healed.retried, r.healed.stuck
+                r.queued,
+                r.dropped,
+                r.healed.retried,
+                r.healed.stuck
             ),
             Err(e) => tracing::warn!("check-up failed: {e:#}"),
         }
@@ -119,7 +131,12 @@ async fn checkups(app: AppState) {
     }
 }
 
-async fn drain(app: AppState, kinds: &'static [&'static str], parallel: usize, running: Arc<Mutex<HashSet<i64>>>) {
+async fn drain(
+    app: AppState,
+    kinds: &'static [&'static str],
+    parallel: usize,
+    running: Arc<Mutex<HashSet<i64>>>,
+) {
     let worker = worker_name();
     let slots = Arc::new(Semaphore::new(parallel));
     loop {
@@ -128,7 +145,9 @@ async fn drain(app: AppState, kinds: &'static [&'static str], parallel: usize, r
         // between is not slept through
         let woken = app.jobs_wake.notified();
         let claimed = match app.pool.get().await {
-            Ok(c) => queue::claim(&c, &worker, kinds, 1).await.map_err(anyhow::Error::from),
+            Ok(c) => queue::claim(&c, &worker, kinds, 1)
+                .await
+                .map_err(anyhow::Error::from),
             Err(e) => Err(e.into()),
         };
         match claimed {
@@ -187,8 +206,16 @@ async fn execute(app: &AppState, job: &Job) {
     .await;
     match (&result, settled) {
         (_, Err(e)) => tracing::warn!("{} {}: could not settle: {e:#}", job.kind, job.owner_id),
-        (Ok(()), _) => tracing::info!("{} {} done in {elapsed:.1?}", job.kind, short(&job.owner_id)),
-        (Err(e), _) => tracing::warn!("{} {} failed after {elapsed:.1?}: {e:#}", job.kind, short(&job.owner_id)),
+        (Ok(()), _) => tracing::info!(
+            "{} {} done in {elapsed:.1?}",
+            job.kind,
+            short(&job.owner_id)
+        ),
+        (Err(e), _) => tracing::warn!(
+            "{} {} failed after {elapsed:.1?}: {e:#}",
+            job.kind,
+            short(&job.owner_id)
+        ),
     }
 }
 

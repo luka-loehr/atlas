@@ -40,12 +40,23 @@ pub async fn drives() -> ApiResult<Json<Value>> {
     // loop devices (7) and network block devices (43) are not drives
     let listing = output(
         "lsblk",
-        &["-J", "-b", "-e", "7,43", "-o", "NAME,MODEL,ROTA,SIZE,TRAN,TYPE,FSSIZE,FSUSED,MOUNTPOINT"],
+        &[
+            "-J",
+            "-b",
+            "-e",
+            "7,43",
+            "-o",
+            "NAME,MODEL,ROTA,SIZE,TRAN,TYPE,FSSIZE,FSUSED,MOUNTPOINT",
+        ],
     )
     .await;
     let disks = disks(&listing);
     let health = futures_util::future::join_all(disks.iter().map(|d| smart(d.name.clone()))).await;
-    let drives: Vec<Value> = disks.into_iter().zip(health).map(|(d, h)| d.json(h)).collect();
+    let drives: Vec<Value> = disks
+        .into_iter()
+        .zip(health)
+        .map(|(d, h)| d.json(h))
+        .collect();
     let value = json!({ "drives": drives });
     *cached = Some((Instant::now(), value.clone()));
     Ok(Json(value))
@@ -77,7 +88,9 @@ impl Disk {
 /// The whole disks of an lsblk listing, each with every mounted filesystem
 /// below it (partitions, LVM, crypt).
 fn disks(listing: &str) -> Vec<Disk> {
-    let Ok(root) = serde_json::from_str::<Value>(listing) else { return Vec::new() };
+    let Ok(root) = serde_json::from_str::<Value>(listing) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for dev in root["blockdevices"].as_array().into_iter().flatten() {
         if dev["type"] != "disk" || dev["size"].as_u64().unwrap_or(0) == 0 {
@@ -102,7 +115,9 @@ fn collect_mounts(dev: &Value, out: &mut Vec<Value>) {
         && !mount.starts_with("/boot")
         && mount != "[SWAP]"
     {
-        out.push(json!({ "mount": mount, "size": size, "used": dev["fsused"].as_u64().unwrap_or(0) }));
+        out.push(
+            json!({ "mount": mount, "size": size, "used": dev["fsused"].as_u64().unwrap_or(0) }),
+        );
     }
     for child in dev["children"].as_array().into_iter().flatten() {
         collect_mounts(child, out);
@@ -113,8 +128,14 @@ fn collect_mounts(dev: &Value, out: &mut Vec<Value>) {
 /// read, `{"asleep": true}` for an HDD in standby.
 async fn smart(name: String) -> Value {
     let path = format!("/dev/{name}");
-    let text = output("sudo", &["-n", "smartctl", "-j", "-a", "-n", "standby", &path]).await;
-    let Ok(s) = serde_json::from_str::<Value>(&text) else { return Value::Null };
+    let text = output(
+        "sudo",
+        &["-n", "smartctl", "-j", "-a", "-n", "standby", &path],
+    )
+    .await;
+    let Ok(s) = serde_json::from_str::<Value>(&text) else {
+        return Value::Null;
+    };
     parse_smart(&s)
 }
 
@@ -175,7 +196,10 @@ mod tests {
         assert_eq!(d.len(), 2);
         assert_eq!(d[0].model.as_deref(), Some("Fast SSD"));
         assert!(!d[0].rotational);
-        assert_eq!(d[0].mounts, vec![json!({"mount": "/", "size": 800, "used": 700})]);
+        assert_eq!(
+            d[0].mounts,
+            vec![json!({"mount": "/", "size": 800, "used": 700})]
+        );
         assert!(d[1].rotational);
         assert_eq!(d[1].mounts[0]["mount"], "/srv/bulk");
     }
@@ -189,7 +213,8 @@ mod tests {
         assert_eq!(h["wear"], 5);
         assert_eq!(h["written"], 1_024_000);
         assert!(h["reallocated"].is_null());
-        let asleep = json!({"smartctl":{"messages":[{"string":"Device is in STANDBY mode, exit(2)"}]}});
+        let asleep =
+            json!({"smartctl":{"messages":[{"string":"Device is in STANDBY mode, exit(2)"}]}});
         assert_eq!(parse_smart(&asleep), json!({"asleep": true}));
     }
 }

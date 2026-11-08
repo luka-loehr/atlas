@@ -58,7 +58,13 @@ pub struct Job {
     pub defers: i32,
 }
 
-pub async fn enqueue(c: &Client, kind: &str, owner_type: &str, owner_id: &str, priority: i32) -> Result<(), Error> {
+pub async fn enqueue(
+    c: &Client,
+    kind: &str,
+    owner_type: &str,
+    owner_id: &str,
+    priority: i32,
+) -> Result<(), Error> {
     c.execute(
         "INSERT INTO ingest_jobs (kind, owner_type, owner_id, priority)
          VALUES ($1, $2, $3, $4)
@@ -71,7 +77,13 @@ pub async fn enqueue(c: &Client, kind: &str, owner_type: &str, owner_id: &str, p
 
 /// Enqueue, or give a failed or stuck job a fresh start: what it was
 /// waiting for is there now. Done, pending and running jobs are left alone.
-pub async fn ensure(c: &Client, kind: &str, owner_type: &str, owner_id: &str, priority: i32) -> Result<(), Error> {
+pub async fn ensure(
+    c: &Client,
+    kind: &str,
+    owner_type: &str,
+    owner_id: &str,
+    priority: i32,
+) -> Result<(), Error> {
     c.execute(
         "INSERT INTO ingest_jobs (kind, owner_type, owner_id, priority)
          VALUES ($1, $2, $3, $4)
@@ -86,7 +98,13 @@ pub async fn ensure(c: &Client, kind: &str, owner_type: &str, owner_id: &str, pr
 }
 
 /// Enqueue, or put a finished/failed job back in line (a forced re-run).
-pub async fn requeue(c: &Client, kind: &str, owner_type: &str, owner_id: &str, priority: i32) -> Result<(), Error> {
+pub async fn requeue(
+    c: &Client,
+    kind: &str,
+    owner_type: &str,
+    owner_id: &str,
+    priority: i32,
+) -> Result<(), Error> {
     c.execute(
         "INSERT INTO ingest_jobs (kind, owner_type, owner_id, priority)
          VALUES ($1, $2, $3, $4)
@@ -101,7 +119,12 @@ pub async fn requeue(c: &Client, kind: &str, owner_type: &str, owner_id: &str, p
     Ok(())
 }
 
-pub async fn claim(c: &Client, worker: &str, kinds: &[&str], limit: i64) -> Result<Vec<Job>, Error> {
+pub async fn claim(
+    c: &Client,
+    worker: &str,
+    kinds: &[&str],
+    limit: i64,
+) -> Result<Vec<Job>, Error> {
     let rows = c
         .query(
             "UPDATE ingest_jobs
@@ -117,7 +140,13 @@ pub async fn claim(c: &Client, worker: &str, kinds: &[&str], limit: i64) -> Resu
         .await?;
     Ok(rows
         .iter()
-        .map(|r| Job { id: r.get(0), kind: r.get(1), owner_id: r.get(2), priority: r.get(3), defers: r.get(4) })
+        .map(|r| Job {
+            id: r.get(0),
+            kind: r.get(1),
+            owner_id: r.get(2),
+            priority: r.get(3),
+            defers: r.get(4),
+        })
         .collect())
 }
 
@@ -203,7 +232,9 @@ const LOST: &str = "attempts = attempts + 1,
 /// (`locked_by` starting with `prefix`) are what a crash left behind.
 pub async fn recover(c: &Client, prefix: &str) -> Result<u64, Error> {
     c.execute(
-        &format!("UPDATE ingest_jobs SET {LOST} WHERE status = 'running' AND starts_with(locked_by, $2)"),
+        &format!(
+            "UPDATE ingest_jobs SET {LOST} WHERE status = 'running' AND starts_with(locked_by, $2)"
+        ),
         &[&MAX_ATTEMPTS, &prefix],
     )
     .await
@@ -273,5 +304,8 @@ pub async fn heal(c: &Client) -> Result<Healed, Error> {
             &[&kinds],
         )
         .await?;
-    Ok(Healed { retried, stuck: gave_up + orphans })
+    Ok(Healed {
+        retried,
+        stuck: gave_up + orphans,
+    })
 }

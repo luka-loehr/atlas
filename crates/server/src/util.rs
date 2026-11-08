@@ -5,12 +5,16 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 pub const VIDEO_EXTS: &[&str] = &["mp4", "mov", "m4v", "3gp", "avi", "mkv", "webm", "mts"];
-pub const IMAGE_EXTS: &[&str] =
-    &["jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp", "tif", "tiff", "dng", "avif"];
+pub const IMAGE_EXTS: &[&str] = &[
+    "jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp", "tif", "tiff", "dng", "avif",
+];
 
 /// A content id: lowercase-hex SHA-256, nothing else. Ids go into paths.
 pub fn is_content_id(id: &str) -> bool {
-    id.len() == 64 && id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    id.len() == 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -33,7 +37,11 @@ pub fn etag(bytes: &[u8]) -> String {
 }
 
 pub fn lower_ext(name: &str) -> String {
-    Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
+    Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
 }
 
 /// The extension an upload is stored under: a known media type or "bin".
@@ -41,7 +49,12 @@ pub fn lower_ext(name: &str) -> String {
 /// can be planted for the file server to hand back with an active type.
 pub fn media_ext(name: &str) -> &'static str {
     let ext = lower_ext(name);
-    IMAGE_EXTS.iter().chain(VIDEO_EXTS).find(|known| **known == ext).copied().unwrap_or("bin")
+    IMAGE_EXTS
+        .iter()
+        .chain(VIDEO_EXTS)
+        .find(|known| **known == ext)
+        .copied()
+        .unwrap_or("bin")
 }
 
 pub fn is_video_ext(ext: &str) -> bool {
@@ -50,7 +63,9 @@ pub fn is_video_ext(ext: &str) -> bool {
 
 /// Escape LIKE metacharacters so user input matches literally.
 pub fn like_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// The last path component of a client-supplied name, percent-decoded.
@@ -100,7 +115,11 @@ pub fn temp_name(prefix: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("{prefix}-{}-{nanos}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed))
+    format!(
+        "{prefix}-{}-{nanos}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 #[cfg(test)]
@@ -110,8 +129,14 @@ mod tests {
     #[test]
     fn sha256_hex_matches_the_standard_vectors() {
         // asset and blob ids are these hashes; a sha2 bump must not change them
-        assert_eq!(sha256_hex(b""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-        assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]
@@ -134,7 +159,10 @@ mod tests {
     #[test]
     fn client_filenames_lose_their_directories() {
         assert_eq!(client_filename(Some("../../etc/passwd")), "passwd");
-        assert_eq!(client_filename(Some("Urlaub%20%C3%96sterreich.pdf")), "Urlaub Österreich.pdf");
+        assert_eq!(
+            client_filename(Some("Urlaub%20%C3%96sterreich.pdf")),
+            "Urlaub Österreich.pdf"
+        );
         assert_eq!(client_filename(Some("..")), "upload");
         assert_eq!(client_filename(None), "upload");
     }

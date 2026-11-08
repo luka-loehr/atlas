@@ -29,7 +29,10 @@ pub async fn run(app: &App) -> Result<Report> {
 }
 
 async fn repair(c: &tokio_postgres::Client) -> Result<Report> {
-    let mut report = Report { healed: queue::heal(c).await?, ..Report::default() };
+    let mut report = Report {
+        healed: queue::heal(c).await?,
+        ..Report::default()
+    };
 
     // jobs whose owner is gone can never succeed
     report.dropped += c
@@ -54,7 +57,10 @@ async fn repair(c: &tokio_postgres::Client) -> Result<Report> {
     let missing = [
         (vec![queue::THUMB, queue::META], "TRUE"),
         (vec![queue::EMBED, queue::FACES], "a.thumbhash IS NOT NULL"),
-        (vec![queue::GEOCODE], "a.lat IS NOT NULL AND a.lon IS NOT NULL"),
+        (
+            vec![queue::GEOCODE],
+            "a.lat IS NOT NULL AND a.lon IS NOT NULL",
+        ),
     ];
     for (kinds, condition) in missing {
         report.queued += c
@@ -107,7 +113,9 @@ mod tests {
     /// ATLAS_TEST_DATABASE_URL=postgres://… cargo test -p atlas-server heal -- --test-threads=1
     #[tokio::test]
     async fn missing_jobs_are_queued_and_orphans_dropped() {
-        let Ok(url) = std::env::var("ATLAS_TEST_DATABASE_URL") else { return };
+        let Ok(url) = std::env::var("ATLAS_TEST_DATABASE_URL") else {
+            return;
+        };
         // SAFETY: set before any thread of this test reads the environment
         unsafe { std::env::set_var("ATLAS_DATABASE_URL", &url) };
         let pool = atlas_core::db::pool(2).unwrap();
@@ -150,9 +158,15 @@ mod tests {
         .unwrap();
 
         let report = repair(&c).await.unwrap();
-        assert_eq!(report.dropped, 1, "the job of an asset that no longer exists");
+        assert_eq!(
+            report.dropped, 1,
+            "the job of an asset that no longer exists"
+        );
         let jobs: Vec<(String, String)> = c
-            .query("SELECT owner_id, kind FROM ingest_jobs WHERE status = 'pending' ORDER BY 1, 2", &[])
+            .query(
+                "SELECT owner_id, kind FROM ingest_jobs WHERE status = 'pending' ORDER BY 1, 2",
+                &[],
+            )
             .await
             .unwrap()
             .iter()

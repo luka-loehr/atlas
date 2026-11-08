@@ -41,14 +41,22 @@ fn pixels(tokens: u32) -> f64 {
 }
 
 pub fn image_size(width: u32, height: u32) -> (u32, u32) {
-    smart_size(width, height, pixels(IMAGE_MIN_TOKENS), pixels(IMAGE_MAX_TOKENS))
+    smart_size(
+        width,
+        height,
+        pixels(IMAGE_MIN_TOKENS),
+        pixels(IMAGE_MAX_TOKENS),
+    )
 }
 
 /// `smart_nframes`: how many frames to read from a clip of `total`
 /// frames at `fps`; even, and None when not even two can be had.
 pub fn frame_count(total: usize, fps: f64) -> Option<usize> {
     let wanted = total as f64 / fps * FPS;
-    let n = wanted.max(MIN_FRAMES as f64).min(MAX_FRAMES as f64).min(total as f64);
+    let n = wanted
+        .max(MIN_FRAMES as f64)
+        .min(MAX_FRAMES as f64)
+        .min(total as f64);
     let n = (n / 2.0).floor() as usize * 2;
     (n >= 2 && n <= total).then_some(n)
 }
@@ -56,22 +64,33 @@ pub fn frame_count(total: usize, fps: f64) -> Option<usize> {
 /// Which frames: `linspace(0, total - 1, count)`, rounded.
 pub fn frame_indices(total: usize, count: usize) -> Vec<usize> {
     let last = total.saturating_sub(1) as f64;
-    let step = if count > 1 { last / (count - 1) as f64 } else { 0.0 };
-    (0..count).map(|i| (i as f64 * step).round_ties_even() as usize).collect()
+    let step = if count > 1 {
+        last / (count - 1) as f64
+    } else {
+        0.0
+    };
+    (0..count)
+        .map(|i| (i as f64 * step).round_ties_even() as usize)
+        .collect()
 }
 
 /// The size every frame is brought to: at most 256 tokens, less when
 /// many frames would exceed the clip's total.
 pub fn frame_size(width: u32, height: u32, count: usize) -> (u32, u32) {
     let min = pixels(FRAME_MIN_TOKENS);
-    let max = pixels(FRAME_MAX_TOKENS).min(pixels(VIDEO_TOKENS) / count as f64 * 2.0).max((min * 1.05).floor());
+    let max = pixels(FRAME_MAX_TOKENS)
+        .min(pixels(VIDEO_TOKENS) / count as f64 * 2.0)
+        .max((min * 1.05).floor());
     smart_size(width, height, min, max)
 }
 
 /// The time of each merged pair of frames, in seconds: the mean of its
 /// two frames' times.
 pub fn pair_times(indices: &[usize], fps: f64) -> Vec<f64> {
-    indices.chunks(2).map(|pair| (pair[0] + pair[pair.len() - 1]) as f64 / 2.0 / fps).collect()
+    indices
+        .chunks(2)
+        .map(|pair| (pair[0] + pair[pair.len() - 1]) as f64 / 2.0 / fps)
+        .collect()
 }
 
 #[cfg(test)]
@@ -104,14 +123,25 @@ mod tests {
         // a clip of 3 frames gives 2, of 1 frame nothing
         assert_eq!(frame_count(3, 30.0), Some(2));
         assert_eq!(frame_count(1, 30.0), None);
-        assert_eq!(frame_indices(300, 10), vec![0, 33, 66, 100, 133, 166, 199, 233, 266, 299]);
-        assert_eq!(pair_times(&[0, 33, 66, 100], 30.0), vec![0.55, 2.7666666666666666]);
+        assert_eq!(
+            frame_indices(300, 10),
+            vec![0, 33, 66, 100, 133, 166, 199, 233, 266, 299]
+        );
+        assert_eq!(
+            pair_times(&[0, 33, 66, 100], 30.0),
+            vec![0.55, 2.7666666666666666]
+        );
     }
 
     #[test]
     fn frames_are_sized_as_the_reference_does() {
         // qwen_vl_utils fetch_video with WeMM's min/max/total pixels
-        let want = [((1920, 1080, 64), (672, 384)), ((1080, 1920, 10), (384, 672)), ((3840, 2160, 4), (672, 384)), ((640, 360, 64), (640, 352))];
+        let want = [
+            ((1920, 1080, 64), (672, 384)),
+            ((1080, 1920, 10), (384, 672)),
+            ((3840, 2160, 4), (672, 384)),
+            ((640, 360, 64), (640, 352)),
+        ];
         for ((w, h, n), size) in want {
             assert_eq!(frame_size(w, h, n), size, "{w}x{h}, {n} frames");
             let tokens = (size.0 / 32) * (size.1 / 32);

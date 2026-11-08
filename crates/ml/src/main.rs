@@ -62,7 +62,11 @@ async fn main() -> Result<()> {
         exit_now(if result.is_ok() { 0 } else { 1 });
     }
     let pool = atlas_core::db::pool(4)?;
-    let worker = Arc::new(Worker { embedder: Embedder::new(&cfg), pool, cfg });
+    let worker = Arc::new(Worker {
+        embedder: Embedder::new(&cfg),
+        pool,
+        cfg,
+    });
 
     if let Err(e) = runtime::init() {
         // the embeddings still run; the vision jobs fail visibly
@@ -80,10 +84,15 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&worker.cfg.bind)
         .await
         .with_context(|| format!("cannot bind {}", worker.cfg.bind))?;
-    tracing::info!("atlas-ml {} on {}", env!("CARGO_PKG_VERSION"), worker.cfg.bind);
+    tracing::info!(
+        "atlas-ml {} on {}",
+        env!("CARGO_PKG_VERSION"),
+        worker.cfg.bind
+    );
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
-            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
             tokio::select! {
                 _ = term.recv() => {}
                 _ = tokio::signal::ctrl_c() => {}
@@ -144,7 +153,10 @@ struct EmbedRequest {
     text: String,
 }
 
-async fn embed(State(worker): State<Arc<Worker>>, Json(request): Json<EmbedRequest>) -> Result<Json<Value>, (StatusCode, String)> {
+async fn embed(
+    State(worker): State<Arc<Worker>>,
+    Json(request): Json<EmbedRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     let text: String = request.text.trim().chars().take(400).collect();
     if text.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "text required".into()));

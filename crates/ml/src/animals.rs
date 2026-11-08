@@ -24,8 +24,8 @@ use fast_image_resize::FilterType;
 use image::RgbImage;
 use ort::value::Tensor;
 
-use crate::runtime::{self, Device};
 use crate::pixels::{self, IMAGENET_MEAN, IMAGENET_STD};
+use crate::runtime::{self, Device};
 
 const DETECT_SIZE: u32 = 704;
 const EMBED_SIZE: u32 = 224;
@@ -53,19 +53,36 @@ pub struct AnimalEngine {
 
 impl AnimalEngine {
     pub fn load(detector: &Path, identifier: &Path, device: Device) -> Result<Self> {
-        Ok(AnimalEngine { detector: runtime::session(detector, device)?, identifier: runtime::session(identifier, Device::Cpu)? })
+        Ok(AnimalEngine {
+            detector: runtime::session(detector, device)?,
+            identifier: runtime::session(identifier, Device::Cpu)?,
+        })
     }
 
     pub fn find(&mut self, image: &RgbImage) -> Result<Vec<Animal>> {
         let (w, h) = image.dimensions();
-        let input = normalized(&pixels::resize(image, DETECT_SIZE, DETECT_SIZE, FilterType::Bilinear)?);
-        let tensor = Tensor::from_array(([1usize, 3, DETECT_SIZE as usize, DETECT_SIZE as usize], input))?;
+        let input = normalized(&pixels::resize(
+            image,
+            DETECT_SIZE,
+            DETECT_SIZE,
+            FilterType::Bilinear,
+        )?);
+        let tensor = Tensor::from_array((
+            [1usize, 3, DETECT_SIZE as usize, DETECT_SIZE as usize],
+            input,
+        ))?;
         let options = self.detector.options()?;
-        let outputs = self.detector.session.run_with_options(ort::inputs![tensor], &options)?;
+        let outputs = self
+            .detector
+            .session
+            .run_with_options(ort::inputs![tensor], &options)?;
         let (_, boxes) = outputs[0].try_extract_tensor::<f32>()?;
         let (shape, logits) = outputs[1].try_extract_tensor::<f32>()?;
         let (queries, classes) = (shape[1] as usize, shape[2] as usize);
-        ensure!(boxes.len() == queries * 4 && classes > 19, "unexpected RF-DETR output");
+        ensure!(
+            boxes.len() == queries * 4 && classes > 19,
+            "unexpected RF-DETR output"
+        );
 
         let mut found: Vec<Animal> = Vec::new();
         for q in 0..queries {
@@ -91,24 +108,43 @@ impl AnimalEngine {
             if bbox[2] - bbox[0] < 8.0 || bbox[3] - bbox[1] < 8.0 {
                 continue;
             }
-            found.push(Animal { species, bbox, score: p, look: None });
+            found.push(Animal {
+                species,
+                bbox,
+                score: p,
+                look: None,
+            });
         }
         let mut kept = suppress(found);
         for animal in &mut kept {
             let [x0, y0, x1, y1] = animal.bbox.map(|v| v as u32);
             // the identifier knows dogs and cats; a horse or a bird is found,
             // but never told apart from another one
-            if (x1 - x0).min(y1 - y0) < MIN_IDENTIFY_PX || !matches!(animal.species, "dog" | "cat") {
+            if (x1 - x0).min(y1 - y0) < MIN_IDENTIFY_PX || !matches!(animal.species, "dog" | "cat")
+            {
                 continue;
             }
             let crop = image::imageops::crop_imm(image, x0, y0, x1 - x0, y1 - y0).to_image();
-            let input = normalized(&pixels::resize(&crop, EMBED_SIZE, EMBED_SIZE, FilterType::Bilinear)?);
-            let tensor = Tensor::from_array(([1usize, 3, EMBED_SIZE as usize, EMBED_SIZE as usize], input))?;
+            let input = normalized(&pixels::resize(
+                &crop,
+                EMBED_SIZE,
+                EMBED_SIZE,
+                FilterType::Bilinear,
+            )?);
+            let tensor =
+                Tensor::from_array(([1usize, 3, EMBED_SIZE as usize, EMBED_SIZE as usize], input))?;
             let options = self.identifier.options()?;
-            let outputs = self.identifier.session.run_with_options(ort::inputs![tensor], &options)?;
+            let outputs = self
+                .identifier
+                .session
+                .run_with_options(ort::inputs![tensor], &options)?;
             let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
             let mut look = values.to_vec();
-            ensure!(look.len() == 512, "unexpected pet embedding: {} values", look.len());
+            ensure!(
+                look.len() == 512,
+                "unexpected pet embedding: {} values",
+                look.len()
+            );
             normalize(&mut look);
             animal.look = Some(look);
         }
@@ -138,7 +174,10 @@ fn suppress(mut found: Vec<Animal>) -> Vec<Animal> {
     found.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut kept: Vec<Animal> = Vec::new();
     for candidate in found {
-        if !kept.iter().any(|k| iou(&k.bbox, &candidate.bbox) > NMS_THRESHOLD) {
+        if !kept
+            .iter()
+            .any(|k| iou(&k.bbox, &candidate.bbox) > NMS_THRESHOLD)
+        {
             kept.push(candidate);
         }
     }
@@ -159,8 +198,17 @@ mod tests {
 
     #[test]
     fn overlapping_answers_collapse_to_the_surer_one() {
-        let a = |x: f32, score: f32, species| Animal { species, bbox: [x, 0.0, x + 100.0, 100.0], score, look: None };
-        let kept = suppress(vec![a(0.0, 0.7, "cat"), a(5.0, 0.9, "dog"), a(300.0, 0.6, "dog")]);
+        let a = |x: f32, score: f32, species| Animal {
+            species,
+            bbox: [x, 0.0, x + 100.0, 100.0],
+            score,
+            look: None,
+        };
+        let kept = suppress(vec![
+            a(0.0, 0.7, "cat"),
+            a(5.0, 0.9, "dog"),
+            a(300.0, 0.6, "dog"),
+        ]);
         assert_eq!(kept.len(), 2);
         assert_eq!(kept[0].species, "dog");
         assert_eq!(kept[0].score, 0.9);

@@ -51,10 +51,17 @@ struct Body {
 
 impl Body {
     fn new(raw: Vec<u8>) -> Self {
-        let mut encoder = flate2::write::GzEncoder::new(Vec::with_capacity(raw.len() / 3), flate2::Compression::new(6));
+        let mut encoder = flate2::write::GzEncoder::new(
+            Vec::with_capacity(raw.len() / 3),
+            flate2::Compression::new(6),
+        );
         let _ = encoder.write_all(&raw);
         let gzip = encoder.finish().unwrap_or_default();
-        Body { etag: util::etag(&raw), raw: raw.into(), gzip: gzip.into() }
+        Body {
+            etag: util::etag(&raw),
+            raw: raw.into(),
+            gzip: gzip.into(),
+        }
     }
 
     fn respond(&self, headers: &HeaderMap) -> Response {
@@ -73,7 +80,10 @@ impl Cache {
 
     fn current(&self) -> Option<Arc<Timeline>> {
         let built = self.built.read().unwrap();
-        built.as_ref().filter(|t| t.generation == self.generation.load(Ordering::SeqCst)).cloned()
+        built
+            .as_ref()
+            .filter(|t| t.generation == self.generation.load(Ordering::SeqCst))
+            .cloned()
     }
 
     pub async fn get(&self, app: &App) -> Result<Arc<Timeline>> {
@@ -88,7 +98,9 @@ impl Cache {
         let generation = self.generation.load(Ordering::SeqCst);
         let started = std::time::Instant::now();
         let c = app.pool.get().await?;
-        let rows = c.query(&format!("SELECT {COLS} FROM assets WHERE {VISIBLE}"), &[]).await?;
+        let rows = c
+            .query(&format!("SELECT {COLS} FROM assets WHERE {VISIBLE}"), &[])
+            .await?;
         drop(c);
         let tz = app.cfg.tz;
         let timeline = tokio::task::spawn_blocking(move || {
@@ -133,7 +145,10 @@ fn build(mut items: Vec<Item>, generation: u64) -> Result<Timeline> {
     items.sort_unstable_by(|a, b| b.local.cmp(&a.local).then_with(|| a.id.cmp(&b.id)));
     let total = items.len();
 
-    let mut index = Index { total, buckets: Vec::new() };
+    let mut index = Index {
+        total,
+        buckets: Vec::new(),
+    };
     let mut buckets = HashMap::new();
     let mut current: Option<Open> = None;
 
@@ -141,7 +156,12 @@ fn build(mut items: Vec<Item>, generation: u64) -> Result<Timeline> {
         if let Some((key, assets, days)) = entry {
             let count = assets.id.len();
             let body = Body::new(serde_json::to_vec(&Bucket { key: &key, assets })?);
-            index.buckets.push(IndexEntry { key: key.clone(), count, etag: body.etag.clone(), days });
+            index.buckets.push(IndexEntry {
+                key: key.clone(),
+                count,
+                etag: body.etag.clone(),
+                days,
+            });
             buckets.insert(key, body);
         }
         Ok(())
@@ -167,16 +187,28 @@ fn build(mut items: Vec<Item>, generation: u64) -> Result<Timeline> {
     }
     flush(current.take())?;
 
-    Ok(Timeline { generation, index: Body::new(serde_json::to_vec(&index)?), buckets })
+    Ok(Timeline {
+        generation,
+        index: Body::new(serde_json::to_vec(&index)?),
+        buckets,
+    })
 }
 
 pub async fn index(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     Ok(app.timeline.get(&app).await?.index.respond(&headers))
 }
 
-pub async fn bucket(State(app): State<AppState>, Path(key): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn bucket(
+    State(app): State<AppState>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let timeline = app.timeline.get(&app).await?;
-    Ok(timeline.buckets.get(&key).ok_or(ApiError::NotFound)?.respond(&headers))
+    Ok(timeline
+        .buckets
+        .get(&key)
+        .ok_or(ApiError::NotFound)?
+        .respond(&headers))
 }
 
 #[cfg(test)]
@@ -188,7 +220,8 @@ mod tests {
         Item {
             id: id.into(),
             video: false,
-            local: local.map(|(y, m, d)| Utc.with_ymd_and_hms(y, m, d, 12, 0, 0).unwrap().timestamp()),
+            local: local
+                .map(|(y, m, d)| Utc.with_ymd_and_hms(y, m, d, 12, 0, 0).unwrap().timestamp()),
             width: 4,
             height: 3,
             duration: 0.0,
@@ -212,12 +245,24 @@ mod tests {
         .unwrap();
         let index: serde_json::Value = serde_json::from_slice(&timeline.index.raw).unwrap();
         assert_eq!(index["total"], 5);
-        let keys: Vec<&str> = index["buckets"].as_array().unwrap().iter().map(|b| b["key"].as_str().unwrap()).collect();
+        let keys: Vec<&str> = index["buckets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["key"].as_str().unwrap())
+            .collect();
         assert_eq!(keys, ["2024-08", "2024-07", UNDATED]);
-        assert_eq!(index["buckets"][1]["days"], serde_json::json!([[31, 2], [30, 1]]));
+        assert_eq!(
+            index["buckets"][1]["days"],
+            serde_json::json!([[31, 2], [30, 1]])
+        );
 
-        let july: serde_json::Value = serde_json::from_slice(&timeline.buckets["2024-07"].raw).unwrap();
+        let july: serde_json::Value =
+            serde_json::from_slice(&timeline.buckets["2024-07"].raw).unwrap();
         assert_eq!(july["id"], serde_json::json!(["c", "d", "a"]));
-        assert_eq!(index["buckets"][1]["etag"], timeline.buckets["2024-07"].etag);
+        assert_eq!(
+            index["buckets"][1]["etag"],
+            timeline.buckets["2024-07"].etag
+        );
     }
 }

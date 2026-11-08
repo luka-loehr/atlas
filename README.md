@@ -54,6 +54,12 @@ atlas connect     # the link that connects the app
 
 ---
 
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build each part, how the code is written and what a pull request needs. Please report security issues privately, as described in [SECURITY.md](SECURITY.md).
+
+---
+
 ## License
 
 MIT License - [View License](LICENSE)  

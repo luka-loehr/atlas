@@ -55,15 +55,30 @@ mod tests {
 
     #[test]
     fn accepts_the_token_in_header_or_query() {
-        assert!(presents_token(&request("/v1/stats", Some("sesame")), "sesame"));
-        assert!(presents_token(&request("/v1/a?x=1&token=sesame", None), "sesame"));
+        assert!(presents_token(
+            &request("/v1/stats", Some("sesame")),
+            "sesame"
+        ));
+        assert!(presents_token(
+            &request("/v1/a?x=1&token=sesame", None),
+            "sesame"
+        ));
     }
 
     #[test]
     fn rejects_everything_else() {
         assert!(!presents_token(&request("/v1/stats", None), "sesame"));
-        assert!(!presents_token(&request("/v1/stats", Some("sesam")), "sesame"));
-        assert!(!presents_token(&request("/v1/stats?token=", None), "sesame"));
-        assert!(!presents_token(&request("/v1/stats?tokens=sesame", None), "sesame"));
+        assert!(!presents_token(
+            &request("/v1/stats", Some("sesam")),
+            "sesame"
+        ));
+        assert!(!presents_token(
+            &request("/v1/stats?token=", None),
+            "sesame"
+        ));
+        assert!(!presents_token(
+            &request("/v1/stats?tokens=sesame", None),
+            "sesame"
+        ));
     }
 }

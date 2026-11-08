@@ -47,12 +47,19 @@ fn inline_safe(mime: &str) -> bool {
     (mime.starts_with("image/") && mime != "image/svg+xml")
         || mime.starts_with("video/")
         || mime.starts_with("audio/")
-        || matches!(mime, "application/pdf" | "text/plain; charset=utf-8" | "text/csv" | "application/json")
+        || matches!(
+            mime,
+            "application/pdf" | "text/plain; charset=utf-8" | "text/csv" | "application/json"
+        )
 }
 
 /// The name in the URL only decides the content type and the download name;
 /// the content is addressed by hash alone.
-pub(super) async fn blob(State(app): State<AppState>, Path((hash, name)): Path<(String, String)>, headers: HeaderMap) -> Response {
+pub(super) async fn blob(
+    State(app): State<AppState>,
+    Path((hash, name)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
     if !util::is_content_id(&hash) {
         return ApiError::NotFound.into_response();
     }
@@ -61,10 +68,24 @@ pub(super) async fn blob(State(app): State<AppState>, Path((hash, name)): Path<(
         return resp;
     }
     let mime = mime_for(&name);
-    resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
-    let disposition = if inline_safe(mime) { "inline" } else { "attachment" };
+    resp.headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
+    let disposition = if inline_safe(mime) {
+        "inline"
+    } else {
+        "attachment"
+    };
     // RFC 5987 filename* keeps umlauts; the plain one is the ASCII fallback
-    let ascii: String = name.chars().map(|ch| if ch.is_ascii() && ch != '"' && ch != '\\' { ch } else { '_' }).collect();
+    let ascii: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii() && ch != '"' && ch != '\\' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
     let encoded: String = name
         .bytes()
         .map(|b| match b {
@@ -72,7 +93,9 @@ pub(super) async fn blob(State(app): State<AppState>, Path((hash, name)): Path<(
             _ => format!("%{b:02X}"),
         })
         .collect();
-    if let Ok(v) = HeaderValue::from_str(&format!("{disposition}; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")) {
+    if let Ok(v) = HeaderValue::from_str(&format!(
+        "{disposition}; filename=\"{ascii}\"; filename*=UTF-8''{encoded}"
+    )) {
         resp.headers_mut().insert(header::CONTENT_DISPOSITION, v);
     }
     resp
@@ -80,9 +103,16 @@ pub(super) async fn blob(State(app): State<AppState>, Path((hash, name)): Path<(
 
 /// A 512px WebP of an image or of a PDF's first page, made on first request
 /// and kept next to the blobs. Keyed by content, so it is immutable.
-pub(super) async fn thumb(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> ApiResult<Response> {
+pub(super) async fn thumb(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let c = app.pool.get().await?;
-    let row = c.query_opt("SELECT hash, name FROM drive_files WHERE id = $1", &[&id]).await?.ok_or(ApiError::NotFound)?;
+    let row = c
+        .query_opt("SELECT hash, name FROM drive_files WHERE id = $1", &[&id])
+        .await?
+        .ok_or(ApiError::NotFound)?;
     drop(c);
     let (hash, name): (String, String) = (row.get(0), row.get(1));
     if !util::is_content_id(&hash) {
@@ -102,7 +132,10 @@ pub(super) async fn thumb(State(app): State<AppState>, Path(id): Path<i64>, head
                 anyhow::bail!("no preview for .{ext}");
             };
             let small = imaging::fit(&decoded.rgb, imaging::GRID)?;
-            imaging::write_atomic(&out, &imaging::encode_webp(&small, 80.0, decoded.icc.as_deref()))
+            imaging::write_atomic(
+                &out,
+                &imaging::encode_webp(&small, 80.0, decoded.icc.as_deref()),
+            )
         })
         .await?
         .map_err(|_| ApiError::NotFound)?;
@@ -113,11 +146,23 @@ pub(super) async fn thumb(State(app): State<AppState>, Path(id): Path<i64>, head
 fn first_pdf_page(pdf: &std::path::Path) -> anyhow::Result<Vec<u8>> {
     let out = atlas_core::process::output(
         std::process::Command::new("pdftoppm")
-            .args(["-png", "-singlefile", "-f", "1", "-l", "1", "-scale-to", "1024"])
+            .args([
+                "-png",
+                "-singlefile",
+                "-f",
+                "1",
+                "-l",
+                "1",
+                "-scale-to",
+                "1024",
+            ])
             .arg(pdf), // no output root: the page goes to stdout
         std::time::Duration::from_secs(60),
     )?;
-    anyhow::ensure!(out.status.success() && !out.stdout.is_empty(), "pdftoppm failed");
+    anyhow::ensure!(
+        out.status.success() && !out.stdout.is_empty(),
+        "pdftoppm failed"
+    );
     Ok(out.stdout)
 }
 
@@ -128,14 +173,21 @@ pub(super) async fn collect_blobs(app: &App, hashes: &[String]) -> ApiResult<()>
     }
     let c = app.pool.get().await?;
     let referenced: Vec<String> = c
-        .query("SELECT DISTINCT hash FROM drive_files WHERE hash = ANY($1)", &[&hashes])
+        .query(
+            "SELECT DISTINCT hash FROM drive_files WHERE hash = ANY($1)",
+            &[&hashes],
+        )
         .await?
         .iter()
         .map(|r| r.get(0))
         .collect();
-    for hash in hashes.iter().filter(|h| !referenced.contains(h) && util::is_content_id(h)) {
+    for hash in hashes
+        .iter()
+        .filter(|h| !referenced.contains(h) && util::is_content_id(h))
+    {
         let _ = tokio::fs::remove_file(blob_path(app, hash)).await;
-        let _ = tokio::fs::remove_file(app.cfg.drive_thumbs_dir().join(format!("{hash}.webp"))).await;
+        let _ =
+            tokio::fs::remove_file(app.cfg.drive_thumbs_dir().join(format!("{hash}.webp"))).await;
     }
     Ok(())
 }

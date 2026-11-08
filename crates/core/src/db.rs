@@ -18,7 +18,10 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (7, include_str!("../../../db/migrations/0007_baseline.sql")),
     (8, include_str!("../../../db/migrations/0008_unified.sql")),
     (9, include_str!("../../../db/migrations/0009_shares.sql")),
-    (10, include_str!("../../../db/migrations/0010_share_live.sql")),
+    (
+        10,
+        include_str!("../../../db/migrations/0010_share_live.sql"),
+    ),
     (11, include_str!("../../../db/migrations/0011_perf.sql")),
     (12, include_str!("../../../db/migrations/0012_wemm.sql")),
     (13, include_str!("../../../db/migrations/0013_vision.sql")),
@@ -35,12 +38,15 @@ const MIGRATIONS: &[(i32, &str)] = &[
 ///                        (default ~/atlas/db/.env, the compose secrets file)
 fn config() -> Result<tokio_postgres::Config> {
     if let Some(url) = env("ATLAS_DATABASE_URL") {
-        return url.parse().context("ATLAS_DATABASE_URL is not a valid postgres URL");
+        return url
+            .parse()
+            .context("ATLAS_DATABASE_URL is not a valid postgres URL");
     }
     let password = match env("POSTGRES_PASSWORD") {
         Some(p) => p,
         None => {
-            let file = env("ATLAS_DB_ENV_FILE").unwrap_or_else(|| format!("{}/atlas/db/.env", home()));
+            let file =
+                env("ATLAS_DB_ENV_FILE").unwrap_or_else(|| format!("{}/atlas/db/.env", home()));
             std::fs::read_to_string(&file)
                 .ok()
                 .and_then(|s| {
@@ -66,7 +72,9 @@ pub fn pool(max_size: usize) -> Result<Pool> {
     let manager = Manager::from_config(
         config()?,
         NoTls,
-        ManagerConfig { recycling_method: RecyclingMethod::Fast },
+        ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        },
     );
     Ok(Pool::builder(manager).max_size(max_size).build()?)
 }
@@ -88,20 +96,30 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
     c.batch_execute("SELECT pg_advisory_lock(748219)").await?;
     let result = async {
         let current: i32 = c
-            .query_one("SELECT coalesce(max(version), 0) FROM schema_migrations", &[])
+            .query_one(
+                "SELECT coalesce(max(version), 0) FROM schema_migrations",
+                &[],
+            )
             .await?
             .get(0);
         for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v > current) {
             let tx = c.transaction().await?;
-            tx.batch_execute(sql).await.with_context(|| format!("migration {version}"))?;
-            tx.execute("INSERT INTO schema_migrations (version) VALUES ($1)", &[version]).await?;
+            tx.batch_execute(sql)
+                .await
+                .with_context(|| format!("migration {version}"))?;
+            tx.execute(
+                "INSERT INTO schema_migrations (version) VALUES ($1)",
+                &[version],
+            )
+            .await?;
             tx.commit().await?;
             tracing::info!("schema migrated to version {version}");
         }
         anyhow::Ok(())
     }
     .await;
-    c.batch_execute("SELECT pg_advisory_unlock(748219); RESET client_min_messages").await?;
+    c.batch_execute("SELECT pg_advisory_unlock(748219); RESET client_min_messages")
+        .await?;
     result
 }
 

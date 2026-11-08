@@ -21,26 +21,41 @@ impl Cf {
         let token = out
             .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
             .and_then(|v| v["token"].as_str().map(str::to_string))
-            .unwrap_or_else(|| fail("could not read wrangler's Cloudflare login (npx wrangler login)"));
+            .unwrap_or_else(|| {
+                fail("could not read wrangler's Cloudflare login (npx wrangler login)")
+            });
         Self { token }
     }
 
     /// One API call; the `result` of a successful answer.
     pub(super) fn call(&self, method: &str, path: &str) -> Option<serde_json::Value> {
-        let out = curl_with_token(method, &format!("https://api.cloudflare.com/client/v4{path}"), &self.token);
+        let out = curl_with_token(
+            method,
+            &format!("https://api.cloudflare.com/client/v4{path}"),
+            &self.token,
+        );
         let v: serde_json::Value = serde_json::from_str(&out).ok()?;
-        v["success"].as_bool().filter(|ok| *ok).map(|_| v["result"].clone())
+        v["success"]
+            .as_bool()
+            .filter(|ok| *ok)
+            .map(|_| v["result"].clone())
     }
 
     fn list(&self, path: &str) -> Vec<serde_json::Value> {
-        self.call("GET", path).and_then(|r| r.as_array().cloned()).unwrap_or_default()
+        self.call("GET", path)
+            .and_then(|r| r.as_array().cloned())
+            .unwrap_or_default()
     }
 
     /// The account's active domains.
     pub(super) fn zones(&self) -> Vec<Zone> {
         self.list("/zones?status=active&per_page=50")
             .iter()
-            .filter_map(|z| Some(Zone { name: z["name"].as_str()?.to_string() }))
+            .filter_map(|z| {
+                Some(Zone {
+                    name: z["name"].as_str()?.to_string(),
+                })
+            })
             .collect()
     }
 
@@ -48,8 +63,12 @@ impl Cf {
     pub(super) fn worker_domains(&self) -> Vec<(String, String, String)> {
         let mut out = Vec::new();
         for account in self.list("/accounts?per_page=50") {
-            let Some(account) = account["id"].as_str() else { continue };
-            for d in self.list(&format!("/accounts/{account}/workers/domains?service={SUBDOMAIN}")) {
+            let Some(account) = account["id"].as_str() else {
+                continue;
+            };
+            for d in self.list(&format!(
+                "/accounts/{account}/workers/domains?service={SUBDOMAIN}"
+            )) {
                 if let (Some(id), Some(host)) = (d["id"].as_str(), d["hostname"].as_str()) {
                     out.push((account.to_string(), id.to_string(), host.to_string()));
                 }
@@ -71,6 +90,12 @@ pub(super) fn curl_with_token(method: &str, url: &str, token: &str) -> String {
     else {
         return String::new();
     };
-    let _ = writeln!(child.stdin.take().expect("stdin"), "Authorization: Bearer {token}");
-    child.wait_with_output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
+    let _ = writeln!(
+        child.stdin.take().expect("stdin"),
+        "Authorization: Bearer {token}"
+    );
+    child
+        .wait_with_output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }

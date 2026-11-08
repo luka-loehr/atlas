@@ -14,7 +14,7 @@ the nightly Postgres dumps in `/srv/backups`, onto a second 4 TB disk on USB
 | `atlas-bulk-backup-scrub.{service,timer}` | monthly `btrfs scrub`: reads every block and fails (mail) on a checksum error |
 | `install.sh` | crypttab + fstab entries, unlock + mount, source markers, shared lock, script copied root-owned to `/usr/local/sbin/atlas-bulk-backup`, units rendered and the timers enabled |
 
-Failures are mailed to Luka through [`../alerts`](../alerts/README.md), which
+Failures are mailed to the owner through [`../alerts`](../alerts/README.md), which
 also checks hourly that the backup is fresh, not held and the disks are healthy.
 
 ## Layout on the disk
@@ -74,7 +74,7 @@ The run refuses (unit fails, mail) when
   share it, so no snapshot catches a half-updated clone; pg-backup's dumps are
   written as `*.part`, which is skipped, and renamed atomically).
 
-A failed run mails Luka. A missing USB disk fails the unit as a dependency,
+A failed run mails the owner. A missing USB disk fails the unit as a dependency,
 which `OnFailure=` does not see; the hourly check mails it instead.
 
 **Mass-change brake.** If one run deletes or overwrites more than 1000

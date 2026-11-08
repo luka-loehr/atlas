@@ -24,14 +24,20 @@ pub(super) async fn lexicon(c: &deadpool_postgres::Object) -> ApiResult<Lexicon>
             me: r.get(4),
         })
         .collect();
-    let rows = c.query("SELECT id, name, admin1, cc FROM places", &[]).await?;
+    let rows = c
+        .query("SELECT id, name, admin1, cc FROM places", &[])
+        .await?;
     let mut by_name: HashMap<String, (String, Vec<i64>)> = HashMap::new();
     let mut add = |name: &str, id: i64| {
         let key = fold(name);
         if key.trim().is_empty() {
             return;
         }
-        by_name.entry(key).or_insert_with(|| (name.to_string(), Vec::new())).1.push(id);
+        by_name
+            .entry(key)
+            .or_insert_with(|| (name.to_string(), Vec::new()))
+            .1
+            .push(id);
     };
     for r in &rows {
         let id: i64 = r.get(0);
@@ -61,16 +67,25 @@ pub(super) async fn lexicon(c: &deadpool_postgres::Object) -> ApiResult<Lexicon>
         .query("SELECT id, title FROM albums", &[])
         .await?
         .iter()
-        .map(|r| Album { id: r.get(0), title: r.get(1) })
+        .map(|r| Album {
+            id: r.get(0),
+            title: r.get(1),
+        })
         .collect();
-    Ok(Lexicon { people, places, albums })
+    Ok(Lexicon {
+        people,
+        places,
+        albums,
+    })
 }
 
 fn capitalized(name: &str) -> String {
     name.split(' ')
         .map(|w| {
             let mut c = w.chars();
-            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            c.next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -80,54 +95,77 @@ fn capitalized(name: &str) -> String {
 /// "Kroatien" and "Croatia" both find places stored with cc = 'HR'.
 pub(super) fn country_code(term: &str) -> Option<&'static str> {
     let needle = term.trim().to_lowercase();
-    COUNTRIES.iter().find(|(_, names)| names.contains(&needle.as_str())).map(|(code, _)| *code)
+    COUNTRIES
+        .iter()
+        .find(|(_, names)| names.contains(&needle.as_str()))
+        .map(|(code, _)| *code)
 }
 
 /// Countries by ISO code, named in German and English.
 const COUNTRIES: &[(&str, &[&str])] = &[
-        ("AT", &["österreich", "austria"]),
-        ("AU", &["australien", "australia"]),
-        ("BE", &["belgien", "belgium"]),
-        ("BG", &["bulgarien", "bulgaria"]),
-        ("BR", &["brasilien", "brazil"]),
-        ("CA", &["kanada", "canada"]),
-        ("CH", &["schweiz", "switzerland"]),
-        ("CN", &["china"]),
-        ("CY", &["zypern", "cyprus"]),
-        ("CZ", &["tschechien", "czechia", "czech republic"]),
-        ("DE", &["deutschland", "germany"]),
-        ("DK", &["dänemark", "denmark"]),
-        ("EG", &["ägypten", "egypt"]),
-        ("ES", &["spanien", "spain"]),
-        ("FI", &["finnland", "finland"]),
-        ("FR", &["frankreich", "france"]),
-        ("GB", &["großbritannien", "england", "vereinigtes königreich", "united kingdom", "uk", "schottland", "scotland"]),
-        ("GR", &["griechenland", "greece"]),
-        ("HR", &["kroatien", "croatia"]),
-        ("HU", &["ungarn", "hungary"]),
-        ("IE", &["irland", "ireland"]),
-        ("IN", &["indien", "india"]),
-        ("IS", &["island", "iceland"]),
-        ("IT", &["italien", "italy"]),
-        ("JP", &["japan"]),
-        ("LI", &["liechtenstein"]),
-        ("LU", &["luxemburg", "luxembourg"]),
-        ("MA", &["marokko", "morocco"]),
-        ("MT", &["malta"]),
-        ("MX", &["mexiko", "mexico"]),
-        ("NL", &["niederlande", "holland", "netherlands"]),
-        ("NO", &["norwegen", "norway"]),
-        ("PL", &["polen", "poland"]),
-        ("PT", &["portugal"]),
-        ("RO", &["rumänien", "romania"]),
-        ("RS", &["serbien", "serbia"]),
-        ("SE", &["schweden", "sweden"]),
-        ("SI", &["slowenien", "slovenia"]),
-        ("SK", &["slowakei", "slovakia"]),
-        ("TH", &["thailand"]),
-        ("TR", &["türkei", "turkey", "türkiye"]),
-        ("US", &["usa", "vereinigte staaten", "united states", "amerika", "america"]),
-    ];
+    ("AT", &["österreich", "austria"]),
+    ("AU", &["australien", "australia"]),
+    ("BE", &["belgien", "belgium"]),
+    ("BG", &["bulgarien", "bulgaria"]),
+    ("BR", &["brasilien", "brazil"]),
+    ("CA", &["kanada", "canada"]),
+    ("CH", &["schweiz", "switzerland"]),
+    ("CN", &["china"]),
+    ("CY", &["zypern", "cyprus"]),
+    ("CZ", &["tschechien", "czechia", "czech republic"]),
+    ("DE", &["deutschland", "germany"]),
+    ("DK", &["dänemark", "denmark"]),
+    ("EG", &["ägypten", "egypt"]),
+    ("ES", &["spanien", "spain"]),
+    ("FI", &["finnland", "finland"]),
+    ("FR", &["frankreich", "france"]),
+    (
+        "GB",
+        &[
+            "großbritannien",
+            "england",
+            "vereinigtes königreich",
+            "united kingdom",
+            "uk",
+            "schottland",
+            "scotland",
+        ],
+    ),
+    ("GR", &["griechenland", "greece"]),
+    ("HR", &["kroatien", "croatia"]),
+    ("HU", &["ungarn", "hungary"]),
+    ("IE", &["irland", "ireland"]),
+    ("IN", &["indien", "india"]),
+    ("IS", &["island", "iceland"]),
+    ("IT", &["italien", "italy"]),
+    ("JP", &["japan"]),
+    ("LI", &["liechtenstein"]),
+    ("LU", &["luxemburg", "luxembourg"]),
+    ("MA", &["marokko", "morocco"]),
+    ("MT", &["malta"]),
+    ("MX", &["mexiko", "mexico"]),
+    ("NL", &["niederlande", "holland", "netherlands"]),
+    ("NO", &["norwegen", "norway"]),
+    ("PL", &["polen", "poland"]),
+    ("PT", &["portugal"]),
+    ("RO", &["rumänien", "romania"]),
+    ("RS", &["serbien", "serbia"]),
+    ("SE", &["schweden", "sweden"]),
+    ("SI", &["slowenien", "slovenia"]),
+    ("SK", &["slowakei", "slovakia"]),
+    ("TH", &["thailand"]),
+    ("TR", &["türkei", "turkey", "türkiye"]),
+    (
+        "US",
+        &[
+            "usa",
+            "vereinigte staaten",
+            "united states",
+            "amerika",
+            "america",
+        ],
+    ),
+];
 
 #[cfg(test)]
 mod tests {

@@ -55,10 +55,17 @@ pub async fn tidy(app: &App) -> ApiResult<(u64, usize)> {
                 &[&person],
             )
             .await?;
-        if let Some(face) = candidates.iter().map(|r| r.get::<_, i64>(0)).find(|&id| has_crop(id))
+        if let Some(face) = candidates
+            .iter()
+            .map(|r| r.get::<_, i64>(0))
+            .find(|&id| has_crop(id))
             && Some(face) != cover
         {
-            c.execute("UPDATE persons SET cover_face_id = $2 WHERE id = $1", &[&person, &face]).await?;
+            c.execute(
+                "UPDATE persons SET cover_face_id = $2 WHERE id = $1",
+                &[&person, &face],
+            )
+            .await?;
             set += 1;
         }
     }

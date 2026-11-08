@@ -41,7 +41,10 @@ struct Meta {
 pub async fn run(app: &AppState, id: &str) -> Result<()> {
     let c = app.pool.get().await?;
     let row = c
-        .query_opt("SELECT orig_path, type, orig_name, taken_at FROM assets WHERE id = $1", &[&id])
+        .query_opt(
+            "SELECT orig_path, type, orig_name, taken_at FROM assets WHERE id = $1",
+            &[&id],
+        )
         .await?
         .context("asset is gone")?;
     let original: String = row.get(0);
@@ -54,7 +57,14 @@ pub async fn run(app: &AppState, id: &str) -> Result<()> {
         .await
         .with_context(|| format!("original missing: {original}"))?;
     let tz = app.cfg.tz;
-    let mut meta = tokio::task::spawn_blocking(move || if is_video { video_meta(&path) } else { exif::photo_meta(&path) }).await?;
+    let mut meta = tokio::task::spawn_blocking(move || {
+        if is_video {
+            video_meta(&path)
+        } else {
+            exif::photo_meta(&path)
+        }
+    })
+    .await?;
     if let Some(wall_clock) = meta.wall_clock {
         match known {
             // The instant is already known (a Takeout sidecar, the uploading
@@ -100,7 +110,12 @@ pub async fn run(app: &AppState, id: &str) -> Result<()> {
     )
     .await?;
 
-    let located = c.query_one("SELECT lat IS NOT NULL AND lon IS NOT NULL FROM assets WHERE id = $1", &[&id]).await?;
+    let located = c
+        .query_one(
+            "SELECT lat IS NOT NULL AND lon IS NOT NULL FROM assets WHERE id = $1",
+            &[&id],
+        )
+        .await?;
     if located.get::<_, bool>(0) {
         queue::enqueue(&c, queue::GEOCODE, "asset", id, queue::PRIORITY_DEFAULT).await?;
     }
@@ -111,7 +126,9 @@ pub async fn run(app: &AppState, id: &str) -> Result<()> {
 }
 
 fn video_meta(path: &Path) -> Meta {
-    let Ok(probe) = video::probe(path) else { return Meta::default() };
+    let Ok(probe) = video::probe(path) else {
+        return Meta::default();
+    };
     Meta {
         taken: probe.created,
         tz_offset_s: probe.tz_offset_s,

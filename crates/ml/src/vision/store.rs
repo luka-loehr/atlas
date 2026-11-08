@@ -8,11 +8,11 @@ use anyhow::Result;
 use image::RgbImage;
 use pgvector::Vector;
 
+use super::MODEL;
 use super::assign::{MIN_CLARITY_ASSIGN, assign_animal, assign_face, founder, refresh_people};
 use super::engines::Found;
 use super::frames::Frame;
 use super::tracks::{tracks, worth};
-use super::MODEL;
 use crate::animals::iou;
 use crate::{Worker, pixels};
 
@@ -28,7 +28,14 @@ struct Previous {
     vetoed: Vec<i64>,
 }
 
-pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec<Found>, lines: &[String], frames: &[Frame]) -> Result<()> {
+pub(super) async fn store(
+    worker: &Worker,
+    id: &str,
+    video: bool,
+    mut found: Vec<Found>,
+    lines: &[String],
+    frames: &[Frame],
+) -> Result<()> {
     let mut c = worker.pool.get().await?;
     let tx = c.transaction().await?;
     let previous: Vec<Previous> = tx
@@ -56,7 +63,9 @@ pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec
     // a face found where one was before is that face's person: a name never
     // depends on what the recognizer thinks
     let mut inherited: HashSet<i64> = HashSet::new();
-    let mut order: Vec<usize> = (0..found.len()).filter(|&i| frames[found[i].frame].poster).collect();
+    let mut order: Vec<usize> = (0..found.len())
+        .filter(|&i| frames[found[i].frame].poster)
+        .collect();
     order.sort_by(|&a, &b| worth(&found[b]).total_cmp(&worth(&found[a])));
     for i in order {
         let best = previous
@@ -73,7 +82,10 @@ pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec
     }
     // and whom it was taken away from: that stays so
     for f in found.iter_mut().filter(|f| frames[f.frame].poster) {
-        for p in previous.iter().filter(|p| p.kind == f.kind && iou(&p.bbox, &f.bbox) >= SAME_PLACE) {
+        for p in previous
+            .iter()
+            .filter(|p| p.kind == f.kind && iou(&p.bbox, &f.bbox) >= SAME_PLACE)
+        {
             for &v in &p.vetoed {
                 if !f.vetoed.contains(&v) {
                     f.vetoed.push(v);
@@ -103,7 +115,11 @@ pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec
 
     // what goes: faces found again (replaced) and faces nobody named; a
     // named face the detector missed this time stays
-    let dropped: Vec<i64> = previous.iter().filter(|p| inherited.contains(&p.id) || !p.named).map(|p| p.id).collect();
+    let dropped: Vec<i64> = previous
+        .iter()
+        .filter(|p| inherited.contains(&p.id) || !p.named)
+        .map(|p| p.id)
+        .collect();
 
     let mut crops = Vec::new();
     let mut touched: HashSet<i64> = previous.iter().filter_map(|p| p.person).collect();
@@ -122,19 +138,31 @@ pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec
             .get(0);
         if let Some(person) = f.person {
             touched.insert(person);
-            tx.execute("UPDATE persons SET cover_face_id = $2 WHERE id = $1 AND cover_face_id IS NULL", &[&person, &face_id])
-                .await?;
+            tx.execute(
+                "UPDATE persons SET cover_face_id = $2 WHERE id = $1 AND cover_face_id IS NULL",
+                &[&person, &face_id],
+            )
+            .await?;
         }
         // a cover the owner chose moves to the face that replaces it
         if let Some(old) = f.replaces {
-            tx.execute("UPDATE persons SET cover_face_id = $2 WHERE cover_face_id = $1", &[&old, &face_id]).await?;
+            tx.execute(
+                "UPDATE persons SET cover_face_id = $2 WHERE cover_face_id = $1",
+                &[&old, &face_id],
+            )
+            .await?;
         }
         crops.push((face_id, f.frame, f.bbox, f.kind == "person"));
     }
-    tx.execute("DELETE FROM faces WHERE id = ANY($1)", &[&dropped]).await?;
+    tx.execute("DELETE FROM faces WHERE id = ANY($1)", &[&dropped])
+        .await?;
 
     // the graph: who is in this asset
-    tx.execute("DELETE FROM edges WHERE src_type = 'asset' AND src_id = $1 AND rel = 'depicts'", &[&id]).await?;
+    tx.execute(
+        "DELETE FROM edges WHERE src_type = 'asset' AND src_id = $1 AND rel = 'depicts'",
+        &[&id],
+    )
+    .await?;
     tx.execute(
         "INSERT INTO edges (src_type, src_id, rel, dst_type, dst_id, confidence)
          SELECT DISTINCT 'asset', $1, 'depicts', 'person', person_id::text, 1.0
@@ -148,7 +176,8 @@ pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec
 
     // what it says
     if lines.is_empty() {
-        tx.execute("DELETE FROM asset_text WHERE asset_id = $1", &[&id]).await?;
+        tx.execute("DELETE FROM asset_text WHERE asset_id = $1", &[&id])
+            .await?;
     } else {
         tx.execute(
             "INSERT INTO asset_text (asset_id, text, updated_at) VALUES ($1, $2, now())
@@ -169,7 +198,12 @@ pub(super) async fn store(worker: &Worker, id: &str, video: bool, mut found: Vec
             let image = &frames[frame].image;
             let (w, h) = (image.width() as f32, image.height() as f32);
             let px = [bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h];
-            if let Err(e) = save_crop(image, px, if face { 1.5 } else { 1.15 }, &faces_dir.join(format!("{face_id}.webp"))) {
+            if let Err(e) = save_crop(
+                image,
+                px,
+                if face { 1.5 } else { 1.15 },
+                &faces_dir.join(format!("{face_id}.webp")),
+            ) {
                 tracing::warn!("crop {face_id}: {e:#}"); // cosmetic: never fails the job
             }
         }
@@ -195,7 +229,8 @@ fn save_crop(image: &RgbImage, bbox: [f32; 4], margin: f32, path: &Path) -> Resu
         ((crop.height() as f32 * scale) as u32).max(1),
         fast_image_resize::FilterType::Lanczos3,
     )?;
-    let encoded = webp::Encoder::from_rgb(small.as_raw(), small.width(), small.height()).encode(86.0);
+    let encoded =
+        webp::Encoder::from_rgb(small.as_raw(), small.width(), small.height()).encode(86.0);
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, &*encoded)?;
     std::fs::rename(&tmp, path)?;

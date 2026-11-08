@@ -24,7 +24,10 @@ async fn output(program: &str, args: &[&str]) -> String {
 
 // ---------------------------------------------------------------- services ---
 
-const UNITS: &[(&str, &str)] = &[("atlas-server", "API and ingest workers"), ("atlas-ml", "Embeddings and faces")];
+const UNITS: &[(&str, &str)] = &[
+    ("atlas-server", "API and ingest workers"),
+    ("atlas-ml", "Embeddings and faces"),
+];
 
 /// One screen's worth of "is Atlas healthy": the units, the database, the
 /// model worker, and what the job queue still has to do.
@@ -33,11 +36,18 @@ pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     for (unit, role) in UNITS {
         let show = output(
             "systemctl",
-            &["show", unit, "--property=ActiveState,SubState,ActiveEnterTimestamp,MemoryCurrent,NRestarts"],
+            &[
+                "show",
+                unit,
+                "--property=ActiveState,SubState,ActiveEnterTimestamp,MemoryCurrent,NRestarts",
+            ],
         )
         .await;
         let property = |key: &str| {
-            show.lines().find_map(|l| l.strip_prefix(key).and_then(|v| v.strip_prefix('='))).unwrap_or("").to_string()
+            show.lines()
+                .find_map(|l| l.strip_prefix(key).and_then(|v| v.strip_prefix('=')))
+                .unwrap_or("")
+                .to_string()
         };
         units.push(json!({
             "unit": unit,
@@ -52,10 +62,22 @@ pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
 
     let c = app.pool.get().await?;
     let database: String = c.query_one("SHOW server_version", &[]).await?.get(0);
-    let size: i64 = c.query_one("SELECT pg_database_size(current_database())", &[]).await?.get(0);
+    let size: i64 = c
+        .query_one("SELECT pg_database_size(current_database())", &[])
+        .await?
+        .get(0);
     let mut queue: BTreeMap<String, BTreeMap<String, i64>> = BTreeMap::new();
-    for row in c.query("SELECT kind, status, count(*) FROM ingest_jobs GROUP BY kind, status", &[]).await? {
-        queue.entry(row.get(0)).or_default().insert(row.get(1), row.get(2));
+    for row in c
+        .query(
+            "SELECT kind, status, count(*) FROM ingest_jobs GROUP BY kind, status",
+            &[],
+        )
+        .await?
+    {
+        queue
+            .entry(row.get(0))
+            .or_default()
+            .insert(row.get(1), row.get(2));
     }
     let failed: Vec<Value> = c
         .query(
@@ -92,7 +114,9 @@ fn safe_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() < 128
         && !name.starts_with('-')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 pub async fn containers() -> Json<Value> {
@@ -118,7 +142,10 @@ pub async fn container(Path(name): Path<String>) -> ApiResult<Json<Value>> {
     let parsed: Value = serde_json::from_str(&inspect).unwrap_or(Value::Null);
     let c = parsed.get(0).ok_or(ApiError::NotFound)?;
     // docker writes a container's stderr to our stderr: fold both together
-    let logs = Command::new("docker").args(["logs", "--tail", "200", &name]).kill_on_drop(true).output();
+    let logs = Command::new("docker")
+        .args(["logs", "--tail", "200", &name])
+        .kill_on_drop(true)
+        .output();
     let logs = match tokio::time::timeout(Duration::from_secs(8), logs).await {
         Ok(Ok(out)) => {
             let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -141,7 +168,8 @@ pub async fn container(Path(name): Path<String>) -> ApiResult<Json<Value>> {
 // ----------------------------------------------------------------- tailnet ---
 
 pub async fn network() -> Json<Value> {
-    let status: Value = serde_json::from_str(&output("tailscale", &["status", "--json"]).await).unwrap_or(Value::Null);
+    let status: Value = serde_json::from_str(&output("tailscale", &["status", "--json"]).await)
+        .unwrap_or(Value::Null);
     let node = |n: &Value| {
         json!({
             "name": n["HostName"], "dns": n["DNSName"], "os": n["OS"],
@@ -150,8 +178,16 @@ pub async fn network() -> Json<Value> {
             "last_seen": n["LastSeen"], "rx": n["RxBytes"], "tx": n["TxBytes"],
         })
     };
-    let mut peers: Vec<Value> = status["Peer"].as_object().map(|p| p.values().map(node).collect()).unwrap_or_default();
-    peers.sort_by_key(|p| (!p["online"].as_bool().unwrap_or(false), p["name"].as_str().unwrap_or("").to_lowercase()));
+    let mut peers: Vec<Value> = status["Peer"]
+        .as_object()
+        .map(|p| p.values().map(node).collect())
+        .unwrap_or_default();
+    peers.sort_by_key(|p| {
+        (
+            !p["online"].as_bool().unwrap_or(false),
+            p["name"].as_str().unwrap_or("").to_lowercase(),
+        )
+    });
     Json(json!({
         "available": !status.is_null(),
         "state": status["BackendState"],
@@ -173,17 +209,26 @@ pub async fn activity(State(app): State<AppState>) -> Json<Value> {
     let first = today - chrono::Duration::days(ACTIVITY_DAYS - 1);
     let index = |day: chrono::NaiveDate| -> Option<usize> {
         let offset = (day - first).num_days();
-        (0..ACTIVITY_DAYS).contains(&offset).then_some(offset as usize)
+        (0..ACTIVITY_DAYS)
+            .contains(&offset)
+            .then_some(offset as usize)
     };
     let mut minutes = vec![0i64; ACTIVITY_DAYS as usize];
     let mut boots = vec![0u32; ACTIVITY_DAYS as usize];
     let mut commits = vec![0u32; ACTIVITY_DAYS as usize];
 
     let boot_list: Value =
-        serde_json::from_str(&output("journalctl", &["--list-boots", "-o", "json"]).await).unwrap_or(Value::Null);
+        serde_json::from_str(&output("journalctl", &["--list-boots", "-o", "json"]).await)
+            .unwrap_or(Value::Null);
     for boot in boot_list.as_array().into_iter().flatten() {
-        let micros = |key: &str| boot[key].as_i64().and_then(|us| Local.timestamp_micros(us).single());
-        let (Some(start), Some(end)) = (micros("first_entry"), micros("last_entry")) else { continue };
+        let micros = |key: &str| {
+            boot[key]
+                .as_i64()
+                .and_then(|us| Local.timestamp_micros(us).single())
+        };
+        let (Some(start), Some(end)) = (micros("first_entry"), micros("last_entry")) else {
+            continue;
+        };
         if let Some(i) = index(start.date_naive()) {
             boots[i] += 1;
         }
@@ -207,9 +252,17 @@ pub async fn activity(State(app): State<AppState>) -> Json<Value> {
     }
 
     let repo = app.cfg.repo_dir.to_string_lossy().into_owned();
-    let log = output("git", &["-C", &repo, "log", "--since=160 days ago", "--format=%ct"]).await;
+    let log = output(
+        "git",
+        &["-C", &repo, "log", "--since=160 days ago", "--format=%ct"],
+    )
+    .await;
     for stamp in log.lines().filter_map(|l| l.trim().parse::<i64>().ok()) {
-        if let Some(i) = Local.timestamp_opt(stamp, 0).single().and_then(|t| index(t.date_naive())) {
+        if let Some(i) = Local
+            .timestamp_opt(stamp, 0)
+            .single()
+            .and_then(|t| index(t.date_naive()))
+        {
             commits[i] += 1;
         }
     }
@@ -238,7 +291,10 @@ pub async fn power(Path(action): Path<String>) -> ApiResult<Json<Value>> {
     };
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let _ = Command::new("sudo").args(["-n", "systemctl", verb]).status().await;
+        let _ = Command::new("sudo")
+            .args(["-n", "systemctl", verb])
+            .status()
+            .await;
     });
     Ok(Json(json!({ "ok": true, "action": action })))
 }

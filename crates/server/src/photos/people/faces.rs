@@ -27,7 +27,10 @@ pub struct Unassign {
 /// Takes faces away from the people they were filed under, for good: each
 /// face remembers whom it is not (faces.vetoed), so neither the grouping
 /// pass nor a re-analysis files it there again.
-pub async fn unassign_faces(State(app): State<AppState>, Json(b): Json<Unassign>) -> ApiResult<Json<Value>> {
+pub async fn unassign_faces(
+    State(app): State<AppState>,
+    Json(b): Json<Unassign>,
+) -> ApiResult<Json<Value>> {
     let mut c = app.pool.get().await?;
     let tx = c.transaction().await?;
     let rows = tx
@@ -48,7 +51,11 @@ pub async fn unassign_faces(State(app): State<AppState>, Json(b): Json<Unassign>
             &[&asset, &person, &person.to_string()],
         )
         .await?;
-        tx.execute("UPDATE persons SET cover_face_id = NULL WHERE id = $1 AND cover_face_id = $2", &[&person, &face]).await?;
+        tx.execute(
+            "UPDATE persons SET cover_face_id = NULL WHERE id = $1 AND cover_face_id = $2",
+            &[&person, &face],
+        )
+        .await?;
     }
     let people: Vec<i64> = rows.iter().map(|r| r.get(0)).collect();
     tx.execute(
@@ -67,7 +74,10 @@ pub async fn unassign_faces(State(app): State<AppState>, Json(b): Json<Unassign>
 /// face's person is hidden, and a face nobody was recognized in gets a
 /// hidden person of its own, which then takes that stranger's other faces
 /// too. Named people are never hidden this way.
-pub async fn hide_faces(State(app): State<AppState>, Json(b): Json<HideFaces>) -> ApiResult<Json<Value>> {
+pub async fn hide_faces(
+    State(app): State<AppState>,
+    Json(b): Json<HideFaces>,
+) -> ApiResult<Json<Value>> {
     let mut c = app.pool.get().await?;
     let tx = c.transaction().await?;
     let faces: Vec<(i64, Option<i64>, String)> = tx
@@ -83,7 +93,14 @@ pub async fn hide_faces(State(app): State<AppState>, Json(b): Json<HideFaces>) -
     let mut hidden = 0u64;
     for (face, person, kind) in &faces {
         match person {
-            Some(person) => hidden += tx.execute("UPDATE persons SET hidden = true WHERE id = $1 AND NOT hidden", &[person]).await?,
+            Some(person) => {
+                hidden += tx
+                    .execute(
+                        "UPDATE persons SET hidden = true WHERE id = $1 AND NOT hidden",
+                        &[person],
+                    )
+                    .await?
+            }
             None => {
                 let person: i64 = tx
                     .query_one(
@@ -92,7 +109,11 @@ pub async fn hide_faces(State(app): State<AppState>, Json(b): Json<HideFaces>) -
                     )
                     .await?
                     .get(0);
-                tx.execute("UPDATE faces SET person_id = $2 WHERE id = $1", &[face, &person]).await?;
+                tx.execute(
+                    "UPDATE faces SET person_id = $2 WHERE id = $1",
+                    &[face, &person],
+                )
+                .await?;
                 tx.execute(
                     "INSERT INTO edges (src_type, src_id, rel, dst_type, dst_id)
                      SELECT 'asset', asset_id, 'depicts', 'person', $2::text FROM faces WHERE id = $1
@@ -110,6 +131,10 @@ pub async fn hide_faces(State(app): State<AppState>, Json(b): Json<HideFaces>) -
 
 /// The square avatar the face worker wrote. Face ids are never reused, so
 /// the crop is immutable.
-pub async fn face_crop(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
+pub async fn face_crop(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> Response {
     media::immutable_file(app.cfg.faces_dir().join(format!("{id}.webp")), headers).await
 }

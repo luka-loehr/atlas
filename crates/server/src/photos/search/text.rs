@@ -7,7 +7,11 @@
 /// "vertretungsplanänderung"). Spaces match any run of whitespace.
 pub(super) fn text_pattern(text: &str) -> String {
     const WHOLE_BELOW: usize = 6;
-    let words: Vec<String> = text.to_lowercase().split_whitespace().map(regex_escape).collect();
+    let words: Vec<String> = text
+        .to_lowercase()
+        .split_whitespace()
+        .map(regex_escape)
+        .collect();
     let body = words.join(r"\s+");
     let short = text.chars().filter(|c| !c.is_whitespace()).count() < WHOLE_BELOW;
     if short { format!(r"\m{body}\M") } else { body }
@@ -17,7 +21,10 @@ pub(super) fn regex_escape(s: &str) -> String {
     s.chars()
         .flat_map(|c| {
             let special = r"\.+*?()|[]{}^$".contains(c);
-            special.then_some('\\').into_iter().chain(std::iter::once(c))
+            special
+                .then_some('\\')
+                .into_iter()
+                .chain(std::iter::once(c))
         })
         .collect()
 }

@@ -6,7 +6,11 @@ use chrono::{Datelike, NaiveDate};
 /// A span of local time, inclusive start, exclusive end.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum When {
-    Range { from: NaiveDate, to: NaiveDate, label: String },
+    Range {
+        from: NaiveDate,
+        to: NaiveDate,
+        label: String,
+    },
     /// these months of any year
     Months { months: Vec<u32>, label: String },
 }
@@ -52,10 +56,20 @@ pub(super) fn date(tokens: &[String], today: NaiveDate) -> Option<(When, usize)>
         };
         return Some(match next_year {
             Some(y) => {
-                let end = if m == 12 { ymd(y + 1, 1)? } else { ymd(y, m + 1)? };
+                let end = if m == 12 {
+                    ymd(y + 1, 1)?
+                } else {
+                    ymd(y, m + 1)?
+                };
                 (range(ymd(y, m)?, end, label(Some(y))), 2)
             }
-            None => (When::Months { months: vec![m], label: label(None) }, 1),
+            None => (
+                When::Months {
+                    months: vec![m],
+                    label: label(None),
+                },
+                1,
+            ),
         });
     }
     let season: Option<(&str, [u32; 3])> = match first {
@@ -68,18 +82,43 @@ pub(super) fn date(tokens: &[String], today: NaiveDate) -> Option<(When, usize)>
     if let Some((name, months)) = season {
         return Some(match next_year {
             // winter 2023: December 2023 to February 2024
-            Some(y) if months[0] == 12 => (range(ymd(y, 12)?, ymd(y + 1, 3)?, format!("{name} {y}")), 2),
-            Some(y) => (range(ymd(y, months[0])?, ymd(y, months[2] + 1)?, format!("{name} {y}")), 2),
-            None => (When::Months { months: months.to_vec(), label: name.to_string() }, 1),
+            Some(y) if months[0] == 12 => {
+                (range(ymd(y, 12)?, ymd(y + 1, 3)?, format!("{name} {y}")), 2)
+            }
+            Some(y) => (
+                range(
+                    ymd(y, months[0])?,
+                    ymd(y, months[2] + 1)?,
+                    format!("{name} {y}"),
+                ),
+                2,
+            ),
+            None => (
+                When::Months {
+                    months: months.to_vec(),
+                    label: name.to_string(),
+                },
+                1,
+            ),
         });
     }
     if matches!(first, "christmas" | "weihnachten" | "xmas") {
         return Some(match next_year {
             Some(y) => (
-                range(NaiveDate::from_ymd_opt(y, 12, 20)?, NaiveDate::from_ymd_opt(y, 12, 27)?, format!("Christmas {y}")),
+                range(
+                    NaiveDate::from_ymd_opt(y, 12, 20)?,
+                    NaiveDate::from_ymd_opt(y, 12, 27)?,
+                    format!("Christmas {y}"),
+                ),
                 2,
             ),
-            None => (When::Months { months: vec![12], label: "December".into() }, 1),
+            None => (
+                When::Months {
+                    months: vec![12],
+                    label: "December".into(),
+                },
+                1,
+            ),
         });
     }
     let second = tokens.get(1).map(String::as_str);
@@ -97,7 +136,11 @@ pub(super) fn date(tokens: &[String], today: NaiveDate) -> Option<(When, usize)>
             let (m0, m1) = (months[0], *months.last()?);
             let from = ymd(y, m0)?;
             let to_year = if m1 < m0 { y + 1 } else { y };
-            let to = if m1 == 12 { ymd(to_year + 1, 1)? } else { ymd(to_year, m1 + 1)? };
+            let to = if m1 == 12 {
+                ymd(to_year + 1, 1)?
+            } else {
+                ymd(to_year, m1 + 1)?
+            };
             Some((from, to))
         };
         let mut year = y;
@@ -114,16 +157,33 @@ pub(super) fn date(tokens: &[String], today: NaiveDate) -> Option<(When, usize)>
         return Some((range(from, to, format!("{label} {year}")), 2));
     }
     match (first, second) {
-        ("last" | "letztes" | "letzten", Some("year" | "jahr")) => Some((range(ymd(y - 1, 1)?, ymd(y, 1)?, (y - 1).to_string()), 2)),
-        ("this" | "dieses" | "diesem", Some("year" | "jahr")) => Some((range(ymd(y, 1)?, ymd(y + 1, 1)?, y.to_string()), 2)),
+        ("last" | "letztes" | "letzten", Some("year" | "jahr")) => {
+            Some((range(ymd(y - 1, 1)?, ymd(y, 1)?, (y - 1).to_string()), 2))
+        }
+        ("this" | "dieses" | "diesem", Some("year" | "jahr")) => {
+            Some((range(ymd(y, 1)?, ymd(y + 1, 1)?, y.to_string()), 2))
+        }
         ("today" | "heute", _) => Some((range(today, today.succ_opt()?, "Today".into()), 1)),
-        ("yesterday" | "gestern", _) => Some((range(today.pred_opt()?, today, "Yesterday".into()), 1)),
+        ("yesterday" | "gestern", _) => {
+            Some((range(today.pred_opt()?, today, "Yesterday".into()), 1))
+        }
         _ => None,
     }
 }
 
 fn month_name(m: u32) -> &'static str {
     [
-        "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ][(m - 1) as usize]
 }

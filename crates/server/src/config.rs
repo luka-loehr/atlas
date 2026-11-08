@@ -60,11 +60,15 @@ impl Config {
         }
         let home = home();
         let photos_dir = PathBuf::from(env("ATLAS_PHOTOS_DIR").unwrap_or(format!("{home}/photos")));
-        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
         Ok(Self {
             bind: env("ATLAS_BIND").unwrap_or_else(|| "0.0.0.0:8787".into()),
             token,
-            previews_dir: env("ATLAS_PREVIEWS_DIR").map(PathBuf::from).unwrap_or_else(|| photos_dir.join("previews")),
+            previews_dir: env("ATLAS_PREVIEWS_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| photos_dir.join("previews")),
             photos_dir,
             drive_dir: PathBuf::from(env("ATLAS_DRIVE_DIR").unwrap_or(format!("{home}/drive"))),
             tz: timezone()?,
@@ -73,8 +77,13 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(|| cores.saturating_sub(2).clamp(1, 8)),
             video_previews: env("ATLAS_VIDEO_PREVIEWS").as_deref() != Some("0"),
-            max_upload: env("ATLAS_MAX_UPLOAD_GB").and_then(|v| v.parse::<u64>().ok()).unwrap_or(64) << 30,
-            power_baseline_w: env("ATLAS_POWER_BASELINE_W").and_then(|v| v.parse().ok()).unwrap_or(35.0),
+            max_upload: env("ATLAS_MAX_UPLOAD_GB")
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(64)
+                << 30,
+            power_baseline_w: env("ATLAS_POWER_BASELINE_W")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(35.0),
             psu_efficiency: env("ATLAS_PSU_EFFICIENCY")
                 .and_then(|v| v.parse().ok())
                 .filter(|e: &f64| *e > 0.0)
@@ -128,7 +137,11 @@ impl Config {
 fn timezone() -> Result<Tz> {
     let name = env("ATLAS_TZ")
         .or_else(|| env("TZ"))
-        .or_else(|| std::fs::read_to_string("/etc/timezone").ok().map(|s| s.trim().to_string()))
+        .or_else(|| {
+            std::fs::read_to_string("/etc/timezone")
+                .ok()
+                .map(|s| s.trim().to_string())
+        })
         .or_else(|| {
             // /etc/localtime -> /usr/share/zoneinfo/Europe/Berlin
             let target = std::fs::read_link("/etc/localtime").ok()?;
@@ -138,6 +151,8 @@ fn timezone() -> Result<Tz> {
         .unwrap_or_else(|| "UTC".into());
     match name.parse::<Tz>() {
         Ok(tz) => Ok(tz),
-        Err(_) => bail!("ATLAS_TZ: unknown timezone {name:?} (expected an IANA name like Europe/Berlin)"),
+        Err(_) => {
+            bail!("ATLAS_TZ: unknown timezone {name:?} (expected an IANA name like Europe/Berlin)")
+        }
     }
 }

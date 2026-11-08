@@ -11,7 +11,7 @@ OnFailure=atlas-alert@%n.service
 
 [Service]
 Type=oneshot
-# Its own system user (not luka, not root): it only ever reads GitHub, through
+# Its own system user (not the login user, not root): it only ever reads GitHub, through
 # the read-only GitHub App, and writes /srv/bulk/github.
 User=atlas-github
 Group=atlas-github

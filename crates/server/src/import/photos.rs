@@ -27,7 +27,8 @@ use zip::ZipArchive;
 use super::extract_hashed;
 use crate::{Config, util};
 
-static DUPLICATE_SUFFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*)(\(\d+\))(\.[^.]+)$").unwrap());
+static DUPLICATE_SUFFIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(.*)(\(\d+\))(\.[^.]+)$").unwrap());
 static YEAR_FOLDER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^Photos from \d{4}$").unwrap());
 
 #[derive(Default)]
@@ -46,12 +47,23 @@ struct Sidecar {
 /// `IMG.jpg(1).json`.
 fn sidecar_names(media: &str) -> Vec<String> {
     let mut names = Vec::new();
-    let swapped = DUPLICATE_SUFFIX.captures(media).map(|c| format!("{}{}{}", &c[1], &c[3], &c[2]));
+    let swapped = DUPLICATE_SUFFIX
+        .captures(media)
+        .map(|c| format!("{}{}{}", &c[1], &c[3], &c[2]));
     for base in [Some(media.to_string()), swapped].into_iter().flatten() {
-        for suffix in [".json", ".supplemental-metadata.json", ".supplemental-metad.json", ".suppl.json", ".sup.json"] {
+        for suffix in [
+            ".json",
+            ".supplemental-metadata.json",
+            ".supplemental-metad.json",
+            ".suppl.json",
+            ".sup.json",
+        ] {
             names.push(format!("{base}{suffix}"));
         }
-        for full in [format!("{base}.supplemental-metadata.json"), format!("{base}.json")] {
+        for full in [
+            format!("{base}.supplemental-metadata.json"),
+            format!("{base}.json"),
+        ] {
             if full.chars().count() > 51 {
                 let head: String = full.chars().take(46).collect();
                 names.push(format!("{head}.json"));
@@ -62,13 +74,18 @@ fn sidecar_names(media: &str) -> Vec<String> {
 }
 
 fn parse_sidecar(raw: &str) -> Sidecar {
-    let Ok(d) = serde_json::from_str::<Value>(raw) else { return Sidecar::default() };
+    let Ok(d) = serde_json::from_str::<Value>(raw) else {
+        return Sidecar::default();
+    };
     let mut sidecar = Sidecar {
         taken: d["photoTakenTime"]["timestamp"]
             .as_str()
             .and_then(|t| t.parse::<i64>().ok())
             .and_then(|t| DateTime::from_timestamp(t, 0)),
-        description: d["description"].as_str().filter(|s| !s.is_empty()).map(|s| s.chars().take(2000).collect()),
+        description: d["description"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.chars().take(2000).collect()),
         favorite: d["favorited"].as_bool().unwrap_or(false) || d["favorited"].is_object(),
         camera: d["cameraDetails"]["cameraModel"]
             .as_str()
@@ -76,7 +93,10 @@ fn parse_sidecar(raw: &str) -> Sidecar {
             .map(|s| s.chars().take(120).collect()),
         ..Sidecar::default()
     };
-    let (lat, lon) = (d["geoData"]["latitude"].as_f64().unwrap_or(0.0), d["geoData"]["longitude"].as_f64().unwrap_or(0.0));
+    let (lat, lon) = (
+        d["geoData"]["latitude"].as_f64().unwrap_or(0.0),
+        d["geoData"]["longitude"].as_f64().unwrap_or(0.0),
+    );
     if lat != 0.0 || lon != 0.0 {
         sidecar.lat = Some(lat);
         sidecar.lon = Some(lon);
@@ -89,7 +109,10 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
     let mut archives = Vec::new();
     for path in paths {
         let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
-        archives.push(ZipArchive::new(file).with_context(|| format!("{} is not a complete zip", path.display()))?);
+        archives.push(
+            ZipArchive::new(file)
+                .with_context(|| format!("{} is not a complete zip", path.display()))?,
+        );
     }
 
     // pass 1: where every sidecar lives, across all archives
@@ -112,23 +135,38 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
             }
         }
     }
-    println!("{} media files, {} sidecars in {} archives", media.len(), sidecars.len(), archives.len());
+    println!(
+        "{} media files, {} sidecars in {} archives",
+        media.len(),
+        sidecars.len(),
+        archives.len()
+    );
 
     let c = pool.get().await?;
-    let mut known: HashSet<String> = c.query("SELECT id FROM assets", &[]).await?.iter().map(|r| r.get(0)).collect();
+    let mut known: HashSet<String> = c
+        .query("SELECT id FROM assets", &[])
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
     let mut albums: HashMap<String, i64> = HashMap::new();
     let (mut added, mut duplicates, mut failed) = (0usize, 0usize, 0usize);
 
     for (n, (a, i, name)) in media.iter().enumerate() {
         let base = name.rsplit('/').next().unwrap_or(name);
         let folder = name.rsplit('/').nth(1).unwrap_or("");
-        let album = (!YEAR_FOLDER.is_match(folder) && !folder.is_empty()).then(|| folder.to_string());
+        let album =
+            (!YEAR_FOLDER.is_match(folder) && !folder.is_empty()).then(|| folder.to_string());
 
         let mut sidecar = Sidecar::default();
         for candidate in sidecar_names(base) {
             if let Some(&(sa, si)) = sidecars.get(&candidate) {
                 let mut raw = String::new();
-                if archives[sa].by_index(si).and_then(|mut e| Ok(e.read_to_string(&mut raw)?)).is_ok() {
+                if archives[sa]
+                    .by_index(si)
+                    .and_then(|mut e| Ok(e.read_to_string(&mut raw)?))
+                    .is_ok()
+                {
                     sidecar = parse_sidecar(&raw);
                 }
                 break;
@@ -154,7 +192,10 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
             let _ = std::fs::remove_file(&tmp);
         } else {
             let ext = util::media_ext(base);
-            let month = sidecar.taken.map(|t| t.format("%Y/%m").to_string()).unwrap_or_else(|| "0000/00".into());
+            let month = sidecar
+                .taken
+                .map(|t| t.format("%Y/%m").to_string())
+                .unwrap_or_else(|| "0000/00".into());
             let dir = cfg.originals_dir().join(month);
             std::fs::create_dir_all(&dir)?;
             let dest = dir.join(format!("{id}.{ext}"));
@@ -186,7 +227,11 @@ pub async fn run(cfg: &Config, pool: &Pool, paths: &[PathBuf]) -> Result<()> {
             .await?;
         }
         if (n + 1) % 500 == 0 {
-            println!("  {}/{} ({added} new, {duplicates} already in the library, {failed} failed)", n + 1, media.len());
+            println!(
+                "  {}/{} ({added} new, {duplicates} already in the library, {failed} failed)",
+                n + 1,
+                media.len()
+            );
         }
     }
     println!("done: {added} new, {duplicates} already in the library, {failed} failed");
@@ -202,7 +247,11 @@ async fn insert(
     name: &str,
     size: u64,
 ) -> Result<()> {
-    let kind = if util::is_video_ext(ext) { "video" } else { "photo" };
+    let kind = if util::is_video_ext(ext) {
+        "video"
+    } else {
+        "photo"
+    };
     c.execute(
         "INSERT INTO assets (id, type, taken_at, taken_src, lat, lon, camera, description, favorite,
                              orig_path, orig_name, size_bytes, source)
@@ -244,7 +293,10 @@ mod tests {
         assert!(sidecar_names("IMG(1).jpg").contains(&"IMG.jpg(1).json".to_string()));
         // long names are cut to 51 characters including ".json"
         let long = format!("{}.jpg", "x".repeat(60));
-        let cut = sidecar_names(&long).into_iter().find(|n| n.chars().count() == 51).unwrap();
+        let cut = sidecar_names(&long)
+            .into_iter()
+            .find(|n| n.chars().count() == 51)
+            .unwrap();
         assert!(cut.ends_with(".json") && cut.starts_with("xxxx"));
     }
 
@@ -259,6 +311,10 @@ mod tests {
         assert!(s.favorite);
         assert_eq!(s.description.as_deref(), Some("Harbour walk"));
         assert_eq!(s.camera.as_deref(), Some("IOS_PHONE"));
-        assert!(parse_sidecar(r#"{"geoData":{"latitude":0.0,"longitude":0.0}}"#).lat.is_none());
+        assert!(
+            parse_sidecar(r#"{"geoData":{"latitude":0.0,"longitude":0.0}}"#)
+                .lat
+                .is_none()
+        );
     }
 }

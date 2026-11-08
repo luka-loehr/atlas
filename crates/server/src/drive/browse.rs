@@ -14,7 +14,11 @@ use crate::{ApiError, ApiResult, AppState, media, util};
 
 /// One folder level: the path down from the root, child folders with their
 /// recursive totals, and the files.
-pub(super) async fn list(State(app): State<AppState>, Path(folder): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
+pub(super) async fn list(
+    State(app): State<AppState>,
+    Path(folder): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let folder = folder_ref(&folder)?;
     let c = app.pool.get().await?;
 
@@ -36,7 +40,9 @@ pub(super) async fn list(State(app): State<AppState>, Path(folder): Path<String>
             if rows.is_empty() {
                 return Err(ApiError::NotFound);
             }
-            rows.iter().map(|r| json!({ "id": r.get::<_, i64>(0), "name": r.get::<_, String>(1) })).collect()
+            rows.iter()
+                .map(|r| json!({ "id": r.get::<_, i64>(0), "name": r.get::<_, String>(1) }))
+                .collect()
         }
     };
 
@@ -81,7 +87,10 @@ pub(super) async fn list(State(app): State<AppState>, Path(folder): Path<String>
         .map(file_json)
         .collect();
 
-    Ok(media::json_validated(&headers, &json!({ "path": path, "folders": folders, "files": files })))
+    Ok(media::json_validated(
+        &headers,
+        &json!({ "path": path, "folders": folders, "files": files }),
+    ))
 }
 
 pub(super) async fn recent(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
@@ -115,7 +124,10 @@ fn snippet(text: &str, term: &str) -> String {
     if needle.is_empty() || needle.len() > lowered.len() {
         return String::new();
     }
-    let Some(at) = lowered.windows(needle.len()).position(|w| w == needle.as_slice()) else {
+    let Some(at) = lowered
+        .windows(needle.len())
+        .position(|w| w == needle.as_slice())
+    else {
         return String::new();
     };
     let start = at.saturating_sub(60);
@@ -131,7 +143,10 @@ fn snippet(text: &str, term: &str) -> String {
 
 /// Folders and files by name first, then files whose extracted text matches,
 /// each with the passage that matched.
-pub(super) async fn search(State(app): State<AppState>, Query(q): Query<SearchQuery>) -> ApiResult<Json<Value>> {
+pub(super) async fn search(
+    State(app): State<AppState>,
+    Query(q): Query<SearchQuery>,
+) -> ApiResult<Json<Value>> {
     let term = q.q.trim();
     if term.is_empty() {
         return Ok(Json(json!({ "files": [], "folders": [] })));
@@ -192,7 +207,11 @@ mod tests {
 
     #[test]
     fn snippets_show_the_match_in_context() {
-        let text = format!("{} Die Rechnung vom März ist bezahlt. {}", "x ".repeat(80), "y ".repeat(80));
+        let text = format!(
+            "{} Die Rechnung vom März ist bezahlt. {}",
+            "x ".repeat(80),
+            "y ".repeat(80)
+        );
         let s = snippet(&text, "rechnung");
         assert!(s.starts_with('…') && s.ends_with('…'));
         assert!(s.contains("Die Rechnung vom März"));

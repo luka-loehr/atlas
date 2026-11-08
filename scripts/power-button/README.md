@@ -31,7 +31,7 @@ accident.
 
 It copies `power-button.py` root-owned to `/usr/local/sbin/atlas-power-button`
 and runs that, not the checkout: the daemon runs as root, and a file under
-`~/atlas` can be rewritten by anything running as luka. Re-run it after
+`~/atlas` can be rewritten by anything running as the login user. Re-run it after
 changing the script.
 
 It requires logind to ignore the key, which

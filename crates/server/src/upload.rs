@@ -47,14 +47,24 @@ pub async fn receive(body: Body, dir: &Path, limit: u64) -> ApiResult<Received> 
         let _ = tokio::fs::remove_file(&path).await;
         return Err(e);
     }
-    Ok(Received { path, hash: util::hex(&hasher.finalize()), size })
+    Ok(Received {
+        path,
+        hash: util::hex(&hasher.finalize()),
+        size,
+    })
 }
 
 /// The claimed hash is an integrity check only: the id is always what the
 /// server computed from the bytes it received.
 pub fn check_claimed_hash(headers: &HeaderMap, actual: &str) -> ApiResult<()> {
-    match headers.get("x-content-hash").and_then(|v| v.to_str().ok()).map(|h| h.trim().to_ascii_lowercase()) {
-        Some(claimed) if !claimed.is_empty() && claimed != actual => Err(ApiError::BadRequest("X-Content-Hash mismatch")),
+    match headers
+        .get("x-content-hash")
+        .and_then(|v| v.to_str().ok())
+        .map(|h| h.trim().to_ascii_lowercase())
+    {
+        Some(claimed) if !claimed.is_empty() && claimed != actual => {
+            Err(ApiError::BadRequest("X-Content-Hash mismatch"))
+        }
         _ => Ok(()),
     }
 }

@@ -17,7 +17,7 @@
 | [`db/`](../db/) | Postgres 17 + pgvector in Docker, and the schema migrations |
 | [`builder/`](../builder/) | The images `atlas build` / `atlas dev` run in: one [universal Dockerfile](../builder/universal/Dockerfile) with three targets (`build`, `dev`, `mobile`), base-pinned |
 | [`proxy/`](../proxy/) | Base configs for the dev-subdomain proxy (host Caddy + named Cloudflare Tunnel) behind `atlas dev --public` URLs; installed by [`scripts/proxy/`](../scripts/proxy/) |
-| [`scripts/`](../scripts/) | The service units and their installer ([`atlas/`](../scripts/atlas/)), and server upkeep: [health check](../scripts/healthcheck/), [firewall](../scripts/firewall/), [disk guard](../scripts/disk-guard/), [Postgres backups](../scripts/pg-backup/), [power oneshots](../scripts/power/), [power-button gesture](../scripts/power-button/), [dev-subdomain proxy](../scripts/proxy/), [CI-runner recorder](../scripts/ci-health/) |
+| [`scripts/`](../scripts/) | The service units and their installer ([`atlas/`](../scripts/atlas/)), and server upkeep: [health check](../scripts/healthcheck/), [firewall](../scripts/firewall/), [disk guard](../scripts/disk-guard/), [Postgres backups](../scripts/pg-backup/), [power oneshots](../scripts/power/), [power-button gesture](../scripts/power-button/), [dev-subdomain proxy](../scripts/proxy/) |
 | [`docs/`](.) | [SETUP.md](SETUP.md), the from-scratch guide, and the [design reference](apple-design-guidelines.md) the app is built against |
 
 ## Architecture

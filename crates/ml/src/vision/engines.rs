@@ -31,7 +31,9 @@ const SHARES: [f64; 5] = [0.6, 0.6, 0.6, 0.7, 0.6];
 
 fn devices(gpu: bool) -> [Device; 5] {
     match runtime::vision_budget_mb().filter(|_| gpu) {
-        Some(mb) => SHARES.map(|share| Device::Gpu { limit: (mb as f64 * share * 1024.0 * 1024.0) as usize }),
+        Some(mb) => SHARES.map(|share| Device::Gpu {
+            limit: (mb as f64 * share * 1024.0 * 1024.0) as usize,
+        }),
         None => [Device::Cpu; 5],
     }
 }
@@ -64,17 +66,30 @@ pub struct LoadArgs {
 
 impl Engines {
     pub(super) fn load_args(worker: &Worker) -> LoadArgs {
-        LoadArgs { paths: worker.cfg.vision_models().map(|p| p.clone()) }
+        LoadArgs {
+            paths: worker.cfg.vision_models().map(|p| p.clone()),
+        }
     }
 }
 
 impl LoadArgs {
     pub(super) fn load(&self, gpu: bool) -> Result<Engines> {
         for path in &self.paths {
-            anyhow::ensure!(path.exists(), "missing model file {} (scripts/atlas/models.sh)", path.display());
+            anyhow::ensure!(
+                path.exists(),
+                "missing model file {} (scripts/atlas/models.sh)",
+                path.display()
+            );
         }
-        let [face_detector, face_recognizer, animal_detector, animal_identifier, text_detector, text_recognizer, dictionary] =
-            &self.paths;
+        let [
+            face_detector,
+            face_recognizer,
+            animal_detector,
+            animal_identifier,
+            text_detector,
+            text_recognizer,
+            dictionary,
+        ] = &self.paths;
         let d = devices(gpu);
         Ok(Engines {
             faces: FaceEngine::load(face_detector, face_recognizer, [d[0], d[1]])?,
@@ -86,7 +101,10 @@ impl LoadArgs {
 }
 
 /// Every model over every frame it applies to.
-pub(super) fn analyze(engines: &mut Engines, frames: &[Frame]) -> Result<(Vec<Found>, Vec<String>)> {
+pub(super) fn analyze(
+    engines: &mut Engines,
+    frames: &[Frame],
+) -> Result<(Vec<Found>, Vec<String>)> {
     let only = std::env::var("ATLAS_ANALYZE_ONLY").unwrap_or_default();
     let on = |stage: &str| only.is_empty() || only.contains(stage);
     let mut found = Vec::new();
@@ -94,9 +112,18 @@ pub(super) fn analyze(engines: &mut Engines, frames: &[Frame]) -> Result<(Vec<Fo
     for (i, frame) in frames.iter().enumerate() {
         let (w, h) = (frame.image.width() as f32, frame.image.height() as f32);
         let relative = |b: [f32; 4]| {
-            [(b[0] / w).clamp(0.0, 1.0), (b[1] / h).clamp(0.0, 1.0), (b[2] / w).clamp(0.0, 1.0), (b[3] / h).clamp(0.0, 1.0)]
+            [
+                (b[0] / w).clamp(0.0, 1.0),
+                (b[1] / h).clamp(0.0, 1.0),
+                (b[2] / w).clamp(0.0, 1.0),
+                (b[3] / h).clamp(0.0, 1.0),
+            ]
         };
-        for face in if on("faces") { engines.faces.analyze(&frame.image)? } else { Vec::new() } {
+        for face in if on("faces") {
+            engines.faces.analyze(&frame.image)?
+        } else {
+            Vec::new()
+        } {
             found.push(Found {
                 kind: "person",
                 frame: i,

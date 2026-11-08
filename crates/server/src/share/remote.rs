@@ -25,7 +25,10 @@ pub(super) struct Remote {
 impl Remote {
     pub(super) fn new(app: &App) -> Option<Self> {
         Some(Self {
-            http: reqwest::Client::builder().timeout(Duration::from_secs(600)).build().ok()?,
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(600))
+                .build()
+                .ok()?,
             base: app.cfg.share_url.clone()?,
             token: app.cfg.share_token.clone()?,
         })
@@ -40,7 +43,10 @@ impl Remote {
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
-            return Err(anyhow!("atlas-share answered {status}: {}", body.chars().take(200).collect::<String>()));
+            return Err(anyhow!(
+                "atlas-share answered {status}: {}",
+                body.chars().take(200).collect::<String>()
+            ));
         }
         Ok(res)
     }
@@ -65,7 +71,8 @@ impl Remote {
         }
         if size <= SINGLE_MAX {
             let body = tokio::fs::read(path).await?;
-            self.send(self.http.put(&url).header("content-type", mime).body(body)).await?;
+            self.send(self.http.put(&url).header("content-type", mime).body(body))
+                .await?;
             return Ok(());
         }
         #[derive(Deserialize)]
@@ -76,8 +83,15 @@ impl Remote {
         struct Part {
             etag: String,
         }
-        let started: Started =
-            self.send(self.http.post(format!("{url}?uploads")).header("content-type", mime)).await?.json().await?;
+        let started: Started = self
+            .send(
+                self.http
+                    .post(format!("{url}?uploads"))
+                    .header("content-type", mime),
+            )
+            .await?
+            .json()
+            .await?;
         let mut file = tokio::fs::File::open(path).await?;
         let mut parts = Vec::new();
         let mut buf = vec![0u8; PART];
@@ -89,7 +103,11 @@ impl Remote {
             let chunk = buf[..read].to_vec();
             let part_url = format!("{url}?upload_id={}&part={n}", started.upload_id);
             let part: Part = with_retries(|| async {
-                Ok(self.send(self.http.put(&part_url).body(chunk.clone())).await?.json().await?)
+                Ok(self
+                    .send(self.http.put(&part_url).body(chunk.clone()))
+                    .await?
+                    .json()
+                    .await?)
             })
             .await?;
             parts.push(json!({ "part": n, "etag": part.etag }));
@@ -111,11 +129,17 @@ impl Remote {
     /// (the page then shows the first thumbnail, as before).
     pub(super) async fn preview(&self, id: &str, jpeg: &[u8]) -> Result<bool> {
         let url = format!("{}/api/shares/{id}/og", self.base);
-        let req = self.http.put(&url).header("content-type", "image/jpeg").body(jpeg.to_vec());
+        let req = self
+            .http
+            .put(&url)
+            .header("content-type", "image/jpeg")
+            .body(jpeg.to_vec());
         match self.send(req).await {
             Ok(_) => Ok(true),
             Err(e) if e.to_string().starts_with("atlas-share answered 404") => {
-                tracing::warn!("share {id}: atlas-share has no link previews yet; `atlas share setup` updates it");
+                tracing::warn!(
+                    "share {id}: atlas-share has no link previews yet; `atlas share setup` updates it"
+                );
                 Ok(false)
             }
             Err(e) => Err(e),
@@ -123,7 +147,12 @@ impl Remote {
     }
 
     pub(super) async fn progress(&self, id: &str, body: &Value) -> Result<()> {
-        self.send(self.http.put(format!("{}/api/shares/{id}/progress", self.base)).json(body)).await?;
+        self.send(
+            self.http
+                .put(format!("{}/api/shares/{id}/progress", self.base))
+                .json(body),
+        )
+        .await?;
         Ok(())
     }
 
@@ -133,16 +162,27 @@ impl Remote {
         struct Ids {
             ids: Vec<String>,
         }
-        Ok(self.send(self.http.get(format!("{}/api/shares", self.base))).await?.json::<Ids>().await?.ids)
+        Ok(self
+            .send(self.http.get(format!("{}/api/shares", self.base)))
+            .await?
+            .json::<Ids>()
+            .await?
+            .ids)
     }
 
     pub(super) async fn manifest(&self, id: &str, manifest: &Value) -> Result<()> {
-        self.send(self.http.put(format!("{}/api/shares/{id}", self.base)).json(manifest)).await?;
+        self.send(
+            self.http
+                .put(format!("{}/api/shares/{id}", self.base))
+                .json(manifest),
+        )
+        .await?;
         Ok(())
     }
 
     pub(super) async fn delete(&self, id: &str) -> Result<()> {
-        self.send(self.http.delete(format!("{}/api/shares/{id}", self.base))).await?;
+        self.send(self.http.delete(format!("{}/api/shares/{id}", self.base)))
+            .await?;
         Ok(())
     }
 }

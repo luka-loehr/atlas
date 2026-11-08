@@ -12,13 +12,21 @@ use super::time::at_offset;
 /// Unreadable or absent EXIF is not an error: the columns just stay empty.
 pub(super) fn photo_meta(path: &Path) -> Meta {
     let mut meta = Meta::default();
-    let Ok(file) = std::fs::File::open(path) else { return meta };
-    let Ok(exif) = ::exif::Reader::new().read_from_container(&mut std::io::BufReader::new(file)) else { return meta };
+    let Ok(file) = std::fs::File::open(path) else {
+        return meta;
+    };
+    let Ok(exif) = ::exif::Reader::new().read_from_container(&mut std::io::BufReader::new(file))
+    else {
+        return meta;
+    };
 
     let text = |tag: Tag| -> Option<String> {
         match &exif.get_field(tag, In::PRIMARY)?.value {
             ExifValue::Ascii(parts) => {
-                let s = String::from_utf8_lossy(parts.first()?).trim().trim_matches('\0').to_string();
+                let s = String::from_utf8_lossy(parts.first()?)
+                    .trim()
+                    .trim_matches('\0')
+                    .to_string();
                 (!s.is_empty()).then_some(s)
             }
             _ => None,
@@ -33,9 +41,17 @@ pub(super) fn photo_meta(path: &Path) -> Meta {
         .filter(|n| n.is_finite())
     };
     let degrees = |tag: Tag, reference: Tag, negative: &str| -> Option<f64> {
-        let ExifValue::Rational(parts) = &exif.get_field(tag, In::PRIMARY)?.value else { return None };
-        let value = parts.first()?.to_f64() + parts.get(1).map_or(0.0, |m| m.to_f64() / 60.0) + parts.get(2).map_or(0.0, |s| s.to_f64() / 3600.0);
-        let sign = if text(reference).is_some_and(|r| r.eq_ignore_ascii_case(negative)) { -1.0 } else { 1.0 };
+        let ExifValue::Rational(parts) = &exif.get_field(tag, In::PRIMARY)?.value else {
+            return None;
+        };
+        let value = parts.first()?.to_f64()
+            + parts.get(1).map_or(0.0, |m| m.to_f64() / 60.0)
+            + parts.get(2).map_or(0.0, |s| s.to_f64() / 3600.0);
+        let sign = if text(reference).is_some_and(|r| r.eq_ignore_ascii_case(negative)) {
+            -1.0
+        } else {
+            1.0
+        };
         value.is_finite().then_some(sign * value)
     };
 
@@ -45,10 +61,14 @@ pub(super) fn photo_meta(path: &Path) -> Meta {
         .find_map(|s| NaiveDateTime::parse_from_str(&s, "%Y:%m:%d %H:%M:%S").ok())
         .filter(|t| t.and_utc().timestamp() > 315_532_800); // cameras without a clock say 1970
     if let Some(naive) = stamp {
-        let offset = [Tag::OffsetTimeOriginal, Tag::OffsetTimeDigitized, Tag::OffsetTime]
-            .into_iter()
-            .filter_map(text)
-            .find_map(|s| parse_offset(&s));
+        let offset = [
+            Tag::OffsetTimeOriginal,
+            Tag::OffsetTimeDigitized,
+            Tag::OffsetTime,
+        ]
+        .into_iter()
+        .filter_map(text)
+        .find_map(|s| parse_offset(&s));
         match offset {
             Some(offset) => {
                 meta.taken = Some(at_offset(naive, offset));
@@ -68,7 +88,9 @@ pub(super) fn photo_meta(path: &Path) -> Meta {
         meta.lat = Some(lat);
         meta.lon = Some(lon);
     }
-    meta.camera = text(Tag::Model).or_else(|| text(Tag::Make)).map(|s| s.chars().take(120).collect());
+    meta.camera = text(Tag::Model)
+        .or_else(|| text(Tag::Make))
+        .map(|s| s.chars().take(120).collect());
 
     let mut details = Map::new();
     if let Some(iso) = number(Tag::PhotographicSensitivity).filter(|v| *v > 0.0) {
@@ -78,14 +100,21 @@ pub(super) fn photo_meta(path: &Path) -> Meta {
         details.insert("f_number".into(), json!((f * 10.0).round() / 10.0));
     }
     if let Some(t) = number(Tag::ExposureTime).filter(|v| *v > 0.0) {
-        let shown = if t < 1.0 { format!("1/{}", (1.0 / t).round() as i64) } else { format!("{t}") };
+        let shown = if t < 1.0 {
+            format!("1/{}", (1.0 / t).round() as i64)
+        } else {
+            format!("{t}")
+        };
         details.insert("exposure_time".into(), json!(shown));
     }
     if let Some(mm) = number(Tag::FocalLength).filter(|v| *v > 0.0) {
         details.insert("focal_len".into(), json!((mm * 10.0).round() / 10.0));
     }
     if let Some(lens) = text(Tag::LensModel) {
-        details.insert("lens".into(), json!(lens.chars().take(120).collect::<String>()));
+        details.insert(
+            "lens".into(),
+            json!(lens.chars().take(120).collect::<String>()),
+        );
     }
     if !details.is_empty() {
         meta.exif = Some(Value::Object(details));

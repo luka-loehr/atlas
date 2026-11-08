@@ -30,7 +30,11 @@ pub struct ListQuery {
 /// Everyone with a visible photo, unnamed clusters only from
 /// [`MIN_UNNAMED_PHOTOS`] on: named people first, then by how often they
 /// appear. Pets are people of another kind. Hidden people only on request.
-pub async fn list(State(app): State<AppState>, Query(q): Query<ListQuery>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn list(
+    State(app): State<AppState>,
+    Query(q): Query<ListQuery>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let c = app.pool.get().await?;
     let rows = c
         .query(
@@ -45,12 +49,16 @@ pub async fn list(State(app): State<AppState>, Query(q): Query<ListQuery>, heade
         )
         .await?;
     let people: Vec<Value> = rows.iter().map(person_json).collect();
-    Ok(media::json_validated(&headers, &json!({ "people": people })))
+    Ok(media::json_validated(
+        &headers,
+        &json!({ "people": people }),
+    ))
 }
 
 /// People as the lists show them ([`person_json`]): each with their faces
 /// `f` and those faces' `assets`; the caller adds WHERE and GROUP BY p.id.
-pub const SUMMARY: &str = "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos, p.kind
+pub const SUMMARY: &str =
+    "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos, p.kind
                            FROM persons p
                            JOIN faces f ON f.person_id = p.id
                            JOIN assets ON assets.id = f.asset_id";
@@ -66,10 +74,17 @@ pub fn person_json(r: &tokio_postgres::Row) -> Value {
     })
 }
 
-pub async fn assets(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn assets(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let c = app.pool.get().await?;
     let person = c
-        .query_opt("SELECT display_name, cover_face_id, kind FROM persons WHERE id = $1", &[&id])
+        .query_opt(
+            "SELECT display_name, cover_face_id, kind FROM persons WHERE id = $1",
+            &[&id],
+        )
         .await?
         .ok_or(ApiError::NotFound)?;
     let rows = c
@@ -104,16 +119,30 @@ pub struct Update {
     hidden: Option<bool>,
 }
 
-pub async fn update(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Update>) -> ApiResult<Json<Value>> {
+pub async fn update(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(b): Json<Update>,
+) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let mut updated = 0;
     if let Some(name) = &b.name {
         let name = name.trim();
         let value = (!name.is_empty()).then_some(name);
-        updated += c.execute("UPDATE persons SET display_name = $2 WHERE id = $1", &[&id, &value]).await?;
+        updated += c
+            .execute(
+                "UPDATE persons SET display_name = $2 WHERE id = $1",
+                &[&id, &value],
+            )
+            .await?;
     }
     if let Some(hidden) = b.hidden {
-        updated += c.execute("UPDATE persons SET hidden = $2 WHERE id = $1", &[&id, &hidden]).await?;
+        updated += c
+            .execute(
+                "UPDATE persons SET hidden = $2 WHERE id = $1",
+                &[&id, &hidden],
+            )
+            .await?;
     }
     if let Some(face) = b.cover_face {
         updated += c
@@ -135,19 +164,31 @@ pub struct Merge {
 /// Fold this person into another: the faces move, the graph edges follow,
 /// and the survivor's centroid is recomputed from all its faces so future
 /// photos of either cluster land on it.
-pub async fn merge(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Merge>) -> ApiResult<Json<Value>> {
+pub async fn merge(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(b): Json<Merge>,
+) -> ApiResult<Json<Value>> {
     if id == b.into {
         return Err(ApiError::BadRequest("cannot merge a person into itself"));
     }
     let mut c = app.pool.get().await?;
     let tx = c.transaction().await?;
     let both = tx
-        .query("SELECT id FROM persons WHERE id = ANY($1) AND merged_into IS NULL", &[&vec![id, b.into]])
+        .query(
+            "SELECT id FROM persons WHERE id = ANY($1) AND merged_into IS NULL",
+            &[&vec![id, b.into]],
+        )
         .await?;
     if both.len() != 2 {
         return Err(ApiError::NotFound);
     }
-    let moved = tx.execute("UPDATE faces SET person_id = $2 WHERE person_id = $1", &[&id, &b.into]).await?;
+    let moved = tx
+        .execute(
+            "UPDATE faces SET person_id = $2 WHERE person_id = $1",
+            &[&id, &b.into],
+        )
+        .await?;
     let (from, into) = (id.to_string(), b.into.to_string());
     tx.execute(
         "INSERT INTO edges (src_type, src_id, rel, dst_type, dst_id, confidence)
@@ -158,7 +199,11 @@ pub async fn merge(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Js
         &[&from, &into],
     )
     .await?;
-    tx.execute("DELETE FROM edges WHERE dst_type = 'person' AND dst_id = $1", &[&from]).await?;
+    tx.execute(
+        "DELETE FROM edges WHERE dst_type = 'person' AND dst_id = $1",
+        &[&from],
+    )
+    .await?;
     tx.execute(
         "UPDATE persons SET merged_into = $2, centroid = NULL, look = NULL, face_count = 0, cover_face_id = NULL WHERE id = $1",
         &[&id, &b.into],

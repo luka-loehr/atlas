@@ -74,7 +74,10 @@ pub struct VectorIndex {
 
 impl Default for VectorIndex {
     fn default() -> Self {
-        VectorIndex { matrix: RwLock::default(), stale: AtomicBool::new(true) }
+        VectorIndex {
+            matrix: RwLock::default(),
+            stale: AtomicBool::new(true),
+        }
     }
 }
 
@@ -100,7 +103,12 @@ impl VectorIndex {
     /// are not comparable across queries (a vague query sits close to
     /// everything) nor across kinds; the z-score says how much an asset
     /// stands out among its kind for this one.
-    pub async fn search(self: &Arc<Self>, pool: &Pool, query: Arc<Questions>, limit: usize) -> Result<Vec<Hit>> {
+    pub async fn search(
+        self: &Arc<Self>,
+        pool: &Pool,
+        query: Arc<Questions>,
+        limit: usize,
+    ) -> Result<Vec<Hit>> {
         self.refresh(pool).await?;
         let index = self.clone();
         Ok(tokio::task::spawn_blocking(move || {
@@ -111,8 +119,12 @@ impl VectorIndex {
                 return Vec::new();
             }
             let kind_of = |row: usize| scored.kind(matrix.video[row]);
-            let mut ranked: Vec<(usize, f32)> =
-                scored.scores.iter().enumerate().map(|(row, &s)| (row, kind_of(row).z(s))).collect();
+            let mut ranked: Vec<(usize, f32)> = scored
+                .scores
+                .iter()
+                .enumerate()
+                .map(|(row, &s)| (row, kind_of(row).z(s)))
+                .collect();
             ranked.select_nth_unstable_by(limit - 1, |a, b| b.1.total_cmp(&a.1));
             ranked.truncate(limit);
             ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
@@ -167,17 +179,30 @@ impl Matrix {
     fn score(&self, query: &Questions) -> Scored {
         let scores: Vec<f32> = self
             .data
-            .chunks_exact(DIM)
+            .as_chunks::<DIM>()
+            .0
+            .iter()
             .zip(&self.video)
             .map(|(row, &video)| dot(row, if video { &query.clip } else { &query.still }))
             .collect();
         let all = Scale::of(scores.clone());
         let scale = |video: bool| {
-            let kind = Scale::of(scores.iter().zip(&self.video).filter(|(_, v)| **v == video).map(|(s, _)| *s).collect());
+            let kind = Scale::of(
+                scores
+                    .iter()
+                    .zip(&self.video)
+                    .filter(|(_, v)| **v == video)
+                    .map(|(s, _)| *s)
+                    .collect(),
+            );
             if kind.n >= MIN_KIND { kind } else { all }
         };
         let (stills, clips) = (scale(false), scale(true));
-        Scored { scores, stills, clips }
+        Scored {
+            scores,
+            stills,
+            clips,
+        }
     }
 }
 
@@ -208,11 +233,19 @@ impl Scale {
     fn of(mut scores: Vec<f32>) -> Scale {
         let n = scores.len();
         if n == 0 {
-            return Scale { n, median: 0.0, spread: 1.0 };
+            return Scale {
+                n,
+                median: 0.0,
+                spread: 1.0,
+            };
         }
         let median = middle(&mut scores);
         scores.iter_mut().for_each(|s| *s = (*s - median).abs());
-        Scale { n, median, spread: (1.4826 * middle(&mut scores)).max(1e-6) }
+        Scale {
+            n,
+            median,
+            spread: (1.4826 * middle(&mut scores)).max(1e-6),
+        }
     }
 
     fn z(&self, score: f32) -> f32 {
@@ -302,30 +335,57 @@ mod tests {
         }
         let mut still = vec![0f32; DIM];
         still[0] = 1.0;
-        let query = Questions { clip: still.clone(), still };
+        let query = Questions {
+            clip: still.clone(),
+            still,
+        };
         let scored = matrix.score(&query);
         assert_eq!(scored.scores.len(), 63);
-        assert_eq!(scored.stills.n, 60, "enough stills for a scale of their own");
-        assert_eq!(scored.clips.n, 63, "three clips are measured against everything");
+        assert_eq!(
+            scored.stills.n, 60,
+            "enough stills for a scale of their own"
+        );
+        assert_eq!(
+            scored.clips.n, 63,
+            "three clips are measured against everything"
+        );
         assert!(!std::ptr::eq(scored.kind(true), scored.kind(false)));
     }
 
     #[test]
     fn the_scale_ignores_a_cluster_of_matches() {
         // 80 unrelated scores around 0.2, 20 matches far above
-        let mut scores: Vec<f32> = (0..80).map(|i| 0.2 + (i % 9) as f32 * 0.005 - 0.02).collect();
+        let mut scores: Vec<f32> = (0..80)
+            .map(|i| 0.2 + (i % 9) as f32 * 0.005 - 0.02)
+            .collect();
         scores.extend([0.5f32; 20]);
         let scale = Scale::of(scores);
         assert_eq!(scale.n, 100);
-        assert!((scale.median - 0.2).abs() < 0.011, "median {}", scale.median);
-        assert!(scale.z(0.5) > 10.0, "the matches stand out: {}", scale.z(0.5));
+        assert!(
+            (scale.median - 0.2).abs() < 0.011,
+            "median {}",
+            scale.median
+        );
+        assert!(
+            scale.z(0.5) > 10.0,
+            "the matches stand out: {}",
+            scale.z(0.5)
+        );
     }
 
     #[test]
     fn chance_levels_follow_the_normal_tail() {
         // exact normal quantiles: Q^-1(2/800) = 2.81, Q^-1(2/19700) = 3.72
-        assert!((chance(800, 2.0) - 2.81).abs() < 0.03, "{}", chance(800, 2.0));
-        assert!((chance(19_700, 2.0) - 3.72).abs() < 0.03, "{}", chance(19_700, 2.0));
+        assert!(
+            (chance(800, 2.0) - 2.81).abs() < 0.03,
+            "{}",
+            chance(800, 2.0)
+        );
+        assert!(
+            (chance(19_700, 2.0) - 3.72).abs() < 0.03,
+            "{}",
+            chance(19_700, 2.0)
+        );
         assert!(chance(19_700, 0.5) > chance(800, 0.5));
         assert_eq!(chance(1, 2.0), 0.0);
     }

@@ -87,9 +87,16 @@ async fn heartbeat(worker: Arc<Worker>, running: Running) {
 }
 
 /// Claims one job of `kind`, or waits for Postgres to announce one.
-async fn next_job(worker: &Worker, name: &str, kind: &str, notifications: &mut tokio::sync::mpsc::UnboundedReceiver<&'static str>) -> Option<Job> {
+async fn next_job(
+    worker: &Worker,
+    name: &str,
+    kind: &str,
+    notifications: &mut tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+) -> Option<Job> {
     let claimed = match worker.pool.get().await {
-        Ok(c) => queue::claim(&c, name, &[kind], 1).await.map_err(anyhow::Error::from),
+        Ok(c) => queue::claim(&c, name, &[kind], 1)
+            .await
+            .map_err(anyhow::Error::from),
         Err(e) => Err(e.into()),
     };
     match claimed {
@@ -115,7 +122,9 @@ async fn embeddings(worker: Arc<Worker>, parallel: usize, running: Running) {
     let slots = Arc::new(Semaphore::new(parallel));
     loop {
         let slot = slots.clone().acquire_owned().await.expect("semaphore open");
-        let Some(job) = next_job(&worker, &name, queue::EMBED, &mut notifications).await else { continue };
+        let Some(job) = next_job(&worker, &name, queue::EMBED, &mut notifications).await else {
+            continue;
+        };
         let (worker, running) = (worker.clone(), running.clone());
         running.lock().unwrap().insert(job.id);
         tokio::spawn(async move {
@@ -170,14 +179,37 @@ async fn not_ready(c: &tokio_postgres::Client, job: &Job) -> Result<(), tokio_po
             &[&queue::THUMB, &job.owner_id],
         )
         .await?;
-    match thumb.as_ref().map(|r| (r.get::<_, String>(0), r.get::<_, Option<String>>(1))) {
+    match thumb
+        .as_ref()
+        .map(|r| (r.get::<_, String>(0), r.get::<_, Option<String>>(1)))
+    {
         Some((status, error)) if status == "failed" || status == "stuck" => {
-            queue::stick(c, job.id, &format!("its thumbnail failed: {}", error.unwrap_or_default())).await
+            queue::stick(
+                c,
+                job.id,
+                &format!("its thumbnail failed: {}", error.unwrap_or_default()),
+            )
+            .await
         }
-        _ if job.defers >= queue::MAX_DEFERS => queue::stick(c, job.id, "no thumbnail after an hour of waiting").await,
+        _ if job.defers >= queue::MAX_DEFERS => {
+            queue::stick(c, job.id, "no thumbnail after an hour of waiting").await
+        }
         None => {
-            queue::enqueue(c, queue::THUMB, "asset", &job.owner_id, queue::PRIORITY_DEFAULT).await?;
-            queue::defer(c, job.id, NOT_READY, Some("no thumbnail yet; its job was missing and is queued")).await
+            queue::enqueue(
+                c,
+                queue::THUMB,
+                "asset",
+                &job.owner_id,
+                queue::PRIORITY_DEFAULT,
+            )
+            .await?;
+            queue::defer(
+                c,
+                job.id,
+                NOT_READY,
+                Some("no thumbnail yet; its job was missing and is queued"),
+            )
+            .await
         }
         Some(_) => queue::defer(c, job.id, NOT_READY, Some("no thumbnail yet")).await,
     }
@@ -197,7 +229,9 @@ async fn settle(worker: &Worker, job: &Job, result: Result<Outcome>, started: In
     let id = &job.owner_id[..job.owner_id.len().min(12)];
     match (&result, settled) {
         (_, Err(e)) => tracing::warn!("{} {id}: could not settle: {e:#}", job.kind),
-        (Ok(Outcome::Done), _) => tracing::info!("{} {id} done in {:.1?}", job.kind, started.elapsed()),
+        (Ok(Outcome::Done), _) => {
+            tracing::info!("{} {id} done in {:.1?}", job.kind, started.elapsed())
+        }
         (Ok(Outcome::NotReady), _) => {}
         (Err(e), _) => tracing::warn!("{} {id} failed: {e:#}", job.kind),
     }
@@ -220,7 +254,11 @@ async fn embed(worker: &Worker, job: &Job) -> Result<Outcome> {
     // whose original cannot be read fails visibly instead of being indexed
     // as a still
     let clip = if is_video {
-        anyhow::ensure!(original.exists(), "the original is missing: {}", original.display());
+        anyhow::ensure!(
+            original.exists(),
+            "the original is missing: {}",
+            original.display()
+        );
         worker.embedder.embed_video(&original).await?
     } else {
         None
@@ -229,7 +267,9 @@ async fn embed(worker: &Worker, job: &Job) -> Result<Outcome> {
         Some(vec) => vec,
         // a still, or a "clip" of a single frame
         None => {
-            let Some(thumb) = worker.cfg.thumb(id) else { return Ok(Outcome::NotReady) };
+            let Some(thumb) = worker.cfg.thumb(id) else {
+                return Ok(Outcome::NotReady);
+            };
             let image = tokio::task::spawn_blocking(move || pixels::open(&thumb)).await??;
             worker.embedder.embed_image(&image).await?
         }

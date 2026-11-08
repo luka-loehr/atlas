@@ -1,13 +1,21 @@
+# One grouped pull request per ecosystem and month, instead of one per
+# dependency: easy to review, test once and merge.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      cargo:
+        patterns: ["*"]
   - package-ecosystem: swift
     directory: /app
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      swift:
+        patterns: ["*"]
     ignore:
       # pinned in app/project.yml: 1.12 and later need the Metal toolchain
       # at build time
@@ -17,8 +25,14 @@ updates:
       - /db
       - /builder/universal
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

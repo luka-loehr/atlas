@@ -12,14 +12,17 @@ use fast_image_resize as fr;
 use image::RgbImage;
 
 pub fn open(path: &Path) -> Result<RgbImage> {
-    Ok(image::open(path).with_context(|| format!("cannot decode {}", path.display()))?.into_rgb8())
+    Ok(image::open(path)
+        .with_context(|| format!("cannot decode {}", path.display()))?
+        .into_rgb8())
 }
 
 pub fn resize(src: &RgbImage, width: u32, height: u32, filter: fr::FilterType) -> Result<RgbImage> {
     if src.dimensions() == (width, height) {
         return Ok(src.clone());
     }
-    let view = fr::images::ImageRef::new(src.width(), src.height(), src.as_raw(), fr::PixelType::U8x3)?;
+    let view =
+        fr::images::ImageRef::new(src.width(), src.height(), src.as_raw(), fr::PixelType::U8x3)?;
     let mut dst = fr::images::Image::new(width, height, fr::PixelType::U8x3);
     let options = fr::ResizeOptions::new().resize_alg(fr::ResizeAlg::Convolution(filter));
     fr::Resizer::new().resize(&view, &mut dst, &options)?;
@@ -51,12 +54,13 @@ pub fn png(img: &RgbImage) -> Result<Vec<u8>> {
     use image::ImageEncoder;
     use image::codecs::png::{CompressionType, FilterType, PngEncoder};
     let mut out = Vec::with_capacity(img.as_raw().len() / 2);
-    PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive).write_image(
-        img.as_raw(),
-        img.width(),
-        img.height(),
-        image::ExtendedColorType::Rgb8,
-    )?;
+    PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::Adaptive)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            image::ExtendedColorType::Rgb8,
+        )?;
     Ok(out)
 }
 
@@ -85,7 +89,11 @@ pub fn probe(path: &Path) -> Result<Clip> {
             .arg(path),
         Duration::from_secs(120),
     )?;
-    ensure!(out.status.success(), "ffprobe: {}", String::from_utf8_lossy(&out.stderr).trim());
+    ensure!(
+        out.status.success(),
+        "ffprobe: {}",
+        String::from_utf8_lossy(&out.stderr).trim()
+    );
     let probed: serde_json::Value = serde_json::from_slice(&out.stdout)?;
     let stream = probed["streams"].get(0).context("no video stream")?;
     let rate = |v: &serde_json::Value| -> Option<f64> {
@@ -104,10 +112,15 @@ pub fn probe(path: &Path) -> Result<Clip> {
         })
         .unwrap_or_default();
     ensure!(!times.is_empty(), "ffprobe found no frames");
-    let start: f64 = probed["format"]["start_time"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let start: f64 = probed["format"]["start_time"]
+        .as_str()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
     times.iter_mut().for_each(|t| *t = (*t - start).max(0.0));
     times.sort_by(f64::total_cmp);
-    let fps = rate(&stream["avg_frame_rate"]).or_else(|| rate(&stream["r_frame_rate"])).context("no frame rate")?;
+    let fps = rate(&stream["avg_frame_rate"])
+        .or_else(|| rate(&stream["r_frame_rate"]))
+        .context("no frame rate")?;
     let hdr = stream["color_transfer"].as_str().is_some_and(video::is_hdr);
     Ok(Clip { times, fps, hdr })
 }
@@ -122,7 +135,11 @@ pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage
     // from a copy remuxed for this job: every seek would otherwise decode
     // from the start, minutes per frame in a long clip
     let last = seconds.iter().copied().fold(0.0, f64::max);
-    let remuxed = if seeks_badly(path, last)? { Some(Remuxed::new(path)?) } else { None };
+    let remuxed = if seeks_badly(path, last)? {
+        Some(Remuxed::new(path)?)
+    } else {
+        None
+    };
     let path = remuxed.as_ref().map_or(path, |r| r.path.as_path());
     let mut frames = Vec::with_capacity(seconds.len());
     for batch in seconds.chunks(SIDE_BY_SIDE) {
@@ -146,7 +163,13 @@ pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage
                     })
                 })
                 .collect();
-            workers.into_iter().map(|w| w.join().unwrap_or_else(|_| Err(anyhow::anyhow!("frame reader panicked")))).collect()
+            workers
+                .into_iter()
+                .map(|w| {
+                    w.join()
+                        .unwrap_or_else(|_| Err(anyhow::anyhow!("frame reader panicked")))
+                })
+                .collect()
         });
         for frame in decoded {
             frames.push(frame?);
@@ -161,7 +184,8 @@ pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage
 /// (2026-11-08).
 const MAX_READERS: usize = 6;
 
-static READERS: (std::sync::Mutex<usize>, std::sync::Condvar) = (std::sync::Mutex::new(0), std::sync::Condvar::new());
+static READERS: (std::sync::Mutex<usize>, std::sync::Condvar) =
+    (std::sync::Mutex::new(0), std::sync::Condvar::new());
 
 /// A place among the [`MAX_READERS`], given back when dropped.
 struct Readers;
@@ -195,12 +219,22 @@ fn seeks_badly(path: &Path, at: f64) -> Result<bool> {
     }
     let out = process::output(
         Command::new("ffprobe")
-            .args(["-v", "error", "-select_streams", "v:0", "-read_intervals", &format!("{at:.3}%+#1")])
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-read_intervals",
+                &format!("{at:.3}%+#1"),
+            ])
             .args(["-show_entries", "packet=pts_time", "-of", "csv=p=0"])
             .arg(path),
         Duration::from_secs(60),
     )?;
-    let landed: Option<f64> = String::from_utf8_lossy(&out.stdout).lines().next().and_then(|l| l.trim().parse().ok());
+    let landed: Option<f64> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .and_then(|l| l.trim().parse().ok());
     Ok(landed.is_some_and(|t| t < at - SLACK))
 }
 
@@ -213,7 +247,8 @@ impl Remuxed {
     fn new(src: &Path) -> Result<Self> {
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("atlas-ml-remux-{}-{n}.mp4", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("atlas-ml-remux-{}-{n}.mp4", std::process::id()));
         let remuxed = Self { path };
         let out = process::output(
             Command::new("ffmpeg")
@@ -223,7 +258,11 @@ impl Remuxed {
                 .arg(&remuxed.path),
             Duration::from_secs(600),
         )?;
-        ensure!(out.status.success(), "remux: {}", String::from_utf8_lossy(&out.stderr).trim());
+        ensure!(
+            out.status.success(),
+            "remux: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
         Ok(remuxed)
     }
 }
@@ -237,7 +276,9 @@ impl Drop for Remuxed {
 /// The first frame at or after `seek`, None when there is none.
 fn frame_at(path: &Path, seek: f64, hdr: bool) -> Result<Option<RgbImage>> {
     let mut ffmpeg = Command::new("ffmpeg");
-    ffmpeg.args(["-v", "error", "-ss", &format!("{seek:.4}"), "-i"]).arg(path);
+    ffmpeg
+        .args(["-v", "error", "-ss", &format!("{seek:.4}"), "-i"])
+        .arg(path);
     // the stream `probe` read, also when a clip has two
     ffmpeg.args(["-map", "0:v:0", "-frames:v", "1"]);
     if hdr {
@@ -245,7 +286,10 @@ fn frame_at(path: &Path, seek: f64, hdr: bool) -> Result<Option<RgbImage>> {
     }
     // a seek deep into a long multi-GB clip, beside the other readers, can
     // take minutes; the job's own limit (EMBED_LIMIT) still bounds the whole
-    let out = process::output(ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]), Duration::from_secs(600))?;
+    let out = process::output(
+        ffmpeg.args(["-f", "image2pipe", "-c:v", "bmp", "pipe:1"]),
+        Duration::from_secs(600),
+    )?;
     if !out.status.success() || out.stdout.is_empty() {
         return Ok(None);
     }
@@ -258,8 +302,17 @@ mod tests {
 
     #[test]
     fn fit_never_enlarges_and_keeps_the_aspect() {
-        assert_eq!(fit(RgbImage::new(4000, 3000), 2048).unwrap().dimensions(), (2048, 1536));
-        assert_eq!(fit(RgbImage::new(1080, 1920), 1920).unwrap().dimensions(), (1080, 1920));
-        assert_eq!(fit(RgbImage::new(300, 200), 4096).unwrap().dimensions(), (300, 200));
+        assert_eq!(
+            fit(RgbImage::new(4000, 3000), 2048).unwrap().dimensions(),
+            (2048, 1536)
+        );
+        assert_eq!(
+            fit(RgbImage::new(1080, 1920), 1920).unwrap().dimensions(),
+            (1080, 1920)
+        );
+        assert_eq!(
+            fit(RgbImage::new(300, 200), 4096).unwrap().dimensions(),
+            (300, 200)
+        );
     }
 }

@@ -17,46 +17,83 @@ async fn database() -> Option<Pool> {
     unsafe { std::env::set_var("ATLAS_DATABASE_URL", &url) };
     let pool = atlas_core::db::pool(4).unwrap();
     let c = pool.get().await.unwrap();
-    c.batch_execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE EXTENSION IF NOT EXISTS vector;")
-        .await
-        .unwrap();
+    c.batch_execute(
+        "DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE EXTENSION IF NOT EXISTS vector;",
+    )
+    .await
+    .unwrap();
     drop(c);
     atlas_core::db::migrate(&pool).await.unwrap();
     Some(pool)
 }
 
 async fn status(c: &tokio_postgres::Client, id: i64) -> (String, i32, i32, Option<String>) {
-    let r = c.query_one("SELECT status, attempts, heals, error FROM ingest_jobs WHERE id = $1", &[&id]).await.unwrap();
-    (r.get(0), r.get::<_, Option<i32>>(1).unwrap_or(0), r.get(2), r.get(3))
+    let r = c
+        .query_one(
+            "SELECT status, attempts, heals, error FROM ingest_jobs WHERE id = $1",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    (
+        r.get(0),
+        r.get::<_, Option<i32>>(1).unwrap_or(0),
+        r.get(2),
+        r.get(3),
+    )
 }
 
 async fn claim_one(c: &tokio_postgres::Client, worker: &str, kind: &str) -> queue::Job {
-    c.execute("UPDATE ingest_jobs SET run_after = now() WHERE status = 'pending'", &[]).await.unwrap();
-    queue::claim(c, worker, &[kind], 1).await.unwrap().pop().expect("a job to claim")
+    c.execute(
+        "UPDATE ingest_jobs SET run_after = now() WHERE status = 'pending'",
+        &[],
+    )
+    .await
+    .unwrap();
+    queue::claim(c, worker, &[kind], 1)
+        .await
+        .unwrap()
+        .pop()
+        .expect("a job to claim")
 }
 
 #[tokio::test]
 async fn a_job_that_keeps_failing_ends_stuck_and_blocks_nothing() {
     let Some(pool) = database().await else { return };
     let c = pool.get().await.unwrap();
-    queue::enqueue(&c, queue::THUMB, "asset", "bad", 10).await.unwrap();
-    queue::enqueue(&c, queue::THUMB, "asset", "good", 100).await.unwrap();
+    queue::enqueue(&c, queue::THUMB, "asset", "bad", 10)
+        .await
+        .unwrap();
+    queue::enqueue(&c, queue::THUMB, "asset", "good", 100)
+        .await
+        .unwrap();
 
     let mut id = 0;
     for _ in 0..MAX_ATTEMPTS {
         let job = claim_one(&c, "server:test:1", queue::THUMB).await;
-        assert_eq!(job.owner_id, "bad", "the failing job has the higher priority");
+        assert_eq!(
+            job.owner_id, "bad",
+            "the failing job has the higher priority"
+        );
         id = job.id;
         queue::fail(&c, job.id, "corrupt").await.unwrap();
     }
     assert_eq!(status(&c, id).await.0, "failed");
     // the other job is not held up
-    assert_eq!(claim_one(&c, "server:test:1", queue::THUMB).await.owner_id, "good");
+    assert_eq!(
+        claim_one(&c, "server:test:1", queue::THUMB).await.owner_id,
+        "good"
+    );
 
     // the healer leaves a fresh failure alone, retries an old one ...
     assert_eq!(queue::heal(&c).await.unwrap(), queue::Healed::default());
     for heal in 1..=MAX_HEALS {
-        c.execute("UPDATE ingest_jobs SET updated_at = now() - interval '7 hours' WHERE id = $1", &[&id]).await.unwrap();
+        c.execute(
+            "UPDATE ingest_jobs SET updated_at = now() - interval '7 hours' WHERE id = $1",
+            &[&id],
+        )
+        .await
+        .unwrap();
         assert_eq!(queue::heal(&c).await.unwrap().retried, 1);
         let (state, attempts, heals, _) = status(&c, id).await;
         assert_eq!((state.as_str(), attempts, heals), ("pending", 0, heal));
@@ -68,12 +105,22 @@ async fn a_job_that_keeps_failing_ends_stuck_and_blocks_nothing() {
     // ... and parks it once its heals are used up
     assert_eq!(queue::heal(&c).await.unwrap().stuck, 1);
     assert_eq!(status(&c, id).await.0, "stuck");
-    assert!(queue::claim(&c, "server:test:1", &[queue::THUMB], 1).await.unwrap().is_empty());
+    assert!(
+        queue::claim(&c, "server:test:1", &[queue::THUMB], 1)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // what it waited for is back: it starts over
-    queue::ensure(&c, queue::THUMB, "asset", "bad", 10).await.unwrap();
+    queue::ensure(&c, queue::THUMB, "asset", "bad", 10)
+        .await
+        .unwrap();
     let (state, attempts, heals, error) = status(&c, id).await;
-    assert_eq!((state.as_str(), attempts, heals, error), ("pending", 0, 0, None));
+    assert_eq!(
+        (state.as_str(), attempts, heals, error),
+        ("pending", 0, 0, None)
+    );
 }
 
 #[tokio::test]
@@ -81,7 +128,9 @@ async fn crashed_and_stopped_workers_give_their_jobs_back() {
     let Some(pool) = database().await else { return };
     let c = pool.get().await.unwrap();
     for owner in ["a", "b", "c"] {
-        queue::enqueue(&c, queue::EMBED, "asset", owner, 100).await.unwrap();
+        queue::enqueue(&c, queue::EMBED, "asset", owner, 100)
+            .await
+            .unwrap();
     }
     let crashed = claim_one(&c, "ml:111:embed", queue::EMBED).await;
     let stopped = claim_one(&c, "ml:222:embed", queue::EMBED).await;
@@ -100,9 +149,12 @@ async fn crashed_and_stopped_workers_give_their_jobs_back() {
 
     // a job whose heartbeat stopped is reaped; one that crashes its worker
     // every time ends failed instead of looping
-    c.execute("UPDATE ingest_jobs SET heartbeat_at = now() - interval '11 minutes' WHERE id = $1", &[&stale.id])
-        .await
-        .unwrap();
+    c.execute(
+        "UPDATE ingest_jobs SET heartbeat_at = now() - interval '11 minutes' WHERE id = $1",
+        &[&stale.id],
+    )
+    .await
+    .unwrap();
     assert_eq!(queue::reap(&c).await.unwrap(), 1);
     for _ in 1..MAX_ATTEMPTS {
         c.execute(
@@ -120,17 +172,32 @@ async fn crashed_and_stopped_workers_give_their_jobs_back() {
 async fn deferrals_are_counted_and_unknown_kinds_parked() {
     let Some(pool) = database().await else { return };
     let c = pool.get().await.unwrap();
-    queue::enqueue(&c, queue::FACES, "asset", "x", 100).await.unwrap();
+    queue::enqueue(&c, queue::FACES, "asset", "x", 100)
+        .await
+        .unwrap();
     let job = claim_one(&c, "ml:1:faces", queue::FACES).await;
     assert_eq!(job.defers, 0);
-    queue::defer(&c, job.id, Duration::ZERO, Some("no thumbnail yet")).await.unwrap();
+    queue::defer(&c, job.id, Duration::ZERO, Some("no thumbnail yet"))
+        .await
+        .unwrap();
     assert_eq!(claim_one(&c, "ml:1:faces", queue::FACES).await.defers, 1);
 
-    queue::enqueue(&c, "caption", "asset", "x", 100).await.unwrap();
+    queue::enqueue(&c, "caption", "asset", "x", 100)
+        .await
+        .unwrap();
     assert_eq!(queue::heal(&c).await.unwrap().stuck, 1);
-    let r = c.query_one("SELECT status, error FROM ingest_jobs WHERE kind = 'caption'", &[]).await.unwrap();
+    let r = c
+        .query_one(
+            "SELECT status, error FROM ingest_jobs WHERE kind = 'caption'",
+            &[],
+        )
+        .await
+        .unwrap();
     assert_eq!(r.get::<_, String>(0), "stuck");
-    assert_eq!(r.get::<_, Option<String>>(1).as_deref(), Some("no worker runs jobs of this kind"));
+    assert_eq!(
+        r.get::<_, Option<String>>(1).as_deref(),
+        Some("no worker runs jobs of this kind")
+    );
 }
 
 #[tokio::test]
@@ -156,19 +223,34 @@ async fn the_timeline_hears_only_about_what_it_shows() {
     quiet("UPDATE assets SET favorite = favorite").await;
     quiet("UPDATE assets SET preview_at = now(), thumb_v = 2, exif = '{}'::jsonb").await;
     tokio::time::sleep(Duration::from_millis(500)).await;
-    assert!(heard.try_recv().is_err(), "a change to nothing shown must not drop the cache");
+    assert!(
+        heard.try_recv().is_err(),
+        "a change to nothing shown must not drop the cache"
+    );
 
     quiet("UPDATE assets SET favorite = NOT favorite").await;
-    let channel = tokio::time::timeout(Duration::from_secs(5), heard.recv()).await.expect("notified");
+    let channel = tokio::time::timeout(Duration::from_secs(5), heard.recv())
+        .await
+        .expect("notified");
     assert_eq!(channel, Some("atlas_assets"));
     quiet("DELETE FROM assets").await;
-    assert!(tokio::time::timeout(Duration::from_secs(5), heard.recv()).await.is_ok());
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), heard.recv())
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
 async fn tags_and_events_are_gone() {
     let Some(pool) = database().await else { return };
     let c = pool.get().await.unwrap();
-    let r = c.query_one("SELECT to_regclass('tags') IS NULL, to_regclass('events') IS NULL", &[]).await.unwrap();
+    let r = c
+        .query_one(
+            "SELECT to_regclass('tags') IS NULL, to_regclass('events') IS NULL",
+            &[],
+        )
+        .await
+        .unwrap();
     assert!(r.get::<_, bool>(0) && r.get::<_, bool>(1));
 }

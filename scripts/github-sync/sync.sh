@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# github-sync — keep a working clone of every repo of Luka's account and orgs
+# github-sync — keep a working clone of every repo of the account and its orgs
 # under /srv/bulk/github/<owner>/<repo>, on the default branch.
 #
 # Pulled in by atlas-bulk-backup.service and ordered before it, so every hourly

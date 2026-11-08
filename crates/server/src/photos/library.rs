@@ -71,7 +71,10 @@ pub async fn stats(State(app): State<AppState>) -> ApiResult<Json<Value>> {
             &[],
         )
         .await?;
-    let albums: i64 = c.query_one("SELECT count(*) FROM albums", &[]).await?.get(0);
+    let albums: i64 = c
+        .query_one("SELECT count(*) FROM albums", &[])
+        .await?
+        .get(0);
     let people: i64 = c
         .query_one("SELECT count(*) FROM persons WHERE merged_into IS NULL AND NOT hidden AND face_count > 0", &[])
         .await?
@@ -114,29 +117,53 @@ pub async fn heatmap(State(app): State<AppState>) -> ApiResult<Json<Value>> {
             &[&app.cfg.tz.name()],
         )
         .await?;
-    let items: Vec<Value> =
-        rows.iter().map(|r| json!({ "d": r.get::<_, String>(0), "n": r.get::<_, i32>(1) })).collect();
+    let items: Vec<Value> = rows
+        .iter()
+        .map(|r| json!({ "d": r.get::<_, String>(0), "n": r.get::<_, i32>(1) }))
+        .collect();
     Ok(Json(json!({ "items": items })))
 }
 
 /// The collections next to the timeline. They are mutually exclusive with
 /// it and with each other where it matters: trash wins over everything,
 /// archive excludes locked.
-pub async fn view(State(app): State<AppState>, Path(view): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn view(
+    State(app): State<AppState>,
+    Path(view): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let (predicate, order) = match view.as_str() {
-        "favorites" => (format!("assets.favorite AND {VISIBLE}"), "assets.taken_at DESC NULLS LAST"),
-        "videos" => (format!("assets.type = 'video' AND {VISIBLE}"), "assets.taken_at DESC NULLS LAST"),
+        "favorites" => (
+            format!("assets.favorite AND {VISIBLE}"),
+            "assets.taken_at DESC NULLS LAST",
+        ),
+        "videos" => (
+            format!("assets.type = 'video' AND {VISIBLE}"),
+            "assets.taken_at DESC NULLS LAST",
+        ),
         "archive" => (
             "assets.archived AND assets.trashed_at IS NULL AND NOT assets.locked".into(),
             "assets.taken_at DESC NULLS LAST",
         ),
-        "locked" => ("assets.locked AND assets.trashed_at IS NULL".into(), "assets.taken_at DESC NULLS LAST"),
-        "trash" => ("assets.trashed_at IS NOT NULL".into(), "assets.trashed_at DESC"),
+        "locked" => (
+            "assets.locked AND assets.trashed_at IS NULL".into(),
+            "assets.taken_at DESC NULLS LAST",
+        ),
+        "trash" => (
+            "assets.trashed_at IS NOT NULL".into(),
+            "assets.trashed_at DESC",
+        ),
         _ => return Err(ApiError::NotFound),
     };
     let c = app.pool.get().await?;
     let rows = c
-        .query(&format!("SELECT {COLS} FROM assets WHERE {predicate} ORDER BY {order}, assets.id"), &[])
+        .query(
+            &format!("SELECT {COLS} FROM assets WHERE {predicate} ORDER BY {order}, assets.id"),
+            &[],
+        )
         .await?;
-    Ok(media::json_validated(&headers, &json!({ "assets": Columns::from_rows(&rows, app.cfg.tz) })))
+    Ok(media::json_validated(
+        &headers,
+        &json!({ "assets": Columns::from_rows(&rows, app.cfg.tz) }),
+    ))
 }

@@ -241,6 +241,8 @@ pub(crate) fn migrate(argv: &[String]) {
     if removed {
         println!("{GREEN}✓{RESET} wrote atlas.toml, removed .atlas-build.toml");
     } else {
-        println!("{GREEN}✓{RESET} wrote atlas.toml (could not remove .atlas-build.toml — delete it manually)");
+        println!(
+            "{GREEN}✓{RESET} wrote atlas.toml (could not remove .atlas-build.toml — delete it manually)"
+        );
     }
 }

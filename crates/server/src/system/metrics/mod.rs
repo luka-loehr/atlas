@@ -25,7 +25,10 @@ use crate::{AppState, Config};
 mod readers;
 
 pub use readers::hostname;
-use readers::{cpu_jiffies, cpu_percent, cpu_temp, disks, memory, net_bytes, rapl_energy, rapl_watts, read_trimmed};
+use readers::{
+    cpu_jiffies, cpu_percent, cpu_temp, disks, memory, net_bytes, rapl_energy, rapl_watts,
+    read_trimmed,
+};
 
 const TICK: Duration = Duration::from_millis(500);
 const HISTORY: usize = 1200; // 10 minutes at 2 Hz
@@ -87,7 +90,12 @@ impl Sampler {
     }
 
     pub fn latest(&self) -> Sample {
-        self.history.lock().unwrap().back().copied().unwrap_or_default()
+        self.history
+            .lock()
+            .unwrap()
+            .back()
+            .copied()
+            .unwrap_or_default()
     }
 }
 
@@ -114,27 +122,45 @@ fn sample_loop(
 
         let energy_now = rapl_energy().map(|e| (e, Instant::now()));
         let cpu_w = match (energy_before, energy_now) {
-            (Some((e0, t0)), Some((e1, t1))) => rapl_watts(e0, e1, t1.duration_since(t0).as_secs_f64()),
+            (Some((e0, t0)), Some((e1, t1))) => {
+                rapl_watts(e0, e1, t1.duration_since(t0).as_secs_f64())
+            }
             _ => None,
         };
         energy_before = energy_now;
 
         let device = nvml.as_ref().and_then(|n| n.device_by_index(0).ok());
-        let gpu = device.as_ref().and_then(|d| d.utilization_rates().ok()).map(|u| u.gpu as f32);
-        let gpu_mem = device.as_ref().and_then(|d| d.memory_info().ok()).map(|m| m.used as f32 / 1_048_576.0);
-        let gpu_temp = device.as_ref().and_then(|d| d.temperature(TemperatureSensor::Gpu).ok()).map(|t| t as f32);
-        let gpu_w = device.as_ref().and_then(|d| d.power_usage().ok()).map(|mw| mw as f32 / 1000.0);
+        let gpu = device
+            .as_ref()
+            .and_then(|d| d.utilization_rates().ok())
+            .map(|u| u.gpu as f32);
+        let gpu_mem = device
+            .as_ref()
+            .and_then(|d| d.memory_info().ok())
+            .map(|m| m.used as f32 / 1_048_576.0);
+        let gpu_temp = device
+            .as_ref()
+            .and_then(|d| d.temperature(TemperatureSensor::Gpu).ok())
+            .map(|t| t as f32);
+        let gpu_w = device
+            .as_ref()
+            .and_then(|d| d.power_usage().ok())
+            .map(|mw| mw as f32 / 1000.0);
 
         let (mem, mem_gb, _) = memory();
         let (rx, tx) = net_bytes();
         // Measured CPU (RAPL) + GPU (NVML) + a fixed baseline for RAM, board,
         // storage and fans, over PSU efficiency. Only a wall-plug meter is
         // exact; this is the software approximation.
-        let system_w =
-            cpu_w.map(|c| ((f64::from(c) + f64::from(gpu_w.unwrap_or(0.0)) + baseline_w) / psu_efficiency) as f32);
+        let system_w = cpu_w.map(|c| {
+            ((f64::from(c) + f64::from(gpu_w.unwrap_or(0.0)) + baseline_w) / psu_efficiency) as f32
+        });
 
         let sample = Sample {
-            ts: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+            ts: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
             cpu,
             mem,
             mem_gb,
@@ -170,11 +196,17 @@ pub async fn snapshot(State(app): State<AppState>) -> Json<Value> {
         .ok()
         .and_then(|s| s.split_whitespace().next().and_then(|x| x.parse().ok()))
         .unwrap_or(0.0);
-    let cpu_model = fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split_once(':')).map(|(_, v)| v.trim().to_string()));
+    let cpu_model = fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| {
+        s.lines()
+            .find(|l| l.starts_with("model name"))
+            .and_then(|l| l.split_once(':'))
+            .map(|(_, v)| v.trim().to_string())
+    });
     let os = fs::read_to_string("/etc/os-release").ok().and_then(|s| {
-        s.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_string()))
+        s.lines().find_map(|l| {
+            l.strip_prefix("PRETTY_NAME=")
+                .map(|v| v.trim_matches('"').to_string())
+        })
     });
     Json(json!({
         "hostname": hostname(),
@@ -202,9 +234,18 @@ pub async fn live(State(app): State<AppState>, ws: WebSocketUpgrade) -> Response
 async fn stream(mut socket: WebSocket, app: AppState) {
     // subscribe before reading the history, so no sample falls between them
     let mut updates = app.metrics.live.subscribe();
-    let history: Vec<Sample> = app.metrics.history.lock().unwrap().iter().copied().collect();
+    let history: Vec<Sample> = app
+        .metrics
+        .history
+        .lock()
+        .unwrap()
+        .iter()
+        .copied()
+        .collect();
     let last = history.last().map_or(0, |s| s.ts);
-    let Ok(first) = serde_json::to_string(&json!({ "history": history })) else { return };
+    let Ok(first) = serde_json::to_string(&json!({ "history": history })) else {
+        return;
+    };
     if socket.send(Message::Text(first.into())).await.is_err() {
         return;
     }

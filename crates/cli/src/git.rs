@@ -95,7 +95,10 @@ pub(crate) fn sync_local(cfg: &BuildCfg, toplevel: &Path) {
     for excluded in EXCLUDES {
         rsync.args(["--exclude", excluded]);
     }
-    let ok = run_inherit(rsync.args([&format!("{}/", toplevel.display()), &format!("{}:{}/", ssh_host(), dest)]));
+    let ok = run_inherit(rsync.args([
+        &format!("{}/", toplevel.display()),
+        &format!("{}:{}/", ssh_host(), dest),
+    ]));
     if !ok {
         eprintln!("{RED}rsync -> atlas failed{RESET}");
         exit(1);

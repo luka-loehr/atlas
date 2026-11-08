@@ -20,15 +20,20 @@ pub(super) fn offset_between(wall_clock: NaiveDateTime, instant: DateTime<Utc>) 
 /// library timezone: the instant and the offset it was at.
 pub(super) fn resolve_local(naive: NaiveDateTime, tz: Tz) -> Option<(DateTime<Utc>, i32)> {
     let local = tz.from_local_datetime(&naive).earliest()?;
-    Some((local.with_timezone(&Utc), local.offset().fix().local_minus_utc()))
+    Some((
+        local.with_timezone(&Utc),
+        local.offset().fix().local_minus_utc(),
+    ))
 }
 
 static NAME_DATETIME: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[^0-9])((?:19|20)\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?:[-_ T]| at )?(\d{2})[-_.:h]?(\d{2})[-_.:m]?(\d{2})(?:\d{3})?(?:[^0-9]|$)").unwrap()
 });
-static NAME_DATE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|[^0-9])((?:19|20)\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?:[^0-9]|$)").unwrap());
-static NAME_MILLIS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|[^0-9])(1\d{12})(?:[^0-9]|$)").unwrap());
+static NAME_DATE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:^|[^0-9])((?:19|20)\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?:[^0-9]|$)").unwrap()
+});
+static NAME_MILLIS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^0-9])(1\d{12})(?:[^0-9]|$)").unwrap());
 
 /// The capture time a filename states, read in the library timezone:
 ///
@@ -44,14 +49,16 @@ pub(super) fn date_from_name(name: &str, tz: Tz) -> Option<(DateTime<Utc>, i32)>
     let field = |caps: &regex::Captures, i: usize| caps[i].parse::<u32>().ok();
 
     if let Some(caps) = NAME_DATETIME.captures(name)
-        && let Some(date) = NaiveDate::from_ymd_opt(caps[1].parse().ok()?, field(&caps, 2)?, field(&caps, 3)?)
+        && let Some(date) =
+            NaiveDate::from_ymd_opt(caps[1].parse().ok()?, field(&caps, 2)?, field(&caps, 3)?)
         && let Some(time) = date.and_hms_opt(field(&caps, 4)?, field(&caps, 5)?, field(&caps, 6)?)
         && plausible(date)
     {
         return resolve_local(time, tz);
     }
     if let Some(caps) = NAME_DATE.captures(name)
-        && let Some(date) = NaiveDate::from_ymd_opt(caps[1].parse().ok()?, field(&caps, 2)?, field(&caps, 3)?)
+        && let Some(date) =
+            NaiveDate::from_ymd_opt(caps[1].parse().ok()?, field(&caps, 2)?, field(&caps, 3)?)
         && plausible(date)
     {
         return resolve_local(date.and_hms_opt(12, 0, 0)?, tz);
@@ -80,29 +87,59 @@ mod tests {
     }
 
     fn local(name: &str) -> Option<String> {
-        date_from_name(name, berlin())
-            .map(|(utc, offset)| (utc + chrono::Duration::seconds(i64::from(offset))).format("%Y-%m-%d %H:%M:%S").to_string())
+        date_from_name(name, berlin()).map(|(utc, offset)| {
+            (utc + chrono::Duration::seconds(i64::from(offset)))
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
     }
 
     #[test]
     fn camera_and_screenshot_names_carry_a_full_timestamp() {
-        assert_eq!(local("IMG_20190812_123456.jpg").as_deref(), Some("2019-08-12 12:34:56"));
-        assert_eq!(local("DJI_20210618_201649_199.jpg").as_deref(), Some("2021-06-18 20:16:49"));
-        assert_eq!(local("PXL_20210101_123456789.jpg").as_deref(), Some("2021-01-01 12:34:56"));
-        assert_eq!(local("lv_7148036206683524358_20230101122755.mp4").as_deref(), Some("2023-01-01 12:27:55"));
-        assert_eq!(local("Screenshot 2021-03-04 at 10.11.12.png").as_deref(), Some("2021-03-04 10:11:12"));
-        assert_eq!(local("WhatsApp Image 2021-03-04 at 10.11.12.jpeg").as_deref(), Some("2021-03-04 10:11:12"));
+        assert_eq!(
+            local("IMG_20190812_123456.jpg").as_deref(),
+            Some("2019-08-12 12:34:56")
+        );
+        assert_eq!(
+            local("DJI_20210618_201649_199.jpg").as_deref(),
+            Some("2021-06-18 20:16:49")
+        );
+        assert_eq!(
+            local("PXL_20210101_123456789.jpg").as_deref(),
+            Some("2021-01-01 12:34:56")
+        );
+        assert_eq!(
+            local("lv_7148036206683524358_20230101122755.mp4").as_deref(),
+            Some("2023-01-01 12:27:55")
+        );
+        assert_eq!(
+            local("Screenshot 2021-03-04 at 10.11.12.png").as_deref(),
+            Some("2021-03-04 10:11:12")
+        );
+        assert_eq!(
+            local("WhatsApp Image 2021-03-04 at 10.11.12.jpeg").as_deref(),
+            Some("2021-03-04 10:11:12")
+        );
     }
 
     #[test]
     fn chat_app_names_carry_a_date() {
-        assert_eq!(local("IMG-20220513-WA0011.jpg").as_deref(), Some("2022-05-13 12:00:00"));
-        assert_eq!(local("VID-20200502-WA0026.mp4").as_deref(), Some("2020-05-02 12:00:00"));
+        assert_eq!(
+            local("IMG-20220513-WA0011.jpg").as_deref(),
+            Some("2022-05-13 12:00:00")
+        );
+        assert_eq!(
+            local("VID-20200502-WA0026.mp4").as_deref(),
+            Some("2020-05-02 12:00:00")
+        );
     }
 
     #[test]
     fn epoch_milliseconds_are_recognized() {
-        assert_eq!(local("FaceApp_1632594440518.jpg").as_deref(), Some("2021-09-25 20:27:20"));
+        assert_eq!(
+            local("FaceApp_1632594440518.jpg").as_deref(),
+            Some("2021-09-25 20:27:20")
+        );
     }
 
     #[test]
@@ -124,10 +161,16 @@ mod tests {
     #[test]
     fn a_known_instant_reveals_the_cameras_offset() {
         let instant = Utc.with_ymd_and_hms(2024, 7, 14, 3, 30, 5).unwrap();
-        let bangkok = NaiveDate::from_ymd_opt(2024, 7, 14).unwrap().and_hms_opt(10, 30, 0).unwrap();
+        let bangkok = NaiveDate::from_ymd_opt(2024, 7, 14)
+            .unwrap()
+            .and_hms_opt(10, 30, 0)
+            .unwrap();
         assert_eq!(offset_between(bangkok, instant), Some(7 * 3600));
         // a clock that is 40 minutes off is not a timezone
-        let wrong = NaiveDate::from_ymd_opt(2024, 7, 14).unwrap().and_hms_opt(4, 10, 0).unwrap();
+        let wrong = NaiveDate::from_ymd_opt(2024, 7, 14)
+            .unwrap()
+            .and_hms_opt(4, 10, 0)
+            .unwrap();
         assert_eq!(offset_between(wrong, instant), None);
     }
 }

@@ -73,7 +73,11 @@ mod tests {
             replaces: None,
             vetoed: Vec::new(),
         };
-        let kept = tracks(vec![f(40.0, [1.0, 0.0], Some(7)), f(80.0, [0.99, 0.14], None), f(50.0, [0.0, 1.0], None)]);
+        let kept = tracks(vec![
+            f(40.0, [1.0, 0.0], Some(7)),
+            f(80.0, [0.99, 0.14], None),
+            f(50.0, [0.0, 1.0], None),
+        ]);
         assert_eq!(kept.len(), 2);
         assert_eq!(kept[0].width_px, 80.0);
         assert_eq!(kept[0].person, Some(7));

@@ -12,14 +12,23 @@ static GEOCODER: LazyLock<ReverseGeocoder> = LazyLock::new(ReverseGeocoder::new)
 
 pub async fn run(app: &AppState, id: &str) -> Result<()> {
     let mut c = app.pool.get().await?;
-    let row = c.query_opt("SELECT lat, lon FROM assets WHERE id = $1", &[&id]).await?.context("asset is gone")?;
+    let row = c
+        .query_opt("SELECT lat, lon FROM assets WHERE id = $1", &[&id])
+        .await?
+        .context("asset is gone")?;
     let (Some(lat), Some(lon)): (Option<f64>, Option<f64>) = (row.get(0), row.get(1)) else {
         return Ok(());
     };
 
     let (name, region, country, place_lat, place_lon) = tokio::task::spawn_blocking(move || {
         let record = GEOCODER.search((lat, lon)).record;
-        (record.name.clone(), record.admin1.clone(), record.cc.clone(), record.lat, record.lon)
+        (
+            record.name.clone(),
+            record.admin1.clone(),
+            record.cc.clone(),
+            record.lat,
+            record.lon,
+        )
     })
     .await?;
 

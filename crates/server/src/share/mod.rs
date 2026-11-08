@@ -78,17 +78,24 @@ async fn list(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let rows = c
         .query(
-            &format!("SELECT {SHARE_COLS} FROM shares WHERE expires_at > now() ORDER BY created_at DESC"),
+            &format!(
+                "SELECT {SHARE_COLS} FROM shares WHERE expires_at > now() ORDER BY created_at DESC"
+            ),
             &[],
         )
         .await?;
-    Ok(Json(json!({ "shares": rows.iter().map(|r| share_json(&app, r)).collect::<Vec<_>>() })))
+    Ok(Json(
+        json!({ "shares": rows.iter().map(|r| share_json(&app, r)).collect::<Vec<_>>() }),
+    ))
 }
 
 async fn one(State(app): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let row = c
-        .query_opt(&format!("SELECT {SHARE_COLS} FROM shares WHERE id = $1 AND expires_at > now()"), &[&id])
+        .query_opt(
+            &format!("SELECT {SHARE_COLS} FROM shares WHERE id = $1 AND expires_at > now()"),
+            &[&id],
+        )
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(Json(share_json(&app, &row)))
@@ -121,7 +128,10 @@ async fn create(State(app): State<AppState>, Json(b): Json<NewShare>) -> ApiResu
     if !(1..=MAX_DAYS).contains(&days) {
         return Err(ApiError::BadRequest("a link lasts 1 to 7 days"));
     }
-    let password = b.password.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+    let password = b
+        .password
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
     if password.as_ref().is_some_and(|p| p.chars().count() > 200) {
         return Err(ApiError::BadRequest("password is too long"));
     }
@@ -142,7 +152,12 @@ async fn create(State(app): State<AppState>, Json(b): Json<NewShare>) -> ApiResu
             let id: String = row.get(0);
             if row.get::<_, String>(6) == "failed" {
                 album_changed(&app, album).await?;
-                let row = c.query_one(&format!("SELECT {SHARE_COLS} FROM shares WHERE id = $1"), &[&id]).await?;
+                let row = c
+                    .query_one(
+                        &format!("SELECT {SHARE_COLS} FROM shares WHERE id = $1"),
+                        &[&id],
+                    )
+                    .await?;
                 return Ok(Json(share_json(&app, &row)));
             }
             return Ok(Json(share_json(&app, &row)));
@@ -188,15 +203,21 @@ async fn create(State(app): State<AppState>, Json(b): Json<NewShare>) -> ApiResu
 
 async fn stop(State(app): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
-    if c.query_opt("SELECT 1 FROM shares WHERE id = $1", &[&id]).await?.is_none() {
+    if c.query_opt("SELECT 1 FROM shares WHERE id = $1", &[&id])
+        .await?
+        .is_none()
+    {
         return Err(ApiError::NotFound);
     }
     // the row goes first, so a running upload stops at its next file
-    c.execute("DELETE FROM shares WHERE id = $1", &[&id]).await?;
+    c.execute("DELETE FROM shares WHERE id = $1", &[&id])
+        .await?;
     if let Some(remote) = Remote::new(&app) {
         remote.delete(&id).await.map_err(|e| {
             tracing::warn!("share {id}: remote delete failed, the Worker's cron will: {e:#}");
-            ApiError::Unavailable("the link stopped, but atlas-share could not be reached to remove the files yet")
+            ApiError::Unavailable(
+                "the link stopped, but atlas-share could not be reached to remove the files yet",
+            )
         })?;
     }
     Ok(Json(json!({ "deleted": true })))
@@ -210,7 +231,12 @@ fn new_id() -> Result<String> {
         .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut bytes))
         .context("no random source")?;
     // 248 = 4 × 62: rejecting the rest keeps every character equally likely
-    let id: String = bytes.iter().filter(|&&b| b < 248).take(22).map(|&b| ALPHABET[(b % 62) as usize] as char).collect();
+    let id: String = bytes
+        .iter()
+        .filter(|&&b| b < 248)
+        .take(22)
+        .map(|&b| ALPHABET[(b % 62) as usize] as char)
+        .collect();
     if id.len() < 22 {
         bail!("not enough random bytes");
     }
@@ -219,19 +245,18 @@ fn new_id() -> Result<String> {
 
 /// The visible assets of an album, in the order a share shows them.
 async fn album_assets(c: &deadpool_postgres::Object, album: i64) -> Result<Vec<String>> {
-    Ok(c
-        .query(
-            &format!(
-                "SELECT assets.id FROM assets JOIN album_assets aa ON aa.asset_id = assets.id
+    Ok(c.query(
+        &format!(
+            "SELECT assets.id FROM assets JOIN album_assets aa ON aa.asset_id = assets.id
                  WHERE aa.album_id = $1 AND {VISIBLE}
                  ORDER BY assets.taken_at NULLS LAST, assets.id"
-            ),
-            &[&album],
-        )
-        .await?
-        .iter()
-        .map(|r| r.get(0))
-        .collect())
+        ),
+        &[&album],
+    )
+    .await?
+    .iter()
+    .map(|r| r.get(0))
+    .collect())
 }
 
 #[cfg(test)]

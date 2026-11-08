@@ -23,7 +23,12 @@ const PARALLEL: usize = 4;
 /// they stopped: files already in R2 are skipped).
 pub async fn resume(app: AppState) {
     let Ok(c) = app.pool.get().await else { return };
-    let Ok(rows) = c.query("SELECT id FROM shares WHERE state = 'uploading' AND expires_at > now()", &[]).await
+    let Ok(rows) = c
+        .query(
+            "SELECT id FROM shares WHERE state = 'uploading' AND expires_at > now()",
+            &[],
+        )
+        .await
     else {
         return;
     };
@@ -62,9 +67,17 @@ pub(super) fn spawn_upload(app: AppState, id: String) {
 }
 
 async fn run_upload(app: &AppState, id: &str) {
-    let Err(e) = upload(app, id).await else { return };
+    let Err(e) = upload(app, id).await else {
+        return;
+    };
     tracing::warn!("share {id}: {e:#}");
-    let message = format!("{e:#}").lines().next().unwrap_or("upload failed").chars().take(300).collect::<String>();
+    let message = format!("{e:#}")
+        .lines()
+        .next()
+        .unwrap_or("upload failed")
+        .chars()
+        .take(300)
+        .collect::<String>();
     if let Ok(c) = app.pool.get().await {
         let _ = c
             .execute("UPDATE shares SET state = 'failed', error = $2 WHERE id = $1 AND state = 'uploading'", &[&id, &message])
@@ -83,10 +96,15 @@ struct File {
 enum Source {
     Path(PathBuf),
     /// A video whose H.264 view is made first.
-    Transcode { original: PathBuf, duration: Option<f64> },
+    Transcode {
+        original: PathBuf,
+        duration: Option<f64>,
+    },
     /// A video browsers play as it is: copied into a fresh MP4 without its
     /// metadata, since the original's carries where it was taken.
-    Remux { original: PathBuf },
+    Remux {
+        original: PathBuf,
+    },
 }
 
 struct Item {
@@ -105,8 +123,21 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
         )
         .await?
         .context("share is gone")?;
-    let (title, ids, allow_download, password, expires, live): (String, Vec<String>, bool, Option<String>, i64, bool) =
-        (share.get(0), share.get(1), share.get(2), share.get(3), share.get(4), share.get(5));
+    let (title, ids, allow_download, password, expires, live): (
+        String,
+        Vec<String>,
+        bool,
+        Option<String>,
+        i64,
+        bool,
+    ) = (
+        share.get(0),
+        share.get(1),
+        share.get(2),
+        share.get(3),
+        share.get(4),
+        share.get(5),
+    );
     // a new link says "being created" from its first second, not "not found";
     // a live one keeps showing its current contents while it is updated
     let announce = |done: i64, total: i64, eta: Option<i64>| {
@@ -115,7 +146,9 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     };
     if !live {
         let first = announce(0, 0, None);
-        with_retries(|| remote.progress(id, &first)).await.context("progress")?;
+        with_retries(|| remote.progress(id, &first))
+            .await
+            .context("progress")?;
     }
     let rows = c
         .query(
@@ -137,7 +170,11 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
         bail!("none of these photos exist any more");
     }
 
-    let total: i64 = items.iter().flat_map(|i| &i.files).map(|f| estimate(&f.source) as i64).sum();
+    let total: i64 = items
+        .iter()
+        .flat_map(|i| &i.files)
+        .map(|f| estimate(&f.source) as i64)
+        .sum();
     let done = Arc::new(AtomicI64::new(0));
     set_progress(app, id, 0, total).await?;
 
@@ -149,7 +186,13 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     let reporting = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let progress_base = announce(0, 0, None);
     tokio::spawn({
-        let (app, id, done, total, reporting) = (app.clone(), id.to_string(), done.clone(), total.clone(), reporting.clone());
+        let (app, id, done, total, reporting) = (
+            app.clone(),
+            id.to_string(),
+            done.clone(),
+            total.clone(),
+            reporting.clone(),
+        );
         async move {
             let mut speed = Speed::default();
             let mut tick = 0u32;
@@ -160,7 +203,8 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
                 let eta = speed.eta(d, t);
                 tick += 1;
                 // the recipient's page: every 5 s is plenty, and cheap
-                if !live && tick.is_multiple_of(5)
+                if !live
+                    && tick.is_multiple_of(5)
                     && let Some(remote) = Remote::new(&app)
                 {
                     let mut body = progress_base.clone();
@@ -198,20 +242,33 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
                     let _ = tokio::fs::remove_file(&path).await;
                 }
                 result.with_context(|| format!("{} of {}", file.kind, &file.asset[..12]))?;
-                done.fetch_add(size as i64 - credited.load(Ordering::Relaxed), Ordering::Relaxed);
+                done.fetch_add(
+                    size as i64 - credited.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
                 Ok(())
             }
         })
         .await;
     reporting.store(false, Ordering::Relaxed);
     sent?;
-    set_progress(app, id, done.load(Ordering::Relaxed), total.load(Ordering::Relaxed)).await?;
+    set_progress(
+        app,
+        id,
+        done.load(Ordering::Relaxed),
+        total.load(Ordering::Relaxed),
+    )
+    .await?;
 
     if !still_wanted(app, id).await? {
         return Ok(());
     }
-    let card = card::preview(app, &title, &manifest_items, password.is_some()).await.context("preview")?;
-    let stored = with_retries(|| remote.preview(id, &card)).await.context("preview")?;
+    let card = card::preview(app, &title, &manifest_items, password.is_some())
+        .await
+        .context("preview")?;
+    let stored = with_retries(|| remote.preview(id, &card))
+        .await
+        .context("preview")?;
     let mut manifest = json!({
         "title": title,
         "expires_at": expires,
@@ -223,9 +280,15 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
         // its version: the page's og:image URL changes with the card
         manifest["og"] = json!(&util::sha256_hex(&card)[..16]);
     }
-    with_retries(|| remote.manifest(id, &manifest)).await.context("manifest")?;
+    with_retries(|| remote.manifest(id, &manifest))
+        .await
+        .context("manifest")?;
     let c = app.pool.get().await?;
-    c.execute("UPDATE shares SET state = 'ready', live = true, error = NULL WHERE id = $1", &[&id]).await?;
+    c.execute(
+        "UPDATE shares SET state = 'ready', live = true, error = NULL WHERE id = $1",
+        &[&id],
+    )
+    .await?;
     tracing::info!("share {id}: live, {} items", manifest_items.len());
     Ok(())
 }
@@ -240,13 +303,20 @@ async fn prepare(app: &App, r: &tokio_postgres::Row, allow_download: bool) -> Re
     let original = util::confine(&app.cfg.photos_dir, Path::new(&r.get::<_, String>(7)))
         .await
         .with_context(|| format!("original of {} is missing", &id[..12]))?;
-    let name: String = r.get::<_, Option<String>>(8).unwrap_or_else(|| id[..12].to_string());
+    let name: String = r
+        .get::<_, Option<String>>(8)
+        .unwrap_or_else(|| id[..12].to_string());
     let bytes: i64 = r.get::<_, Option<i64>>(9).unwrap_or(0);
     // wall time where it was taken, which is what the page shows
     let wall = taken.map(|t| local_seconds(t, offset, app.cfg.tz));
 
     let thumb = |size| app.cfg.thumb_path(&id, size);
-    let mut files = vec![File { kind: "t", asset: id.clone(), source: Source::Path(thumb(512)), mime: "image/webp".into() }];
+    let mut files = vec![File {
+        kind: "t",
+        asset: id.clone(),
+        source: Source::Path(thumb(512)),
+        mime: "image/webp".into(),
+    }];
     let is_video = kind == "video";
     if is_video {
         let probe = {
@@ -254,18 +324,38 @@ async fn prepare(app: &App, r: &tokio_postgres::Row, allow_download: bool) -> Re
             tokio::task::spawn_blocking(move || video::probe(&original)).await??
         };
         let source = if media::browser_plays(&probe) {
-            Source::Remux { original: original.clone() }
+            Source::Remux {
+                original: original.clone(),
+            }
         } else {
-            Source::Transcode { original: original.clone(), duration }
+            Source::Transcode {
+                original: original.clone(),
+                duration,
+            }
         };
-        files.push(File { kind: "v", asset: id.clone(), source, mime: "video/mp4".into() });
+        files.push(File {
+            kind: "v",
+            asset: id.clone(),
+            source,
+            mime: "video/mp4".into(),
+        });
     } else {
-        files.push(File { kind: "v", asset: id.clone(), source: Source::Path(thumb(2048)), mime: "image/webp".into() });
+        files.push(File {
+            kind: "v",
+            asset: id.clone(),
+            source: Source::Path(thumb(2048)),
+            mime: "image/webp".into(),
+        });
     }
     // the original's CRC-32 lets the Worker build "Download all" without
     // reading a byte of it (its CPU budget is tiny)
     let crc = if allow_download {
-        files.push(File { kind: "o", asset: id.clone(), source: Source::Path(original.clone()), mime: media::mime_of(&name).into() });
+        files.push(File {
+            kind: "o",
+            asset: id.clone(),
+            source: Source::Path(original.clone()),
+            mime: media::mime_of(&name).into(),
+        });
         let original = original.clone();
         Some(tokio::task::spawn_blocking(move || media::crc32_of(&original)).await??)
     } else {
@@ -291,10 +381,14 @@ async fn prepare(app: &App, r: &tokio_postgres::Row, allow_download: bool) -> Re
 /// Bytes a file will have; for a video still to be made, about 6 Mbit/s.
 fn estimate(source: &Source) -> u64 {
     match source {
-        Source::Path(p) | Source::Remux { original: p } => std::fs::metadata(p).map(|m| m.len()).unwrap_or(0),
+        Source::Path(p) | Source::Remux { original: p } => {
+            std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)
+        }
         Source::Transcode { original, duration } => {
             let size = std::fs::metadata(original).map(|m| m.len()).unwrap_or(0);
-            duration.map(|d| ((d * 750_000.0) as u64).min(size.max(1))).unwrap_or(size)
+            duration
+                .map(|d| ((d * 750_000.0) as u64).min(size.max(1)))
+                .unwrap_or(size)
         }
     }
 }
@@ -309,13 +403,21 @@ async fn materialize(app: &App, file: &File) -> Result<PathBuf> {
             Ok(p.clone())
         }
         Source::Transcode { original, .. } => {
-            let dest = app.cfg.previews_dir.join("share").join(format!("{}.mp4", file.asset));
+            let dest = app
+                .cfg
+                .previews_dir
+                .join("share")
+                .join(format!("{}.mp4", file.asset));
             let (source, out) = (original.clone(), dest.clone());
             tokio::task::spawn_blocking(move || media::transcode_h264(&source, &out)).await??;
             Ok(dest)
         }
         Source::Remux { original } => {
-            let dest = app.cfg.previews_dir.join("share").join(format!("{}.mp4", file.asset));
+            let dest = app
+                .cfg
+                .previews_dir
+                .join("share")
+                .join(format!("{}.mp4", file.asset));
             let (source, out) = (original.clone(), dest.clone());
             tokio::task::spawn_blocking(move || media::remux_clean(&source, &out)).await??;
             Ok(dest)
@@ -325,13 +427,21 @@ async fn materialize(app: &App, file: &File) -> Result<PathBuf> {
 
 async fn still_wanted(app: &App, id: &str) -> Result<bool> {
     let c = app.pool.get().await?;
-    Ok(c.query_opt("SELECT 1 FROM shares WHERE id = $1 AND expires_at > now()", &[&id]).await?.is_some())
+    Ok(c.query_opt(
+        "SELECT 1 FROM shares WHERE id = $1 AND expires_at > now()",
+        &[&id],
+    )
+    .await?
+    .is_some())
 }
 
 async fn set_progress(app: &App, id: &str, done: i64, total: i64) -> Result<()> {
     let c = app.pool.get().await?;
-    c.execute("UPDATE shares SET done_bytes = $2, total_bytes = $3 WHERE id = $1", &[&id, &done, &total.max(done)])
-        .await?;
+    c.execute(
+        "UPDATE shares SET done_bytes = $2, total_bytes = $3 WHERE id = $1",
+        &[&id, &done, &total.max(done)],
+    )
+    .await?;
     Ok(())
 }
 
@@ -370,11 +480,16 @@ impl Speed {
             if dt > 0.0 {
                 let rate = (done - before).max(0) as f64 / dt;
                 // a slow average: parts land in bursts of 16 MiB
-                self.bytes_per_s = if self.bytes_per_s == 0.0 { rate } else { 0.9 * self.bytes_per_s + 0.1 * rate };
+                self.bytes_per_s = if self.bytes_per_s == 0.0 {
+                    rate
+                } else {
+                    0.9 * self.bytes_per_s + 0.1 * rate
+                };
             }
         }
         self.last = Some((now, done));
-        (self.bytes_per_s > 1024.0 && total > done).then(|| ((total - done) as f64 / self.bytes_per_s).ceil() as i64)
+        (self.bytes_per_s > 1024.0 && total > done)
+            .then(|| ((total - done) as f64 / self.bytes_per_s).ceil() as i64)
     }
 }
 

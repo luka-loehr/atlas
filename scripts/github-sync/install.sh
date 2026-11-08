@@ -22,7 +22,7 @@ systemctl cat atlas-bulk-backup.service >/dev/null 2>&1 \
 
 id "$USR" >/dev/null 2>&1 || sudo useradd --system --no-create-home --home-dir /var/lib/atlas-github-sync --shell /usr/sbin/nologin "$USR"
 sudo install -d -o "$USR" -g "$USR" -m 0750 "$DEST"
-# Clones made by an earlier install that ran as luka.
+# Clones made by an earlier install that ran as the login user.
 [ "$(sudo find "$DEST" ! -user "$USR" -print -quit)" = "" ] || sudo chown -R "$USR:$USR" "$DEST"
 
 sudo install -o root -g root -m 0755 sync.sh /usr/local/bin/atlas-github-sync

@@ -17,8 +17,12 @@ pub(super) fn destroy(args: &[String]) {
     let url = server_env("ATLAS_SHARE_URL");
     let token = server_env("ATLAS_SHARE_TOKEN");
 
-    println!("\nThis removes from Cloudflare: the Worker {SUBDOMAIN} (its cron, secrets and custom domains),");
-    println!("the R2 bucket {BUCKET} with every shared file, and the server's link to it. Every link stops working.");
+    println!(
+        "\nThis removes from Cloudflare: the Worker {SUBDOMAIN} (its cron, secrets and custom domains),"
+    );
+    println!(
+        "the R2 bucket {BUCKET} with every shared file, and the server's link to it. Every link stops working."
+    );
     if !yes {
         if !std::io::stdin().is_terminal() {
             fail("pass --yes to destroy without asking");
@@ -33,9 +37,20 @@ pub(super) fn destroy(args: &[String]) {
     }
 
     step("stopping links");
-    let ids = api("GET", "/shares", "import json,sys; print(' '.join(s['id'] for s in json.load(sys.stdin)['shares']))");
-    for id in ids.split_whitespace().filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric())) {
-        api("DELETE", &format!("/shares/{id}"), "import sys; sys.stdin.read()");
+    let ids = api(
+        "GET",
+        "/shares",
+        "import json,sys; print(' '.join(s['id'] for s in json.load(sys.stdin)['shares']))",
+    );
+    for id in ids
+        .split_whitespace()
+        .filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric()))
+    {
+        api(
+            "DELETE",
+            &format!("/shares/{id}"),
+            "import sys; sys.stdin.read()",
+        );
         println!("  {id}");
     }
 
@@ -53,7 +68,10 @@ pub(super) fn destroy(args: &[String]) {
     step("custom domains");
     let cf = Cf::new(&dir);
     for (account, id, hostname) in cf.worker_domains() {
-        cf.call("DELETE", &format!("/accounts/{account}/workers/domains/{id}"));
+        cf.call(
+            "DELETE",
+            &format!("/accounts/{account}/workers/domains/{id}"),
+        );
         println!("  removed {hostname}");
     }
 
@@ -68,7 +86,10 @@ pub(super) fn destroy(args: &[String]) {
     let out = wrangler(&dir, &["r2", "bucket", "delete", BUCKET]).output();
     match out {
         Ok(o) if o.status.success() => println!("  deleted {BUCKET}"),
-        Ok(o) if String::from_utf8_lossy(&[o.stdout.as_slice(), o.stderr.as_slice()].concat()).contains("does not exist") => {
+        Ok(o)
+            if String::from_utf8_lossy(&[o.stdout.as_slice(), o.stderr.as_slice()].concat())
+                .contains("does not exist") =>
+        {
             println!("  {DIM}no bucket {BUCKET} (already gone){RESET}")
         }
         _ => println!(
@@ -83,5 +104,7 @@ pub(super) fn destroy(args: &[String]) {
     if !ssh_ok_quiet(&script) {
         fail(&format!("could not update {ENV_FILE} on the server"));
     }
-    println!("\n{GREEN}✓ atlas-share is gone{RESET}  {DIM}(atlas share setup brings it back){RESET}");
+    println!(
+        "\n{GREEN}✓ atlas-share is gone{RESET}  {DIM}(atlas share setup brings it back){RESET}"
+    );
 }

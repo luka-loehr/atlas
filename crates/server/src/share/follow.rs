@@ -40,12 +40,21 @@ pub async fn album_changed(app: &AppState, album: i64) -> Result<()> {
 /// The album is being deleted: its link ends with it.
 pub async fn album_removed(app: &AppState, album: i64) -> Result<()> {
     let c = app.pool.get().await?;
-    let ids: Vec<String> =
-        c.query("DELETE FROM shares WHERE album_id = $1 RETURNING id", &[&album]).await?.iter().map(|r| r.get(0)).collect();
+    let ids: Vec<String> = c
+        .query(
+            "DELETE FROM shares WHERE album_id = $1 RETURNING id",
+            &[&album],
+        )
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
     if let Some(remote) = Remote::new(app) {
         for id in ids {
             if let Err(e) = remote.delete(&id).await {
-                tracing::warn!("share {id}: removing its files failed, the Worker's cron will: {e:#}");
+                tracing::warn!(
+                    "share {id}: removing its files failed, the Worker's cron will: {e:#}"
+                );
             }
         }
     }
@@ -88,7 +97,8 @@ pub async fn assets_hidden(app: &AppState, ids: &[String]) -> Result<()> {
 
 /// A link with nothing left to show: its row goes, then its files.
 async fn end(app: &App, c: &deadpool_postgres::Object, id: &str) -> Result<()> {
-    c.execute("DELETE FROM shares WHERE id = $1", &[&id]).await?;
+    c.execute("DELETE FROM shares WHERE id = $1", &[&id])
+        .await?;
     if let Some(remote) = Remote::new(app) {
         let _ = remote.delete(id).await;
     }
@@ -103,7 +113,9 @@ async fn end(app: &App, c: &deadpool_postgres::Object, id: &str) -> Result<()> {
 pub async fn purge_expired(app: &App) -> ApiResult<u64> {
     reconcile(app).await;
     let c = app.pool.get().await?;
-    let rows = c.query("SELECT id FROM shares WHERE expires_at <= now()", &[]).await?;
+    let rows = c
+        .query("SELECT id FROM shares WHERE expires_at <= now()", &[])
+        .await?;
     let mut removed = 0;
     for r in rows {
         let id: String = r.get(0);
@@ -113,7 +125,9 @@ pub async fn purge_expired(app: &App) -> ApiResult<u64> {
             tracing::warn!("share {id}: expired, removing its files failed: {e:#}");
             continue;
         }
-        removed += c.execute("DELETE FROM shares WHERE id = $1", &[&id]).await?;
+        removed += c
+            .execute("DELETE FROM shares WHERE id = $1", &[&id])
+            .await?;
     }
     Ok(removed)
 }
@@ -122,7 +136,9 @@ pub async fn purge_expired(app: &App) -> ApiResult<u64> {
 /// delete failed, a database restored from backup, a crash at the wrong
 /// moment) is deleted, so no stray link survives.
 async fn reconcile(app: &App) {
-    let Some(remote) = Remote::new(app) else { return };
+    let Some(remote) = Remote::new(app) else {
+        return;
+    };
     let stored = match remote.ids().await {
         Ok(ids) => ids,
         Err(e) => {
@@ -131,11 +147,15 @@ async fn reconcile(app: &App) {
         }
     };
     let Ok(c) = app.pool.get().await else { return };
-    let Ok(rows) = c.query("SELECT id FROM shares", &[]).await else { return };
+    let Ok(rows) = c.query("SELECT id FROM shares", &[]).await else {
+        return;
+    };
     let known: std::collections::HashSet<String> = rows.iter().map(|r| r.get(0)).collect();
     for id in stored.into_iter().filter(|id| !known.contains(id)) {
         match remote.delete(&id).await {
-            Ok(()) => tracing::info!("share {id}: removed from atlas-share, atlas no longer knew it"),
+            Ok(()) => {
+                tracing::info!("share {id}: removed from atlas-share, atlas no longer knew it")
+            }
             Err(e) => tracing::warn!("share {id}: stray, removing it failed: {e:#}"),
         }
     }

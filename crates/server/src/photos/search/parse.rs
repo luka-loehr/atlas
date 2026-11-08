@@ -63,14 +63,19 @@ pub struct Parsed {
 
 impl Parsed {
     pub fn has_filters(&self) -> bool {
-        !self.people.is_empty() || !self.places.is_empty() || !self.albums.is_empty() || self.when.is_some() || self.videos
+        !self.people.is_empty()
+            || !self.places.is_empty()
+            || !self.albums.is_empty()
+            || self.when.is_some()
+            || self.videos
     }
 }
 
 const JOINERS: &[&str] = &[
-    "and", "und", "&", "+", "with", "mit", "in", "im", "at", "am", "an", "on", "auf", "of", "von", "the", "a", "der", "die",
-    "das", "den", "dem", "ein", "eine", "from", "aus", "bei", "beim", "during", "while", "together", "zusammen", "photos",
-    "photo", "pictures", "picture", "pics", "pic", "images", "image", "fotos", "foto", "bilder", "bild", "all", "alle",
+    "and", "und", "&", "+", "with", "mit", "in", "im", "at", "am", "an", "on", "auf", "of", "von",
+    "the", "a", "der", "die", "das", "den", "dem", "ein", "eine", "from", "aus", "bei", "beim",
+    "during", "while", "together", "zusammen", "photos", "photo", "pictures", "picture", "pics",
+    "pic", "images", "image", "fotos", "foto", "bilder", "bild", "all", "alle",
 ];
 const ME: &[&str] = &["me", "myself", "ich", "mich", "mir"];
 const VIDEOS: &[&str] = &["video", "videos", "clip", "clips", "film", "filme"];
@@ -106,8 +111,13 @@ pub fn parse(query: &str, lexicon: &Lexicon, today: NaiveDate) -> Parsed {
     let mut claimed = vec![false; tokens.len()];
 
     // names of people, places and albums: longest spans first
-    let person_names: Vec<(Vec<String>, usize)> =
-        lexicon.people.iter().enumerate().map(|(i, p)| (words(&p.name), i)).filter(|(w, _)| !w.is_empty()).collect();
+    let person_names: Vec<(Vec<String>, usize)> = lexicon
+        .people
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (words(&p.name), i))
+        .filter(|(w, _)| !w.is_empty())
+        .collect();
     for len in (1..=4).rev() {
         let mut at = 0;
         while at + len <= tokens.len() {
@@ -118,13 +128,21 @@ pub fn parse(query: &str, lexicon: &Lexicon, today: NaiveDate) -> Parsed {
             let span = &tokens[at..at + len];
             if let Some(person) = find_person(span, &person_names, lexicon) {
                 if !parsed.people.iter().any(|(id, _, _)| *id == person.id) {
-                    parsed.people.push((person.id, person.name.clone(), person.kind.clone()));
+                    parsed
+                        .people
+                        .push((person.id, person.name.clone(), person.kind.clone()));
                 }
             } else if let Some(place) = lexicon.places.iter().find(|p| words(&p.name) == span) {
                 if !parsed.places.iter().any(|(name, _)| *name == place.name) {
-                    parsed.places.push((place.name.clone(), place.places.clone()));
+                    parsed
+                        .places
+                        .push((place.name.clone(), place.places.clone()));
                 }
-            } else if let Some(album) = lexicon.albums.iter().find(|a| len >= 1 && words(&a.title) == span && !is_common(span)) {
+            } else if let Some(album) = lexicon
+                .albums
+                .iter()
+                .find(|a| len >= 1 && words(&a.title) == span && !is_common(span))
+            {
                 parsed.albums.push((album.id, album.title.clone()));
             } else {
                 at += 1;
@@ -147,7 +165,9 @@ pub fn parse(query: &str, lexicon: &Lexicon, today: NaiveDate) -> Parsed {
             if let Some(me) = lexicon.people.iter().find(|p| p.me)
                 && !parsed.people.iter().any(|(id, _, _)| *id == me.id)
             {
-                parsed.people.push((me.id, me.name.clone(), me.kind.clone()));
+                parsed
+                    .people
+                    .push((me.id, me.name.clone(), me.kind.clone()));
             }
             claimed[i] = true;
         } else if VIDEOS.contains(&t) {
@@ -165,13 +185,22 @@ pub fn parse(query: &str, lexicon: &Lexicon, today: NaiveDate) -> Parsed {
     }
 
     // the rest describes the photo; joining words at its ends say nothing
-    let rest: Vec<&str> = tokens.iter().zip(&claimed).filter(|(_, c)| !**c).map(|(t, _)| t.as_str()).collect();
+    let rest: Vec<&str> = tokens
+        .iter()
+        .zip(&claimed)
+        .filter(|(_, c)| !**c)
+        .map(|(t, _)| t.as_str())
+        .collect();
     let start = rest.iter().position(|t| !JOINERS.contains(t));
     let end = rest.iter().rposition(|t| !JOINERS.contains(t));
     if let (Some(start), Some(end)) = (start, end) {
         // between named parts the joining words go too ("alex and sam at the
         // beach" leaves "beach")
-        let text: Vec<&str> = rest[start..=end].iter().copied().filter(|t| !JOINERS.contains(t)).collect();
+        let text: Vec<&str> = rest[start..=end]
+            .iter()
+            .copied()
+            .filter(|t| !JOINERS.contains(t))
+            .collect();
         if !text.is_empty() {
             parsed.text = Some(text.join(" "));
         }
@@ -184,7 +213,11 @@ fn is_common(span: &[String]) -> bool {
     span.len() == 1 && (JOINERS.contains(&span[0].as_str()) || span[0].len() < 3)
 }
 
-fn find_person<'a>(span: &[String], names: &[(Vec<String>, usize)], lexicon: &'a Lexicon) -> Option<&'a Person> {
+fn find_person<'a>(
+    span: &[String],
+    names: &[(Vec<String>, usize)],
+    lexicon: &'a Lexicon,
+) -> Option<&'a Person> {
     // the whole name
     if let Some((_, i)) = names.iter().find(|(w, _)| w.as_slice() == span) {
         return Some(&lexicon.people[*i]);
@@ -205,7 +238,13 @@ mod tests {
     use super::*;
 
     fn lexicon() -> Lexicon {
-        let p = |id, name: &str, kind: &str, photos, me| Person { id, name: name.into(), kind: kind.into(), photos, me };
+        let p = |id, name: &str, kind: &str, photos, me| Person {
+            id,
+            name: name.into(),
+            kind: kind.into(),
+            photos,
+            me,
+        };
         Lexicon {
             people: vec![
                 p(1, "Alex", "person", 3000, true),
@@ -216,12 +255,27 @@ mod tests {
                 p(6, "Sam Klein", "person", 5, false),
             ],
             places: vec![
-                PlaceName { name: "Spain".into(), places: vec![10, 11] },
-                PlaceName { name: "Spanien".into(), places: vec![10, 11] },
-                PlaceName { name: "Port Vela".into(), places: vec![11] },
-                PlaceName { name: "Lyon".into(), places: vec![20] },
+                PlaceName {
+                    name: "Spain".into(),
+                    places: vec![10, 11],
+                },
+                PlaceName {
+                    name: "Spanien".into(),
+                    places: vec![10, 11],
+                },
+                PlaceName {
+                    name: "Port Vela".into(),
+                    places: vec![11],
+                },
+                PlaceName {
+                    name: "Lyon".into(),
+                    places: vec![20],
+                },
             ],
-            albums: vec![Album { id: 7, title: "Canyon Rafting".into() }],
+            albums: vec![Album {
+                id: 7,
+                title: "Canyon Rafting".into(),
+            }],
         }
     }
 
@@ -281,21 +335,47 @@ mod tests {
             })
         );
         let p = parse("winter 2023", &lexicon(), today());
-        assert!(matches!(p.when, Some(When::Range { to, .. }) if to == NaiveDate::from_ymd_opt(2024, 3, 1).unwrap()));
+        assert!(
+            matches!(p.when, Some(When::Range { to, .. }) if to == NaiveDate::from_ymd_opt(2024, 3, 1).unwrap())
+        );
         let p = parse("alex im august", &lexicon(), today());
-        assert_eq!(p.when, Some(When::Months { months: vec![8], label: "August".into() }));
+        assert_eq!(
+            p.when,
+            Some(When::Months {
+                months: vec![8],
+                label: "August".into()
+            })
+        );
         let p = parse("letztes jahr", &lexicon(), today());
         assert_eq!(p.when.as_ref().map(When::label), Some("2025"));
         // today() is in the test's year; last summer is the latest one over
-        let p = parse("alex last summer", &lexicon(), NaiveDate::from_ymd_opt(2026, 11, 7).unwrap());
+        let p = parse(
+            "alex last summer",
+            &lexicon(),
+            NaiveDate::from_ymd_opt(2026, 11, 7).unwrap(),
+        );
         assert_eq!(ids(&p), vec![1]);
         assert_eq!(p.when.as_ref().map(When::label), Some("Summer 2026"));
         assert_eq!(p.text, None);
-        let p = parse("last summer", &lexicon(), NaiveDate::from_ymd_opt(2026, 7, 10).unwrap());
+        let p = parse(
+            "last summer",
+            &lexicon(),
+            NaiveDate::from_ymd_opt(2026, 7, 10).unwrap(),
+        );
         assert_eq!(p.when.as_ref().map(When::label), Some("Summer 2025"));
-        let p = parse("letzten winter", &lexicon(), NaiveDate::from_ymd_opt(2026, 11, 7).unwrap());
-        assert!(matches!(p.when, Some(When::Range { from, .. }) if from == NaiveDate::from_ymd_opt(2025, 12, 1).unwrap()));
-        let p = parse("this august", &lexicon(), NaiveDate::from_ymd_opt(2026, 11, 7).unwrap());
+        let p = parse(
+            "letzten winter",
+            &lexicon(),
+            NaiveDate::from_ymd_opt(2026, 11, 7).unwrap(),
+        );
+        assert!(
+            matches!(p.when, Some(When::Range { from, .. }) if from == NaiveDate::from_ymd_opt(2025, 12, 1).unwrap())
+        );
+        let p = parse(
+            "this august",
+            &lexicon(),
+            NaiveDate::from_ymd_opt(2026, 11, 7).unwrap(),
+        );
         assert_eq!(p.when.as_ref().map(When::label), Some("August 2026"));
     }
 

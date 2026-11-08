@@ -51,7 +51,10 @@ pub async fn warm(State(app): State<AppState>) -> Json<Value> {
     let vectors = app.ml.vectors.clone();
     let pool = app.pool.clone();
     tokio::spawn(async move {
-        let probe = Arc::new(Questions { still: vec![0f32; DIM], clip: vec![0f32; DIM] });
+        let probe = Arc::new(Questions {
+            still: vec![0f32; DIM],
+            clip: vec![0f32; DIM],
+        });
         let _ = vectors.search(&pool, probe, 1).await;
     });
     Json(json!({ "semantic": ready }))
@@ -65,7 +68,10 @@ pub struct SearchQuery {
     debug: bool,
 }
 
-pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery>) -> ApiResult<Json<Value>> {
+pub async fn search(
+    State(app): State<AppState>,
+    Query(query): Query<SearchQuery>,
+) -> ApiResult<Json<Value>> {
     let term = query.q.trim().to_string();
     if term.is_empty() {
         return Ok(Json(json!({

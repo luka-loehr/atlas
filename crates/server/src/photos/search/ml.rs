@@ -65,7 +65,10 @@ impl Ml {
             anyhow::ensure!(v.len() == DIM, "atlas-ml returned {} dimensions", v.len());
             normalize(v);
         }
-        let vec = Arc::new(Questions { still: embedding.still, clip: embedding.clip });
+        let vec = Arc::new(Questions {
+            still: embedding.still,
+            clip: embedding.clip,
+        });
         let mut cache = self.cache.lock().unwrap();
         if cache.vectors.insert(key.clone(), vec.clone()).is_none() {
             cache.order.push_back(key);
@@ -91,6 +94,10 @@ impl Ml {
     }
 
     pub async fn warm(&self) -> bool {
-        self.http.post(format!("{}/warm", self.url)).send().await.is_ok_and(|r| r.status().is_success())
+        self.http
+            .post(format!("{}/warm", self.url))
+            .send()
+            .await
+            .is_ok_and(|r| r.status().is_success())
     }
 }

@@ -11,7 +11,7 @@ Type=simple
 # a landmine: naming an account that does not exist on the box crash-loops
 # the unit.
 # A root-owned copy (install.sh), not the checkout: a root service must not run
-# a file that luka, or anything running as luka, can rewrite.
+# a file that the login user, or anything running as the login user, can rewrite.
 ExecStart=/usr/local/sbin/atlas-power-button
 Restart=always
 RestartSec=5

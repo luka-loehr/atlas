@@ -28,14 +28,17 @@ pub(super) async fn filtered(
     use tokio_postgres::types::ToSql;
     let mut conditions: Vec<String> = vec![VISIBLE.to_string()];
     let mut params: Vec<Box<dyn ToSql + Sync + Send>> = Vec::new();
-    let param = |value: Box<dyn ToSql + Sync + Send>, params: &mut Vec<Box<dyn ToSql + Sync + Send>>| {
+    let param = |value: Box<dyn ToSql + Sync + Send>,
+                 params: &mut Vec<Box<dyn ToSql + Sync + Send>>| {
         params.push(value);
         format!("${}", params.len())
     };
     let people: Vec<i64> = parsed.people.iter().map(|p| p.0).collect();
     for id in &people {
         let p = param(Box::new(*id), &mut params);
-        conditions.push(format!("EXISTS (SELECT 1 FROM faces f WHERE f.asset_id = assets.id AND f.person_id = {p})"));
+        conditions.push(format!(
+            "EXISTS (SELECT 1 FROM faces f WHERE f.asset_id = assets.id AND f.person_id = {p})"
+        ));
     }
     for (_, places) in &parsed.places {
         let ids: Vec<String> = places.iter().map(i64::to_string).collect();
@@ -53,7 +56,10 @@ pub(super) async fn filtered(
     let local = "(assets.taken_at + make_interval(secs => coalesce(assets.tz_offset_s, 0)))";
     match &parsed.when {
         Some(When::Range { from, to, .. }) => {
-            let (f, t) = (param(Box::new(*from), &mut params), param(Box::new(*to), &mut params));
+            let (f, t) = (
+                param(Box::new(*from), &mut params),
+                param(Box::new(*to), &mut params),
+            );
             conditions.push(format!("{local}::date >= {f} AND {local}::date < {t}"));
         }
         Some(When::Months { months, .. }) => {
@@ -84,9 +90,20 @@ pub(super) async fn filtered(
         "SELECT {COLS}, {prominence}::real FROM assets WHERE {} ORDER BY assets.taken_at DESC NULLS LAST LIMIT 20000",
         conditions.join(" AND ")
     );
-    let refs: Vec<&(dyn ToSql + Sync)> = params.iter().map(|p| p.as_ref() as &(dyn ToSql + Sync)).collect();
+    let refs: Vec<&(dyn ToSql + Sync)> = params
+        .iter()
+        .map(|p| p.as_ref() as &(dyn ToSql + Sync))
+        .collect();
     let rows = c.query(&sql, &refs).await?;
-    let mut items: Vec<(Item, f32)> = rows.iter().map(|r| (Item::from_row(r, app.cfg.tz), r.get::<_, Option<f32>>(9).unwrap_or(0.0))).collect();
+    let mut items: Vec<(Item, f32)> = rows
+        .iter()
+        .map(|r| {
+            (
+                Item::from_row(r, app.cfg.tz),
+                r.get::<_, Option<f32>>(9).unwrap_or(0.0),
+            )
+        })
+        .collect();
 
     let mut semantic = "skipped";
     if let (Some(text), Some(embedding)) = (&parsed.text, embedding) {
@@ -94,7 +111,10 @@ pub(super) async fn filtered(
         let ids: Vec<String> = items.iter().map(|(i, _)| i.id.clone()).collect();
         let pattern = text_pattern(text);
         let reads: HashSet<String> = c
-            .query("SELECT asset_id FROM asset_text WHERE asset_id = ANY($1) AND lower(text) ~ $2", &[&ids, &pattern])
+            .query(
+                "SELECT asset_id FROM asset_text WHERE asset_id = ANY($1) AND lower(text) ~ $2",
+                &[&ids, &pattern],
+            )
             .await?
             .iter()
             .map(|r| r.get(0))
@@ -117,14 +137,30 @@ pub(super) async fn filtered(
         let z = |id: &str| scores.get(id).copied().unwrap_or(f32::MIN);
         let best = items.iter().map(|(i, _)| z(&i.id)).fold(f32::MIN, f32::max);
         let bar = FILTERED_TEXT_Z.max(best * RELATIVE_Z);
-        let matching = items.iter().filter(|(i, _)| reads.contains(&i.id) || z(&i.id) >= bar).count();
+        let matching = items
+            .iter()
+            .filter(|(i, _)| reads.contains(&i.id) || z(&i.id) >= bar)
+            .count();
         items.sort_by(|a, b| {
             let (ra, rb) = (reads.contains(&a.0.id), reads.contains(&b.0.id));
             rb.cmp(&ra).then(z(&b.0.id).total_cmp(&z(&a.0.id)))
         });
         // what matches; when nothing does, the closest few
-        items.truncate(if matching > 0 { matching } else { FILTERED_TEXT_FALLBACK.min(items.len()) });
-        *debug_scores = items.iter().map(|(i, _)| if reads.contains(&i.id) { 99.0 } else { z(&i.id) }).collect();
+        items.truncate(if matching > 0 {
+            matching
+        } else {
+            FILTERED_TEXT_FALLBACK.min(items.len())
+        });
+        *debug_scores = items
+            .iter()
+            .map(|(i, _)| {
+                if reads.contains(&i.id) {
+                    99.0
+                } else {
+                    z(&i.id)
+                }
+            })
+            .collect();
     } else if !people.is_empty() {
         // the people asked for, the clearest photos of them first
         items.sort_by(|a, b| b.1.total_cmp(&a.1));

@@ -8,11 +8,17 @@ use serde_json::{Value, json};
 use crate::photos::{Ids, IdsValue};
 use crate::{ApiResult, App, AppState, util};
 
-pub async fn favorite(State(app): State<AppState>, Json(b): Json<IdsValue>) -> ApiResult<Json<Value>> {
+pub async fn favorite(
+    State(app): State<AppState>,
+    Json(b): Json<IdsValue>,
+) -> ApiResult<Json<Value>> {
     set_flag(&app, "favorite", &b).await
 }
 
-pub async fn archive(State(app): State<AppState>, Json(b): Json<IdsValue>) -> ApiResult<Json<Value>> {
+pub async fn archive(
+    State(app): State<AppState>,
+    Json(b): Json<IdsValue>,
+) -> ApiResult<Json<Value>> {
     let r = set_flag(&app, "archived", &b).await?;
     if b.value {
         hidden(&app, &b.ids).await;
@@ -39,14 +45,22 @@ async fn hidden(app: &AppState, ids: &[String]) {
 async fn set_flag(app: &App, column: &str, b: &IdsValue) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let n = c
-        .execute(&format!("UPDATE assets SET {column} = $2 WHERE id = ANY($1)"), &[&b.ids, &b.value])
+        .execute(
+            &format!("UPDATE assets SET {column} = $2 WHERE id = ANY($1)"),
+            &[&b.ids, &b.value],
+        )
         .await?;
     Ok(Json(json!({ "updated": n })))
 }
 
 pub async fn trash(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
-    let n = c.execute("UPDATE assets SET trashed_at = now() WHERE id = ANY($1)", &[&b.ids]).await?;
+    let n = c
+        .execute(
+            "UPDATE assets SET trashed_at = now() WHERE id = ANY($1)",
+            &[&b.ids],
+        )
+        .await?;
     hidden(&app, &b.ids).await;
     Ok(Json(json!({ "updated": n })))
 }
@@ -70,7 +84,11 @@ pub async fn delete(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResul
 pub async fn empty_trash(State(app): State<AppState>) -> ApiResult<Json<Value>> {
     let ids: Vec<String> = {
         let c = app.pool.get().await?;
-        c.query("SELECT id FROM assets WHERE trashed_at IS NOT NULL", &[]).await?.iter().map(|r| r.get(0)).collect()
+        c.query("SELECT id FROM assets WHERE trashed_at IS NOT NULL", &[])
+            .await?
+            .iter()
+            .map(|r| r.get(0))
+            .collect()
     };
     Ok(Json(json!({ "deleted": purge(&app, &ids).await? })))
 }
@@ -103,7 +121,12 @@ async fn purge(app: &App, ids: &[String]) -> ApiResult<u64> {
         return Ok(0);
     }
     let mut c = app.pool.get().await?;
-    let originals = c.query("SELECT id, orig_path FROM assets WHERE id = ANY($1)", &[&ids]).await?;
+    let originals = c
+        .query(
+            "SELECT id, orig_path FROM assets WHERE id = ANY($1)",
+            &[&ids],
+        )
+        .await?;
     let faces: Vec<i64> = c
         .query("SELECT id FROM faces WHERE asset_id = ANY($1)", &[&ids])
         .await?
@@ -120,7 +143,9 @@ async fn purge(app: &App, ids: &[String]) -> ApiResult<u64> {
         tx.execute(statement, &[&ids]).await?;
     }
     // faces and album links follow through ON DELETE CASCADE
-    let deleted = tx.execute("DELETE FROM assets WHERE id = ANY($1)", &[&ids]).await?;
+    let deleted = tx
+        .execute("DELETE FROM assets WHERE id = ANY($1)", &[&ids])
+        .await?;
     tx.commit().await?;
 
     // files go after the commit: a failed transaction must not orphan rows
@@ -131,9 +156,15 @@ async fn purge(app: &App, ids: &[String]) -> ApiResult<u64> {
             Some(path) => {
                 let _ = tokio::fs::remove_file(path).await;
             }
-            None => tracing::warn!("purge: {original} is missing or outside the library, left alone"),
+            None => {
+                tracing::warn!("purge: {original} is missing or outside the library, left alone")
+            }
         }
-        for derived in [app.cfg.thumb_path(&id, 512), app.cfg.thumb_path(&id, 2048), app.cfg.preview_path(&id)] {
+        for derived in [
+            app.cfg.thumb_path(&id, 512),
+            app.cfg.thumb_path(&id, 2048),
+            app.cfg.preview_path(&id),
+        ] {
             let _ = tokio::fs::remove_file(derived).await;
         }
     }

@@ -10,11 +10,14 @@ itself. SwiftUI, English UI, one Xcode target with two destinations:
 
 | Tab | |
 |---|---|
-| **Fotos** | the timeline as one grid, newest at the bottom, with pinch zoom, a month scrubber, the system context menu, multi-select and the full-screen viewer (zoom, swipe, video, info sheet with map, people and EXIF) |
-| **Alben** | laid out like the Albums tab of Photos: your albums as a carousel of large covers (See All for the grid), people as round faces, then Media Types (favorites, videos) and Utilities (archive, locked with Face ID, recently deleted) as lists with counts |
-| **Dateien** | the drive: folders, upload, previews, move, rename, trash |
-| **Einstellungen** | backup status, what Atlas keeps on the phone (by kind), and the server: live status, services, containers, activity, network, power, a terminal (Face ID) |
-| **Suche** | from Dateien it searches files; from every other tab people, places and albums by name, everything else by what is in the picture |
+| **Library** | the timeline as one grid, newest at the bottom, with pinch zoom, a month scrubber, the system context menu, multi-select and the full-screen viewer (zoom, swipe, video, info sheet with map, people and EXIF); Settings opens from its toolbar |
+| **Albums** | laid out like the Albums tab of Photos: your albums, people as round faces, a map of your places, then Media Types (favorites, videos) and Utilities (archive, locked with Face ID, recently deleted) |
+| **Files** | the drive: folders, upload, previews, move, rename, trash |
+| **Search** | from Files it searches files; from every other tab people, places, years and countries, everything else by what is in the picture |
+
+**Settings** (the gear in Library): backup status, what Atlas keeps on the
+phone, the grid size, and the server: live status, services, containers,
+activity, network, power, a terminal (Face ID).
 
 ## Build
 

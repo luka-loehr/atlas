@@ -34,11 +34,10 @@ any change to their scripts.
 | [`bulk-backup/`](bulk-backup/) | Hourly `rsync` of `/srv/bulk` and `/srv/backups` onto the encrypted USB disk (LUKS2 + btrfs, `/srv/bulk-backup`) with a read-only snapshot per run — 24 hourly, then one per day with no limit — a mass-change brake, and a monthly scrub |
 | [`github-sync/`](github-sync/) | Every repo of the account and its orgs, cloned to `/srv/bulk/github` through a read-only GitHub App, run by the bulk backup right before it snapshots |
 | [`agentbrain-backup/`](agentbrain-backup/) | Sync your agentbrain memories to the server: the full archive, hourly, with a download-only backup key, verified and versioned (run by the bulk backup right before it snapshots, or on its own timer) |
-| [`alerts/`](alerts/) | Mail to Luka through the Luka Mail API: `OnFailure=` of the backup jobs, an hourly staleness/disk/SMART check, a weekly report, smartd warnings |
+| [`alerts/`](alerts/) | Mail to the owner through an HTTP mail API: `OnFailure=` of the backup jobs, an hourly staleness/disk/SMART check, a weekly report, smartd warnings |
 | [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-server can report CPU power |
 | [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
 | [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.your-domain.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
-| [`ci-health/`](ci-health/) | Daily recorder for the self-hosted GitHub Actions runners on this box (units only — the checker lives outside this repo) |
 | `takeout-transfer.sh` | Mac-side: watches `~/Downloads` and moves finished Google Takeout zip parts to the server |
 | `cargo-dev-profile.sh` | Mac/server one-shot: sets `debug = "line-tables-only"` for dev/test builds machine-wide, refusing to land while any build is live |
 
@@ -59,7 +58,6 @@ any change to their scripts.
 | `atlas-backup-check.timer` | hourly at :30, and 20 min after boot | [`alerts/install.sh`](alerts/install.sh) |
 | `atlas-backup-report.timer` | Mondays 09:00, `Persistent` | ″ |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
-| `dairo-ci-health.timer` | daily 12:05 UTC, `Persistent` | [`ci-health/install.sh`](ci-health/install.sh) |
 | `atlas-power-button.service` | boot | [`power-button/install.sh`](power-button/install.sh) |
 | `caddy.service`, `cloudflared.service` | boot (steady-state dev-proxy infra) | [`proxy/install.sh`](proxy/install.sh) |
 
@@ -128,3 +126,4 @@ with any notification wrapper.
 
 Notes: the local size check uses BSD `stat -f%z` (macOS); the remote check
 uses GNU `stat -c%s` (Linux). Verification is size-only, not a checksum.
+

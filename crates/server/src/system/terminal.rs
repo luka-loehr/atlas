@@ -34,7 +34,12 @@ struct Size {
 }
 
 async fn session(socket: WebSocket) -> anyhow::Result<()> {
-    let pair = native_pty_system().openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })?;
+    let pair = native_pty_system().openpty(PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    })?;
     let mut command = CommandBuilder::new("bash");
     command.arg("-l");
     command.env("TERM", "xterm-256color");

@@ -40,7 +40,10 @@ pub async fn list(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<
             })
         })
         .collect();
-    Ok(media::json_validated(&headers, &json!({ "albums": albums })))
+    Ok(media::json_validated(
+        &headers,
+        &json!({ "albums": albums }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -51,7 +54,9 @@ pub struct Title {
 fn clean_title(raw: &str) -> ApiResult<&str> {
     let title = raw.trim();
     if title.is_empty() || title.chars().count() > 200 {
-        return Err(ApiError::BadRequest("album title must be 1 to 200 characters"));
+        return Err(ApiError::BadRequest(
+            "album title must be 1 to 200 characters",
+        ));
     }
     Ok(title)
 }
@@ -70,9 +75,16 @@ pub async fn create(State(app): State<AppState>, Json(b): Json<Title>) -> ApiRes
     Ok(Json(json!({ "id": row.get::<_, i64>(0), "title": title })))
 }
 
-pub async fn assets(State(app): State<AppState>, Path(id): Path<i64>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn assets(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let c = app.pool.get().await?;
-    let album = c.query_opt("SELECT title FROM albums WHERE id = $1", &[&id]).await?.ok_or(ApiError::NotFound)?;
+    let album = c
+        .query_opt("SELECT title FROM albums WHERE id = $1", &[&id])
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let rows = c
         .query(
             &format!(
@@ -89,13 +101,27 @@ pub async fn assets(State(app): State<AppState>, Path(id): Path<i64>, headers: H
     ))
 }
 
-pub async fn rename(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Title>) -> ApiResult<Json<Value>> {
+pub async fn rename(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(b): Json<Title>,
+) -> ApiResult<Json<Value>> {
     let title = clean_title(&b.title)?;
     let c = app.pool.get().await?;
-    if c.query_opt("SELECT 1 FROM albums WHERE title = $1 AND id <> $2", &[&title, &id]).await?.is_some() {
-        return Err(ApiError::BadRequest("an album with that title already exists"));
+    if c.query_opt(
+        "SELECT 1 FROM albums WHERE title = $1 AND id <> $2",
+        &[&title, &id],
+    )
+    .await?
+    .is_some()
+    {
+        return Err(ApiError::BadRequest(
+            "an album with that title already exists",
+        ));
     }
-    let n = c.execute("UPDATE albums SET title = $2 WHERE id = $1", &[&id, &title]).await?;
+    let n = c
+        .execute("UPDATE albums SET title = $2 WHERE id = $1", &[&id, &title])
+        .await?;
     if n == 0 {
         return Err(ApiError::NotFound);
     }
@@ -109,13 +135,22 @@ pub async fn remove(State(app): State<AppState>, Path(id): Path<i64>) -> ApiResu
         tracing::warn!("album {id}: ending its share link failed: {e:#}");
     }
     let c = app.pool.get().await?;
-    let n = c.execute("DELETE FROM albums WHERE id = $1", &[&id]).await?;
+    let n = c
+        .execute("DELETE FROM albums WHERE id = $1", &[&id])
+        .await?;
     Ok(Json(json!({ "deleted": n })))
 }
 
-pub async fn add_assets(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
+pub async fn add_assets(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(b): Json<Ids>,
+) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
-    if c.query_opt("SELECT 1 FROM albums WHERE id = $1", &[&id]).await?.is_none() {
+    if c.query_opt("SELECT 1 FROM albums WHERE id = $1", &[&id])
+        .await?
+        .is_none()
+    {
         return Err(ApiError::NotFound);
     }
     let n = c
@@ -130,10 +165,17 @@ pub async fn add_assets(State(app): State<AppState>, Path(id): Path<i64>, Json(b
     Ok(Json(json!({ "added": n })))
 }
 
-pub async fn remove_assets(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
+pub async fn remove_assets(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(b): Json<Ids>,
+) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     let n = c
-        .execute("DELETE FROM album_assets WHERE album_id = $1 AND asset_id = ANY($2)", &[&id, &b.ids])
+        .execute(
+            "DELETE FROM album_assets WHERE album_id = $1 AND asset_id = ANY($2)",
+            &[&id, &b.ids],
+        )
         .await?;
     follow(&app, id).await;
     Ok(Json(json!({ "removed": n })))

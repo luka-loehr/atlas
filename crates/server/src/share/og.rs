@@ -44,8 +44,11 @@ const PANEL_TWO: f32 = 258.0;
 fn glass() -> &'static [String; 2] {
     static GLASS: OnceLock<[String; 2]> = OnceLock::new();
     GLASS.get_or_init(|| {
-        [include_str!("../../assets/glass/panel-189.svg"), include_str!("../../assets/glass/panel-258.svg")]
-            .map(for_resvg)
+        [
+            include_str!("../../assets/glass/panel-189.svg"),
+            include_str!("../../assets/glass/panel-258.svg"),
+        ]
+        .map(for_resvg)
     })
 }
 
@@ -53,7 +56,8 @@ fn glass() -> &'static [String; 2] {
 /// twice (`scale_coordinates` already includes it), so its square root
 /// gives the browser's displacement at our 1:1 scale.
 fn for_resvg(baked: &str) -> String {
-    let re = regex::Regex::new(r#"(<feDisplacementMap[^>]*?\sscale=")([0-9.]+)""#).expect("pattern");
+    let re =
+        regex::Regex::new(r#"(<feDisplacementMap[^>]*?\sscale=")([0-9.]+)""#).expect("pattern");
     re.replace_all(baked, |c: &regex::Captures| {
         format!(r#"{}{}""#, &c[1], c[2].parse::<f32>().unwrap_or(0.0).sqrt())
     })
@@ -83,7 +87,13 @@ pub fn render(card: &Card) -> Result<Vec<u8>> {
     pixmap.fill(tiny_skia::Color::BLACK);
     resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
     // opaque, so the premultiplied pixels are the plain ones
-    let rgb: Vec<u8> = pixmap.data().as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect();
+    let rgb: Vec<u8> = pixmap
+        .data()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|p| [p[0], p[1], p[2]])
+        .collect();
     let mut out = Vec::new();
     let mut jpeg = JpegEncoder::new_with_quality(&mut out, 86);
     if let Some(icc) = card.photo.and_then(|p| p.icc.clone()) {
@@ -108,11 +118,15 @@ fn svg(card: &Card) -> Result<String> {
     let block = title.lines.len() as f32 * title_lead + META_GAP + meta_lead;
     let y = top + PAD_TOP + (height - PAD_TOP - PAD_BOTTOM - block) / 2.0;
     let first = y + baseline(title.size, title_lead);
-    let meta_y = y + title.lines.len() as f32 * title_lead + META_GAP + baseline(META_SIZE, meta_lead);
+    let meta_y =
+        y + title.lines.len() as f32 * title_lead + META_GAP + baseline(META_SIZE, meta_lead);
     let x = PANEL_X + PAD_X;
 
     let backdrop = match card.photo {
-        Some(p) => format!(r#"<image width="{W}" height="{H}" href="{}"/>"#, jpeg_uri(&cover(&p.rgb, W, H)?)?),
+        Some(p) => format!(
+            r#"<image width="{W}" height="{H}" href="{}"/>"#,
+            jpeg_uri(&cover(&p.rgb, W, H)?)?
+        ),
         None => brand(),
     };
     let lines: String = title
@@ -144,7 +158,11 @@ fn svg(card: &Card) -> Result<String> {
         -top,
         META.attrs(META_SIZE),
         esc(&card.meta.join(" · ")),
-        mark(PANEL_X + PANEL_W - PAD_X - ICON, top + (height - ICON) / 2.0, ICON),
+        mark(
+            PANEL_X + PANEL_W - PAD_X - ICON,
+            top + (height - ICON) / 2.0,
+            ICON
+        ),
     ))
 }
 
@@ -170,7 +188,11 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
 }
 
 fn options() -> usvg::Options<'static> {
-    usvg::Options { fontdb: fonts(), font_family: TEXT.into(), ..Default::default() }
+    usvg::Options {
+        fontdb: fonts(),
+        font_family: TEXT.into(),
+        ..Default::default()
+    }
 }
 
 /// The baseline in a line box `leading` tall, as a browser sets it.
@@ -186,8 +208,16 @@ struct Font {
     tracking: f32,
 }
 
-const TITLE: Font = Font { family: DISPLAY, weight: 700, tracking: -0.022 };
-const META: Font = Font { family: TEXT, weight: 500, tracking: 0.0 };
+const TITLE: Font = Font {
+    family: DISPLAY,
+    weight: 700,
+    tracking: -0.022,
+};
+const META: Font = Font {
+    family: TEXT,
+    weight: 500,
+    tracking: 0.0,
+};
 
 impl Font {
     fn attrs(self, size: f32) -> String {
@@ -206,7 +236,9 @@ impl Font {
             self.attrs(size),
             esc(text)
         );
-        usvg::Tree::from_str(&svg, &options()).map(|t| t.root().abs_bounding_box().width()).unwrap_or(0.0)
+        usvg::Tree::from_str(&svg, &options())
+            .map(|t| t.root().abs_bounding_box().width())
+            .unwrap_or(0.0)
     }
 }
 
@@ -248,7 +280,11 @@ fn wrap(text: &str, font: Font, size: f32, width: f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
     for word in text.split_whitespace() {
-        let joined = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+        let joined = if line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{line} {word}")
+        };
         if font.width(&joined, size) <= width {
             line = joined;
             continue;
@@ -290,8 +326,16 @@ fn esc(s: &str) -> String {
 
 fn jpeg_uri(img: &RgbImage) -> Result<String> {
     let mut out = Vec::new();
-    JpegEncoder::new_with_quality(&mut out, 92).write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgb8)?;
-    Ok(format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(out)))
+    JpegEncoder::new_with_quality(&mut out, 92).write_image(
+        img.as_raw(),
+        img.width(),
+        img.height(),
+        ExtendedColorType::Rgb8,
+    )?;
+    Ok(format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(out)
+    ))
 }
 
 /// `photo` cropped to the shape of w×h around its middle and scaled to it.
@@ -335,16 +379,29 @@ mod tests {
     use super::*;
 
     fn photo(w: u32, h: u32) -> Decoded {
-        Decoded { rgb: RgbImage::from_fn(w, h, |x, y| image::Rgb([(x % 256) as u8, (y % 256) as u8, 180])), icc: None }
+        Decoded {
+            rgb: RgbImage::from_fn(w, h, |x, y| {
+                image::Rgb([(x % 256) as u8, (y % 256) as u8, 180])
+            }),
+            icc: None,
+        }
     }
 
     #[test]
     fn renders_a_1200_by_630_jpeg_with_and_without_a_photo() {
         let p = photo(2048, 1536);
         let meta = ["48 photos".to_string(), "Oct 1 – 3, 2026".to_string()];
-        for title in ["Lake Weekend", "Winter Camp in the Dolomites with Friends and Family"] {
+        for title in [
+            "Lake Weekend",
+            "Winter Camp in the Dolomites with Friends and Family",
+        ] {
             for photo in [Some(&p), None] {
-                let jpeg = render(&Card { title, meta: &meta, photo }).unwrap();
+                let jpeg = render(&Card {
+                    title,
+                    meta: &meta,
+                    photo,
+                })
+                .unwrap();
                 let img = image::load_from_memory(&jpeg).unwrap();
                 assert_eq!((img.width(), img.height()), (W, H));
             }
@@ -353,10 +410,21 @@ mod tests {
 
     /// The card's pixels over a photo black left of `edge` and white right of it.
     fn over_an_edge(edge: u32) -> tiny_skia::Pixmap {
-        let rgb = RgbImage::from_fn(W, H, |x, _| if x < edge { image::Rgb([0, 0, 0]) } else { image::Rgb([255, 255, 255]) });
+        let rgb = RgbImage::from_fn(W, H, |x, _| {
+            if x < edge {
+                image::Rgb([0, 0, 0])
+            } else {
+                image::Rgb([255, 255, 255])
+            }
+        });
         let p = Decoded { rgb, icc: None };
         let meta = ["1 photo".to_string()];
-        let mut svg = svg(&Card { title: "Lake Weekend", meta: &meta, photo: Some(&p) }).unwrap();
+        let mut svg = svg(&Card {
+            title: "Lake Weekend",
+            meta: &meta,
+            photo: Some(&p),
+        })
+        .unwrap();
         // the glass alone: no type, no icon over it
         svg.truncate(svg.find("\n<text").unwrap());
         svg.push_str("</svg>");
@@ -368,12 +436,15 @@ mod tests {
 
     /// Where a row turns light, from the left.
     fn turns_light(pixmap: &tiny_skia::Pixmap, y: u32, from: u32) -> u32 {
-        (from..W).find(|&x| pixmap.pixel(x, y).unwrap().red() > 128).unwrap()
+        (from..W)
+            .find(|&x| pixmap.pixel(x, y).unwrap().red() > 128)
+            .unwrap()
     }
 
     #[test]
     fn each_baked_glass_has_its_panel_size() {
-        let re = regex::Regex::new(r#"<filter[^>]*\swidth="([0-9.]+)" height="([0-9.]+)""#).unwrap();
+        let re =
+            regex::Regex::new(r#"<filter[^>]*\swidth="([0-9.]+)" height="([0-9.]+)""#).unwrap();
         for (glass, height) in glass().iter().zip([PANEL_ONE, PANEL_TWO]) {
             let c = re.captures(glass).unwrap();
             // the filter region reaches 2 px past the panel on every side
@@ -402,7 +473,14 @@ mod tests {
     fn titles_take_one_or_two_lines_and_end_in_an_ellipsis() {
         let short = set("Lake Weekend", TITLE, TITLE_SIZE, TITLE_MIN, COLUMN, 2);
         assert_eq!((short.size, short.lines.len()), (TITLE_SIZE, 1));
-        let long = set(&"Summer with friends at the lake ".repeat(6), TITLE, TITLE_SIZE, TITLE_MIN, COLUMN, 2);
+        let long = set(
+            &"Summer with friends at the lake ".repeat(6),
+            TITLE,
+            TITLE_SIZE,
+            TITLE_MIN,
+            COLUMN,
+            2,
+        );
         assert_eq!((long.size, long.lines.len()), (TITLE_MIN, 2));
         assert!(long.lines[1].ends_with('…'));
         for line in &long.lines {
@@ -410,14 +488,26 @@ mod tests {
         }
         // one word longer than a line is broken, not lost
         let word = set(&"x".repeat(120), TITLE, TITLE_SIZE, TITLE_MIN, 500.0, 3);
-        assert!(word.lines.iter().all(|l| TITLE.width(l, word.size) <= 500.0));
+        assert!(
+            word.lines
+                .iter()
+                .all(|l| TITLE.width(l, word.size) <= 500.0)
+        );
     }
 
     #[test]
     fn titles_are_escaped_and_control_characters_dropped() {
-        assert_eq!(esc("<Tom & \"Jerry\">\u{0}\u{7}"), "&lt;Tom &amp; &quot;Jerry&quot;&gt;");
+        assert_eq!(
+            esc("<Tom & \"Jerry\">\u{0}\u{7}"),
+            "&lt;Tom &amp; &quot;Jerry&quot;&gt;"
+        );
         let meta = ["1 photo".to_string()];
-        render(&Card { title: "a\u{1}b </text><script>", meta: &meta, photo: None }).unwrap();
+        render(&Card {
+            title: "a\u{1}b </text><script>",
+            meta: &meta,
+            photo: None,
+        })
+        .unwrap();
     }
 
     /// Renders the card for the photos in $ATLAS_OG_SAMPLES into $ATLAS_OG_OUT,
@@ -425,24 +515,51 @@ mod tests {
     #[test]
     #[ignore]
     fn og_samples() {
-        let (Ok(dir), Ok(out)) = (std::env::var("ATLAS_OG_SAMPLES"), std::env::var("ATLAS_OG_OUT")) else { return };
-        let titles = ["Lake Weekend", "Winter Camp in the Dolomites with Friends and Family"];
+        let (Ok(dir), Ok(out)) = (
+            std::env::var("ATLAS_OG_SAMPLES"),
+            std::env::var("ATLAS_OG_OUT"),
+        ) else {
+            return;
+        };
+        let titles = [
+            "Lake Weekend",
+            "Winter Camp in the Dolomites with Friends and Family",
+        ];
         let meta = [
             vec!["48 photos".to_string(), "Oct 1 – 3, 2026".to_string()],
-            vec!["126 photos, 9 videos".to_string(), "Dec 28, 2025 – Jan 3, 2026".to_string()],
+            vec![
+                "126 photos, 9 videos".to_string(),
+                "Dec 28, 2025 – Jan 3, 2026".to_string(),
+            ],
         ];
-        let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect();
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
         files.sort();
         for (i, path) in files.iter().enumerate() {
             let decoded = imaging::decode(path).unwrap();
-            let card = Card { title: titles[i % 2], meta: &meta[i % 2], photo: Some(&decoded) };
+            let card = Card {
+                title: titles[i % 2],
+                meta: &meta[i % 2],
+                photo: Some(&decoded),
+            };
             let t = std::time::Instant::now();
             let jpeg = render(&card).unwrap();
-            eprintln!("{}: {:?}, {} KB", path.display(), t.elapsed(), jpeg.len() / 1024);
+            eprintln!(
+                "{}: {:?}, {} KB",
+                path.display(),
+                t.elapsed(),
+                jpeg.len() / 1024
+            );
             std::fs::write(format!("{out}/og-{i}.jpg"), jpeg).unwrap();
         }
         let locked = ["Password protected".to_string()];
-        let card = Card { title: titles[0], meta: &locked, photo: None };
+        let card = Card {
+            title: titles[0],
+            meta: &locked,
+            photo: None,
+        };
         std::fs::write(format!("{out}/og-locked.jpg"), render(&card).unwrap()).unwrap();
     }
 }

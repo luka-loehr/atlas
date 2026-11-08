@@ -25,8 +25,8 @@ use pgvector::Vector;
 
 use crate::Worker;
 use crate::vision::{
-    self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_POOR_FACE, ASSIGN_SMALL_FACE, MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP,
-    MIN_WIDTH_GROUP, MODEL, SMALL_FACE,
+    self, ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_POOR_FACE, ASSIGN_SMALL_FACE,
+    MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP, MIN_WIDTH_GROUP, MODEL, SMALL_FACE,
 };
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
@@ -61,7 +61,9 @@ pub async fn run(worker: Arc<Worker>) {
             Ok((assigned, created)) => {
                 last_seen = newest;
                 if assigned + created > 0 {
-                    tracing::info!("grouping: {assigned} faces assigned, {created} new people and pets");
+                    tracing::info!(
+                        "grouping: {assigned} faces assigned, {created} new people and pets"
+                    );
                 }
             }
             Err(e) => tracing::warn!("grouping: {e:#}"),
@@ -71,7 +73,9 @@ pub async fn run(worker: Arc<Worker>) {
 
 async fn newest_face(worker: &Worker) -> Result<i64> {
     let c = worker.pool.get().await?;
-    Ok(c.query_one("SELECT coalesce(max(id), 0) FROM faces", &[]).await?.get(0))
+    Ok(c.query_one("SELECT coalesce(max(id), 0) FROM faces", &[])
+        .await?
+        .get(0))
 }
 
 struct Item {
@@ -89,7 +93,10 @@ pub async fn pass(worker: &Worker) -> Result<(usize, usize)> {
     let (mut assigned, mut created) = (0, 0);
     let c = worker.pool.get().await?;
     let kinds: Vec<String> = c
-        .query("SELECT DISTINCT kind FROM faces WHERE person_id IS NULL", &[])
+        .query(
+            "SELECT DISTINCT kind FROM faces WHERE person_id IS NULL",
+            &[],
+        )
         .await?
         .iter()
         .map(|r| r.get(0))
@@ -107,8 +114,11 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     let face = kind == "person";
     let column = if face { "embedding" } else { "look" };
     // faces: the current recognizer's, clear enough to be named at all
-    let model_filter =
-        if face { format!("AND f.model = '{MODEL}' AND coalesce(f.clarity, 0) >= {MIN_CLARITY_ASSIGN}") } else { String::new() };
+    let model_filter = if face {
+        format!("AND f.model = '{MODEL}' AND coalesce(f.clarity, 0) >= {MIN_CLARITY_ASSIGN}")
+    } else {
+        String::new()
+    };
     let mut c = worker.pool.get().await?;
     // a spread of each person's looks: the most confident detections
     let known_rows = c
@@ -129,11 +139,17 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
             &[&kind, &EXEMPLARS_PER_PERSON],
         )
         .await?;
-    let known: Vec<(i64, Vec<f32>)> = known_rows.iter().map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec())).collect();
+    let known: Vec<(i64, Vec<f32>)> = known_rows
+        .iter()
+        .map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec()))
+        .collect();
     // faces that are no founders only join someone named, judged against
     // their clear faces (vision::founder)
-    let named: Vec<(i64, Vec<f32>)> =
-        known_rows.iter().filter(|r| r.get::<_, bool>(2)).map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec())).collect();
+    let named: Vec<(i64, Vec<f32>)> = known_rows
+        .iter()
+        .filter(|r| r.get::<_, bool>(2))
+        .map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec()))
+        .collect();
     let waiting: Vec<Item> = c
         .query(
             &format!(
@@ -195,8 +211,10 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     // 2. the rest among themselves: only faces clear enough found someone
     let link = if face { LINK_FACE } else { LINK_ANIMAL };
     rest.retain(|item| !face || item.founder);
-    let groups: Vec<Vec<usize>> =
-        gather(&rest, link).into_iter().filter(|g| !face || cohesion(&rest, g) >= MIN_COHESION).collect();
+    let groups: Vec<Vec<usize>> = gather(&rest, link)
+        .into_iter()
+        .filter(|g| !face || cohesion(&rest, g) >= MIN_COHESION)
+        .collect();
 
     let tx = c.transaction().await?;
     let mut touched: Vec<i64> = Vec::new();
@@ -206,7 +224,13 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
     }
     for group in &groups {
         let faces: Vec<i64> = group.iter().map(|&i| rest[i].id).collect();
-        let person: i64 = tx.query_one("INSERT INTO persons (kind) VALUES ($1) RETURNING id", &[&kind]).await?.get(0);
+        let person: i64 = tx
+            .query_one(
+                "INSERT INTO persons (kind) VALUES ($1) RETURNING id",
+                &[&kind],
+            )
+            .await?
+            .get(0);
         attach(&tx, person, &faces).await?;
         touched.push(person);
     }
@@ -217,7 +241,11 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
 
 /// Faces go to a person: their rows, the graph, a cover if there is none.
 async fn attach(tx: &tokio_postgres::Transaction<'_>, person: i64, faces: &[i64]) -> Result<()> {
-    tx.execute("UPDATE faces SET person_id = $1 WHERE id = ANY($2) AND person_id IS NULL", &[&person, &faces]).await?;
+    tx.execute(
+        "UPDATE faces SET person_id = $1 WHERE id = ANY($2) AND person_id IS NULL",
+        &[&person, &faces],
+    )
+    .await?;
     tx.execute(
         "INSERT INTO edges (src_type, src_id, rel, dst_type, dst_id, confidence)
          SELECT DISTINCT 'asset', asset_id, 'depicts', 'person', $1::text, 1.0 FROM faces WHERE id = ANY($2)
@@ -278,7 +306,10 @@ fn gather(items: &[Item], link: f32) -> Vec<Vec<usize>> {
         let r = root(&mut parent, i);
         groups.entry(r).or_default().push(i);
     }
-    let mut out: Vec<Vec<usize>> = groups.into_values().filter(|g| g.len() >= MIN_GROUP).collect();
+    let mut out: Vec<Vec<usize>> = groups
+        .into_values()
+        .filter(|g| g.len() >= MIN_GROUP)
+        .collect();
     out.sort_by_key(|g| std::cmp::Reverse(g.len()));
     out
 }
@@ -294,17 +325,29 @@ fn cohesion(items: &[Item], group: &[usize]) -> f32 {
     }
     let norm = mean.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
     mean.iter_mut().for_each(|x| *x /= norm);
-    group.iter().map(|&i| dot(&items[i].vector, &mean)).sum::<f32>() / group.len() as f32
+    group
+        .iter()
+        .map(|&i| dot(&items[i].vector, &mean))
+        .sum::<f32>()
+        / group.len() as f32
 }
 
 /// `f` over `items` on every core, results in order.
 fn parallel_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
     let chunk = items.len().div_ceil(threads).max(1);
     std::thread::scope(|scope| {
         let f = &f;
-        let handles: Vec<_> = items.chunks(chunk).map(|part| scope.spawn(move || part.iter().map(f).collect::<Vec<R>>())).collect();
-        handles.into_iter().flat_map(|h| h.join().expect("grouping worker panicked")).collect()
+        let handles: Vec<_> = items
+            .chunks(chunk)
+            .map(|part| scope.spawn(move || part.iter().map(f).collect::<Vec<R>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("grouping worker panicked"))
+            .collect()
     })
 }
 
@@ -314,7 +357,13 @@ mod tests {
 
     #[test]
     fn cohesion_tells_one_face_from_a_chain() {
-        let item = |v: Vec<f32>| Item { id: 0, vector: v, width: 50.0, founder: true, vetoed: Vec::new() };
+        let item = |v: Vec<f32>| Item {
+            id: 0,
+            vector: v,
+            width: 50.0,
+            founder: true,
+            vetoed: Vec::new(),
+        };
         let same = vec![item(unit(0.0)), item(unit(0.1)), item(unit(0.2))];
         assert!(cohesion(&same, &[0, 1, 2]) > 0.95);
         let spread = vec![item(unit(0.0)), item(unit(2.0)), item(unit(4.0))];
@@ -331,7 +380,13 @@ mod tests {
         let items: Vec<Item> = [0.0, 0.05, 0.1, 2.0, 2.05, 4.0]
             .iter()
             .enumerate()
-            .map(|(i, &a)| Item { id: i as i64, vector: unit(a), width: 50.0, founder: true, vetoed: Vec::new() })
+            .map(|(i, &a)| Item {
+                id: i as i64,
+                vector: unit(a),
+                width: 50.0,
+                founder: true,
+                vetoed: Vec::new(),
+            })
             .collect();
         let groups = gather(&items, 0.9);
         assert_eq!(groups.len(), 1);

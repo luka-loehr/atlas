@@ -43,7 +43,9 @@ pub(crate) fn share(sub: &[String]) {
             None => fail("usage: atlas share rm <id>"),
         },
         Some("destroy") => destroy(&sub[1..]),
-        Some(other) => fail(&format!("unknown: atlas share {other}  (setup | status | ls | rm <id> | destroy)")),
+        Some(other) => fail(&format!(
+            "unknown: atlas share {other}  (setup | status | ls | rm <id> | destroy)"
+        )),
     }
 }
 
@@ -57,10 +59,19 @@ fn step(name: &str) {
 }
 
 fn ssh_ok_quiet(remote: &str) -> bool {
-    Command::new("ssh").args([ssh_host(), remote]).status().map(|s| s.success()).unwrap_or(false)
+    Command::new("ssh")
+        .args([ssh_host(), remote])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// A value of /etc/atlas/atlas.env on the server.
 fn server_env(key: &str) -> Option<String> {
-    Some(ssh_capture(&format!("sudo sed -n 's/^{key}=//p' {ENV_FILE}")).trim().to_string()).filter(|v| !v.is_empty())
+    Some(
+        ssh_capture(&format!("sudo sed -n 's/^{key}=//p' {ENV_FILE}"))
+            .trim()
+            .to_string(),
+    )
+    .filter(|v| !v.is_empty())
 }

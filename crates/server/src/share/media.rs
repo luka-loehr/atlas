@@ -46,8 +46,18 @@ pub(super) fn remux_clean(source: &Path, dest: &Path) -> Result<()> {
     ffmpeg
         .args(["-v", "error", "-y", "-i"])
         .arg(source)
-        .args(["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2"])
-        .args(["-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart"]);
+        .args([
+            "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+            "-ac", "2",
+        ])
+        .args([
+            "-map_metadata",
+            "-1",
+            "-map_chapters",
+            "-1",
+            "-movflags",
+            "+faststart",
+        ]);
     match video::ffmpeg_into(&mut ffmpeg, &tmp, Duration::from_secs(3600))? {
         Ok(()) => Ok(std::fs::rename(&tmp, dest)?),
         Err(last) => bail!("ffmpeg could not copy the video: {last}"),
@@ -62,21 +72,62 @@ pub(super) fn transcode_h264(source: &Path, dest: &Path) -> Result<()> {
     }
     let probe = video::probe(source)?;
     let (w, h) = preview::target_size(&probe);
-    let nvenc = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "24", "-b:v", "0", "-maxrate", "8M", "-bufsize", "16M"];
+    let nvenc = [
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p5",
+        "-rc",
+        "vbr",
+        "-cq",
+        "24",
+        "-b:v",
+        "0",
+        "-maxrate",
+        "8M",
+        "-bufsize",
+        "16M",
+    ];
     let gpu_scale = format!("scale_cuda={w}:{h}:format=nv12");
     let cpu_scale = format!("scale={w}:{h}:flags=bicubic,format=yuv420p");
     let attempts: [(&[&str], &str, &[&str]); 3] = [
-        (&["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"], &gpu_scale, &nvenc),
+        (
+            &["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"],
+            &gpu_scale,
+            &nvenc,
+        ),
         (&[], &cpu_scale, &nvenc),
-        (&[], &cpu_scale, &["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]),
+        (
+            &[],
+            &cpu_scale,
+            &["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"],
+        ),
     ];
     // no location or camera data in what leaves the house
-    let output = ["-profile:v", "high", "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-map_metadata", "-1", "-movflags", "+faststart"];
+    let output = [
+        "-profile:v",
+        "high",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ac",
+        "2",
+        "-map_metadata",
+        "-1",
+        "-movflags",
+        "+faststart",
+    ];
     preview::encode(source, dest, &attempts, &output)
 }
 
 pub(super) fn mime_of(name: &str) -> &'static str {
-    match name.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+    match name
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("png") => "image/png",
         Some("heic" | "heif") => "image/heic",
@@ -122,9 +173,20 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let (src, out) = (dir.join("in.mov"), dir.join("out.mp4"));
         let made = ffmpeg(&[
-            "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10:duration=1",
-            "-c:v", "libx264", "-metadata", "location=+45.1234+015.6789/",
-            "-metadata", "com.apple.quicktime.make=Apple", "-movflags", "use_metadata_tags",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x240:rate=10:duration=1",
+            "-c:v",
+            "libx264",
+            "-metadata",
+            "location=+45.1234+015.6789/",
+            "-metadata",
+            "com.apple.quicktime.make=Apple",
+            "-movflags",
+            "use_metadata_tags",
             src.to_str().unwrap(),
         ])
         .unwrap();
@@ -140,10 +202,16 @@ mod tests {
                 .unwrap();
             String::from_utf8_lossy(&o.stdout).into_owned()
         };
-        assert!(tags(&src).contains("+45.1234"), "the sample carries a location");
+        assert!(
+            tags(&src).contains("+45.1234"),
+            "the sample carries a location"
+        );
         remux_clean(&src, &out).unwrap();
         let after = tags(&out);
-        assert!(!after.contains("45.1234") && !after.contains("Apple"), "{after}");
+        assert!(
+            !after.contains("45.1234") && !after.contains("Apple"),
+            "{after}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -24,18 +24,28 @@ pub(super) struct Rename {
 /// A name that is one path component: no separators, not a dot entry.
 fn clean_name(raw: &str) -> ApiResult<&str> {
     let name = raw.trim();
-    if name.is_empty() || name.chars().count() > 255 || name.contains(['/', '\\']) || name == "." || name == ".." {
+    if name.is_empty()
+        || name.chars().count() > 255
+        || name.contains(['/', '\\'])
+        || name == "."
+        || name == ".."
+    {
         return Err(ApiError::BadRequest("invalid name"));
     }
     Ok(name)
 }
 
 /// Creating a folder that exists returns it.
-pub(super) async fn folder_create(State(app): State<AppState>, Json(b): Json<NewFolder>) -> ApiResult<Json<Value>> {
+pub(super) async fn folder_create(
+    State(app): State<AppState>,
+    Json(b): Json<NewFolder>,
+) -> ApiResult<Json<Value>> {
     let name = clean_name(&b.name)?;
     let c = app.pool.get().await?;
     if let Some(parent) = b.parent_id
-        && c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&parent]).await?.is_none()
+        && c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&parent])
+            .await?
+            .is_none()
     {
         return Err(ApiError::BadRequest("unknown folder"));
     }
@@ -50,7 +60,11 @@ pub(super) async fn folder_create(State(app): State<AppState>, Json(b): Json<New
     Ok(Json(json!({ "id": row.get::<_, i64>(0), "name": name })))
 }
 
-pub(super) async fn folder_rename(State(app): State<AppState>, Path(id): Path<String>, Json(b): Json<Rename>) -> ApiResult<Json<Value>> {
+pub(super) async fn folder_rename(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(b): Json<Rename>,
+) -> ApiResult<Json<Value>> {
     let id = folder_ref(&id)?.ok_or(ApiError::BadRequest("the root cannot be renamed"))?;
     let name = clean_name(&b.name)?;
     let c = app.pool.get().await?;
@@ -62,15 +76,25 @@ pub(super) async fn folder_rename(State(app): State<AppState>, Path(id): Path<St
         )
         .await?;
     if taken.is_some() {
-        return Err(ApiError::BadRequest("a folder with that name already exists here"));
+        return Err(ApiError::BadRequest(
+            "a folder with that name already exists here",
+        ));
     }
-    let n = c.execute("UPDATE drive_folders SET name = $2 WHERE id = $1", &[&id, &name]).await?;
+    let n = c
+        .execute(
+            "UPDATE drive_folders SET name = $2 WHERE id = $1",
+            &[&id, &name],
+        )
+        .await?;
     Ok(Json(json!({ "updated": n })))
 }
 
 /// Permanent: the folder, its whole subtree and every file row in it, then
 /// the blobs that lost their last reference.
-pub(super) async fn folder_delete(State(app): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+pub(super) async fn folder_delete(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
     let id = folder_ref(&id)?.ok_or(ApiError::BadRequest("the root cannot be deleted"))?;
     let c = app.pool.get().await?;
     let hashes: Vec<String> = c
@@ -87,17 +111,26 @@ pub(super) async fn folder_delete(State(app): State<AppState>, Path(id): Path<St
         .iter()
         .map(|r| r.get(0))
         .collect();
-    let n = c.execute("DELETE FROM drive_folders WHERE id = $1", &[&id]).await?;
+    let n = c
+        .execute("DELETE FROM drive_folders WHERE id = $1", &[&id])
+        .await?;
     drop(c);
     collect_blobs(&app, &hashes).await?;
     Ok(Json(json!({ "deleted": n })))
 }
 
-pub(super) async fn file_rename(State(app): State<AppState>, Path(id): Path<i64>, Json(b): Json<Rename>) -> ApiResult<Json<Value>> {
+pub(super) async fn file_rename(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(b): Json<Rename>,
+) -> ApiResult<Json<Value>> {
     let name = clean_name(&b.name)?;
     let c = app.pool.get().await?;
     let n = c
-        .execute("UPDATE drive_files SET name = $2, mime = $3 WHERE id = $1", &[&id, &name, &mime_for(name)])
+        .execute(
+            "UPDATE drive_files SET name = $2, mime = $3 WHERE id = $1",
+            &[&id, &name, &mime_for(name)],
+        )
         .await?;
     Ok(Json(json!({ "updated": n })))
 }
@@ -116,7 +149,10 @@ pub(super) struct Move {
 pub(super) async fn mv(State(app): State<AppState>, Json(b): Json<Move>) -> ApiResult<Json<Value>> {
     let c = app.pool.get().await?;
     if let Some(target) = b.to {
-        if c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&target]).await?.is_none() {
+        if c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&target])
+            .await?
+            .is_none()
+        {
             return Err(ApiError::BadRequest("unknown folder"));
         }
         if !b.folders.is_empty() {
@@ -138,10 +174,20 @@ pub(super) async fn mv(State(app): State<AppState>, Json(b): Json<Move>) -> ApiR
     }
     let mut moved = 0;
     if !b.files.is_empty() {
-        moved += c.execute("UPDATE drive_files SET folder_id = $2 WHERE id = ANY($1)", &[&b.files, &b.to]).await?;
+        moved += c
+            .execute(
+                "UPDATE drive_files SET folder_id = $2 WHERE id = ANY($1)",
+                &[&b.files, &b.to],
+            )
+            .await?;
     }
     if !b.folders.is_empty() {
-        moved += c.execute("UPDATE drive_folders SET parent_id = $2 WHERE id = ANY($1)", &[&b.folders, &b.to]).await?;
+        moved += c
+            .execute(
+                "UPDATE drive_folders SET parent_id = $2 WHERE id = ANY($1)",
+                &[&b.folders, &b.to],
+            )
+            .await?;
     }
     Ok(Json(json!({ "moved": moved })))
 }

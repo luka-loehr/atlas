@@ -97,7 +97,9 @@ async fn main() -> Result<()> {
             atlas_core::db::migrate(&pool).await?;
             let cfg = Config::from_env(false)?;
             match what {
-                ImportKind::Photos { archives } => import::photos::run(&cfg, &pool, &archives).await,
+                ImportKind::Photos { archives } => {
+                    import::photos::run(&cfg, &pool, &archives).await
+                }
                 ImportKind::Drive { archives } => import::drive::run(&cfg, &pool, &archives).await,
             }
         }
@@ -123,8 +125,15 @@ fn json_only(_: StatusCode, _: Version, headers: &HeaderMap, _: &Extensions) -> 
 async fn serve(pool: Pool) -> Result<()> {
     let cfg = Config::from_env(true)?;
     atlas_core::db::migrate(&pool).await?;
-    for dir in [cfg.thumbs_dir(), cfg.faces_dir(), cfg.incoming_dir(), cfg.blobs_dir(), cfg.previews_dir.clone()] {
-        std::fs::create_dir_all(&dir).with_context(|| format!("cannot create {}", dir.display()))?;
+    for dir in [
+        cfg.thumbs_dir(),
+        cfg.faces_dir(),
+        cfg.incoming_dir(),
+        cfg.blobs_dir(),
+        cfg.previews_dir.clone(),
+    ] {
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("cannot create {}", dir.display()))?;
     }
 
     let app: AppState = Arc::new(App {
@@ -137,7 +146,8 @@ async fn serve(pool: Pool) -> Result<()> {
     });
 
     // Postgres tells us when the library or the queue changed, whoever wrote.
-    let mut notifications = atlas_core::db::listen(&["atlas_assets", "atlas_jobs", "atlas_embeddings"]);
+    let mut notifications =
+        atlas_core::db::listen(&["atlas_assets", "atlas_jobs", "atlas_embeddings"]);
     let listener_app = app.clone();
     tokio::spawn(async move {
         while let Some(channel) = notifications.recv().await {
@@ -161,12 +171,18 @@ async fn serve(pool: Pool) -> Result<()> {
             tick.tick().await;
             match photos::assets::purge_expired(&trash_app).await {
                 Ok(0) => {}
-                Ok(n) => tracing::info!("trash: removed {n} photos older than {} days", photos::assets::TRASH_DAYS),
+                Ok(n) => tracing::info!(
+                    "trash: removed {n} photos older than {} days",
+                    photos::assets::TRASH_DAYS
+                ),
                 Err(e) => tracing::warn!("trash: photo purge failed: {}", e.message()),
             }
             match drive::purge_expired(&trash_app).await {
                 Ok(0) => {}
-                Ok(n) => tracing::info!("trash: removed {n} files older than {} days", photos::assets::TRASH_DAYS),
+                Ok(n) => tracing::info!(
+                    "trash: removed {n} files older than {} days",
+                    photos::assets::TRASH_DAYS
+                ),
                 Err(e) => tracing::warn!("trash: file purge failed: {}", e.message()),
             }
             match share::purge_expired(&trash_app).await {
@@ -176,20 +192,33 @@ async fn serve(pool: Pool) -> Result<()> {
             }
             match photos::places::borrow_places(&trash_app).await {
                 Ok(0) => {}
-                Ok(n) => tracing::info!("places: {n} photos without a location placed by the photos taken around them"),
+                Ok(n) => tracing::info!(
+                    "places: {n} photos without a location placed by the photos taken around them"
+                ),
                 Err(e) => tracing::warn!("places: borrowing failed: {}", e.message()),
             }
             match photos::people::tidy(&trash_app).await {
                 Ok((0, 0)) => {}
-                Ok((removed, covers)) => tracing::info!("people: removed {removed} without faces, set {covers} covers"),
+                Ok((removed, covers)) => {
+                    tracing::info!("people: removed {removed} without faces, set {covers} covers")
+                }
                 Err(e) => tracing::warn!("people: tidy failed: {}", e.message()),
             }
         }
     });
 
     let router = Router::new()
-        .nest("/v1", photos::routes().merge(drive::routes()).merge(system::routes()).merge(share::routes()))
-        .layer(middleware::from_fn_with_state(app.clone(), auth::require_token))
+        .nest(
+            "/v1",
+            photos::routes()
+                .merge(drive::routes())
+                .merge(system::routes())
+                .merge(share::routes()),
+        )
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            auth::require_token,
+        ))
         .route("/health", get(|| async { "ok" }))
         .layer(CompressionLayer::new().compress_when(json_only))
         .with_state(app.clone());
@@ -206,7 +235,8 @@ async fn serve(pool: Pool) -> Result<()> {
     );
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
-            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
             tokio::select! {
                 _ = term.recv() => {}
                 _ = tokio::signal::ctrl_c() => {}

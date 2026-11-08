@@ -42,7 +42,11 @@ pub async fn exists(State(app): State<AppState>, Json(b): Json<Hashes>) -> ApiRe
 /// collapses to one asset whichever path it arrives by. Stored at
 /// originals/YYYY/MM/<id>.<ext>; the thumbnail, metadata, embedding and face
 /// jobs are queued, the first two ahead of any backlog.
-pub async fn upload(State(app): State<AppState>, headers: HeaderMap, body: Body) -> ApiResult<Response> {
+pub async fn upload(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> ApiResult<Response> {
     let received = receive(body, &app.cfg.incoming_dir(), app.cfg.max_upload).await?;
     let id = received.hash.clone();
     let outcome = store_upload(&app, &headers, &received).await;
@@ -58,7 +62,10 @@ async fn store_upload(app: &App, headers: &HeaderMap, received: &Received) -> Ap
     check_claimed_hash(headers, &received.hash)?;
     let id = &received.hash;
     let c = app.pool.get().await?;
-    if c.query_opt("SELECT 1 FROM assets WHERE id = $1", &[id]).await?.is_some() {
+    if c.query_opt("SELECT 1 FROM assets WHERE id = $1", &[id])
+        .await?
+        .is_some()
+    {
         return Ok(false);
     }
     let name = util::client_filename(headers.get("x-filename").and_then(|v| v.to_str().ok()));
@@ -67,16 +74,26 @@ async fn store_upload(app: &App, headers: &HeaderMap, received: &Received) -> Ap
     let source = headers
         .get("x-source")
         .and_then(|v| v.to_str().ok())
-        .filter(|s| !s.is_empty() && s.len() <= 32 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .filter(|s| {
+            !s.is_empty()
+                && s.len() <= 32
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        })
         .unwrap_or("iphone");
 
-    let month = taken.map(|t| t.format("%Y/%m").to_string()).unwrap_or_else(|| "0000/00".into());
+    let month = taken
+        .map(|t| t.format("%Y/%m").to_string())
+        .unwrap_or_else(|| "0000/00".into());
     let dir = app.cfg.originals_dir().join(month);
     tokio::fs::create_dir_all(&dir).await?;
     let dest = dir.join(format!("{id}.{ext}"));
     tokio::fs::rename(&received.path, &dest).await?;
 
-    let kind = if util::is_video_ext(ext) { "video" } else { "photo" };
+    let kind = if util::is_video_ext(ext) {
+        "video"
+    } else {
+        "photo"
+    };
     let inserted = c
         .execute(
             "INSERT INTO assets (id, type, taken_at, taken_src, orig_path, orig_name, size_bytes, source)
@@ -95,7 +112,14 @@ async fn store_upload(app: &App, headers: &HeaderMap, received: &Received) -> Ap
         .await?;
     // embeddings and faces read the thumbnail: the thumbnail job queues them
     queue::enqueue(&c, queue::THUMB, "asset", id, queue::PRIORITY_INTERACTIVE).await?;
-    queue::enqueue(&c, queue::META, "asset", id, queue::PRIORITY_INTERACTIVE + 10).await?;
+    queue::enqueue(
+        &c,
+        queue::META,
+        "asset",
+        id,
+        queue::PRIORITY_INTERACTIVE + 10,
+    )
+    .await?;
     app.jobs_wake.notify_waiters();
     Ok(inserted > 0)
 }

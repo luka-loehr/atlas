@@ -19,8 +19,8 @@ const CAP: usize = 200_000;
 const MAX_MEMBER: u64 = 50 << 20;
 
 const TEXT_EXTS: &[&str] = &[
-    "txt", "md", "csv", "log", "json", "xml", "html", "htm", "js", "ts", "py", "swift", "rs", "c", "cpp", "h",
-    "sh", "yml", "yaml", "toml", "ini", "tex", "srt", "vtt",
+    "txt", "md", "csv", "log", "json", "xml", "html", "htm", "js", "ts", "py", "swift", "rs", "c",
+    "cpp", "h", "sh", "yml", "yaml", "toml", "ini", "tex", "srt", "vtt",
 ];
 
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
@@ -29,7 +29,10 @@ static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 pub async fn run(app: &AppState, file_id: &str) -> Result<()> {
     let id: i64 = file_id.parse().context("drive_text owner is a file id")?;
     let c = app.pool.get().await?;
-    let Some(row) = c.query_opt("SELECT name, hash FROM drive_files WHERE id = $1", &[&id]).await? else {
+    let Some(row) = c
+        .query_opt("SELECT name, hash FROM drive_files WHERE id = $1", &[&id])
+        .await?
+    else {
         return Ok(()); // deleted in the meantime
     };
     let (name, hash): (String, String) = (row.get(0), row.get(1));
@@ -45,7 +48,11 @@ pub async fn run(app: &AppState, file_id: &str) -> Result<()> {
     .await?;
 
     let c = app.pool.get().await?;
-    c.execute("UPDATE drive_files SET text = $2 WHERE id = $1 AND hash = $3", &[&id, &text, &hash]).await?;
+    c.execute(
+        "UPDATE drive_files SET text = $2 WHERE id = $1 AND hash = $3",
+        &[&id, &text, &hash],
+    )
+    .await?;
     Ok(())
 }
 
@@ -54,7 +61,9 @@ fn extract(path: &Path, name: &str) -> Result<String> {
     Ok(match ext.as_str() {
         e if TEXT_EXTS.contains(&e) => {
             let mut buf = Vec::new();
-            std::fs::File::open(path)?.take((CAP * 4) as u64).read_to_end(&mut buf)?;
+            std::fs::File::open(path)?
+                .take((CAP * 4) as u64)
+                .read_to_end(&mut buf)?;
             String::from_utf8_lossy(&buf).into_owned()
         }
         "pdf" => {
@@ -65,7 +74,9 @@ fn extract(path: &Path, name: &str) -> Result<String> {
             String::from_utf8_lossy(&out.stdout).into_owned()
         }
         "docx" => office(path, |member| member == "word/document.xml")?,
-        "pptx" => office(path, |member| member.starts_with("ppt/slides/slide") && member.ends_with(".xml"))?,
+        "pptx" => office(path, |member| {
+            member.starts_with("ppt/slides/slide") && member.ends_with(".xml")
+        })?,
         "xlsx" => office(path, |member| member == "xl/sharedStrings.xml")?,
         _ => String::new(),
     })
@@ -76,8 +87,12 @@ fn extract(path: &Path, name: &str) -> Result<String> {
 fn office(path: &Path, wanted: impl Fn(&str) -> bool) -> Result<String> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(path)?)?;
     // a name that decodes neither as UTF-8 nor as CP437 cannot be a wanted member
-    let mut members: Vec<String> =
-        archive.file_names().filter_map(Result::ok).filter(|n| wanted(n)).map(|n| n.into_owned()).collect();
+    let mut members: Vec<String> = archive
+        .file_names()
+        .filter_map(Result::ok)
+        .filter(|n| wanted(n))
+        .map(|n| n.into_owned())
+        .collect();
     members.sort();
     let mut out = String::new();
     for member in members {
@@ -107,7 +122,8 @@ mod tests {
         let path = std::env::temp_dir().join(util::temp_name("drive-text-test"));
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
         for (name, body) in members {
-            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             zip.write_all(body.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
@@ -118,7 +134,10 @@ mod tests {
     fn office_text_comes_from_the_wanted_members_only() {
         let docx = container(&[
             ("[Content_Types].xml", "<Types>ignored</Types>"),
-            ("word/document.xml", "<w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:t>Atlas</w:t></w:r></w:p>"),
+            (
+                "word/document.xml",
+                "<w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:t>Atlas</w:t></w:r></w:p>",
+            ),
             ("word/styles.xml", "<w:styles>not text</w:styles>"),
         ]);
         let text = extract(&docx, "Letter.DOCX").unwrap();

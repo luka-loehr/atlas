@@ -65,13 +65,31 @@ impl Config {
         Ok(Self {
             bind: env("ATLAS_ML_BIND").unwrap_or_else(|| "127.0.0.1:8786".into()),
             photos_dir: PathBuf::from(env("ATLAS_PHOTOS_DIR").unwrap_or(format!("{home}/photos"))),
-            llama_server: path("ATLAS_LLAMA_SERVER", "/usr/local/lib/atlas/llama-server".into()),
-            llama_port: env("ATLAS_LLAMA_PORT").and_then(|v| v.parse().ok()).unwrap_or(8785),
-            embed_model: path("ATLAS_EMBED_MODEL", models.join("wemm-embedding/model.gguf")),
-            embed_mmproj: path("ATLAS_EMBED_MMPROJ", models.join("wemm-embedding/mmproj.gguf")),
+            llama_server: path(
+                "ATLAS_LLAMA_SERVER",
+                "/usr/local/lib/atlas/llama-server".into(),
+            ),
+            llama_port: env("ATLAS_LLAMA_PORT")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(8785),
+            embed_model: path(
+                "ATLAS_EMBED_MODEL",
+                models.join("wemm-embedding/model.gguf"),
+            ),
+            embed_mmproj: path(
+                "ATLAS_EMBED_MMPROJ",
+                models.join("wemm-embedding/mmproj.gguf"),
+            ),
             device: env("ATLAS_EMBED_DEVICE").unwrap_or_else(|| "CUDA0".into()),
-            idle: Duration::from_secs(env("ATLAS_ML_IDLE_S").and_then(|v| v.parse().ok()).unwrap_or(600)),
-            slots: env("ATLAS_EMBED_SLOTS").and_then(|v| v.parse().ok()).unwrap_or(6).clamp(3, 8),
+            idle: Duration::from_secs(
+                env("ATLAS_ML_IDLE_S")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(600),
+            ),
+            slots: env("ATLAS_EMBED_SLOTS")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(6)
+                .clamp(3, 8),
             face_detector: path("ATLAS_FACE_DETECTOR", models.join("buffalo_l/det_10g.onnx")),
             face_recognizer: path("ATLAS_FACE_RECOGNIZER", models.join("adaface/ir101.onnx")),
             animal_detector: models.join("rfdetr/large.onnx"),
@@ -79,14 +97,21 @@ impl Config {
             text_detector: models.join("ocr6/det.onnx"),
             text_recognizer: models.join("ocr6/rec.onnx"),
             text_dictionary: models.join("ocr6/dict.txt"),
-            vision_jobs: env("ATLAS_VISION_JOBS").and_then(|v| v.parse().ok()).unwrap_or(6).clamp(1, 12),
+            vision_jobs: env("ATLAS_VISION_JOBS")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(6)
+                .clamp(1, 12),
         })
     }
 
     pub fn thumb(&self, id: &str) -> Option<PathBuf> {
         [2048, 512]
             .into_iter()
-            .map(|size| self.photos_dir.join("thumbs").join(format!("{id}.{size}.webp")))
+            .map(|size| {
+                self.photos_dir
+                    .join("thumbs")
+                    .join(format!("{id}.{size}.webp"))
+            })
             .find(|p| p.exists())
     }
 

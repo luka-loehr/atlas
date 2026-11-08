@@ -79,8 +79,11 @@ pub async fn assign_face(
             ],
         )
         .await?;
-    let neighbors: Vec<(i64, f32)> =
-        rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).filter(|(p, _)| !vetoed.contains(p)).collect();
+    let neighbors: Vec<(i64, f32)> = rows
+        .iter()
+        .map(|r| (r.get(0), r.get::<_, f64>(1) as f32))
+        .filter(|(p, _)| !vetoed.contains(p))
+        .collect();
     let threshold = if !founder {
         ASSIGN_POOR_FACE
     } else if width_px < SMALL_FACE {
@@ -91,7 +94,12 @@ pub async fn assign_face(
     Ok(decide(&neighbors, threshold, ASSIGN_MARGIN))
 }
 
-pub async fn assign_animal(tx: &Transaction<'_>, species: &str, look: &[f32], vetoed: &[i64]) -> Result<Option<i64>> {
+pub async fn assign_animal(
+    tx: &Transaction<'_>,
+    species: &str,
+    look: &[f32],
+    vetoed: &[i64],
+) -> Result<Option<i64>> {
     let rows = tx
         .query(
             "SELECT f.person_id, 1 - (f.look <=> $1) FROM faces f
@@ -101,8 +109,11 @@ pub async fn assign_animal(tx: &Transaction<'_>, species: &str, look: &[f32], ve
             &[&Vector::from(look.to_vec()), &species],
         )
         .await?;
-    let neighbors: Vec<(i64, f32)> =
-        rows.iter().map(|r| (r.get(0), r.get::<_, f64>(1) as f32)).filter(|(p, _)| !vetoed.contains(p)).collect();
+    let neighbors: Vec<(i64, f32)> = rows
+        .iter()
+        .map(|r| (r.get(0), r.get::<_, f64>(1) as f32))
+        .filter(|(p, _)| !vetoed.contains(p))
+        .collect();
     Ok(decide(&neighbors, ASSIGN_ANIMAL, ASSIGN_MARGIN))
 }
 
@@ -172,7 +183,10 @@ mod tests {
 
     #[test]
     fn a_close_race_or_a_weak_match_decides_nothing() {
-        assert_eq!(decide(&[(1, 0.5), (1, 0.5), (2, 0.48), (2, 0.48)], 0.38, 0.05), None);
+        assert_eq!(
+            decide(&[(1, 0.5), (1, 0.5), (2, 0.48), (2, 0.48)], 0.38, 0.05),
+            None
+        );
         assert_eq!(decide(&[(1, 0.3), (1, 0.3)], 0.38, 0.05), None);
         // one look-alike alone is not enough ...
         assert_eq!(decide(&[(1, 0.45)], 0.38, 0.05), None);

@@ -53,7 +53,11 @@ pub(super) fn memory() -> (f32, f32, f32) {
     };
     let total = gib("MemTotal:");
     let used = (total - gib("MemAvailable:")).max(0.0);
-    let percent = if total > 0.0 { used / total * 100.0 } else { 0.0 };
+    let percent = if total > 0.0 {
+        used / total * 100.0
+    } else {
+        0.0
+    };
     (percent as f32, used as f32, total as f32)
 }
 
@@ -64,9 +68,15 @@ pub(super) fn net_bytes() -> (u64, u64) {
     let dev = fs::read_to_string("/proc/net/dev").unwrap_or_default();
     let (mut rx, mut tx) = (0u64, 0u64);
     for line in dev.lines().skip(2) {
-        let Some((name, rest)) = line.split_once(':') else { continue };
+        let Some((name, rest)) = line.split_once(':') else {
+            continue;
+        };
         let name = name.trim();
-        if name == "lo" || ["docker", "veth", "br-", "tailscale"].iter().any(|p| name.starts_with(p)) {
+        if name == "lo"
+            || ["docker", "veth", "br-", "tailscale"]
+                .iter()
+                .any(|p| name.starts_with(p))
+        {
             continue;
         }
         let fields: Vec<&str> = rest.split_whitespace().collect();
@@ -84,7 +94,9 @@ pub(super) fn cpu_temp() -> Option<f32> {
         let dir = entry.path();
         let name = read_trimmed(&dir.join("name").to_string_lossy())?;
         if matches!(name.as_str(), "coretemp" | "k10temp" | "zenpower") {
-            let millis: f32 = read_trimmed(&dir.join("temp1_input").to_string_lossy())?.parse().ok()?;
+            let millis: f32 = read_trimmed(&dir.join("temp1_input").to_string_lossy())?
+                .parse()
+                .ok()?;
             return Some(millis / 1000.0);
         }
     }
@@ -136,7 +148,11 @@ pub(super) fn disks(cfg: &Config) -> Vec<Disk> {
     // library): name it by where its device is mounted first.
     let mount_of = |path: &std::path::Path| -> String {
         let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        let device = mounts.iter().filter(|(_, at)| path.starts_with(at)).max_by_key(|(_, at)| at.len()).map(|(d, _)| d);
+        let device = mounts
+            .iter()
+            .filter(|(_, at)| path.starts_with(at))
+            .max_by_key(|(_, at)| at.len())
+            .map(|(d, _)| d);
         mounts
             .iter()
             .find(|(d, _)| Some(d) == device)
@@ -144,13 +160,21 @@ pub(super) fn disks(cfg: &Config) -> Vec<Disk> {
     };
     let mut seen = Vec::new();
     let mut out = Vec::new();
-    for path in [std::path::PathBuf::from("/"), cfg.originals_dir(), cfg.blobs_dir()] {
-        let Ok(meta) = fs::metadata(&path) else { continue };
+    for path in [
+        std::path::PathBuf::from("/"),
+        cfg.originals_dir(),
+        cfg.blobs_dir(),
+    ] {
+        let Ok(meta) = fs::metadata(&path) else {
+            continue;
+        };
         if seen.contains(&meta.dev()) {
             continue;
         }
         seen.push(meta.dev());
-        let Ok(c_path) = std::ffi::CString::new(path.to_string_lossy().as_bytes()) else { continue };
+        let Ok(c_path) = std::ffi::CString::new(path.to_string_lossy().as_bytes()) else {
+            continue;
+        };
         let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
         // SAFETY: c_path is a valid NUL-terminated string and stat is a
         // properly sized, writable statvfs the call fills in.
@@ -159,7 +183,11 @@ pub(super) fn disks(cfg: &Config) -> Vec<Disk> {
         }
         let block = stat.f_frsize as u64;
         let total = stat.f_blocks as u64 * block;
-        out.push(Disk { mount: mount_of(&path), used: total - stat.f_bfree as u64 * block, total });
+        out.push(Disk {
+            mount: mount_of(&path),
+            used: total - stat.f_bfree as u64 * block,
+            total,
+        });
     }
     out
 }

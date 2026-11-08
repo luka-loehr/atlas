@@ -42,8 +42,9 @@ mod store;
 mod tracks;
 
 pub use assign::{
-    ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_POOR_FACE, ASSIGN_SMALL_FACE, MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP,
-    MIN_SCORE_GROUP, MIN_WIDTH_GROUP, SMALL_FACE, decide, refresh_people,
+    ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_POOR_FACE, ASSIGN_SMALL_FACE,
+    MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP, MIN_WIDTH_GROUP, SMALL_FACE, decide,
+    refresh_people,
 };
 use engines::{Engines, LoadArgs, analyze};
 use frames::frames;
@@ -64,7 +65,10 @@ pub type Shared = Arc<Mutex<Loaded>>;
 
 pub async fn run(worker: &Worker, engines: &Shared, id: &str) -> Result<Outcome> {
     let c = worker.pool.get().await?;
-    let Some(row) = c.query_opt("SELECT type, orig_path FROM assets WHERE id = $1", &[&id]).await? else {
+    let Some(row) = c
+        .query_opt("SELECT type, orig_path FROM assets WHERE id = $1", &[&id])
+        .await?
+    else {
         return Ok(Outcome::Done); // deleted meanwhile
     };
     drop(c);
@@ -76,7 +80,9 @@ pub async fn run(worker: &Worker, engines: &Shared, id: &str) -> Result<Outcome>
         let (original, thumb) = (original.clone(), thumb.clone());
         tokio::task::spawn_blocking(move || frames(&original, thumb.as_deref(), video)).await??
     };
-    let Some(frames) = frames else { return Ok(Outcome::NotReady) };
+    let Some(frames) = frames else {
+        return Ok(Outcome::NotReady);
+    };
 
     // the models, one asset at a time
     let frames = Arc::new(frames);
@@ -87,7 +93,10 @@ pub async fn run(worker: &Worker, engines: &Shared, id: &str) -> Result<Outcome>
             let mut loaded = engines.lock().unwrap_or_else(|e| e.into_inner());
             if loaded.gpu.is_none() {
                 let engines = args.load(true)?;
-                tracing::info!("vision models loaded ({})", if engines.gpu { "GPU" } else { "CPU" });
+                tracing::info!(
+                    "vision models loaded ({})",
+                    if engines.gpu { "GPU" } else { "CPU" }
+                );
                 loaded.gpu = Some(engines);
             }
             let first = analyze(loaded.gpu.as_mut().expect("just loaded"), &frames);
@@ -114,18 +123,31 @@ pub async fn run(worker: &Worker, engines: &Shared, id: &str) -> Result<Outcome>
 /// `atlas-ml analyze FILE...`: what the stage sees in files, printed, with
 /// nothing stored. For checking the models on the box.
 pub fn analyze_files(worker_paths: [PathBuf; 7], files: &[String]) -> Result<()> {
-    let args = LoadArgs { paths: worker_paths };
+    let args = LoadArgs {
+        paths: worker_paths,
+    };
     let mut engines = args.load(std::env::var("ATLAS_ANALYZE_CPU").is_err())?;
-    eprintln!("budget {:?} MiB, on the {}", runtime::vision_budget_mb(), if engines.gpu { "GPU" } else { "CPU" });
-    let repeat: usize = std::env::var("ATLAS_ANALYZE_REPEAT").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    eprintln!(
+        "budget {:?} MiB, on the {}",
+        runtime::vision_budget_mb(),
+        if engines.gpu { "GPU" } else { "CPU" }
+    );
+    let repeat: usize = std::env::var("ATLAS_ANALYZE_REPEAT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
     for file in files.iter().flat_map(|f| std::iter::repeat_n(f, repeat)) {
         let path = Path::new(file);
         let video = matches!(
-            path.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref(),
+            path.extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .as_deref(),
             Some("mov" | "mp4" | "m4v" | "3gp" | "mkv" | "webm" | "avi")
         );
         let started = std::time::Instant::now();
-        let Some(frames) = frames(path, None, video)? else { continue };
+        let Some(frames) = frames(path, None, video)? else {
+            continue;
+        };
         let read = started.elapsed();
         let (found, lines) = analyze(&mut engines, &frames)?;
         let found = if video { tracks(found) } else { found };
@@ -148,7 +170,14 @@ pub fn analyze_files(worker_paths: [PathBuf; 7], files: &[String]) -> Result<()>
             );
         }
         for f in found.iter().filter(|f| f.kind != "person") {
-            println!("  {}: {:.0} px wide, score {:.2}, identifiable {}, box {:?}", f.kind, f.width_px, f.score, f.look.is_some(), f.bbox);
+            println!(
+                "  {}: {:.0} px wide, score {:.2}, identifiable {}, box {:?}",
+                f.kind,
+                f.width_px,
+                f.score,
+                f.look.is_some(),
+                f.bbox
+            );
         }
         if !lines.is_empty() {
             println!("  text: {}", lines.join(" | "));

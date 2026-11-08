@@ -41,7 +41,12 @@ pub use trash::purge_expired;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/drive/folders", post(organize::folder_create))
-        .route("/drive/folders/{id}", get(browse::list).patch(organize::folder_rename).delete(organize::folder_delete))
+        .route(
+            "/drive/folders/{id}",
+            get(browse::list)
+                .patch(organize::folder_rename)
+                .delete(organize::folder_delete),
+        )
         .route("/drive/files", put(upload::upload))
         .route("/drive/files/{id}", patch(organize::file_rename))
         .route("/drive/files/{id}/thumb", get(blobs::thumb))
@@ -59,7 +64,8 @@ pub(super) fn blob_path(app: &App, hash: &str) -> PathBuf {
     app.cfg.blobs_dir().join(hash)
 }
 
-pub(super) const FILE_COLS: &str = "df.id, df.name, df.hash, df.size_bytes, df.mime, df.modified_at, df.folder_id";
+pub(super) const FILE_COLS: &str =
+    "df.id, df.name, df.hash, df.size_bytes, df.mime, df.modified_at, df.folder_id";
 
 pub(super) fn file_json(r: &Row) -> Value {
     json!({

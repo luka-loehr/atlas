@@ -43,8 +43,11 @@ const MIN_SCORE: f32 = 0.0;
 /// Covers are worked out at most this often.
 const FRESH: Duration = Duration::from_secs(6 * 3600);
 
-fn cache() -> &'static Mutex<Option<(Instant, Arc<Value>)>> {
-    static CACHE: OnceLock<Mutex<Option<(Instant, Arc<Value>)>>> = OnceLock::new();
+/// The covers last worked out, and when.
+type Cached = Mutex<Option<(Instant, Arc<Value>)>>;
+
+fn cache() -> &'static Cached {
+    static CACHE: OnceLock<Cached> = OnceLock::new();
     CACHE.get_or_init(Mutex::default)
 }
 
@@ -143,7 +146,9 @@ async fn pick(app: &App) -> anyhow::Result<Value> {
     ) -> HashMap<K, (f32, String)> {
         let mut top: HashMap<K, (f32, &str)> = HashMap::new();
         for c in candidates {
-            let (Some(k), Some(s)) = (key(c), score(c)) else { continue };
+            let (Some(k), Some(s)) = (key(c), score(c)) else {
+                continue;
+            };
             if taken.contains(&c.id) {
                 continue;
             }
@@ -152,21 +157,41 @@ async fn pick(app: &App) -> anyhow::Result<Value> {
                 *e = (s, &c.id);
             }
         }
-        top.into_iter().map(|(k, (s, id))| (k, (s, id.to_string()))).collect()
+        top.into_iter()
+            .map(|(k, (s, id))| (k, (s, id.to_string())))
+            .collect()
     }
 
     let none = HashSet::new();
     // the countries first: a small one may have a single good photo, while
     // a year has plenty, and the two share a screen (never one photo twice)
-    let countries = best(&candidates, |c| c.country.clone(), |c| score(c, &travel), &none);
+    let countries = best(
+        &candidates,
+        |c| c.country.clone(),
+        |c| score(c, &travel),
+        &none,
+    );
     let shown: HashSet<String> = countries.values().map(|(_, id)| id.clone()).collect();
     let years = best(&candidates, |c| c.year, |c| score(c, &moment), &shown);
-    let places = best(&candidates, |c| c.place.clone(), |c| score(c, &travel), &none);
-    tracing::info!(places = places.len(), countries = countries.len(), years = years.len(), "covers picked");
+    let places = best(
+        &candidates,
+        |c| c.place.clone(),
+        |c| score(c, &travel),
+        &none,
+    );
+    tracing::info!(
+        places = places.len(),
+        countries = countries.len(),
+        years = years.len(),
+        "covers picked"
+    );
     // a place or country whose best photo is still a bad one gets none:
     // the app shows a map of it instead; a year always has its best
     let keep = |m: HashMap<String, (f32, String)>, floor: f32| -> HashMap<String, String> {
-        m.into_iter().filter(|(_, (s, _))| *s >= floor).map(|(k, (_, id))| (k, id)).collect()
+        m.into_iter()
+            .filter(|(_, (s, _))| *s >= floor)
+            .map(|(k, (_, id))| (k, id))
+            .collect()
     };
     Ok(json!({
         "places": keep(places, MIN_SCORE),

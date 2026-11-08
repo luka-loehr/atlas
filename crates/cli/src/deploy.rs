@@ -14,7 +14,11 @@ pub(crate) fn deploy(sub: &[String]) {
     match sub.first().map(String::as_str) {
         Some("logs") => {
             let err = Command::new("ssh")
-                .args(["-t", ssh_host(), "journalctl -u atlas-server -u atlas-ml -f -n 60"])
+                .args([
+                    "-t",
+                    ssh_host(),
+                    "journalctl -u atlas-server -u atlas-ml -f -n 60",
+                ])
                 .exec();
             eprintln!("ssh: {err}");
             exit(1);
@@ -70,11 +74,16 @@ pub(crate) fn connect() {
     ensure_up();
     let host = config().server_url.as_str();
     if host.is_empty() {
-        eprintln!("{RED}no server address:{RESET} set ATLAS_SERVER_URL (or ATLAS_TAILNET_ADDR) in ~/.config/atlas/env");
+        eprintln!(
+            "{RED}no server address:{RESET} set ATLAS_SERVER_URL (or ATLAS_TAILNET_ADDR) in ~/.config/atlas/env"
+        );
         exit(1);
     }
     let out = Command::new("ssh")
-        .args([ssh_host(), "sudo sed -n 's/^ATLAS_TOKEN=//p' /etc/atlas/atlas.env"])
+        .args([
+            ssh_host(),
+            "sudo sed -n 's/^ATLAS_TOKEN=//p' /etc/atlas/atlas.env",
+        ])
         .output();
     let token = match out {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
@@ -85,7 +94,11 @@ pub(crate) fn connect() {
         exit(1);
     }
     // the address is a URL inside a URL: escape what would end the parameter
-    let address = format!("http://{host}").replace(':', "%3A").replace('/', "%2F");
+    let address = format!("http://{host}")
+        .replace(':', "%3A")
+        .replace('/', "%2F");
     println!("atlas://connect?url={address}&token={token}");
-    eprintln!("{DIM}open this link on the iPhone (AirDrop, Notes, Messages) with Atlas installed{RESET}");
+    eprintln!(
+        "{DIM}open this link on the iPhone (AirDrop, Notes, Messages) with Atlas installed{RESET}"
+    );
 }

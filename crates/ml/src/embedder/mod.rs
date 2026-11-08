@@ -95,16 +95,34 @@ impl Embedder {
         let context = (per_slot * cfg.slots).to_string();
         let batch = per_slot.to_string();
         let args = [
-            "--model", &cfg.embed_model.to_string_lossy(),
-            "--mmproj", &cfg.embed_mmproj.to_string_lossy(),
-            "--embedding", "--pooling", "last",
-            "--device", &cfg.device, "--n-gpu-layers", "999",
-            "--ctx-size", &context, "--batch-size", &batch, "--ubatch-size", &batch,
-            "--parallel", &cfg.slots.to_string(),
+            "--model",
+            &cfg.embed_model.to_string_lossy(),
+            "--mmproj",
+            &cfg.embed_mmproj.to_string_lossy(),
+            "--embedding",
+            "--pooling",
+            "last",
+            "--device",
+            &cfg.device,
+            "--n-gpu-layers",
+            "999",
+            "--ctx-size",
+            &context,
+            "--batch-size",
+            &batch,
+            "--ubatch-size",
+            &batch,
+            "--parallel",
+            &cfg.slots.to_string(),
             // inputs arrive at their final size; llama.cpp must not resize them
-            "--image-min-tokens", &recipe::FRAME_MIN_TOKENS.to_string(),
-            "--image-max-tokens", &recipe::IMAGE_MAX_TOKENS.to_string(),
-            "--host", "127.0.0.1", "--port", &cfg.llama_port.to_string(),
+            "--image-min-tokens",
+            &recipe::FRAME_MIN_TOKENS.to_string(),
+            "--image-max-tokens",
+            &recipe::IMAGE_MAX_TOKENS.to_string(),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &cfg.llama_port.to_string(),
             "--no-webui",
         ]
         .map(str::to_string)
@@ -115,7 +133,10 @@ impl Embedder {
             args,
             url: format!("http://127.0.0.1:{}", cfg.llama_port),
             idle_after: cfg.idle,
-            http: reqwest::Client::builder().timeout(Duration::from_secs(180)).build().expect("http client"),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(180))
+                .build()
+                .expect("http client"),
             running: Mutex::new(None),
             state: AtomicU8::new(IDLE),
             in_flight: AtomicUsize::new(0),
@@ -133,7 +154,11 @@ impl Embedder {
 
     /// Start the server if it is not up, and wait until the model is loaded.
     async fn start(&self) -> Result<Running> {
-        ensure!(self.program.exists(), "llama.cpp server not found at {} (see docs/SETUP.md)", self.program.display());
+        ensure!(
+            self.program.exists(),
+            "llama.cpp server not found at {} (see docs/SETUP.md)",
+            self.program.display()
+        );
         self.state.store(LOADING, Ordering::Relaxed);
         let started = Instant::now();
         let mut child = Command::new(&self.program)
@@ -156,7 +181,12 @@ impl Embedder {
                     self.program.display()
                 );
             }
-            let health = self.http.get(format!("{}/health", self.url)).timeout(Duration::from_secs(2)).send().await;
+            let health = self
+                .http
+                .get(format!("{}/health", self.url))
+                .timeout(Duration::from_secs(2))
+                .send()
+                .await;
             if health.is_ok_and(|r| r.status().is_success()) {
                 break;
             }
@@ -166,20 +196,41 @@ impl Embedder {
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
-        let props: Value = self.http.get(format!("{}/props", self.url)).send().await?.json().await?;
-        let marker = props["media_marker"].as_str().unwrap_or("<__media__>").to_string();
+        let props: Value = self
+            .http
+            .get(format!("{}/props", self.url))
+            .send()
+            .await?
+            .json()
+            .await?;
+        let marker = props["media_marker"]
+            .as_str()
+            .unwrap_or("<__media__>")
+            .to_string();
         self.state.store(LOADED, Ordering::Relaxed);
         tracing::info!("embedding model loaded in {:.1?}", started.elapsed());
-        Ok(Running { child, marker, last_used: Instant::now() })
+        Ok(Running {
+            child,
+            marker,
+            last_used: Instant::now(),
+        })
     }
 
     /// One request against the (started if necessary) server. `prompt` gets
     /// the server's media marker to place its images; `frames` says they are
     /// consecutive frames of one clip, which the vision tower merges in time.
-    async fn request(&self, prompt: impl FnOnce(&str) -> String, images: &[Vec<u8>], frames: bool) -> Result<Vec<f32>> {
+    async fn request(
+        &self,
+        prompt: impl FnOnce(&str) -> String,
+        images: &[Vec<u8>],
+        frames: bool,
+    ) -> Result<Vec<f32>> {
         let marker = {
             let mut running = self.running.lock().await;
-            if running.as_mut().is_some_and(|r| r.child.try_wait().ok().flatten().is_some()) {
+            if running
+                .as_mut()
+                .is_some_and(|r| r.child.try_wait().ok().flatten().is_some())
+            {
                 *running = None; // it died; start over
             }
             if running.is_none() {
@@ -204,8 +255,10 @@ impl Embedder {
         let content = if images.is_empty() {
             json!(prompt)
         } else {
-            let encoded: Vec<String> =
-                images.iter().map(|png| base64::engine::general_purpose::STANDARD.encode(png)).collect();
+            let encoded: Vec<String> = images
+                .iter()
+                .map(|png| base64::engine::general_purpose::STANDARD.encode(png))
+                .collect();
             // "video_frames" is Atlas' patch to llama.cpp (scripts/atlas/llama-server-video-frames.patch)
             json!({ "prompt_string": prompt, "multimodal_data": encoded, "video_frames": frames })
         };
@@ -218,17 +271,30 @@ impl Embedder {
             .context("llama.cpp server did not answer")?;
         let status = response.status();
         let body: Value = response.json().await?;
-        ensure!(status.is_success(), "llama.cpp server: {}", body["error"]["message"].as_str().unwrap_or("request failed"));
+        ensure!(
+            status.is_success(),
+            "llama.cpp server: {}",
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or("request failed")
+        );
         // [{"index":0,"embedding":[[...]]}]: one pooled vector, nested
         let embedding = &body[0]["embedding"];
-        let values = embedding.get(0).filter(|first| first.is_array()).unwrap_or(embedding);
+        let values = embedding
+            .get(0)
+            .filter(|first| first.is_array())
+            .unwrap_or(embedding);
         let mut vec: Vec<f32> = values
             .as_array()
             .context("no embedding in the response")?
             .iter()
             .filter_map(|x| x.as_f64().map(|f| f as f32))
             .collect();
-        ensure!(vec.len() == DIM, "expected {DIM} dimensions, got {}", vec.len());
+        ensure!(
+            vec.len() == DIM,
+            "expected {DIM} dimensions, got {}",
+            vec.len()
+        );
         normalize(&mut vec);
         Ok(vec)
     }
@@ -257,7 +323,12 @@ impl Embedder {
     pub async fn embed_image(&self, image: &RgbImage) -> Result<Vec<f32>> {
         let (w, h) = recipe::image_size(image.width(), image.height());
         let prepared = pixels::png(&pixels::resize(image, w, h, FilterType::CatmullRom)?)?;
-        self.request(|marker| format!("{USER}{marker}{STILL}{CLOSE}"), &[prepared], false).await
+        self.request(
+            |marker| format!("{USER}{marker}{STILL}{CLOSE}"),
+            &[prepared],
+            false,
+        )
+        .await
     }
 
     /// A clip, sampled as the model's video processor does. None when it is
@@ -266,7 +337,9 @@ impl Embedder {
         let path = path.to_path_buf();
         let sampled = tokio::task::spawn_blocking(move || -> Result<Option<Sampled>> {
             let clip = pixels::probe(&path)?;
-            let Some(count) = recipe::frame_count(clip.times.len(), clip.fps) else { return Ok(None) };
+            let Some(count) = recipe::frame_count(clip.times.len(), clip.fps) else {
+                return Ok(None);
+            };
             let indices = recipe::frame_indices(clip.times.len(), count);
             // the frames as shown; their labels in the prompt are index /
             // average rate, as the model's processor computes them
@@ -281,9 +354,14 @@ impl Embedder {
             Ok(Some((encoded, recipe::pair_times(&indices, clip.fps))))
         })
         .await??;
-        let Some((frames, times)) = sampled else { return Ok(None) };
+        let Some((frames, times)) = sampled else {
+            return Ok(None);
+        };
         let prompt = |marker: &str| {
-            let pairs: String = times.iter().map(|t| format!("<{t:.1} seconds>{marker}{marker}")).collect();
+            let pairs: String = times
+                .iter()
+                .map(|t| format!("<{t:.1} seconds>{marker}{marker}"))
+                .collect();
             format!("{USER}\n{pairs}{CLIP}{CLOSE}")
         };
         self.request(prompt, &frames, true).await.map(Some)
@@ -298,9 +376,14 @@ impl Embedder {
     /// Stops the server when nothing is in flight and nothing used it for
     /// `idle_after`.
     async fn unload_if_idle(&self) {
-        let Ok(mut running) = self.running.try_lock() else { return };
-        let idle = running.as_ref().is_some_and(|s| s.last_used.elapsed() >= self.idle_after);
-        if idle && self.in_flight.load(Ordering::SeqCst) == 0
+        let Ok(mut running) = self.running.try_lock() else {
+            return;
+        };
+        let idle = running
+            .as_ref()
+            .is_some_and(|s| s.last_used.elapsed() >= self.idle_after);
+        if idle
+            && self.in_flight.load(Ordering::SeqCst) == 0
             && let Some(server) = running.take()
         {
             self.stop(server).await;

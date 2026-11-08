@@ -21,8 +21,8 @@ use fast_image_resize::FilterType;
 use image::RgbImage;
 use ort::value::Tensor;
 
-use crate::runtime::{self, Device};
 use crate::pixels::{self, IMAGENET_MEAN, IMAGENET_STD};
+use crate::runtime::{self, Device};
 
 const DETECT_SIDE: u32 = 1536;
 const PIXEL_THRESHOLD: f32 = 0.2;
@@ -50,8 +50,14 @@ pub struct TextEngine {
 }
 
 impl TextEngine {
-    pub fn load(detector: &Path, recognizer: &Path, dictionary: &Path, devices: [Device; 2]) -> Result<Self> {
-        let dict = std::fs::read_to_string(dictionary).with_context(|| format!("cannot read {}", dictionary.display()))?;
+    pub fn load(
+        detector: &Path,
+        recognizer: &Path,
+        dictionary: &Path,
+        devices: [Device; 2],
+    ) -> Result<Self> {
+        let dict = std::fs::read_to_string(dictionary)
+            .with_context(|| format!("cannot read {}", dictionary.display()))?;
         let mut characters = vec![String::new()];
         characters.extend(dict.lines().map(str::to_string));
         characters.push(" ".into());
@@ -84,12 +90,16 @@ impl TextEngine {
         // ordered) statistics, so channel 0 is blue
         for (i, pixel) in resized.pixels().enumerate() {
             for c in 0..3 {
-                input[c * plane + i] = (f32::from(pixel[2 - c]) / 255.0 - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
+                input[c * plane + i] =
+                    (f32::from(pixel[2 - c]) / 255.0 - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
             }
         }
         let tensor = Tensor::from_array(([1usize, 3, dh as usize, dw as usize], input))?;
         let options = self.detector.options()?;
-        let outputs = self.detector.session.run_with_options(ort::inputs![tensor], &options)?;
+        let outputs = self
+            .detector
+            .session
+            .run_with_options(ort::inputs![tensor], &options)?;
         let (_, prob) = outputs[0].try_extract_tensor::<f32>()?;
         ensure!(prob.len() == plane, "unexpected text detector output");
 
@@ -116,13 +126,18 @@ impl TextEngine {
         // each line as a 48 px high strip; vertical text is turned upright
         let mut strips: Vec<(usize, RgbImage)> = Vec::with_capacity(boxes.len());
         for (i, b) in boxes.iter().enumerate() {
-            let mut crop = image::imageops::crop_imm(image, b[0], b[1], b[2] - b[0], b[3] - b[1]).to_image();
+            let mut crop =
+                image::imageops::crop_imm(image, b[0], b[1], b[2] - b[0], b[3] - b[1]).to_image();
             if crop.height() as f32 > 1.5 * crop.width() as f32 {
                 crop = image::imageops::rotate270(&crop);
             }
-            let width = ((LINE_HEIGHT as f32 * crop.width() as f32 / crop.height() as f32).round() as u32)
+            let width = ((LINE_HEIGHT as f32 * crop.width() as f32 / crop.height() as f32).round()
+                as u32)
                 .clamp(16, MAX_LINE_WIDTH);
-            strips.push((i, pixels::resize(&crop, width, LINE_HEIGHT, FilterType::Bilinear)?));
+            strips.push((
+                i,
+                pixels::resize(&crop, width, LINE_HEIGHT, FilterType::Bilinear)?,
+            ));
         }
         // similar widths batch together with little padding
         strips.sort_by_key(|(_, s)| s.width());
@@ -136,20 +151,37 @@ impl TextEngine {
                 for (x, y, pixel) in strip.enumerate_pixels() {
                     let at = y as usize * width + x as usize;
                     for c in 0..3 {
-                        input[n * 3 * plane + c * plane + at] = (f32::from(pixel[2 - c]) / 255.0 - 0.5) / 0.5;
+                        input[n * 3 * plane + c * plane + at] =
+                            (f32::from(pixel[2 - c]) / 255.0 - 0.5) / 0.5;
                     }
                 }
             }
-            let tensor = Tensor::from_array(([batch.len(), 3, LINE_HEIGHT as usize, width], input))?;
+            let tensor =
+                Tensor::from_array(([batch.len(), 3, LINE_HEIGHT as usize, width], input))?;
             let options = self.recognizer.options()?;
-            let outputs = self.recognizer.session.run_with_options(ort::inputs![tensor], &options)?;
+            let outputs = self
+                .recognizer
+                .session
+                .run_with_options(ort::inputs![tensor], &options)?;
             let (shape, probs) = outputs[0].try_extract_tensor::<f32>()?;
             let (steps, classes) = (shape[1] as usize, shape[2] as usize);
-            ensure!(classes == self.characters.len(), "recognizer has {classes} classes, dictionary {}", self.characters.len());
+            ensure!(
+                classes == self.characters.len(),
+                "recognizer has {classes} classes, dictionary {}",
+                self.characters.len()
+            );
             for (n, (i, _)) in batch.iter().enumerate() {
-                let (text, confidence) = decode(&probs[n * steps * classes..(n + 1) * steps * classes], classes, &self.characters);
+                let (text, confidence) = decode(
+                    &probs[n * steps * classes..(n + 1) * steps * classes],
+                    classes,
+                    &self.characters,
+                );
                 if !text.trim().is_empty() {
-                    lines.push(Line { text: text.trim().to_string(), bbox: boxes[*i], confidence });
+                    lines.push(Line {
+                        text: text.trim().to_string(),
+                        bbox: boxes[*i],
+                        confidence,
+                    });
                 }
             }
         }
@@ -163,7 +195,11 @@ fn decode(probs: &[f32], classes: usize, characters: &[String]) -> (String, f32)
     let mut text = String::new();
     let (mut sum, mut kept, mut previous) = (0f32, 0usize, 0usize);
     for step in probs.chunks_exact(classes) {
-        let (best, p) = step.iter().copied().enumerate().fold((0, f32::MIN), |a, (i, p)| if p > a.1 { (i, p) } else { a });
+        let (best, p) = step
+            .iter()
+            .copied()
+            .enumerate()
+            .fold((0, f32::MIN), |a, (i, p)| if p > a.1 { (i, p) } else { a });
         if best != 0 && best != previous {
             text.push_str(&characters[best]);
             sum += p;
@@ -210,7 +246,14 @@ fn regions(prob: &[f32], w: usize, h: usize, threshold: f32) -> Vec<Region> {
         }
         seen[start] = true;
         stack.push(start);
-        let mut r = Region { x0: usize::MAX, y0: usize::MAX, x1: 0, y1: 0, area: 0, mean: 0.0 };
+        let mut r = Region {
+            x0: usize::MAX,
+            y0: usize::MAX,
+            x1: 0,
+            y1: 0,
+            area: 0,
+            mean: 0.0,
+        };
         let mut sum = 0f32;
         while let Some(i) = stack.pop() {
             let (x, y) = (i % w, i / w);
@@ -271,7 +314,10 @@ mod tests {
         let found = regions(&prob, w, h, 0.2);
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].area, 3);
-        assert_eq!((found[1].x0, found[1].y0, found[1].x1, found[1].y1), (5, 0, 5, 1));
+        assert_eq!(
+            (found[1].x0, found[1].y0, found[1].x1, found[1].y1),
+            (5, 0, 5, 1)
+        );
     }
 
     #[test]
