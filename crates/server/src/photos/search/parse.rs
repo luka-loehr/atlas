@@ -218,10 +218,10 @@ mod tests {
             places: vec![
                 PlaceName { name: "Spain".into(), places: vec![10, 11] },
                 PlaceName { name: "Spanien".into(), places: vec![10, 11] },
-                PlaceName { name: "Santa Pola".into(), places: vec![11] },
+                PlaceName { name: "Port Vela".into(), places: vec![11] },
                 PlaceName { name: "Lyon".into(), places: vec![20] },
             ],
-            albums: vec![Album { id: 7, title: "Zrmanja Rafting".into() }],
+            albums: vec![Album { id: 7, title: "Canyon Rafting".into() }],
         }
     }
 
@@ -253,7 +253,7 @@ mod tests {
         let p = parse("alex in spain", &lexicon(), today());
         assert_eq!(ids(&p), vec![1]);
         assert_eq!(p.places, vec![("Spain".to_string(), vec![10, 11])]);
-        let p = parse("me in santa pola", &lexicon(), today());
+        let p = parse("me in port vela", &lexicon(), today());
         assert_eq!(ids(&p), vec![1]);
         assert_eq!(p.places[0].1, vec![11]);
     }
@@ -315,8 +315,8 @@ mod tests {
 
     #[test]
     fn albums_by_their_title() {
-        let p = parse("zrmanja rafting", &lexicon(), today());
-        assert_eq!(p.albums, vec![(7, "Zrmanja Rafting".to_string())]);
+        let p = parse("canyon rafting", &lexicon(), today());
+        assert_eq!(p.albums, vec![(7, "Canyon Rafting".to_string())]);
     }
 
     #[test]

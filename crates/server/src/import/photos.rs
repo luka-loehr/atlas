@@ -252,12 +252,12 @@ mod tests {
     fn sidecars_yield_time_place_and_flags() {
         let s = parse_sidecar(
             r#"{"photoTakenTime":{"timestamp":"1722384000"},"geoData":{"latitude":45.08,"longitude":13.63},
-                "favorited":true,"description":"Rovinj","googlePhotosOrigin":{"mobileUpload":{"deviceType":"IOS_PHONE"}}}"#,
+                "favorited":true,"description":"Harbour walk","googlePhotosOrigin":{"mobileUpload":{"deviceType":"IOS_PHONE"}}}"#,
         );
         assert_eq!(s.taken.unwrap().timestamp(), 1_722_384_000);
         assert_eq!((s.lat, s.lon), (Some(45.08), Some(13.63)));
         assert!(s.favorite);
-        assert_eq!(s.description.as_deref(), Some("Rovinj"));
+        assert_eq!(s.description.as_deref(), Some("Harbour walk"));
         assert_eq!(s.camera.as_deref(), Some("IOS_PHONE"));
         assert!(parse_sidecar(r#"{"geoData":{"latitude":0.0,"longitude":0.0}}"#).lat.is_none());
     }
