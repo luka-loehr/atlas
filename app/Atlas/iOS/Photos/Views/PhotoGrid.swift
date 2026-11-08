@@ -922,7 +922,8 @@ final class PhotoCell: UICollectionViewCell {
 /// A list of photos in the library's own grid (search results, a person, an
 /// album, Favorites ...): pinch through 1/3/5/9 columns, the local tiles,
 /// the zoom transition, a tap opens exactly the photo under the finger, and
-/// selection with check marks. Shown from the top, in the order given.
+/// selection with check marks. Ordered like the library: oldest at the top
+/// (undated first), opened at the newest end at the bottom.
 struct AssetGrid: View {
     var library: Library
     var assets: [Asset]
@@ -942,10 +943,22 @@ struct AssetGrid: View {
         return h.finalize()
     }
 
+    /// Oldest first; undated before everything, as in the timeline.
+    private var ordered: [Asset] {
+        assets.enumerated().sorted { a, b in
+            switch (a.element.takenAt, b.element.takenAt) {
+            case let (x?, y?) where x != y: x < y
+            case (nil, _?): true
+            case (_?, nil): false
+            default: a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+
     var body: some View {
-        PhotoGrid(library: library, assets: assets, revision: revision,
+        PhotoGrid(library: library, assets: ordered, revision: revision,
                   selecting: selection?.active ?? false, selected: selection?.ids ?? [], proxy: proxy,
-                  titleShade: underBar, contextMenus: false, startsAtTop: true,
+                  titleShade: underBar, contextMenus: false, startsAtTop: false,
                   onTop: { _ in },
                   onToggle: { asset in withAnimation(.snappy(duration: 0.26)) { selection?.toggle(asset.id) } },
                   menu: { _ in UIMenu(children: []) },
