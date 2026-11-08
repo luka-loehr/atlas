@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The search tab before anything is typed: the years, the countries and
-/// the cities, each searching for itself. The people ride above the search
+/// The search tab before anything is typed: the years and the countries,
+/// each searching for itself. The people ride above the search
 /// field (`SearchPeopleBar`); the map of the places lives in Albums.
 struct SearchHome: View {
     var library: Library
@@ -19,7 +19,6 @@ struct SearchHome: View {
                     yearCards
                 }
                 if !countries.isEmpty { countryCards }
-                if !places.isEmpty { cityCards }
             }
             .padding(.top, 4)
             .padding(.bottom, 24)
@@ -34,7 +33,7 @@ struct SearchHome: View {
         }
     }
 
-    // MARK: Countries and cities
+    // MARK: Countries
 
     struct Country: Identifiable {
         let code: String
@@ -98,24 +97,6 @@ struct SearchHome: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(c.name), \(c.photos) photos")
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    private var cityCards: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header("Cities", nil)
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 12) {
-                    ForEach(places.prefix(30)) { place in
-                        Button { if let n = place.name, !n.isEmpty { onSearch(n) } } label: {
-                            PlaceCard(library: library, place: place)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
