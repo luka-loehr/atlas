@@ -117,32 +117,28 @@ struct PersonDetailScreen: View {
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    FaceCircle(library: library, person: person)
-                        .frame(width: 64, height: 64)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(person.displayName)
-                            .font(.title2.bold())
-                            .foregroundStyle(person.name == nil ? .secondary : .primary)
-                            .lineLimit(1)
-                        Text("\(assets.count.formatted()) \(assets.count == 1 ? "Item" : "Items")")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                // the library's own grid, newest first
-                AssetGrid(library: library, assets: assets, selection: nil,
-                          onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
-                    .ignoresSafeArea(edges: .bottom)
-            }
+            // the library's own grid, newest first
+            AssetGrid(library: library, assets: assets, selection: nil,
+                      onRefresh: { await load() }, onViewerClosed: { Task { await load() } })
+                .ignoresSafeArea(edges: .bottom)
         }
         .navigationTitle(person.displayName)
         .inlineNavigationTitle()
         .toolbar {
+            // the title with a small face of who it is
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    FaceCircle(library: library, person: person)
+                        .frame(width: 28, height: 28)
+                    Text(person.displayName)
+                        .font(.headline)
+                        .foregroundStyle(person.name == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(person.displayName)
+                .accessibilityAddTraits(.isHeader)
+            }
             ToolbarItem(placement: .trailingBar) {
                 Menu("More", systemImage: "ellipsis") {
                     Button {
