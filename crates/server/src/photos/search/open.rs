@@ -44,7 +44,7 @@ pub(super) async fn open_search(
         .query(
             &format!(
                 "WITH hits AS (
-                     -- whole names, places and albums are filters (query.rs);
+                     -- whole names, places and albums are filters (parse.rs);
                      -- a word that only begins one ('car' of Carla) is offered
                      -- as a suggestion above the results, not as its photos
                      SELECT t.asset_id AS id, 3 AS rank FROM asset_text t WHERE lower(t.text) ~ $2

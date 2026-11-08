@@ -1,5 +1,5 @@
 //! The model stages of the job queue: `embed` and `faces` (the vision
-//! stage: faces, animals, text; vision.rs).
+//! stage: faces, animals, text; vision/).
 //!
 //! Two loops side by side: embeddings, as many at once as the embedding
 //! server has slots to spare for the queue, and vision, a few assets
