@@ -60,9 +60,13 @@ struct MacPhotoBrowser: View {
             .onChange(of: library.revision) { if source == .library { syncInspector() } }
             .onChange(of: selection) { syncInspector() }
             .onChange(of: viewing) { syncInspector() }
-            // the viewer opens with its controls; hidden, the toolbar goes too
+            // the viewer opens with its controls. Hidden, its own toolbar
+            // items go; the window's buttons and the sidebar button stay while
+            // the sidebar shows, and go with the whole toolbar when it is
+            // folded away
             .onChange(of: viewing == nil) { window.viewerChrome = true }
-            .toolbar(viewing != nil && !window.viewerChrome ? .hidden : .automatic, for: .windowToolbar)
+            .toolbar(viewing != nil && !window.viewerChrome && window.columns == .detailOnly ? .hidden : .automatic,
+                     for: .windowToolbar)
             .onDisappear { window.viewerChrome = true }
             .onReceive(NotificationCenter.default.publisher(for: .atlasRelock)) { _ in
                 if source == .special(.locked) { unlocked = false; viewing = nil }
@@ -241,7 +245,7 @@ struct MacPhotoBrowser: View {
             }
             .sharedBackgroundVisibility(.hidden)
         }
-        if viewing != nil {
+        if viewing != nil, window.viewerChrome {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.backward") { closeViewer() }
                     .help("Back to \(source == .library ? "Library" : title)")
@@ -266,7 +270,7 @@ struct MacPhotoBrowser: View {
             }
             .sharedBackgroundVisibility(.hidden)
         }
-        if !gated {
+        if !gated, viewing == nil || window.viewerChrome {
             let a = actions(for: targetIDs)
             ToolbarItemGroup(placement: .primaryAction) {
                 if case .album = source, viewing == nil {

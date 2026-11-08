@@ -60,6 +60,7 @@ struct MacViewer: View {
         .onChange(of: current) { if current != shown && catchUp == nil { show(current); focusCache() } }
         .onChange(of: assets.count) { show(shown) }
         .onChange(of: shown) { focusCache() }
+        .onKeyPress(.escape) { sync(); onClose(); return .handled }
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
         // space plays and pauses a video, and closes a photo (as before)
