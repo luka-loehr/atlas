@@ -692,7 +692,7 @@ private struct ViewerChrome: ViewModifier {
             // the prompt sits at the left at once, instead of sliding over
             // from the middle each time the field shows again
             item.searchField.centersPlaceholder = false
-            guard let view = item.view else { continue }
+            let view: NSView = item.searchField
             if item.isHidden { item.isHidden = false }   // from an earlier version's way
             CATransaction.begin()
             CATransaction.setDisableActions(true)
