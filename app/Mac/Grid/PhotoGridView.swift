@@ -29,6 +29,7 @@ final class PhotoGridView: NSView, NSMenuItemValidation {
     private var pool: [PhotoCellLayer] = []
     private var prefetches: [Int: Operation] = [:]
     private var lastTop = -1
+    private var lastBottom = -1
     private var lastY: CGFloat = 0
     /// The photo in the middle of the window as last laid out: a resize
     /// keeps it in the middle (computed before the width changed, since
@@ -269,9 +270,13 @@ final class PhotoGridView: NSView, NSMenuItemValidation {
         middle = index(near: CGPoint(x: rect.midX, y: rect.midY))
         // the month in the subtitle
         let top = index(near: CGPoint(x: 1, y: rect.minY + clip.contentInsets.top + 1)) ?? 0
-        if top != lastTop {
+        // the last photo on screen, for the days the header names
+        let bottom = min(index(near: CGPoint(x: rect.maxX - 1, y: rect.maxY - 1)) ?? assets.count - 1, assets.count - 1)
+        if top != lastTop || bottom != lastBottom {
             lastTop = top
+            lastBottom = bottom
             host?.onTopIndex(top)
+            host?.onVisible(top, bottom)
         }
     }
 

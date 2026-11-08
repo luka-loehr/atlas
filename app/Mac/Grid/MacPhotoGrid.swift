@@ -31,6 +31,8 @@ struct MacPhotoGrid: NSViewRepresentable {
     var onOpen: (Asset) -> Void
     var menu: (Set<String>) -> NSMenu? = { _ in nil }
     var onTopIndex: (Int) -> Void = { _ in }
+    /// The first and last photo on screen.
+    var onVisible: (Int, Int) -> Void = { _, _ in }
     var onFavoriteKey: () -> Void = {}
     var onZoom: (Int) -> Void = { _ in }
 

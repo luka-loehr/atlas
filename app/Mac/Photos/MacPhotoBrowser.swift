@@ -26,6 +26,9 @@ struct MacPhotoBrowser: View {
     /// The month at the top of the grid, for the subtitle. Set only when
     /// it changes, so scrolling does not re-render the window per row.
     @State private var topMonth: String?
+    /// The days on screen, as the iPhone's Library header names them
+    /// ("26–28 Sept 2026"). Set only when it changes.
+    @State private var visibleDays: String?
     @State private var busy = false
     @State private var changeFailed = false
     @State private var deleting: [String]?
@@ -42,8 +45,9 @@ struct MacPhotoBrowser: View {
 
     var body: some View {
         content
-            .navigationTitle(title)
-            .navigationSubtitle(subtitle)
+            // the Library draws its own title over the photos, as on the iPhone
+            .navigationTitle(libraryHeader ? "" : title)
+            .navigationSubtitle(libraryHeader ? "" : subtitle)
             .toolbar { toolbar }
             .inspector(isPresented: Bindable(window).showInspector) {
                 inspector.inspectorColumnWidth(min: 260, ideal: 300, max: 420)
@@ -122,6 +126,9 @@ struct MacPhotoBrowser: View {
             photos.overlay(alignment: .top) {
                 if let header, viewing == nil { header }
             }
+            .overlay(alignment: .topLeading) {
+                if libraryHeader { libraryTitle }
+            }
         }
     }
 
@@ -145,6 +152,11 @@ struct MacPhotoBrowser: View {
                                  guard source == .library else { return }
                                  let label = library.month(at: i)?.label
                                  if label != topMonth { topMonth = label }
+                             },
+                             onVisible: { lo, hi in
+                                 guard source == .library else { return }
+                                 let days = Self.days(library.assets, lo, hi)
+                                 if days != visibleDays { visibleDays = days }
                              },
                              onFavoriteKey: { actions(for: targetIDs).toggleFavorite?() },
                              onZoom: { step in withAnimation(.snappy) { step > 0 ? window.zoomIn() : window.zoomOut() } })
@@ -293,6 +305,38 @@ struct MacPhotoBrowser: View {
         if source == .library, let topMonth { return topMonth }
         if isTrash, !assets.isEmpty { return "\(countText) · Deleted permanently after 30 days" }
         return shown.isEmpty ? "" : countText
+    }
+
+    /// The Library's header is drawn over the photos while the grid shows
+    /// and nothing is selected (a selection keeps its count in the title).
+    private var libraryHeader: Bool { source == .library && viewing == nil && selection.isEmpty }
+
+    /// As the iPhone's Library: a large white title and the days on screen,
+    /// with a soft shadow, at the top left over the photos.
+    private var libraryTitle: some View {
+        VStack(alignment: .leading, spacing: -2) {
+            Text("Library")
+                .font(.system(size: 30, weight: .bold))
+            Text(visibleDays ?? countText)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.25), radius: 6)
+        .padding(.leading, 20)
+        .padding(.top, 6)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// The days from the first to the last photo on screen: "26–28 Sept 2026".
+    private static func days(_ assets: [Asset], _ lo: Int, _ hi: Int) -> String? {
+        guard lo <= hi, hi < assets.count,
+              let from = assets[lo].takenAt ?? assets[hi].takenAt,
+              let to = assets[hi].takenAt else { return nil }
+        return DayRange.text(from, to)
     }
 
     private var countText: String {
