@@ -684,24 +684,23 @@ private struct ViewerChrome: ViewModifier {
             }
     }
 
-    /// At once, as the other controls: AppKit would let the field and its
-    /// text fly back in.
+    /// At once, as the other controls. The item stays in the toolbar and
+    /// only its view hides: hiding the item made the toolbar lay itself out
+    /// again, and the field and its text flew back in.
     private static func hideSearchField(_ hidden: Bool) {
-        for item in NSApp.keyWindow?.toolbar?.items ?? [] where item is NSSearchToolbarItem {
-            guard item.isHidden != hidden else { continue }
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0
-                context.allowsImplicitAnimation = false
-                CATransaction.begin()
-                CATransaction.setDisableActions(true)
-                item.isHidden = hidden
-                item.view?.superview?.layoutSubtreeIfNeeded()
-                CATransaction.commit()
+        for case let item as NSSearchToolbarItem in NSApp.keyWindow?.toolbar?.items ?? [] {
+            // the prompt sits at the left at once, instead of sliding over
+            // from the middle each time the field shows again
+            item.searchField.centersPlaceholder = false
+            guard let view = item.view else { continue }
+            if item.isHidden { item.isHidden = false }   // from an earlier version's way
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            // the glass the toolbar draws around the field goes with it
+            for v in [view, view.superview].compactMap({ $0 }) where v.isHidden != hidden {
+                v.isHidden = hidden
             }
-            for view in [item.view, item.view?.superview].compactMap({ $0 }) {
-                view.layer?.removeAllAnimations()
-                view.layer?.sublayers?.forEach { $0.removeAllAnimations() }
-            }
+            CATransaction.commit()
         }
     }
 }
