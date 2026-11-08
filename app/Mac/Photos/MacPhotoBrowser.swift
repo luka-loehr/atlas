@@ -684,17 +684,24 @@ private struct ViewerChrome: ViewModifier {
             }
     }
 
-    /// At once, as the other controls: the whole item hides, pill and all,
-    /// and its prompt sits at the left, so nothing slides over from the
-    /// middle when it shows again.
+    /// At once, as the other controls. The item stays in the toolbar:
+    /// hiding the item itself makes the toolbar lay itself out again, and the
+    /// field and its text fly back in. What hides is the glass pill the
+    /// toolbar draws around the field (its platter), with the field inside:
+    /// one view among the toolbar's, placed by frame, so nothing moves.
     private static func hideSearchField(_ hidden: Bool) {
         for case let item as NSSearchToolbarItem in NSApp.keyWindow?.toolbar?.items ?? [] {
-            item.searchField.centersPlaceholder = false
-            // views an earlier version hid, shown again
-            for v in [item.searchField as NSView, item.searchField.superview].compactMap({ $0 }) where v.isHidden {
-                v.isHidden = false
+            if item.isHidden { item.isHidden = false }
+            var pill: NSView = item.searchField
+            var up = pill.superview
+            while let v = up {
+                if String(describing: type(of: v)).contains("Platter") { pill = v; break }
+                up = v.superview
             }
-            if item.isHidden != hidden { item.isHidden = hidden }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            if pill.isHidden != hidden { pill.isHidden = hidden }
+            CATransaction.commit()
         }
     }
 }
