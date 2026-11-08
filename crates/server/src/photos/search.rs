@@ -37,7 +37,7 @@ const CONFIDENT_MARGIN: f32 = 0.6;
 /// queries find results, 4 and 6 of 16 gibberish strings do too.
 const CONFIDENT_COUNT: usize = 10;
 const SEMANTIC_LIMIT: usize = 300;
-/// Within what a search names ("luka at the beach"), an asset matches the
+/// Within what a search names ("alex at the beach"), an asset matches the
 /// text when it stands out this far for it (z within its kind) ...
 const FILTERED_TEXT_Z: f32 = 2.1;
 /// ... and when none does, the closest few are shown.
