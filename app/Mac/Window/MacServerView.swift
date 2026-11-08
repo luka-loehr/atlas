@@ -17,7 +17,6 @@ struct MacServerView: View {
     @State private var confirmDisconnect = false
     /// The chosen cache size in bytes; 0 for automatic.
     @State private var cacheChoice: Int64 = MediaStore.chosenBudget ?? 0
-    private static let cacheSizes = [5, 10, 25, 50, 100, 200]
 
     enum Power: String, Identifiable {
         case restart, shutdown
@@ -154,7 +153,7 @@ struct MacServerView: View {
                 })) {
                 Text("Automatic (\(MediaStore.automaticBudget.fileSize))").tag(Int64(0))
                 Divider()
-                ForEach(Self.cacheSizes, id: \.self) { gb in
+                ForEach(MediaStore.budgetChoices, id: \.self) { gb in
                     Text("\(gb) GB").tag(Int64(gb) << 30)
                 }
             }

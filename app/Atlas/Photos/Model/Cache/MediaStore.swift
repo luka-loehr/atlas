@@ -56,7 +56,8 @@ final class MediaStore: @unchecked Sendable {
     /// cache within it and the warmer fills it.
     static var budget: Int64 { chosenBudget ?? automaticBudget }
 
-    /// The size chosen in the server page; nil for automatic.
+    /// The size chosen (the Mac's server page, the iPhone's settings); nil
+    /// for automatic.
     static var chosenBudget: Int64? {
         get {
             let v = Int64(UserDefaults.standard.integer(forKey: "cache.budget"))
@@ -73,22 +74,30 @@ final class MediaStore: @unchecked Sendable {
     /// tenth of its free space, between 5 and 100 GB; measured again at
     /// most every ten minutes.
     static var automaticBudget: Int64 {
-        #if os(macOS)
-        // only the disk, never the store: a view asks for this, and the
-        // store's first creation (its index, the legacy migration writing
+        // a tenth of the free space, on the Mac and the iPhone alike. Only
+        // the disk, never the store: a view asks for this, and the store's
+        // first creation (its index, the legacy migration writing
         // UserDefaults) re-entered from a view body deadlocked the window
         if let (at, bytes) = automatic.withLock({ $0 }), Date().timeIntervalSince(at) < 600 { return bytes }
         let home = URL(fileURLWithPath: NSHomeDirectory())
         let free = (try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? (50 << 30)
         let gb: Int64 = 1 << 30
-        let bytes = min(max(free / 10 / gb * gb, 5 * gb), 100 * gb)
+        #if os(macOS)
+        let floor = 5 * gb
+        #else
+        let floor = 2 * gb
+        #endif
+        let bytes = min(max(free / 10 / gb * gb, floor), 100 * gb)
         automatic.withLock { $0 = (Date(), bytes) }
         return bytes
-        #else
-        return 15 << 30
-        #endif
     }
+    /// The sizes offered besides Automatic, in GB.
+    #if os(macOS)
+    static let budgetChoices = [5, 10, 25, 50, 100, 200]
+    #else
+    static let budgetChoices = [2, 5, 10, 25, 50, 100]
+    #endif
     private static let automatic = Mutex<(Date, Int64)?>(nil)
 
     private struct Entry {

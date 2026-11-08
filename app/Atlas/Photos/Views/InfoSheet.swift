@@ -289,6 +289,7 @@ struct InfoSheet: View {
         .padding(.vertical, 4)
         .background(Color.cardBackground,
                     in: Capsule())
+        .contentShape(.capsule)
     }
 
     // MARK: - "Als Titelbild festlegen" — one row per person on the photo;
@@ -330,6 +331,7 @@ struct InfoSheet: View {
                         .padding(12)
                         .background(Color.cardBackground,
                                     in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
                     .disabled(done)

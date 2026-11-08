@@ -73,8 +73,62 @@ struct AtlasApp: App {
     }
 }
 
+/// The app stands upright; only the photo viewer turns with the phone.
+@MainActor
+enum Orientation {
+    private(set) static var viewerOpen = false
+
+    static var allowed: UIInterfaceOrientationMask { viewerOpen ? .allButUpsideDown : .portrait }
+
+    /// The viewer opened or closed: allow landscape, or turn back upright.
+    static func viewer(_ open: Bool) {
+        guard open != viewerOpen else { return }
+        viewerOpen = open
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows {
+                var vc = window.rootViewController
+                while let v = vc {
+                    v.setNeedsUpdateOfSupportedInterfaceOrientations()
+                    vc = v.presentedViewController
+                }
+            }
+            if !open { scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) }
+        }
+    }
+
+    #if targetEnvironment(simulator)
+    /// ATLAS_ROTATE=<seconds>: asks to turn the app sideways after that
+    /// long, as tilting the phone does (the simulator without its window
+    /// cannot be turned). Refused unless the viewer is open.
+    static func testRotation() {
+        guard let wait = ProcessInfo.processInfo.environment["ATLAS_ROTATE"].flatMap(Double.init) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(wait))
+            for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { error in
+                    print("ATLAS_ROTATE refused: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    #endif
+}
+
 /// Hands the background upload session's wake-ups to the backup service.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        MainActor.assumeIsolated { Orientation.allowed }
+    }
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if targetEnvironment(simulator)
+        MainActor.assumeIsolated { Orientation.testRotation() }
+        #endif
+        return true
+    }
+
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
         guard identifier == BackupService.sessionID else { completionHandler(); return }

@@ -12,6 +12,7 @@ struct SettingsScreen: View {
     /// ATLAS_SCREEN=server opens a simulator on the server screen.
     @State private var showServer = ProcessInfo.processInfo.environment["ATLAS_SCREEN"] == "server"
     @State private var storage = StorageUse()
+    @State private var cacheChoice: Int64 = MediaStore.chosenBudget ?? 0
     /// Live share links, for the count on their row.
     @State private var links: Int?
 
@@ -47,8 +48,24 @@ struct SettingsScreen: View {
                     valueRow("Keep Last \(BackupService.keepDays) Days", backup.cleanupText, "iphone", .blue)
                     syncRow
                 }
-                Section("Dynamic Cache") {
+                Section {
                     StorageBar(use: storage)
+                    Picker("Cache Size", selection: Binding(
+                        get: { cacheChoice },
+                        set: { choice in
+                            cacheChoice = choice
+                            MediaStore.chosenBudget = choice == 0 ? nil : choice
+                            Task { storage = await StorageUse.measure() }
+                        })) {
+                        Text("Automatic (\(MediaStore.automaticBudget.fileSize))").tag(Int64(0))
+                        ForEach(MediaStore.budgetChoices, id: \.self) { gb in
+                            Text("\(gb) GB").tag(Int64(gb) << 30)
+                        }
+                    }
+                } header: {
+                    Text("Dynamic Cache")
+                } footer: {
+                    Text("Grid thumbnails always stay on the iPhone. Previews, originals and videos fill up to \(MediaStore.budget.fileSize) as you browse and make room on their own, least used first. Automatic is a tenth of the free space.")
                 }
             }
             .navigationTitle("Settings")

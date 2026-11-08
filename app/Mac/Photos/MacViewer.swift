@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import AVKit
-import Combine
 
 /// One photo or video at the size of the window, over the grid it was
 /// opened from (Photos on the Mac does the same).
@@ -84,6 +83,8 @@ struct MacViewer: View {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .semibold))
                 .frame(width: 36, height: 36)
+                // the whole glass circle clicks, not only the chevron's pixels
+                .contentShape(.circle)
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
@@ -394,8 +395,13 @@ private struct MacVideoPage: View {
             let player = AVPlayer(playerItem: item)
             self.player = player
             player.play()
-            for await status in item.publisher(for: \.status).values {
-                if status != .unknown { ready = true; break }
+            // the thumbnail leaves once the video moves (or failed, or after
+            // 2 s at the latest): never over a playing video
+            let start = Date()
+            while !Task.isCancelled, !ready {
+                if item.status == .failed || player.currentTime().seconds > 0.01
+                    || Date().timeIntervalSince(start) > 2 { ready = true; break }
+                try? await Task.sleep(for: .milliseconds(40))
             }
         }
         .onDisappear {

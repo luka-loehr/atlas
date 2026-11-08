@@ -44,6 +44,7 @@ struct QueryChips: View {
                 .padding(.leading, 5)
                 .padding(.trailing, 14)
                 .frame(minHeight: 40)
+                .contentShape(.capsule)
                 .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.plain)

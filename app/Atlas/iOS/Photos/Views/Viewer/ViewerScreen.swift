@@ -72,6 +72,7 @@ struct ViewerScreen: View {
         .statusBarHidden(!chrome)
         .preferredColorScheme(chrome ? nil : .dark)
         .onAppear {
+            Orientation.viewer(true)
             // no audio session here: a photo never interrupts the owner's music
             pages = assets
             index = assets.firstIndex(of: start) ?? 0
@@ -83,6 +84,7 @@ struct ViewerScreen: View {
         // the tick when a swipe crosses halfway comes from `motion`, with or
         // without the chrome; the filmstrip ticks for its own scrubbing
         .onDisappear {
+            Orientation.viewer(false)
             ViewerNow.show(nil)
             MediaCache.shared.viewerClosed()
             // music a video interrupted (Spotify ...) carries on
