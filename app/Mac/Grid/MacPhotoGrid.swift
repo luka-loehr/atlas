@@ -26,10 +26,6 @@ struct MacPhotoGrid: NSViewRepresentable {
     @Binding var selection: Set<String>
     /// The library opens at its end, on the newest photos (like Photos).
     var startAtEnd = false
-    /// The grid starts at the window's top, under the toolbar, and keeps its
-    /// first row clear of it. Off when something sits above the grid (the
-    /// search pills): the room would show as an empty band.
-    var underToolbar = true
     /// A request to bring a photo into view (the one the viewer closed on).
     var reveal: String?
     var onOpen: (Asset) -> Void
@@ -43,8 +39,7 @@ struct MacPhotoGrid: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        scroll.automaticallyAdjustsContentInsets = underToolbar
-        if !underToolbar { scroll.contentInsets = NSEdgeInsetsZero }
+        scroll.automaticallyAdjustsContentInsets = true
         let grid = PhotoGridView()
         grid.host = self
         scroll.documentView = grid

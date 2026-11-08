@@ -9,9 +9,8 @@ struct MacPhotoBrowser: View {
     let source: PhotoSource
     /// Search results come with their photos.
     var given: [Asset]? = nil
-    /// Shown above the grid (how a search was read). Inside the browser, so
-    /// it sits right under the toolbar: outside, the inspector's column
-    /// would leave the toolbar's height empty between it and the grid.
+    /// Floats over the top of the grid, under the toolbar (how a search was
+    /// read), as on the iPhone: the photos scroll on beneath it.
     var header: AnyView? = nil
 
     @Environment(AppModel.self) private var model
@@ -120,9 +119,10 @@ struct MacPhotoBrowser: View {
             }
             .task { await unlock() }
         } else {
-            VStack(spacing: 0) {
+            photos.overlay(alignment: .top) {
                 if let header, viewing == nil { header }
-                photos
+            }
+                }
             }
         }
     }
@@ -140,7 +140,7 @@ struct MacPhotoBrowser: View {
                 MacPhotoGrid(assets: shown, revision: shownRevision, cellSize: GridZoom.sizes[window.zoom],
                              // every grid reads like the library: oldest at the top,
                              // opened at the newest end
-                             selection: $selection, startAtEnd: true, underToolbar: given == nil, reveal: reveal,
+                             selection: $selection, startAtEnd: true, reveal: reveal,
                              onOpen: { open($0) },
                              menu: { contextMenu($0) },
                              onTopIndex: { i in
