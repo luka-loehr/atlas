@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 struct ServerStatusScreen: View {
     private let roleNames = ["atlas-server": "API and Processing", "atlas-ml": "Search and Faces"]
@@ -18,14 +17,14 @@ struct ServerStatusScreen: View {
             // the section never pops in under the user's finger
             let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
             Section {
-                    MetricRow(title: "CPU", value: latest.cpu / 100, color: .blue, samples: machine.samples, keyPath: \.cpu,
+                    MetricRow(title: "CPU", value: latest.cpu / 100, color: .blue, series: machine.series(\.cpu),
                               detail: [machine.snapshot?.cpu.model, latest.cpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
                     if let gpu = machine.snapshot?.gpu ?? (machine.snapshot == nil ? SystemSnapshot.GPU(name: "GPU", mem_total_mb: 0) : nil) {
-                        MetricRow(title: "GPU", value: latest.gpu / 100, color: .purple, samples: machine.samples, keyPath: \.gpu,
+                        MetricRow(title: "GPU", value: latest.gpu / 100, color: .purple, series: machine.series(\.gpu),
                                   detail: [gpu.name, "\(Int(latest.gpu_mem_mb).formatted()) / \(Int(gpu.mem_total_mb).formatted()) MB",
                                            latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
                     }
-                    MetricRow(title: "Memory", value: latest.mem / 100, color: .teal, samples: machine.samples, keyPath: \.mem,
+                    MetricRow(title: "Memory", value: latest.mem / 100, color: .teal, series: machine.series(\.mem),
                               detail: String(format: "%.1f / %.0f GB", latest.mem_gb, machine.snapshot?.mem_total_gb ?? 0))
                     LabeledContent("Network") {
                         let rate = machine.throughput
@@ -157,8 +156,7 @@ private struct MetricRow: View {
     let title: String
     let value: Double
     let color: Color
-    let samples: [MetricSample]
-    let keyPath: KeyPath<MetricSample, Double>
+    let series: [LiveSparkline.Point]
     let detail: String
 
     var body: some View {
@@ -174,24 +172,7 @@ private struct MetricRow: View {
             }
             // like the old dashboard: a 60 s window that slides every frame, the
             // newest value glides in instead of popping
-            TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-                let points = LiveChart.points(samples.suffix(160).map { ($0.date, $0[keyPath: keyPath]) },
-                                              frame: context.date, window: LiveChart.window)
-                let head = context.date.addingTimeInterval(-LiveChart.renderDelay)
-                Chart(points.indices, id: \.self) { i in
-                    AreaMark(x: .value("Time", points[i].0), y: .value("Load", points[i].1))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(color.opacity(0.16))
-                    LineMark(x: .value("Time", points[i].0), y: .value("Load", points[i].1))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(color)
-                        .lineStyle(StrokeStyle(lineWidth: 1.5))
-                }
-                .chartXScale(domain: head.addingTimeInterval(-LiveChart.window)...head)
-                .chartYScale(domain: 0...100)
-                .chartXAxis(.hidden)
-                .chartYAxis(.hidden)
-            }
+            LiveSparkline(series: series, color: color)
             .frame(height: 48)
             if !detail.isEmpty {
                 Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(1)

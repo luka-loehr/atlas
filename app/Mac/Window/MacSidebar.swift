@@ -1,8 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The sidebar, grouped as in Photos and the Finder. Photos dragged from a
-/// grid onto an album are added to it.
+/// The sidebar, grouped as in Photos and the Finder. Library, People,
+/// Favorites and Videos stay at the top and the server at the bottom; only
+/// the albums, utilities and files between them scroll. Photos dragged from
+/// a grid onto an album are added to it.
 struct MacSidebar: View {
     @Environment(AppModel.self) private var model
     @Environment(MacWindowState.self) private var window
@@ -14,14 +16,33 @@ struct MacSidebar: View {
     @State private var changeFailed = false
 
     var body: some View {
-        @Bindable var window = window
-        List(selection: $window.sidebar) {
-            Section {
-                row(.library)
-                row(.people)
-                row(.special(.favorites))
-                row(.special(.videos))
+        // a stack, not insets on the list: the list only gets the space
+        // between the fixed rows, so nothing scrolls under them
+        VStack(spacing: 0) {
+            VStack(spacing: 1) {
+                FixedRow(item: .library)
+                FixedRow(item: .people)
+                FixedRow(item: .special(.favorites))
+                FixedRow(item: .special(.videos))
             }
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+            list
+            VStack(spacing: 1) {
+                Divider().padding(.horizontal, 6).padding(.bottom, 6)
+                if model.library.sharing { FixedRow(item: .sharedLinks) }
+                FixedRow(item: .server)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private var list: some View {
+        @Bindable var window = window
+        return List(selection: $window.sidebar) {
             Section("Albums", isExpanded: $albumsExpanded) {
                 ForEach(model.userAlbums) { album in
                     Label(album.title, systemImage: "rectangle.stack")
@@ -56,10 +77,6 @@ struct MacSidebar: View {
             Section("Files") {
                 row(.files)
                 row(.filesTrash)
-            }
-            Section("atlas") {
-                if model.library.sharing { row(.sharedLinks) }
-                row(.server)
             }
         }
         .listStyle(.sidebar)
@@ -115,6 +132,49 @@ struct MacSidebar: View {
             }
         }
         return true
+    }
+}
+
+/// A sidebar row that stays put while the albums scroll: drawn like the
+/// list's own rows (accent icon, the selection a filled rounded rectangle)
+/// and selecting through the same binding.
+private struct FixedRow: View {
+    let item: SidebarItem
+    @Environment(MacWindowState.self) private var window
+    @Environment(\.appearsActive) private var active
+    @State private var hovering = false
+
+    private var selected: Bool { (window.sidebar ?? .library) == item && !window.isSearching }
+
+    var body: some View {
+        Button {
+            window.search = ""
+            window.sidebar = item
+        } label: {
+            Label {
+                Text(item.title)
+            } icon: {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 15))
+                    .frame(width: 22)
+                    .foregroundStyle(selected && active ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
+            }
+            .foregroundStyle(selected && active ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            // as tall and as large as the list's rows (32 pt apart)
+            .font(.system(size: 14))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .frame(height: 31)
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(selected ? AnyShapeStyle(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                          : AnyShapeStyle(hovering ? AnyShapeStyle(.quinary) : AnyShapeStyle(.clear)))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

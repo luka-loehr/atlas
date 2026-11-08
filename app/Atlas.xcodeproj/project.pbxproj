@@ -96,10 +96,10 @@
 		B715D14F86A5C436C32E7456 /* MacPeopleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 390CC0F5748C19C73377E491 /* MacPeopleView.swift */; platformFilters = (macos, ); };
 		B78B8AEC7F598192429D6586 /* MacViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302D28D0A2D8E6C7395EAF4B /* MacViewer.swift */; platformFilters = (macos, ); };
 		B85029BAEE1B9F142B41B626 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8449E3A776DD1F5E760B7D1 /* API.swift */; };
-		B8BD1B0819F8E78968BD214F /* MacSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B7A800EE898B807A9EA6CE7 /* MacSettings.swift */; platformFilters = (macos, ); };
 		BAD2F54BE759FA49C463497F /* PhotoPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871924FD075AAE9605D204E6 /* PhotoPager.swift */; platformFilters = (ios, ); };
 		BD4B6D15B16103087A7BDB58 /* VideoCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A45EAFCDD0B1C7478C265C /* VideoCache.swift */; };
 		BE61FE9358DB73F98AA3435E /* ShareFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35E27F7D43952674B0DE6F8 /* ShareFiles.swift */; };
+		BE6A2180E96E2CEFEC8D1D83 /* MacTerminalWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 294C5A34689FD4AC49226C31 /* MacTerminalWindow.swift */; platformFilters = (macos, ); };
 		BFD472F06AC8278CC0A9B05A /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C25286BF8F8BFB09171786 /* SearchScreen.swift */; platformFilters = (ios, ); };
 		C27618F0EFAB1C79DF4AA81A /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12986C8F368AFE2E5D4B7F3 /* SelectionToolbar.swift */; platformFilters = (ios, ); };
 		C36C93A68B159912AABA81A0 /* DriveMovePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */; platformFilters = (ios, ); };
@@ -114,6 +114,7 @@
 		E89F181377BFC33F6C836E9B /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2E9CE6FE054663230344C1 /* FlowLayout.swift */; };
 		E97FC069CBCB49EE79EAC9BD /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D94CFC20F4C2ACF417D4E14 /* Platform.swift */; };
 		EA1FD7A429811C09898F23A9 /* AtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 390213B3FA050526C922DC25 /* AtlasApp.swift */; platformFilters = (ios, ); };
+		F432FC1103877D6CF672DE9F /* LiveSparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0659BD13AEC06C469AEE1556 /* LiveSparkline.swift */; };
 		F45040BDCB80CED4F4DD9893 /* ViewerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D24117C37CCB53D354C45C1 /* ViewerScreen.swift */; platformFilters = (ios, ); };
 		F49B5DEFB2AB1D5C348C0952 /* ViewerVideo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 445EAD3725120CC480E8D707 /* ViewerVideo.swift */; platformFilters = (ios, ); };
 		F81D83357E86B83EE85BD012 /* PhotoGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4C46A56CF0AE11FC5693F5 /* PhotoGridView.swift */; platformFilters = (macos, ); };
@@ -149,6 +150,7 @@
 
 /* Begin PBXFileReference section */
 		04C797FD9BA8EE2135C72A00 /* MacSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSidebar.swift; sourceTree = "<group>"; };
+		0659BD13AEC06C469AEE1556 /* LiveSparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSparkline.swift; sourceTree = "<group>"; };
 		07A3751A674451EDAC49585F /* MacHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacHelpers.swift; sourceTree = "<group>"; };
 		0B100252163A1C92DF1B14BC /* AlbumsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsScreen.swift; sourceTree = "<group>"; };
 		0B2E9CE6FE054663230344C1 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
@@ -168,7 +170,7 @@
 		1D466581E9B47C27D1DBD088 /* StorageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBar.swift; sourceTree = "<group>"; };
 		2363D683E2288F19E1124A51 /* AtlasMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasMacApp.swift; sourceTree = "<group>"; };
 		24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
-		2B7A800EE898B807A9EA6CE7 /* MacSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettings.swift; sourceTree = "<group>"; };
+		294C5A34689FD4AC49226C31 /* MacTerminalWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacTerminalWindow.swift; sourceTree = "<group>"; };
 		2C1186FCEE38EC18469958E6 /* SearchExample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExample.swift; sourceTree = "<group>"; };
 		2D3BCE530A0E77384A978DA6 /* WidgetShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShelf.swift; sourceTree = "<group>"; };
 		2E739EAC13043E9656ECD129 /* DriveScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScreen.swift; sourceTree = "<group>"; };
@@ -379,6 +381,7 @@
 				24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */,
 				7F6B2233C88DC6ED9D237D7B /* MacServerView.swift */,
 				04C797FD9BA8EE2135C72A00 /* MacSidebar.swift */,
+				294C5A34689FD4AC49226C31 /* MacTerminalWindow.swift */,
 				5F874C93ED96E81BF56AA172 /* MacWindowState.swift */,
 			);
 			path = Window;
@@ -401,6 +404,7 @@
 			isa = PBXGroup;
 			children = (
 				D9328AC789B96004034ABEEA /* LiveChart.swift */,
+				0659BD13AEC06C469AEE1556 /* LiveSparkline.swift */,
 				536ECEC16062D6354BC9B4DF /* Machine.swift */,
 				DB88BB560D625321F64F89C6 /* ServerStatusScreen.swift */,
 				1D466581E9B47C27D1DBD088 /* StorageBar.swift */,
@@ -414,7 +418,6 @@
 			children = (
 				3B053E2A052D48A419DFEB83 /* AtlasCommands.swift */,
 				2363D683E2288F19E1124A51 /* AtlasMacApp.swift */,
-				2B7A800EE898B807A9EA6CE7 /* MacSettings.swift */,
 				D75FE72C0AB49310C8D56B61 /* Files */,
 				AD3571BAF06D2B422DAF8597 /* Grid */,
 				0055950218C327073F3EBFD4 /* Photos */,
@@ -749,6 +752,7 @@
 				397EDBCFB247B48ED2896946 /* InfoSheet.swift in Sources */,
 				999C72BE2AF36F496E7EAF1C /* Library.swift in Sources */,
 				5E21D44E09283739FFE6C30D /* LiveChart.swift in Sources */,
+				F432FC1103877D6CF672DE9F /* LiveSparkline.swift in Sources */,
 				AEDA86A3624F4C1014277734 /* MacConnectView.swift in Sources */,
 				2F01A3D26969CC20CD595BA6 /* MacDriveSearch.swift in Sources */,
 				788F8B500CD74A88F39A7F6C /* MacDriveTrash.swift in Sources */,
@@ -760,8 +764,8 @@
 				D7345699CBC7C0C2AD68DBA9 /* MacRootView.swift in Sources */,
 				A4EAFF11033EC581BED443B1 /* MacSearchView.swift in Sources */,
 				02C2CD607CF156D29EA6386B /* MacServerView.swift in Sources */,
-				B8BD1B0819F8E78968BD214F /* MacSettings.swift in Sources */,
 				D7A3F1D61545872937141A54 /* MacSidebar.swift in Sources */,
+				BE6A2180E96E2CEFEC8D1D83 /* MacTerminalWindow.swift in Sources */,
 				B78B8AEC7F598192429D6586 /* MacViewer.swift in Sources */,
 				DE41EE1F3C8ADE190D823C32 /* MacWindowState.swift in Sources */,
 				7CDABC7FABCF9B885358AC61 /* Machine.swift in Sources */,

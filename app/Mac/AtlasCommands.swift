@@ -11,6 +11,15 @@ struct AtlasCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        // Atlas › Settings…: the server page holds the connection and storage
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                window?.state.search = ""
+                window?.state.sidebar = .server
+            }
+                .keyboardShortcut(",", modifiers: .command)
+                .disabled(window == nil)
+        }
         // File
         CommandGroup(after: .newItem) {
             Button("New Album…") { window?.newAlbum() }

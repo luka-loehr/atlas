@@ -10,7 +10,8 @@ import AppKit
 ///   middle; an inspector for the photo's info (`⌘I`);
 /// - every command in the menu bar with its keyboard shortcut, toolbar
 ///   items and context menus only repeating them;
-/// - Settings in its own window (`⌘,`), the terminal in its own window;
+/// - the server page is the settings (`⌘,` opens it), the terminal has
+///   its own window;
 /// - the system's full screen, window restoration, drag and drop with the
 ///   Finder and between the photos and the albums in the sidebar.
 @main
@@ -36,12 +37,6 @@ struct AtlasMacApp: App {
         }
         .defaultSize(width: 820, height: 520)
         .commandsRemoved()
-
-        Settings {
-            MacSettings()
-                .environment(model.session)
-                .environment(model)
-        }
     }
 }
 
