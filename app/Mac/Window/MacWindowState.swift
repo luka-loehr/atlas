@@ -50,6 +50,9 @@ extension SpecialKind: Codable {}
 final class MacWindowState {
     var sidebar: SidebarItem? = .library
     var search = ""
+    /// The viewer's controls (toolbar, arrows, video bar) show; a click
+    /// on the photo hides and shows them, as a tap on the iPhone.
+    var viewerChrome = true
     var showInspector = false
     /// Whether the sidebar shows. Collapsed, the window's buttons (close,
     /// minimize, zoom, the sidebar toggle) sit over the photos' top left.

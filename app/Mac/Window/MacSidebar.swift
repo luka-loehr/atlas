@@ -41,8 +41,14 @@ struct MacSidebar: View {
     }
 
     private var list: some View {
-        @Bindable var window = window
-        return List(selection: $window.sidebar) {
+        // while a search shows, no album is selected, so a click on any of
+        // them (also the one that was open) clears the search and opens it
+        return List(selection: Binding(
+            get: { window.isSearching ? nil : window.sidebar },
+            set: { item in
+                window.search = ""
+                window.sidebar = item
+            })) {
             Section("Albums", isExpanded: $albumsExpanded) {
                 ForEach(model.userAlbums) { album in
                     Label(album.title, systemImage: "rectangle.stack")

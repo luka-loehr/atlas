@@ -10,9 +10,20 @@ struct QueryChips: View {
     var library: Library?
     /// Opens a person or pet; without it the chip is a navigation link.
     var onPerson: ((Person) -> Void)? = nil
+    /// In one row, sized for a toolbar (the Mac's title spot).
+    var oneLine = false
 
     var body: some View {
-        if parts.count > 1 || parts.contains(where: { $0.kind != "text" }) {
+        if oneLine {
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 6) {
+                    ForEach(parts) { part in chip(part) }
+                }
+            }
+            .fixedSize()
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Searched for")
+        } else if parts.count > 1 || parts.contains(where: { $0.kind != "text" }) {
             // Liquid Glass pills, as many lines as they need
             GlassEffectContainer(spacing: 6) {
                 FlowLayout(spacing: 6) {
@@ -36,14 +47,14 @@ struct QueryChips: View {
             PersonChipLink(person: who, open: onPerson) {
                 HStack(spacing: 7) {
                     FaceCircle(library: library, person: who)
-                        .frame(width: 30, height: 30)
+                        .frame(width: oneLine ? 26 : 30, height: oneLine ? 26 : 30)
                     Text(part.label)
                 }
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .padding(.leading, 5)
                 .padding(.trailing, 14)
-                .frame(minHeight: 40)
+                .frame(minHeight: oneLine ? 34 : 40)
                 .contentShape(.capsule)
                 .glassEffect(.regular.interactive(), in: .capsule)
             }
@@ -55,7 +66,7 @@ struct QueryChips: View {
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 14)
-                .frame(minHeight: 40)
+                .frame(minHeight: oneLine ? 34 : 40)
                 .glassEffect(.regular, in: .capsule)
                 .accessibilityLabel("\(part.kind): \(part.label)")
         }

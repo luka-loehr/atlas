@@ -12,6 +12,10 @@ struct MacPhotoBrowser: View {
     /// Floats over the top of the grid, under the toolbar (how a search was
     /// read), as on the iPhone: the photos scroll on beneath it.
     var header: AnyView? = nil
+    /// How a search was read, as pills in the toolbar's title spot: in the
+    /// toolbar itself, where they take clicks (drawn under it, its strip
+    /// took them, and a person's pill did not open them).
+    var pills: AnyView? = nil
 
     @Environment(AppModel.self) private var model
     @Environment(MacWindowState.self) private var window
@@ -56,6 +60,10 @@ struct MacPhotoBrowser: View {
             .onChange(of: library.revision) { if source == .library { syncInspector() } }
             .onChange(of: selection) { syncInspector() }
             .onChange(of: viewing) { syncInspector() }
+            // the viewer opens with its controls; hidden, the toolbar goes too
+            .onChange(of: viewing == nil) { window.viewerChrome = true }
+            .toolbar(viewing != nil && !window.viewerChrome ? .hidden : .automatic, for: .windowToolbar)
+            .onDisappear { window.viewerChrome = true }
             .onReceive(NotificationCenter.default.publisher(for: .atlasRelock)) { _ in
                 if source == .special(.locked) { unlocked = false; viewing = nil }
             }
@@ -206,6 +214,10 @@ struct MacPhotoBrowser: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if let pills, viewing == nil, selection.isEmpty {
+            ToolbarItem(placement: .navigation) { pills }
+                .sharedBackgroundVisibility(.hidden)
+        }
         // whose photos these are: their face and name in a pill of its own
         // beside the back button, like a search's pills
         if case .person(let person) = source, viewing == nil, selection.isEmpty {
@@ -362,7 +374,7 @@ struct MacPhotoBrowser: View {
         if viewing != nil { return true }
         guard selection.isEmpty else { return false }
         if case .person = source { return true }
-        return libraryHeader || header != nil
+        return libraryHeader || header != nil || pills != nil
     }
 
     /// The days from the first to the last photo on screen: "26–28 Sept 2026".

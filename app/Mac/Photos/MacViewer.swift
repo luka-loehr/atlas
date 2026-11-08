@@ -18,7 +18,10 @@ struct MacViewer: View {
     var onFavorite: () -> Void
 
     @FocusState private var focused: Bool
+    @Environment(MacWindowState.self) private var window
     @State private var hovering = false
+    /// A video page's player, for the space bar to play and pause.
+    @State private var playing: AVPlayer?
     @State private var lastIndex = 0
     /// The page on screen. The viewer's own: a step redraws the viewer
     /// only. `current` (the browser's, for its title and toolbar) follows
@@ -38,9 +41,9 @@ struct MacViewer: View {
             if let index, let asset = assets[safe: index] {
                 Group {
                     if asset.isVideo {
-                        MacVideoPage(library: library, asset: asset)
+                        MacVideoPage(library: library, asset: asset, onClick: toggleChrome, shared: $playing)
                     } else {
-                        MacPhotoPage(library: library, asset: asset, onSwipe: step)
+                        MacPhotoPage(library: library, asset: asset, onSwipe: step, onClick: toggleChrome)
                     }
                 }
                 .id(asset.id)
@@ -59,7 +62,16 @@ struct MacViewer: View {
         .onChange(of: shown) { focusCache() }
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
-        .onKeyPress(.space) { sync(); onClose(); return .handled }
+        // space plays and pauses a video, and closes a photo (as before)
+        .onKeyPress(.space) {
+            if let player = playing, assets[safe: index ?? -1]?.isVideo == true {
+                player.timeControlStatus == .paused ? player.play() : player.pause()
+            } else {
+                sync()
+                onClose()
+            }
+            return .handled
+        }
         .onKeyPress(characters: ["."], phases: .down) { _ in sync(); onFavorite(); return .handled }
         .onHover { hovering = $0 }
         .accessibilityAction(named: "Next Photo") { step(1) }
@@ -74,7 +86,8 @@ struct MacViewer: View {
             edgeButton("chevron.forward", "Next Photo", enabled: index < assets.count - 1) { step(1) }
         }
         .padding(.horizontal, 16)
-        .opacity(hovering ? 1 : 0)
+        .opacity(hovering && window.viewerChrome ? 1 : 0)
+        .allowsHitTesting(window.viewerChrome)
         .animation(.easeOut(duration: 0.2), value: hovering)
     }
 
@@ -115,6 +128,12 @@ struct MacViewer: View {
         }
     }
 
+    /// A click on the photo or video: every control around it hides, or
+    /// comes back.
+    private func toggleChrome() {
+        withAnimation(.easeOut(duration: 0.2)) { window.viewerChrome.toggle() }
+    }
+
     /// The browser's photo becomes the one on screen.
     private func sync() {
         catchUp?.cancel()
@@ -146,14 +165,16 @@ private struct MacPhotoPage: View {
     var library: Library
     let asset: Asset
     var onSwipe: (Int) -> Void
+    var onClick: () -> Void
 
     @State private var image: NSImage?
     @State private var zoomed = false
 
-    init(library: Library, asset: Asset, onSwipe: @escaping (Int) -> Void) {
+    init(library: Library, asset: Asset, onSwipe: @escaping (Int) -> Void, onClick: @escaping () -> Void) {
         self.library = library
         self.asset = asset
         self.onSwipe = onSwipe
+        self.onClick = onClick
         let client = library.client
         _image = State(initialValue: client.thumbURL(asset.id, 2048).flatMap {
             MediaCache.shared.cached($0, maxPixel: MediaCache.viewerPixels(asset))
@@ -163,9 +184,12 @@ private struct MacPhotoPage: View {
     var body: some View {
         ZStack {
             if let image {
-                ZoomableImage(image: image, pixelSize: pixelSize, onSwipe: onSwipe, onZoomIn: { zoomed = true })
+                ZoomableImage(image: image, pixelSize: pixelSize, onSwipe: onSwipe, onZoomIn: { zoomed = true },
+                              onClick: onClick)
             } else {
                 InstantPoster(library: library, asset: asset)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onClick)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -235,11 +259,13 @@ private struct ZoomableImage: NSViewRepresentable {
     let pixelSize: CGSize
     var onSwipe: (Int) -> Void
     var onZoomIn: () -> Void
+    var onClick: () -> Void
 
     func makeNSView(context: Context) -> ZoomScrollView {
         let scroll = ZoomScrollView()
         scroll.onSwipe = onSwipe
         scroll.onZoomIn = onZoomIn
+        scroll.onClick = onClick
         scroll.set(image: image, pixelSize: pixelSize)
         return scroll
     }
@@ -247,6 +273,7 @@ private struct ZoomableImage: NSViewRepresentable {
     func updateNSView(_ scroll: ZoomScrollView, context: Context) {
         scroll.onSwipe = onSwipe
         scroll.onZoomIn = onZoomIn
+        scroll.onClick = onClick
         scroll.set(image: image, pixelSize: pixelSize)
     }
 }
@@ -258,6 +285,10 @@ final class ZoomScrollView: NSScrollView {
     var onSwipe: (Int) -> Void = { _ in }
     /// Zoomed in past the window's size: time for the original.
     var onZoomIn: () -> Void = {}
+    /// A single click (not the first of a double click, which zooms).
+    var onClick: () -> Void = {}
+    private var pendingClick: DispatchWorkItem?
+    private var downAt: NSPoint = .zero
     private var swipeX: CGFloat = 0
 
     override init(frame: NSRect) {
@@ -327,6 +358,9 @@ final class ZoomScrollView: NSScrollView {
 
     /// Double-click: 100 % where clicked, or back to the window's size.
     override func mouseDown(with event: NSEvent) {
+        downAt = event.locationInWindow
+        pendingClick?.cancel()
+        pendingClick = nil
         if event.clickCount == 2 {
             let point = imageView.convert(event.locationInWindow, from: nil)
             let fitted = fitMagnification
@@ -341,6 +375,17 @@ final class ZoomScrollView: NSScrollView {
             return
         }
         super.mouseDown(with: event)
+    }
+
+    /// A click that did not drag counts once the double-click time is over
+    /// without a second one.
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        let p = event.locationInWindow
+        guard event.clickCount == 1, hypot(p.x - downAt.x, p.y - downAt.y) < 4 else { return }
+        let click = DispatchWorkItem { [weak self] in self?.onClick() }
+        pendingClick = click
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: click)
     }
 
     /// A horizontal two-finger swipe at the window's size goes to the next
@@ -373,29 +418,37 @@ final class CenteringClipView: NSClipView {
 
 // MARK: - Video
 
-/// A video in the system player, streaming through the cache (what was
-/// watched or prefetched plays at once and offline). Its thumbnail stands
-/// in until the first frame can show, so a step never lands on black.
+/// A video, streaming through the cache (what was watched or prefetched
+/// plays at once and offline), on a player layer of its own with the
+/// viewer's bar (`VideoBar`). Its thumbnail stands in until the first frame
+/// can show, so a step never lands on black.
 private struct MacVideoPage: View {
     var library: Library
     let asset: Asset
+    var onClick: () -> Void
+    /// The viewer's handle on the player on screen, for the space bar.
+    @Binding var shared: AVPlayer?
+    @Environment(MacWindowState.self) private var window
     @State private var player: AVPlayer?
+    @State private var surface = VideoSurface()
     @State private var ready = false
 
     var body: some View {
         ZStack {
             if let player {
-                PlayerView(player: player)
-                    // a click on the video plays or pauses it
-                    .overlay {
-                        Color.clear.contentShape(Rectangle())
-                            .onTapGesture { player.timeControlStatus == .paused ? player.play() : player.pause() }
-                    }
+                VideoSurfaceView(surface: surface)
+                    // a click shows or hides the controls; only space and the
+                    // bar's button play and pause
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onClick)
                     .overlay(alignment: .bottom) {
-                        VideoBar(player: player)
-                            .frame(maxWidth: 560)
-                            .padding(.horizontal, 60)
-                            .padding(.bottom, 22)
+                        if window.viewerChrome {
+                            VideoBar(player: player, surface: surface)
+                                .frame(maxWidth: 620)
+                                .padding(.horizontal, 70)
+                                .padding(.bottom, 24)
+                                .transition(.opacity)
+                        }
                     }
             }
             if !ready {
@@ -409,7 +462,9 @@ private struct MacVideoPage: View {
             guard let remote = library.client.streamURL(asset.id) else { return }
             let item = AVPlayerItem(asset: VideoCache.shared.asset(id: asset.id, remote: remote))
             let player = AVPlayer(playerItem: item)
+            surface.attach(player)
             self.player = player
+            shared = player
             player.play()
             // the thumbnail leaves once the video moves (or failed, or after
             // 2 s at the latest): never over a playing video
@@ -421,80 +476,129 @@ private struct MacVideoPage: View {
             }
         }
         .onDisappear {
+            surface.stopPictureInPicture()
             player?.pause()
+            // the next video's page may have taken the handle already
+            if shared === player { shared = nil }
             player = nil
         }
     }
 }
 
-private struct PlayerView: NSViewRepresentable {
-    let player: AVPlayer
+/// The view the video is drawn in: an `AVPlayerLayer`, which Picture in
+/// Picture needs (AVKit's player view keeps its layer to itself).
+final class VideoSurface: NSView {
+    let playerLayer = AVPlayerLayer()
+    private var pip: AVPictureInPictureController?
 
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
-        // the viewer draws its own slim bar (`VideoBar`), as on the iPhone
-        view.controlsStyle = .none
-        view.videoGravity = .resizeAspect
-        view.player = player
-        return view
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        playerLayer.videoGravity = .resizeAspect
+        playerLayer.actions = ["bounds": NSNull(), "position": NSNull()]
+        layer?.addSublayer(playerLayer)
     }
 
-    func updateNSView(_ view: AVPlayerView, context: Context) {
-        if view.player !== player { view.player = player }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func attach(_ player: AVPlayer) {
+        playerLayer.player = player
+        if pip == nil, AVPictureInPictureController.isPictureInPictureSupported() {
+            pip = AVPictureInPictureController(playerLayer: playerLayer)
+        }
     }
 
-    static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
-        view.player?.pause()
-        view.player = nil
+    var canPictureInPicture: Bool { pip != nil }
+    var inPictureInPicture: Bool { pip?.isPictureInPictureActive ?? false }
+
+    func togglePictureInPicture() {
+        guard let pip else { return }
+        pip.isPictureInPictureActive ? pip.stopPictureInPicture() : pip.startPictureInPicture()
+    }
+
+    func stopPictureInPicture() {
+        if pip?.isPictureInPictureActive == true { pip?.stopPictureInPicture() }
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer.frame = bounds
+        CATransaction.commit()
     }
 }
 
-/// The video's controls as on the iPhone: one slim glass pill at the
-/// bottom with play and pause, the progress (click or drag to scrub), the
-/// time and mute.
+private struct VideoSurfaceView: NSViewRepresentable {
+    let surface: VideoSurface
+    func makeNSView(context: Context) -> VideoSurface { surface }
+    func updateNSView(_ view: VideoSurface, context: Context) {}
+}
+
+/// The video's controls, a glass panel in two rows at the bottom: the
+/// progress between the time played and the time left (click or drag to
+/// go anywhere), then mute; back 10 s, play and pause, ahead 10 s; and
+/// Picture in Picture and full screen.
 private struct VideoBar: View {
     let player: AVPlayer
+    let surface: VideoSurface
+    @Environment(MacWindowState.self) private var window
     @State private var playing = true
     @State private var current: Double = 0
     @State private var duration: Double = 0
     @State private var muted = false
     @State private var scrubbing: Double?
+    @State private var hoveringTrack = false
     @State private var observer: Any?
+    @State private var columnsBeforeFullScreen: NavigationSplitViewVisibility?
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                playing ? player.pause() : player.play()
-            } label: {
-                Image(systemName: playing ? "pause.fill" : "play.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 22, height: 28)
-                    .contentShape(.rect)
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Text(Self.time(scrubbing ?? current))
+                    .frame(width: 44, alignment: .leading)
+                track
+                Text("−" + Self.time(max(duration - (scrubbing ?? current), 0)))
+                    .frame(width: 50, alignment: .trailing)
             }
-            .buttonStyle(.plain)
-            .help(playing ? "Pause" : "Play")
-            Text(Self.time(scrubbing ?? current))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            progress
-            Text(Self.time(duration))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            Button {
-                muted.toggle()
-                player.isMuted = muted
-            } label: {
-                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 24, height: 28)
-                    .contentShape(.rect)
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+            .foregroundStyle(.secondary)
+
+            ZStack {
+                HStack(spacing: 4) {
+                    control(muted ? "speaker.slash.fill" : "speaker.wave.2.fill", muted ? "Unmute" : "Mute") {
+                        muted.toggle()
+                        player.isMuted = muted
+                    }
+                    Spacer()
+                    if surface.canPictureInPicture {
+                        control("pip.enter", "Picture in Picture") { surface.togglePictureInPicture() }
+                    }
+                    control(isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                            isFullScreen ? "Exit Full Screen" : "Full Screen") { toggleFullScreen() }
+                }
+                HStack(spacing: 22) {
+                    control("gobackward.10", "Back 10 Seconds") { skip(-10) }
+                    Button {
+                        playing ? player.pause() : player.play()
+                    } label: {
+                        Image(systemName: playing ? "pause.fill" : "play.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .frame(width: 40, height: 36)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .help(playing ? "Pause" : "Play")
+                    .accessibilityLabel(playing ? "Pause" : "Play")
+                    control("goforward.10", "Ahead 10 Seconds") { skip(10) }
+                }
             }
-            .buttonStyle(.plain)
-            .help(muted ? "Unmute" : "Mute")
         }
-        .padding(.horizontal, 14)
-        .frame(height: 40)
-        .glassEffect(.regular, in: .capsule)
+        .padding(.horizontal, 18)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
         .onAppear(perform: observe)
         .onDisappear {
             if let observer { player.removeTimeObserver(observer) }
@@ -502,18 +606,34 @@ private struct VideoBar: View {
         }
     }
 
-    /// The thin track: drag or click anywhere on it to scrub.
-    private var progress: some View {
+    private func control(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 34, height: 32)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    /// The progress: thicker under the pointer, a click or a drag anywhere
+    /// on it goes there.
+    private var track: some View {
         GeometryReader { geo in
             let shown = scrubbing ?? current
             let fraction = duration > 0 ? min(max(shown / duration, 0), 1) : 0
+            let thick: CGFloat = hoveringTrack || scrubbing != nil ? 7 : 5
             ZStack(alignment: .leading) {
-                Capsule().fill(.primary.opacity(0.18))
-                Capsule().fill(.primary.opacity(0.85)).frame(width: geo.size.width * fraction)
+                Capsule().fill(.primary.opacity(0.16))
+                Capsule().fill(.primary.opacity(0.9)).frame(width: max(geo.size.width * fraction, thick))
             }
-            .frame(height: 4)
+            .frame(height: thick)
             .frame(maxHeight: .infinity)
             .contentShape(.rect)
+            .onHover { hoveringTrack = $0 }
+            .animation(.easeOut(duration: 0.12), value: thick)
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { g in
                     guard duration > 0 else { return }
@@ -526,10 +646,32 @@ private struct VideoBar: View {
                     scrubbing = nil
                 })
         }
-        .frame(height: 28)
+        .frame(height: 16)
         .accessibilityElement()
         .accessibilityLabel("Progress")
         .accessibilityValue("\(Self.time(current)) of \(Self.time(duration))")
+    }
+
+    private func skip(_ seconds: Double) {
+        let t = min(max(current + seconds, 0), duration > 0 ? duration : .greatestFiniteMagnitude)
+        current = t
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600))
+    }
+
+    private var isFullScreen: Bool { surface.window?.styleMask.contains(.fullScreen) ?? false }
+
+    /// The window in full screen with the sidebar folded away, the video
+    /// filling the screen; back as it was on the way out.
+    private func toggleFullScreen() {
+        guard let w = surface.window else { return }
+        if isFullScreen {
+            if let saved = columnsBeforeFullScreen { window.columns = saved }
+            columnsBeforeFullScreen = nil
+        } else {
+            columnsBeforeFullScreen = window.columns
+            window.columns = .detailOnly
+        }
+        w.toggleFullScreen(nil)
     }
 
     /// Four times a second: the time, the length and whether it plays.

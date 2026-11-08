@@ -20,18 +20,18 @@ struct MacSearchView: View {
                 if let result {
                     // how the search was read, as the iPhone shows it: glass
                     // pills, people and pets with their faces, wrapping
-                    MacPhotoBrowser(source: .search(answered), given: result.items, header: AnyView(
-                        VStack(spacing: 0) {
-                            if !result.semantic {
-                                Label("Searching by content is unavailable right now: names, places and albums only.",
-                                      systemImage: "exclamationmark.triangle")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                                    .padding(8)
-                            }
-                            QueryChips(parts: result.understood, persons: result.persons, library: model.library,
-                                       onPerson: { window.open($0) })
-                        }))
+                    MacPhotoBrowser(source: .search(answered), given: result.items,
+                                    header: result.semantic ? nil : AnyView(
+                                        Label("Searching by content is unavailable right now: names, places and albums only.",
+                                              systemImage: "exclamationmark.triangle")
+                                            .font(.callout)
+                                            .foregroundStyle(.secondary)
+                                            .padding(8)
+                                            .padding(.top, 52)),
+                                    // a person's pill opens their page
+                                    pills: AnyView(QueryChips(parts: result.understood, persons: result.persons,
+                                                              library: model.library, onPerson: { window.open($0) },
+                                                              oneLine: true)))
                 } else if failed {
                     ServerUnavailableView()
                 } else {
