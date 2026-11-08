@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// The search tab before anything is typed: the years, each searching for
-/// itself. The people ride above the search field (`SearchPeopleBar`); the
-/// places live in Albums.
+/// The search tab before anything is typed: the years, the countries and
+/// the cities, each searching for itself. The people ride above the search
+/// field (`SearchPeopleBar`); the map of the places lives in Albums.
 struct SearchHome: View {
     var library: Library
     var onSearch: (String) -> Void
+    @State private var places: [PlaceSummary] = PlacesMemo.places
 
     var body: some View {
         ScrollView {
@@ -17,11 +18,110 @@ struct SearchHome: View {
                 } else {
                     yearCards
                 }
+                if !countries.isEmpty { countryCards }
+                if !places.isEmpty { cityCards }
             }
             .padding(.top, 4)
             .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
+        .defaultScrollAnchor(SimulatorHooks.scrolledDown ? .bottom : .top)
+        .task {
+            if let fresh = try? await library.client.places() {
+                places = fresh
+                PlacesMemo.places = fresh
+            }
+        }
+    }
+
+    // MARK: Countries and cities
+
+    struct Country: Identifiable {
+        let code: String
+        var name: String
+        var photos: Int
+        var places: Int
+        var cover: String?
+        var id: String { code }
+        /// The flag, from the two letters of the country code.
+        var flag: String {
+            String(String.UnicodeScalarView(code.uppercased().unicodeScalars.compactMap {
+                UnicodeScalar(127397 + $0.value)
+            }))
+        }
+    }
+
+    /// The places grouped by country, the most photographed first; a
+    /// country's photo is from its most photographed place.
+    private var countries: [Country] {
+        var out: [String: Country] = [:]
+        for p in places {
+            guard let cc = p.country, cc.count == 2 else { continue }
+            var c = out[cc] ?? Country(code: cc, name: Locale.current.localizedString(forRegionCode: cc) ?? cc,
+                                       photos: 0, places: 0, cover: p.cover)
+            c.photos += p.photos
+            c.places += 1
+            out[cc] = c
+        }
+        return out.values.sorted { $0.photos > $1.photos }
+    }
+
+    private var countryCards: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header("Countries", nil)
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 12) {
+                    ForEach(countries) { c in
+                        Button { onSearch(c.name) } label: {
+                            ZStack(alignment: .bottomLeading) {
+                                Thumb(url: c.cover.flatMap { library.client.thumbURL($0, 512) }, maxPixel: 480)
+                                    .frame(width: 210, height: 128)
+                                LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(c.flag).font(.system(size: 22))
+                                        Text(c.name)
+                                            .font(.title3.weight(.bold))
+                                            .lineLimit(1)
+                                    }
+                                    Text("\(c.photos.formatted()) photos · \(c.places) \(c.places == 1 ? "place" : "places")")
+                                        .font(.caption)
+                                        .opacity(0.85)
+                                        .monospacedDigit()
+                                }
+                                .foregroundStyle(.white)
+                                .padding(12)
+                            }
+                            .frame(width: 210, height: 128)
+                            .clipShape(.rect(cornerRadius: 20))
+                            .contentShape(.rect(cornerRadius: 20))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(c.name), \(c.photos) photos")
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private var cityCards: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header("Cities", nil)
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 12) {
+                    ForEach(places.prefix(30)) { place in
+                        Button { if let n = place.name, !n.isEmpty { onSearch(n) } } label: {
+                            PlaceCard(library: library, place: place)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .scrollIndicators(.hidden)
+        }
     }
 
     // MARK: Years
