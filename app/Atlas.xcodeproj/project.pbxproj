@@ -105,6 +105,7 @@
 		C36C93A68B159912AABA81A0 /* DriveMovePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */; platformFilters = (ios, ); };
 		C411DDB0DAFF27B07CEB36B2 /* DriveTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA499FFCE1D33558571A14FF /* DriveTable.swift */; platformFilters = (macos, ); };
 		D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
+		D36B152669348685926167B1 /* RollingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E36321770160B47B8ADCCD2 /* RollingText.swift */; };
 		D7345699CBC7C0C2AD68DBA9 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */; platformFilters = (macos, ); };
 		D7A3F1D61545872937141A54 /* MacSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C797FD9BA8EE2135C72A00 /* MacSidebar.swift */; platformFilters = (macos, ); };
 		D8B0F166225B237DFE0552FD /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7090347D54A81E0F05EF2E72 /* RootView.swift */; platformFilters = (ios, ); };
@@ -168,6 +169,7 @@
 		19280E354F8D76973598DDC3 /* MediaCache+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaCache+Decode.swift"; sourceTree = "<group>"; };
 		1B12CD1DA8A8BEFC121FA0DE /* AssetFilePromise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetFilePromise.swift; sourceTree = "<group>"; };
 		1D466581E9B47C27D1DBD088 /* StorageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBar.swift; sourceTree = "<group>"; };
+		1E36321770160B47B8ADCCD2 /* RollingText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingText.swift; sourceTree = "<group>"; };
 		2363D683E2288F19E1124A51 /* AtlasMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasMacApp.swift; sourceTree = "<group>"; };
 		24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
 		294C5A34689FD4AC49226C31 /* MacTerminalWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacTerminalWindow.swift; sourceTree = "<group>"; };
@@ -406,6 +408,7 @@
 				D9328AC789B96004034ABEEA /* LiveChart.swift */,
 				0659BD13AEC06C469AEE1556 /* LiveSparkline.swift */,
 				536ECEC16062D6354BC9B4DF /* Machine.swift */,
+				1E36321770160B47B8ADCCD2 /* RollingText.swift */,
 				DB88BB560D625321F64F89C6 /* ServerStatusScreen.swift */,
 				1D466581E9B47C27D1DBD088 /* StorageBar.swift */,
 				6B63373AC907672AFAB7EA74 /* TerminalBridge.swift */,
@@ -793,6 +796,7 @@
 				11B54120DD631FA80AFE6305 /* PhotoSource.swift in Sources */,
 				A1536074D55D236A9DE4D56D /* PhotosScreen.swift in Sources */,
 				E97FC069CBCB49EE79EAC9BD /* Platform.swift in Sources */,
+				D36B152669348685926167B1 /* RollingText.swift in Sources */,
 				D8B0F166225B237DFE0552FD /* RootView.swift in Sources */,
 				1C9AFDC710803EB66CBE26D8 /* SearchExample.swift in Sources */,
 				BFD472F06AC8278CC0A9B05A /* SearchScreen.swift in Sources */,

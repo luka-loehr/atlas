@@ -32,17 +32,28 @@ struct MacServerView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                if session.isConnected {
-                    activity
-                    drives
-                    thisMac
-                    services
-                    processing
+            // grouped like System Settings, but in plain stacks: a Form's
+            // rows are drawn in software on the Mac, so every frame of a
+            // curve or gliding number redrew whole sections on the CPU
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    if session.isConnected {
+                        // its own view: a new sample (twice a second) only
+                        // updates this panel, not the whole page
+                        ActivityPanel(machine: machine)
+                        drives
+                        thisMac
+                        services
+                        processing
+                    }
+                    server
                 }
-                server
+                .labeledContentStyle(PanelRowStyle())
+                .padding(.horizontal, 20)
+                .padding(.vertical, 18)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
-            .formStyle(.grouped)
             .navigationTitle("Server")
             .navigationSubtitle(statusText)
             .toolbar { toolbar }
@@ -92,49 +103,11 @@ struct MacServerView: View {
 
     // MARK: - Activity
 
-    private var activity: some View {
-        let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
-        let snapshot = machine.snapshot
-        let rate = machine.throughput
-        return Section("Activity") {
-            // each value once: the three loads with their curves, then
-            // network, power and load average, all gliding as they change
-            Grid(horizontalSpacing: 28, verticalSpacing: 18) {
-                GridRow {
-                    Meter(title: "CPU", value: latest.cpu, color: .blue, series: machine.series(\.cpu),
-                          detail: latest.cpu_temp.map { "\(Int($0)) °C" } ?? "")
-                    if snapshot?.gpu != nil || snapshot == nil {
-                        Meter(title: "GPU", value: latest.gpu, color: .purple, series: machine.series(\.gpu),
-                              detail: [snapshot?.gpu.map { String(format: "%.1f of %.0f GB", latest.gpu_mem_mb / 1024, $0.mem_total_mb / 1024) },
-                                       latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
-                    }
-                    Meter(title: "Memory", value: latest.mem, color: .teal, series: machine.series(\.mem),
-                          detail: String(format: "%.1f of %.0f GB", latest.mem_gb, snapshot?.mem_total_gb ?? 0))
-                }
-                Divider().gridCellUnsizedAxes(.horizontal)
-                GridRow {
-                    Fact(title: "Network", value: rate.down + rate.up) {
-                        Text("↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s")
-                    }
-                    Fact(title: "Power", value: latest.system_w ?? 0) {
-                        Text([latest.system_w.map { "\(Int($0)) W" }, latest.cpu_w.map { "CPU \(Int($0))" },
-                              latest.gpu_w.map { "GPU \(Int($0))" }].compactMap { $0 }.joined(separator: " · "))
-                    }
-                    Fact(title: "Load average", value: snapshot?.load.first ?? 0) {
-                        Text(snapshot.map { $0.load.map { String(format: "%.2f", $0) }.joined(separator: " · ") } ?? "–")
-                    }
-                }
-            }
-            .padding(.vertical, 6)
-            .redacted(reason: machine.latest == nil ? .placeholder : [])
-        }
-    }
-
     // MARK: - Drives
 
     @ViewBuilder
     private var drives: some View {
-        Section("Drives") {
+        Panel("Drives") {
             if let drives = machine.drives?.drives {
                 // the system drive first, then the others by size
                 ForEach(drives.sorted { a, b in
@@ -155,9 +128,23 @@ struct MacServerView: View {
     // MARK: - This Mac
 
     private var thisMac: some View {
-        Section {
+        Panel {
             StorageBar(use: storage)
                 .redacted(reason: measured ? [] : .placeholder)
+            LabeledContent("Cache size") { cachePicker }
+            LabeledContent("Cache folder") {
+                Button("Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([MediaStore.shared.directory])
+                }
+            }
+        } header: {
+            Text("On This Mac")
+        } footer: {
+            Text("Every grid thumbnail stays on this Mac, so the library opens complete, also offline. Previews, originals and videos fill up to \(MediaStore.budget.fileSize) as you browse and make room on their own, least used first, and sooner when the disk runs low. Automatic is a tenth of the free space.")
+        }
+    }
+
+    private var cachePicker: some View {
             Picker("Cache size", selection: Binding(
                 get: { cacheChoice },
                 set: { choice in
@@ -171,24 +158,15 @@ struct MacServerView: View {
                     Text("\(gb) GB").tag(Int64(gb) << 30)
                 }
             }
-            LabeledContent("Cache folder") {
-                Button("Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([MediaStore.shared.directory])
-                }
-            }
-        } header: {
-            Text("On This Mac")
-        } footer: {
-            Text("Every grid thumbnail stays on this Mac, so the library opens complete, also offline. Previews, originals and videos fill up to \(MediaStore.budget.fileSize) as you browse and make room on their own, least used first, and sooner when the disk runs low. Automatic is a tenth of the free space.")
-                .foregroundStyle(.secondary)
-        }
+            .labelsHidden()
+            .fixedSize()
     }
 
     // MARK: - Services and processing
 
     @ViewBuilder
     private var services: some View {
-        Section("Services") {
+        Panel("Services") {
             if let services = machine.services {
                 ForEach(services.units) { unit in
                     LabeledContent {
@@ -197,8 +175,10 @@ struct MacServerView: View {
                             StateLabel(healthy: unit.state == "active", text: unit.state == "active" ? "Running" : "Stopped")
                         }
                     } label: {
-                        Text(unit.unit)
-                        Text(Self.roles[unit.unit] ?? unit.role)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(unit.unit)
+                            Text(Self.roles[unit.unit] ?? unit.role).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 LabeledContent("Database", value: "Postgres \(services.database.version.split(separator: " ").first.map(String.init) ?? "") · \(services.database.bytes.fileSize)")
@@ -218,7 +198,7 @@ struct MacServerView: View {
     @ViewBuilder
     private var processing: some View {
         if let services = machine.services {
-            Section {
+            Panel {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 24, alignment: .leading)],
                           alignment: .leading, spacing: 10) {
                     ForEach(services.queue.keys.sorted { (Self.queueNames[$0] ?? $0) < (Self.queueNames[$1] ?? $1) }, id: \.self) { kind in
@@ -229,11 +209,7 @@ struct MacServerView: View {
                                 .foregroundStyle(waiting == 0 ? .green : .orange)
                             Text(Self.queueNames[kind] ?? kind)
                             Spacer(minLength: 6)
-                            Text(waiting == 0 ? (counts["done"] ?? 0).formatted() : "\(waiting.formatted()) left")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                                .contentTransition(.numericText(value: Double(waiting)))
-                                .animation(.smooth, value: waiting)
+                            RollingText(waiting == 0 ? (counts["done"] ?? 0).formatted() : "\(waiting.formatted()) left", secondary: true)
                         }
                     }
                 }
@@ -258,7 +234,7 @@ struct MacServerView: View {
     // MARK: - Server and connection
 
     private var server: some View {
-        Section {
+        Panel {
             if session.isConnected {
                 if let s = machine.snapshot {
                     LabeledContent("Name", value: s.hostname)
@@ -320,24 +296,19 @@ private struct Meter: View {
     let color: Color
     let series: [LiveSparkline.Point]
     let detail: String
+    @State private var previous: Double = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).foregroundStyle(.secondary)
                 Spacer()
-                Text(value / 100, format: .percent.precision(.fractionLength(0)))
-                    .font(.system(size: 22, weight: .semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: value))
-                    .animation(.smooth, value: value)
+                RollingText("\(Int(value.rounded())) %", rising: value >= previous, size: 22, weight: .semibold)
+                    .onChange(of: value) { old, _ in previous = old }
             }
             LiveSparkline(series: series, color: color)
                 .frame(height: 48)
-            Text(detail.isEmpty ? " " : detail)
-                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
-                .contentTransition(.numericText())
-                .animation(.smooth, value: detail)
+            RollingText(detail.isEmpty ? " " : detail, size: 12, secondary: true)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
@@ -346,21 +317,15 @@ private struct Meter: View {
     }
 }
 
-/// A value without a curve, its digits gliding as they change.
-private struct Fact<Content: View>: View {
+/// A value without a curve, its changed characters rolling in.
+private struct Fact: View {
     let title: String
-    let value: Double
-    @ViewBuilder var content: Content
+    let text: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).foregroundStyle(.secondary)
-            content
-                .font(.system(size: 15, weight: .medium))
-                .monospacedDigit()
-                .contentTransition(.numericText(value: value))
-                .animation(.smooth, value: value)
-                .lineLimit(1)
+            RollingText(text, size: 15, weight: .medium)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -377,8 +342,10 @@ private struct ServerDriveRow: View {
             health
         } label: {
             Label {
-                Text(drive.model ?? drive.name)
-                Text(detail)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(drive.model ?? drive.name)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
             } icon: {
                 Image(systemName: drive.transport == "usb" ? "externaldrive" : "internaldrive")
                     .foregroundStyle(.secondary)
@@ -452,4 +419,110 @@ private struct UsageRow: View {
         .accessibilityLabel(Text(title))
         .accessibilityValue(Text("\((total - used).fileSize) free of \(total.fileSize)"))
     }
+}
+
+/// A titled group of rows on a rounded panel, as a grouped Form draws it.
+private struct Panel<Content: View, Header: View, Footer: View>: View {
+    @ViewBuilder var content: Content
+    @ViewBuilder var header: Header
+    @ViewBuilder var footer: Footer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            header
+                .font(.headline)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 2)
+            VStack(spacing: 0) {
+                Group(subviews: content) { rows in
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+                        if i > 0 { Divider().padding(.horizontal, 10) }
+                        row
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    }
+                }
+            }
+            .background(Color.panelFill, in: .rect(cornerRadius: 10))
+            footer
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 10)
+                .padding(.top, 2)
+        }
+    }
+}
+
+extension Panel where Footer == EmptyView {
+    init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Header) {
+        self.init(content: content, header: header, footer: { EmptyView() })
+    }
+}
+
+extension Panel where Header == Text, Footer == EmptyView {
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { Text(title) }, footer: { EmptyView() })
+    }
+}
+
+/// A row: label on the left, its value on the right in the secondary color.
+private struct PanelRowStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            configuration.label
+            Spacer(minLength: 12)
+            configuration.content
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
+private extension Color {
+    /// A grouped Form's panel: white in light mode, a faint lift in dark.
+    static let panelFill = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor.white.withAlphaComponent(0.03) : NSColor.white
+    })
+}
+
+/// CPU, GPU and memory with their curves, then network, power and load.
+/// The only part of the page that reads the live samples.
+private struct ActivityPanel: View {
+    let machine: Machine
+
+    var body: some View {
+        let latest = machine.latest ?? MetricSample(ts: 0, cpu: 0, mem: 0, mem_gb: 0, gpu: 0, gpu_mem_mb: 0, rx: 0, tx: 0)
+        let snapshot = machine.snapshot
+        let rate = machine.throughput
+        return Panel("Activity") {
+            // each value once: the three loads with their curves, then
+            // network, power and load average, all gliding as they change
+            Grid(horizontalSpacing: 28, verticalSpacing: 18) {
+                GridRow {
+                    Meter(title: "CPU", value: latest.cpu, color: .blue, series: machine.series(\.cpu),
+                          detail: latest.cpu_temp.map { "\(Int($0)) °C" } ?? "")
+                    if snapshot?.gpu != nil || snapshot == nil {
+                        Meter(title: "GPU", value: latest.gpu, color: .purple, series: machine.series(\.gpu),
+                              detail: [snapshot?.gpu.map { String(format: "%.1f of %.0f GB", latest.gpu_mem_mb / 1024, $0.mem_total_mb / 1024) },
+                                       latest.gpu_temp.map { "\(Int($0)) °C" }].compactMap { $0 }.joined(separator: " · "))
+                    }
+                    Meter(title: "Memory", value: latest.mem, color: .teal, series: machine.series(\.mem),
+                          detail: String(format: "%.1f of %.0f GB", latest.mem_gb, snapshot?.mem_total_gb ?? 0))
+                }
+                Divider().gridCellUnsizedAxes(.horizontal)
+                GridRow {
+                    Fact(title: "Network", text: "↓ \(Int64(rate.down).fileSize)/s  ↑ \(Int64(rate.up).fileSize)/s")
+                    Fact(title: "Power", text: [latest.system_w.map { "\(Int($0)) W" }, latest.cpu_w.map { "CPU \(Int($0))" },
+                                                latest.gpu_w.map { "GPU \(Int($0))" }].compactMap { $0 }.joined(separator: " · "))
+                    Fact(title: "Load average", text: snapshot.map { $0.load.map { String(format: "%.2f", $0) }.joined(separator: " · ") } ?? "–")
+                }
+            }
+            .padding(.vertical, 6)
+            .redacted(reason: machine.latest == nil ? .placeholder : [])
+        }
+    }
+
 }

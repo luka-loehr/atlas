@@ -70,21 +70,21 @@ final class MediaStore: @unchecked Sendable {
     }
 
     /// What this device can spare. The iPhone keeps 15 GB. A Mac gives a
-    /// tenth of its free space plus what the cache already holds, between
-    /// 5 and 100 GB; measured again at most every ten minutes.
+    /// tenth of its free space, between 5 and 100 GB; measured again at
+    /// most every ten minutes.
     static var automaticBudget: Int64 {
         #if os(macOS)
-        return automatic.withLock { memo in
-            if let (at, bytes) = memo, Date().timeIntervalSince(at) < 600 { return bytes }
-            let home = URL(fileURLWithPath: NSHomeDirectory())
-            let free = (try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
-                .volumeAvailableCapacityForImportantUsage ?? (50 << 30)
-            let held = shared.cacheBytes
-            let gb: Int64 = 1 << 30
-            let bytes = min(max((free + held) / 10 / gb * gb, 5 * gb), 100 * gb)
-            memo = (Date(), bytes)
-            return bytes
-        }
+        // only the disk, never the store: a view asks for this, and the
+        // store's first creation (its index, the legacy migration writing
+        // UserDefaults) re-entered from a view body deadlocked the window
+        if let (at, bytes) = automatic.withLock({ $0 }), Date().timeIntervalSince(at) < 600 { return bytes }
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let free = (try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? (50 << 30)
+        let gb: Int64 = 1 << 30
+        let bytes = min(max(free / 10 / gb * gb, 5 * gb), 100 * gb)
+        automatic.withLock { $0 = (Date(), bytes) }
+        return bytes
         #else
         return 15 << 30
         #endif
