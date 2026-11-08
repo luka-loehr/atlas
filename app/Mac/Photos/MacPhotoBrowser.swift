@@ -178,6 +178,9 @@ struct MacPhotoBrowser: View {
                 MacViewer(library: library, assets: shown, current: Binding(get: { viewing }, set: { self.viewing = $0 }),
                           onClose: closeViewer,
                           onFavorite: { actions(for: [viewing]).toggleFavorite?() })
+                    // the whole window, up to its top edge: the toolbar's
+                    // glass floats over the photo, as on the iPhone
+                    .ignoresSafeArea()
                     .transition(.opacity)
             }
             if busy { BusyOverlay() }
@@ -230,6 +233,24 @@ struct MacPhotoBrowser: View {
                     .help("Back to \(source == .library ? "Library" : title)")
                     .keyboardShortcut(.escape, modifiers: [])
             }
+            // when the photo was taken, in a glass pill of its own over the
+            // photo (the iPhone's date chip), not as the window's title
+            ToolbarSpacer(.fixed, placement: .navigation)
+            ToolbarItem(placement: .navigation) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title).font(.headline)
+                    if !subtitle.isEmpty {
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 34)
+                .glassEffect(.regular, in: .capsule)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
         if !gated {
             let a = actions(for: targetIDs)
@@ -336,7 +357,8 @@ struct MacPhotoBrowser: View {
 
     /// The window title gives way to the Library's header or a search's pills.
     private var ownTitle: Bool {
-        guard viewing == nil, selection.isEmpty else { return false }
+        if viewing != nil { return true }
+        guard selection.isEmpty else { return false }
         if case .person = source { return true }
         return libraryHeader || header != nil
     }
