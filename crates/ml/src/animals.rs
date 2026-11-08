@@ -25,7 +25,7 @@ use image::RgbImage;
 use ort::value::Tensor;
 
 use crate::runtime::{self, Device};
-use crate::pixels;
+use crate::pixels::{self, IMAGENET_MEAN, IMAGENET_STD};
 
 const DETECT_SIZE: u32 = 704;
 const EMBED_SIZE: u32 = 224;
@@ -36,8 +36,6 @@ const THRESHOLD: f32 = 0.5;
 /// small to tell apart; they still count as "a dog in the photo".
 pub const MIN_IDENTIFY_PX: u32 = 64;
 const NMS_THRESHOLD: f32 = 0.6;
-const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
-const STD: [f32; 3] = [0.229, 0.224, 0.225];
 
 pub struct Animal {
     pub species: &'static str,
@@ -107,7 +105,7 @@ impl AnimalEngine {
             let input = normalized(&pixels::resize(&crop, EMBED_SIZE, EMBED_SIZE, FilterType::Bilinear)?);
             let tensor = Tensor::from_array(([1usize, 3, EMBED_SIZE as usize, EMBED_SIZE as usize], input))?;
             let options = self.identifier.options()?;
-        let outputs = self.identifier.session.run_with_options(ort::inputs![tensor], &options)?;
+            let outputs = self.identifier.session.run_with_options(ort::inputs![tensor], &options)?;
             let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
             let mut look = values.to_vec();
             ensure!(look.len() == 512, "unexpected pet embedding: {} values", look.len());
@@ -128,7 +126,7 @@ fn normalized(image: &RgbImage) -> Vec<f32> {
     let mut out = vec![0f32; 3 * plane];
     for (i, pixel) in image.pixels().enumerate() {
         for c in 0..3 {
-            out[c * plane + i] = (f32::from(pixel[c]) / 255.0 - MEAN[c]) / STD[c];
+            out[c * plane + i] = (f32::from(pixel[c]) / 255.0 - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
         }
     }
     out

@@ -1,4 +1,5 @@
-//! Pixel plumbing shared by both models: decode, resize, encode.
+//! Pixel plumbing shared by the models: decode, resize, encode, and video
+//! frames read with ffmpeg.
 
 use std::path::Path;
 use std::process::Command;
@@ -24,6 +25,26 @@ pub fn resize(src: &RgbImage, width: u32, height: u32, filter: fr::FilterType) -
     fr::Resizer::new().resize(&view, &mut dst, &options)?;
     RgbImage::from_raw(width, height, dst.into_vec()).context("resize: buffer size mismatch")
 }
+
+/// Scale so the longest side is at most `max` (Lanczos3); never enlarges.
+pub fn fit(image: RgbImage, max: u32) -> Result<RgbImage> {
+    let (w, h) = image.dimensions();
+    if w.max(h) <= max {
+        return Ok(image);
+    }
+    let scale = f64::from(max) / f64::from(w.max(h));
+    resize(
+        &image,
+        ((f64::from(w) * scale).round() as u32).max(1),
+        ((f64::from(h) * scale).round() as u32).max(1),
+        fr::FilterType::Lanczos3,
+    )
+}
+
+/// The ImageNet mean and deviation per RGB channel, as the detectors were
+/// trained to see pixels.
+pub const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
+pub const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
 
 /// PNG with fast compression: this only crosses a loopback socket.
 pub fn png(img: &RgbImage) -> Result<Vec<u8>> {
