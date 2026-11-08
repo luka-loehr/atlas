@@ -1,5 +1,7 @@
 # Builds, lints and tests the server and the CLI on every push and pull
-# request. atlas-ml needs CUDA and the app needs Xcode, so neither runs here.
+# request. atlas-ml needs CUDA, so it does not run here. On macOS, because
+# the server needs libheif 1.21 or later, which Homebrew has and Ubuntu has
+# only from 26.04 on.
 name: CI
 
 on:
@@ -16,9 +18,10 @@ concurrency:
 
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - run: brew install libheif pkg-config
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

@@ -110,7 +110,8 @@ sudo apt-get install -y build-essential cmake pkg-config \
 
 `ffmpeg` makes video posters and streaming renditions, `poppler-utils` reads
 PDF text and renders PDF previews for the drive, and libheif decodes the HEIC
-photos an iPhone takes.
+photos an iPhone takes. The server needs libheif 1.21 or later, which Ubuntu ships from
+26.04 LTS on: use Ubuntu 26.04 or newer.
 
 ### Rust toolchain, repo clone, sudoers
 
