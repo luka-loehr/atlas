@@ -5,11 +5,7 @@ extension PhotoGridView: NSDraggingSource {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// How long a press must last to select instead of open.
-    private static let holdToSelect: TimeInterval = 0.3
-
-    /// A click opens the photo; holding it for 300 ms selects it (or takes
-    /// it out of the selection); moving the pointer drags it (with the rest
+    /// A click opens the photo; moving the pointer drags it (with the rest
     /// of the selection, if it is selected) out to the Finder or onto an
     /// album. ⌘-click adds or removes, ⇧-click extends, as everywhere on the
     /// Mac. From below the photos, a drag draws a selection rectangle.
@@ -52,22 +48,10 @@ extension PhotoGridView: NSDraggingSource {
             return
         }
 
-        // plain press: open, select or drag, decided by what comes first
-        let deadline = Date(timeIntervalSinceNow: Self.holdToSelect)
+        // a plain click opens, moving the pointer drags
         visible[hit]?.pressed = true
         defer { visible[hit]?.pressed = false }
-        while true {
-            guard let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: deadline,
-                                                 inMode: .eventTracking, dequeue: true) else {
-                // held: select (or deselect), then a drag may still follow
-                var s = selected
-                if s.contains(hit) { s.remove(hit) } else { s.insert(hit) }
-                setSelected(s)
-                anchor = hit
-                visible[hit]?.pressed = false
-                trackDrag(from: hit, start: start, event: event)
-                return
-            }
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if next.type == .leftMouseUp {
                 open(hit)
                 return

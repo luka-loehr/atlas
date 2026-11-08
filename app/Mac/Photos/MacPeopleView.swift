@@ -45,24 +45,18 @@ struct MacPeopleView: View {
                 HiddenPeopleSheet(library: model.library) { Task { await load() } }
             }
             .navigationDestination(for: Person.self) { person in
-                MacPhotoBrowser(source: .person(person))
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("Rename…", systemImage: "pencil") { newName = person.name ?? ""; renaming = person }
-                                .help(person.isPet ? "Name This Pet" : "Name This Person")
-                        }
-                    }
+                MacPhotoBrowser(source: .person(person),
+                                onRename: { newName = person.name ?? ""; renaming = person })
+                    // the dialog belongs to the page on screen: on the
+                    // overview's root it only showed once back there
+                    .modifier(nameAlert)
             }
         }
         .task {
             if split.humans.isEmpty { split = Self.split(persons) }
             await load()
         }
-        .alert("Name This Person", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Save") { rename() }
-            Button("Cancel", role: .cancel) {}
-        }
+        .modifier(nameAlert)
         .changeFailedAlert($changeFailed)
     }
 
@@ -88,16 +82,40 @@ struct MacPeopleView: View {
         loaded = true
     }
 
+    private var nameAlert: NameAlert {
+        NameAlert(renaming: $renaming, newName: $newName, save: rename)
+    }
+
     private func rename() {
         guard let person = renaming else { return }
         let name = newName.trimmingCharacters(in: .whitespaces)
         Task {
             do {
                 try await model.library.client.renamePerson(person.id, name: name)
+                // the open page shows the new name at once
+                if let i = window.peoplePath.firstIndex(where: { $0.id == person.id }) {
+                    window.peoplePath[i].name = name.isEmpty ? nil : name
+                }
                 await load()
             } catch {
                 changeFailed = true
             }
+        }
+    }
+}
+
+/// Names a person or a pet: a field, Save and Cancel.
+private struct NameAlert: ViewModifier {
+    @Binding var renaming: Person?
+    @Binding var newName: String
+    var save: () -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(renaming?.isPet == true ? "Name This Pet" : "Name This Person",
+                      isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save", action: save)
+            Button("Cancel", role: .cancel) {}
         }
     }
 }

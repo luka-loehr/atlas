@@ -16,6 +16,8 @@ struct MacPhotoBrowser: View {
     /// toolbar itself, where they take clicks (drawn under it, its strip
     /// took them, and a person's pill did not open them).
     var pills: AnyView? = nil
+    /// A person's page names them; only in the grid, not over the viewer.
+    var onRename: (() -> Void)? = nil
 
     @Environment(AppModel.self) private var model
     @Environment(MacWindowState.self) private var window
@@ -263,6 +265,12 @@ struct MacPhotoBrowser: View {
                 .accessibilityAddTraits(.isHeader)
             }
             .sharedBackgroundVisibility(.hidden)
+        }
+        if let onRename, case .person(let person) = source, viewing == nil {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Rename…", systemImage: "pencil", action: onRename)
+                    .help(person.isPet ? "Name This Pet" : "Name This Person")
+            }
         }
         if !gated, viewing == nil || window.viewerChrome {
             let a = actions(for: targetIDs)
@@ -675,6 +683,9 @@ private struct ViewerChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of: open) { window.viewerChrome = true }
+            // a person's page has its own back button (to People): while the
+            // viewer is open only the viewer's shows
+            .navigationBarBackButtonHidden(open)
             .toolbar(hidden && window.columns == .detailOnly ? .hidden : .automatic, for: .windowToolbar)
             // a `.searchable` field cannot be left out: its AppKit item hides
             .onChange(of: hidden, initial: true) { _, h in Self.hideSearchField(h) }

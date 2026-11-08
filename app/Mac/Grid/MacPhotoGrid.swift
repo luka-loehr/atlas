@@ -11,10 +11,10 @@ import AppKit
 /// display's format on the decode queue). Only the rows on screen exist;
 /// the rows a screen ahead are decoded in the background.
 ///
-/// It behaves like the grids of Photos and the Finder: click selects,
-/// ⌘-click and ⇧-click extend, dragging from below the photos draws a
+/// A click opens a photo, as on the iPhone; ⌘-click selects and ⇧-click
+/// extends, as in the Finder, dragging from below the photos draws a
 /// selection rectangle, the arrow keys move the selection (⇧ extends it),
-/// Return, Space or a double click opens, a right click opens the context
+/// Return or Space opens, a right click opens the context
 /// menu for what is selected, pinching zooms, ⌘A selects all. Photos drag
 /// out as their originals (into the Finder, Mail, any app that takes files)
 /// and onto an album in the sidebar.
