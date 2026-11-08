@@ -16,7 +16,7 @@ struct MacSidebar: View {
     var body: some View {
         @Bindable var window = window
         List(selection: $window.sidebar) {
-            Section("Photos") {
+            Section {
                 row(.library)
                 row(.people)
                 row(.special(.favorites))
