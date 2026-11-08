@@ -128,6 +128,7 @@ struct MacPhotoBrowser: View {
                 if let header, viewing == nil {
                     header
                         .padding(.top, selection.isEmpty ? 0 : 52)
+                        .padding(.leading, window.topLeadingClearance)
                         .padding(.trailing, 440)
                         .ignoresSafeArea(edges: .top)
                 }
@@ -351,7 +352,7 @@ struct MacPhotoBrowser: View {
         }
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.25), radius: 6)
-        .padding(.leading, 20)
+        .padding(.leading, 20 + window.topLeadingClearance)
         .padding(.top, 6)
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)

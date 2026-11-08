@@ -52,7 +52,7 @@ struct MacRootView: View {
     }
 
     private var split: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: Bindable(window).columns) {
             MacSidebar(newAlbum: $newAlbum)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {

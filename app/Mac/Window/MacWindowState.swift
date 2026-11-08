@@ -51,6 +51,11 @@ final class MacWindowState {
     var sidebar: SidebarItem? = .library
     var search = ""
     var showInspector = false
+    /// Whether the sidebar shows. Collapsed, the window's buttons (close,
+    /// minimize, zoom, the sidebar toggle) sit over the photos' top left.
+    var columns: NavigationSplitViewVisibility = .all
+    /// What floats at the photos' top left keeps clear of those buttons.
+    var topLeadingClearance: CGFloat { columns == .detailOnly ? 150 : 0 }
     /// The photo the inspector describes: the viewer's, or the one photo
     /// selected in a grid.
     var inspected: Asset?
