@@ -25,6 +25,7 @@
 
 pub mod albums;
 pub mod assets;
+pub mod covers;
 pub mod library;
 pub mod people;
 pub mod places;
@@ -81,6 +82,7 @@ pub fn routes() -> Router<AppState> {
         .route("/faces/hide", post(people::hide_faces))
         .route("/faces/unassign", post(people::unassign_faces))
         .route("/places", get(places::list))
+        .route("/covers", get(covers::list))
         .route("/places/{id}", get(places::assets))
         .route("/search", get(search::search))
         .route("/search/warm", post(search::warm))

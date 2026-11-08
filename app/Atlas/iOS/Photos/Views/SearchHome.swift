@@ -25,6 +25,7 @@ struct SearchHome: View {
         }
         .scrollIndicators(.hidden)
         .defaultScrollAnchor(SimulatorHooks.scrolledDown ? .bottom : .top)
+        .task { await Covers.shared.load(library.client) }
         .task {
             if let fresh = try? await library.client.places() {
                 places = fresh
@@ -73,8 +74,14 @@ struct SearchHome: View {
                     ForEach(countries) { c in
                         Button { onSearch(c.name) } label: {
                             ZStack(alignment: .bottomLeading) {
-                                Thumb(url: c.cover.flatMap { library.client.thumbURL($0, 512) }, maxPixel: 480)
-                                    .frame(width: 210, height: 128)
+                                ZStack {
+                                    GroupCover(library: library, id: Covers.shared.countries[c.code])
+                                    // no photo good enough: the flag stands in
+                                    if Covers.shared.countries[c.code] == nil {
+                                        Text(c.flag).font(.system(size: 54)).opacity(0.9).offset(x: 50, y: -18)
+                                    }
+                                }
+                                .frame(width: 210, height: 128)
                                 LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 6) {
@@ -128,7 +135,7 @@ struct SearchHome: View {
                     ForEach(years, id: \.year) { y in
                         Button { onSearch(String(y.year)) } label: {
                             ZStack(alignment: .bottomLeading) {
-                                Thumb(url: y.cover.flatMap { library.client.thumbURL($0, 512) }, maxPixel: 480)
+                                GroupCover(library: library, id: Covers.shared.years[String(y.year)])
                                     .frame(width: 210, height: 128)
                                 LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
                                 VStack(alignment: .leading, spacing: 0) {

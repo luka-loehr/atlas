@@ -43,6 +43,7 @@ struct PlacesSection: View {
             }
         }
         .navigationDestination(isPresented: $showMap) { PlacesMapScreen(library: library, places: places) }
+        .task { await Covers.shared.load(library.client) }
         .task {
             if let fresh = try? await library.client.places() {
                 places = fresh
@@ -242,7 +243,7 @@ struct PlaceCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            Thumb(url: place.cover.flatMap { library.client.thumbURL($0, 512) }, maxPixel: 480)
+            GroupCover(library: library, id: Covers.shared.places[String(place.id)], symbol: "mappin.and.ellipse")
                 .frame(width: 148, height: 188)
             LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 1) {
@@ -281,6 +282,58 @@ struct PlaceSummary: Decodable, Identifiable, Hashable, Sendable {
     var coordinate: CLLocationCoordinate2D? {
         guard let lat, let lon else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+}
+
+/// The covers the server's image model chose for the places, countries
+/// and years (GET /covers): the most beautiful photo of each, or none when
+/// none is good. Asked for at most every half hour.
+@MainActor @Observable
+final class Covers {
+    static let shared = Covers()
+    private(set) var places: [String: String] = [:]
+    private(set) var countries: [String: String] = [:]
+    private(set) var years: [String: String] = [:]
+    private(set) var loaded = false
+    @ObservationIgnored private var asked = Date.distantPast
+
+    func load(_ client: PhotoClient) async {
+        guard Date().timeIntervalSince(asked) > 1800 else { return }
+        asked = Date()
+        struct R: Decodable {
+            let places: [String: String]
+            let countries: [String: String]
+            let years: [String: String]
+        }
+        guard let r: R = try? await client.get("/covers") else { asked = .distantPast; return }
+        places = r.places
+        countries = r.countries
+        years = r.years
+        loaded = true
+    }
+}
+
+/// A card's picture: the cover photo, or a quiet ground with a symbol when
+/// the group has no photo good enough.
+struct GroupCover: View {
+    var library: Library
+    let id: String?
+    var symbol: String? = nil
+
+    var body: some View {
+        if let id {
+            Thumb(url: library.client.thumbURL(id, 512), maxPixel: 480)
+        } else {
+            ZStack {
+                LinearGradient(colors: [Color(white: 0.32), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 30, weight: .light))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .offset(y: -14)
+                }
+            }
+        }
     }
 }
 
