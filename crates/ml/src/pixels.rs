@@ -119,6 +119,7 @@ pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage
                         // rounding its printed time went through. A frame that
                         // does not decode (a broken last packet) is taken from
                         // a little earlier, at most half a second.
+                        let _slot = Readers::acquire();
                         for back in [0.0005, 0.1, 0.25, 0.5] {
                             if let Some(frame) = frame_at(path, (at - back).max(0.0), hdr)? {
                                 return Ok(frame);
@@ -135,6 +136,37 @@ pub fn frames_at(path: &Path, seconds: &[f64], hdr: bool) -> Result<Vec<RgbImage
         }
     }
     Ok(frames)
+}
+
+/// At most this many ffmpeg frame readers run at once in the whole process,
+/// however many clips are being read: one seek into a 4K HDR clip takes up
+/// to 2.5 GB, and six clips with eight seeks each filled the server's 32 GB
+/// (2026-11-08).
+const MAX_READERS: usize = 6;
+
+static READERS: (std::sync::Mutex<usize>, std::sync::Condvar) = (std::sync::Mutex::new(0), std::sync::Condvar::new());
+
+/// A place among the [`MAX_READERS`], given back when dropped.
+struct Readers;
+
+impl Readers {
+    fn acquire() -> Self {
+        let (count, freed) = &READERS;
+        let mut running = count.lock().unwrap_or_else(|e| e.into_inner());
+        while *running >= MAX_READERS {
+            running = freed.wait(running).unwrap_or_else(|e| e.into_inner());
+        }
+        *running += 1;
+        Readers
+    }
+}
+
+impl Drop for Readers {
+    fn drop(&mut self) {
+        let (count, freed) = &READERS;
+        *count.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        freed.notify_one();
+    }
 }
 
 /// Whether a seek to `at` lands far before it: the demuxer found no index
