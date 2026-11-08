@@ -67,7 +67,7 @@ pub async fn run(app: &AppState, id: &str, priority: i32) -> Result<()> {
     .await??;
 
     // the grid tile was made from the old thumbnail: made again on request
-    let _ = tokio::fs::remove_file(app.cfg.tile_path(&id)).await;
+    let _ = tokio::fs::remove_file(app.cfg.tile_path(id)).await;
     let c = app.pool.get().await?;
     c.execute(
         "UPDATE assets

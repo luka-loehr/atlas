@@ -125,6 +125,9 @@ struct Bucket<'a> {
     assets: Columns,
 }
 
+/// A bucket being filled: its key, its assets and its per-day histogram.
+type Open = (String, Columns, Vec<(u32, usize)>);
+
 fn build(mut items: Vec<Item>, generation: u64) -> Result<Timeline> {
     // newest first; undated last (None sorts below every Some)
     items.sort_unstable_by(|a, b| b.local.cmp(&a.local).then_with(|| a.id.cmp(&b.id)));
@@ -132,9 +135,9 @@ fn build(mut items: Vec<Item>, generation: u64) -> Result<Timeline> {
 
     let mut index = Index { total, buckets: Vec::new() };
     let mut buckets = HashMap::new();
-    let mut current: Option<(String, Columns, Vec<(u32, usize)>)> = None;
+    let mut current: Option<Open> = None;
 
-    let mut flush = |entry: Option<(String, Columns, Vec<(u32, usize)>)>| -> Result<()> {
+    let mut flush = |entry: Option<Open>| -> Result<()> {
         if let Some((key, assets, days)) = entry {
             let count = assets.id.len();
             let body = Body::new(serde_json::to_vec(&Bucket { key: &key, assets })?);
