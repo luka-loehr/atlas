@@ -1,55 +1,19 @@
-//! `atlas share`: link sharing through atlas-share, a Cloudflare Worker on
-//! your own account (share/ in the repo).
-//!
-//!   atlas share setup     deploy atlas-share and connect the server; asks which
-//!                         of your domains links live on (atlas-share.<domain>)
-//!   atlas share status    is it set up, does the Worker answer
-//!   atlas share ls        live links
-//!   atlas share rm <id>   stop sharing a link
-//!   atlas share destroy   remove everything setup made from Cloudflare
-//!
-//! Setup runs on the Mac, from an atlas checkout, with Node.js: wrangler logs
-//! in to Cloudflare in the browser, then the bucket, its 8-day lifecycle rule,
-//! the Worker (on a custom domain or workers.dev) and its two secrets are made
-//! (safe to re-run), and the Worker's address and admin token go into
-//! /etc/atlas/atlas.env on the server. Non-interactive: `--domain example.com`,
-//! `--workers-dev`, or `--url https://…` for an address you route yourself.
+//! `atlas share setup`: the bucket, the Worker and its secrets, and the
+//! server connected to it.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
+use super::cloudflare::{Cf, curl_with_token};
+use super::{BUCKET, ENV_FILE, fail, server_env, step};
 use crate::config::ssh_host;
-use crate::ssh::{ensure_up, run_inherit, shq, ssh_capture};
+use crate::ssh::{ensure_up, run_inherit, ssh_capture};
 use crate::{DIM, GREEN, RED, RESET};
-
-const BUCKET: &str = "atlas-share";
-const ENV_FILE: &str = "/etc/atlas/atlas.env";
-
-pub(crate) fn share(sub: &[String]) {
-    match sub.first().map(String::as_str) {
-        Some("setup") => setup(&sub[1..]),
-        Some("status") | None => status(),
-        Some("ls") | Some("list") => list(),
-        Some("rm") | Some("stop") => match sub.get(1) {
-            Some(id) => stop(id),
-            None => fail("usage: atlas share rm <id>"),
-        },
-        Some("destroy") => destroy(&sub[1..]),
-        Some(other) => fail(&format!("unknown: atlas share {other}  (setup | status | ls | rm <id> | destroy)")),
-    }
-}
-
-fn fail(message: &str) -> ! {
-    eprintln!("{RED}{message}{RESET}");
-    exit(1);
-}
-
-// MARK: - setup
 
 /// Where links live.
 #[derive(Clone, PartialEq)]
-enum Place {
+pub(super) enum Place {
     /// atlas-share.<zone>, a Workers custom domain
     Domain(String),
     WorkersDev,
@@ -57,7 +21,7 @@ enum Place {
     Url(String),
 }
 
-fn setup(args: &[String]) {
+pub(super) fn setup(args: &[String]) {
     let asked = match args {
         [flag, zone] if flag == "--domain" => Some(Place::Domain(zone.trim().trim_end_matches('.').to_lowercase())),
         [flag] if flag == "--workers-dev" => Some(Place::WorkersDev),
@@ -184,10 +148,10 @@ fn setup(args: &[String]) {
     }
 }
 
-const SUBDOMAIN: &str = "atlas-share";
+pub(super) const SUBDOMAIN: &str = "atlas-share";
 
 /// share/, Node.js, the server awake, wrangler installed and logged in.
-fn prepare() -> PathBuf {
+pub(super) fn prepare() -> PathBuf {
     let dir = share_dir().unwrap_or_else(|| {
         fail("run this inside an atlas checkout (it needs share/), or set ATLAS_SHARE_DIR")
     });
@@ -210,7 +174,7 @@ fn prepare() -> PathBuf {
     dir
 }
 
-fn wrangler(dir: &Path, args: &[&str]) -> Command {
+pub(super) fn wrangler(dir: &Path, args: &[&str]) -> Command {
     let mut c = Command::new("npx");
     c.arg("wrangler").args(args).current_dir(dir);
     c
@@ -218,7 +182,7 @@ fn wrangler(dir: &Path, args: &[&str]) -> Command {
 
 /// Asks which domain links live on: the account's domains, workers.dev, or
 /// (Enter) what is set up now.
-fn choose(cf: &Cf, current: &Option<String>) -> Place {
+pub(super) fn choose(cf: &Cf, current: &Option<String>) -> Place {
     let zones = cf.zones();
     let keep = current.as_ref().map(|u| match u.strip_prefix(&format!("https://{SUBDOMAIN}.")) {
         Some(zone) if zones.iter().any(|z| z.name == zone) => Place::Domain(zone.to_string()),
@@ -253,171 +217,8 @@ fn choose(cf: &Cf, current: &Option<String>) -> Place {
     }
 }
 
-// MARK: - destroy
-
-/// Undoes setup: every link stops, the bucket is emptied and deleted, the
-/// Worker (with its cron, secrets and custom domains) is deleted, and the
-/// server forgets atlas-share.
-fn destroy(args: &[String]) {
-    let yes = matches!(args, [flag] if flag == "--yes" || flag == "-y");
-    let dir = prepare();
-    let url = server_env("ATLAS_SHARE_URL");
-    let token = server_env("ATLAS_SHARE_TOKEN");
-
-    println!("\nThis removes from Cloudflare: the Worker {SUBDOMAIN} (its cron, secrets and custom domains),");
-    println!("the R2 bucket {BUCKET} with every shared file, and the server's link to it. Every link stops working.");
-    if !yes {
-        if !std::io::stdin().is_terminal() {
-            fail("pass --yes to destroy without asking");
-        }
-        print!("Type destroy to go on: ");
-        let _ = std::io::stdout().flush();
-        let mut line = String::new();
-        let _ = std::io::stdin().lock().read_line(&mut line);
-        if line.trim() != "destroy" {
-            fail("nothing was removed");
-        }
-    }
-
-    step("stopping links");
-    let ids = api("GET", "/shares", "import json,sys; print(' '.join(s['id'] for s in json.load(sys.stdin)['shares']))");
-    for id in ids.split_whitespace().filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric())) {
-        api("DELETE", &format!("/shares/{id}"), "import sys; sys.stdin.read()");
-        println!("  {id}");
-    }
-
-    step("emptying the bucket");
-    if let (Some(url), Some(token)) = (&url, &token) {
-        // the Worker deletes up to 20,000 files per call
-        for _ in 0..1000 {
-            let out = curl_with_token("DELETE", &format!("{url}/api/everything"), token);
-            if !out.contains("\"more\":true") {
-                break;
-            }
-        }
-    }
-
-    step("custom domains");
-    let cf = Cf::new(&dir);
-    for (account, id, hostname) in cf.worker_domains() {
-        cf.call("DELETE", &format!("/accounts/{account}/workers/domains/{id}"));
-        println!("  removed {hostname}");
-    }
-
-    step("Worker");
-    let out = wrangler(&dir, &["delete", SUBDOMAIN, "--force"]).output();
-    match out {
-        Ok(o) if o.status.success() => println!("  deleted {SUBDOMAIN}"),
-        _ => println!("  {DIM}no Worker {SUBDOMAIN} (already gone){RESET}"),
-    }
-
-    step("R2 bucket");
-    let out = wrangler(&dir, &["r2", "bucket", "delete", BUCKET]).output();
-    match out {
-        Ok(o) if o.status.success() => println!("  deleted {BUCKET}"),
-        Ok(o) if String::from_utf8_lossy(&[o.stdout.as_slice(), o.stderr.as_slice()].concat()).contains("does not exist") => {
-            println!("  {DIM}no bucket {BUCKET} (already gone){RESET}")
-        }
-        _ => println!(
-            "  {RED}the bucket could not be deleted (not empty?){RESET}: delete {BUCKET} in the dashboard (R2); its files expire within 8 days anyway"
-        ),
-    }
-
-    step("server");
-    let script = format!(
-        "sudo sed -i '/^ATLAS_SHARE_URL=/d; /^ATLAS_SHARE_TOKEN=/d' {ENV_FILE} && sudo systemctl restart atlas-server"
-    );
-    if !ssh_ok_quiet(&script) {
-        fail(&format!("could not update {ENV_FILE} on the server"));
-    }
-    println!("\n{GREEN}✓ atlas-share is gone{RESET}  {DIM}(atlas share setup brings it back){RESET}");
-}
-
-fn ssh_ok_quiet(remote: &str) -> bool {
-    Command::new("ssh").args([ssh_host(), remote]).status().map(|s| s.success()).unwrap_or(false)
-}
-
-/// A value of /etc/atlas/atlas.env on the server.
-fn server_env(key: &str) -> Option<String> {
-    Some(ssh_capture(&format!("sudo sed -n 's/^{key}=//p' {ENV_FILE}")).trim().to_string()).filter(|v| !v.is_empty())
-}
-
-// MARK: - Cloudflare's API, with wrangler's login
-
-struct Cf {
-    token: String,
-}
-
-struct Zone {
-    name: String,
-}
-
-impl Cf {
-    fn new(dir: &Path) -> Self {
-        let out = wrangler(dir, &["auth", "token", "--json"]).output().ok();
-        let token = out
-            .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
-            .and_then(|v| v["token"].as_str().map(str::to_string))
-            .unwrap_or_else(|| fail("could not read wrangler's Cloudflare login (npx wrangler login)"));
-        Self { token }
-    }
-
-    /// One API call; the `result` of a successful answer.
-    fn call(&self, method: &str, path: &str) -> Option<serde_json::Value> {
-        let out = curl_with_token(method, &format!("https://api.cloudflare.com/client/v4{path}"), &self.token);
-        let v: serde_json::Value = serde_json::from_str(&out).ok()?;
-        v["success"].as_bool().filter(|ok| *ok).map(|_| v["result"].clone())
-    }
-
-    fn list(&self, path: &str) -> Vec<serde_json::Value> {
-        self.call("GET", path).and_then(|r| r.as_array().cloned()).unwrap_or_default()
-    }
-
-    /// The account's active domains.
-    fn zones(&self) -> Vec<Zone> {
-        self.list("/zones?status=active&per_page=50")
-            .iter()
-            .filter_map(|z| Some(Zone { name: z["name"].as_str()?.to_string() }))
-            .collect()
-    }
-
-    /// Custom domains of the atlas-share Worker: (account, id, hostname).
-    fn worker_domains(&self) -> Vec<(String, String, String)> {
-        let mut out = Vec::new();
-        for account in self.list("/accounts?per_page=50") {
-            let Some(account) = account["id"].as_str() else { continue };
-            for d in self.list(&format!("/accounts/{account}/workers/domains?service={SUBDOMAIN}")) {
-                if let (Some(id), Some(host)) = (d["id"].as_str(), d["hostname"].as_str()) {
-                    out.push((account.to_string(), id.to_string(), host.to_string()));
-                }
-            }
-        }
-        out
-    }
-}
-
-/// curl with `Authorization: Bearer <token>` read from stdin, so the token
-/// never shows up in the process list.
-fn curl_with_token(method: &str, url: &str, token: &str) -> String {
-    let Ok(mut child) = Command::new("curl")
-        .args(["-sS", "--max-time", "60", "-X", method, "-H", "@-", url])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    else {
-        return String::new();
-    };
-    let _ = writeln!(child.stdin.take().expect("stdin"), "Authorization: Bearer {token}");
-    child.wait_with_output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
-}
-
-fn step(name: &str) {
-    println!("{DIM}→ {name}{RESET}");
-}
-
 /// The repo's share/ directory: ATLAS_SHARE_DIR, or found from here upwards.
-fn share_dir() -> Option<PathBuf> {
+pub(super) fn share_dir() -> Option<PathBuf> {
     if let Ok(d) = std::env::var("ATLAS_SHARE_DIR") {
         return Some(PathBuf::from(d)).filter(|p| p.join("wrangler.jsonc").is_file());
     }
@@ -433,7 +234,7 @@ fn share_dir() -> Option<PathBuf> {
     }
 }
 
-fn put_secret(dir: &PathBuf, name: &str, value: &str) {
+pub(super) fn put_secret(dir: &PathBuf, name: &str, value: &str) {
     let mut child = Command::new("npx")
         .args(["wrangler", "secret", "put", name])
         .current_dir(dir)
@@ -448,7 +249,7 @@ fn put_secret(dir: &PathBuf, name: &str, value: &str) {
     println!("  {name} set");
 }
 
-fn random_hex() -> String {
+pub(super) fn random_hex() -> String {
     let mut bytes = [0u8; 32];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut bytes))
@@ -458,79 +259,15 @@ fn random_hex() -> String {
 
 /// `https://atlas-share.<subdomain>.workers.dev` from wrangler's output
 /// record (one JSON object per line; the deploy entry lists its targets).
-fn workers_dev_url(printed: &str) -> Option<String> {
+pub(super) fn workers_dev_url(printed: &str) -> Option<String> {
     printed.split(|c: char| c.is_whitespace() || c == '"' || c == ',' || c == '[' || c == ']').find_map(|word| {
         let word = word.trim_matches(|c: char| !c.is_ascii_graphic() || c == '(' || c == ')');
         (word.starts_with("https://") && word.ends_with(".workers.dev")).then(|| word.to_string())
     })
 }
 
-fn health(url: &str, token: &str) -> bool {
+pub(super) fn health(url: &str, token: &str) -> bool {
     curl_with_token("GET", &format!("{url}/api/health"), token).contains("\"ok\":true")
-}
-
-// MARK: - status, ls, rm (through the server's API, on the server)
-
-/// Runs `curl` against the local atlas-server on the box with its token, so
-/// the token never leaves it. `rest` follows the URL. The header reaches curl
-/// on stdin (printf is a shell builtin), so the token is in no process list.
-fn api(method: &str, path: &str, format: &str) -> String {
-    ssh_capture(&format!(
-        "T=$(sudo sed -n 's/^ATLAS_TOKEN=//p' {ENV_FILE}); \
-         printf 'Authorization: Bearer %s\\n' \"$T\" | \
-         curl -fsS -X {method} -H @- http://127.0.0.1:8787/v1{path} | python3 -c {}",
-        shq(format)
-    ))
-}
-
-fn status() {
-    ensure_up();
-    let url = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_URL=//p' {ENV_FILE}")).trim().to_string();
-    if url.is_empty() {
-        println!("atlas-share is not set up. Run {GREEN}atlas share setup{RESET} in an atlas checkout.");
-        return;
-    }
-    let token = ssh_capture(&format!("sudo sed -n 's/^ATLAS_SHARE_TOKEN=//p' {ENV_FILE}")).trim().to_string();
-    let live = health(&url, &token);
-    println!(
-        "{}  {url}",
-        if live { format!("{GREEN}● live{RESET}") } else { format!("{RED}● not answering{RESET}") }
-    );
-    let n = api("GET", "/shares", "import json,sys; print(len(json.load(sys.stdin)['shares']))");
-    println!("{DIM}{} live links · every link expires after 7 days at the latest{RESET}", n.trim());
-}
-
-fn list() {
-    ensure_up();
-    let out = api(
-        "GET",
-        "/shares",
-        r#"import json,sys
-from datetime import datetime, timezone
-s = json.load(sys.stdin)["shares"]
-if not s: print("no live links")
-for x in s:
-    left = datetime.fromisoformat(x["expires_at"].replace("Z", "+00:00")) - datetime.now(timezone.utc)
-    state = x["state"] if x["state"] != "uploading" else "uploading %d%%" % (100 * x["done_bytes"] // max(x["total_bytes"], 1))
-    print("%s  %-28.28s %4d items  %-14s %dd %dh left\n  %s" % (x["id"], x["title"], x["count"], state, left.days, left.seconds // 3600, x["url"]))"#,
-    );
-    if out.trim().is_empty() {
-        fail("the server did not answer (is atlas-server running? `atlas deploy status`)");
-    }
-    print!("{out}");
-}
-
-fn stop(id: &str) {
-    if !id.chars().all(|c| c.is_ascii_alphanumeric()) {
-        fail("not a share id");
-    }
-    ensure_up();
-    let out = api("DELETE", &format!("/shares/{id}"), "import json,sys; print(json.load(sys.stdin).get('deleted'))");
-    if out.trim() == "True" {
-        println!("{GREEN}✓ stopped sharing {id}{RESET}");
-    } else {
-        fail("no such link, or the server did not answer");
-    }
 }
 
 #[cfg(test)]
