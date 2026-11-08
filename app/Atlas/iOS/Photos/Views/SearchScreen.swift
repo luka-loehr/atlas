@@ -27,9 +27,9 @@ struct SearchScreen: View {
                     // the photos run under the status bar and the pills of
                     // how the search was read, which float over them
                     AssetGrid(library: library, assets: result.items, selection: nil,
-                              onRefresh: { await run(query) })
+                              onRefresh: { await run(query) }, underBar: true)
                         .id(revision)
-                        .safeAreaInset(edge: .top, spacing: 0) {
+                        .overlay(alignment: .top) {
                             QueryChips(parts: result.understood, persons: result.persons, library: library)
                         }
                 }
