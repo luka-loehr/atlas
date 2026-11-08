@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::blobs::{collect_blobs, mime_for};
 use super::blob_path;
-use crate::photos::assets::{check_claimed_hash, header_time, receive};
+use crate::upload::{check_claimed_hash, header_time, receive};
 use crate::{ApiError, ApiResult, App, AppState, util};
 
 /// PUT /v1/drive/files — the raw file as the body.

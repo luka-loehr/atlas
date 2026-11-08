@@ -24,13 +24,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
+use atlas_core::vector::{dot, normalize};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
 use tokio::sync::RwLock;
 
 pub use atlas_core::EMBED_DIM as DIM;
-pub use atlas_core::vector::normalize;
-use atlas_core::vector::dot;
 
 /// Below this many vectors a kind is scored on the scale of the whole
 /// library: its own median and spread would be noise.
