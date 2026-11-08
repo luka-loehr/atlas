@@ -120,7 +120,9 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
                               AND coalesce(f.quality, 0) >= {MIN_SCORE_GROUP} AS named,
                             row_number() OVER (PARTITION BY f.person_id ORDER BY f.quality * f.width_px DESC NULLS LAST) AS n
                      FROM faces f JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
-                     WHERE f.kind = $1 AND f.{column} IS NOT NULL {model_filter}
+                     -- a face never joins a pet (a dog once named from a 'face'),
+                     -- a dog never a cat
+                     WHERE f.kind = $1 AND p.kind = $1 AND f.{column} IS NOT NULL {model_filter}
                  ) x WHERE n <= $2"
             ),
             &[&kind, &EXEMPLARS_PER_PERSON],

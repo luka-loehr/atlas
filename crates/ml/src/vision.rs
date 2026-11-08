@@ -655,7 +655,7 @@ pub async fn assign_face(
     let rows = tx
         .query(
             "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
-             JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
+             JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL AND p.kind = 'person'
              WHERE f.model = $2 AND f.kind = 'person' AND f.person_id IS NOT NULL
                AND coalesce(f.clarity, 99) >= $3
                AND ($4 OR (p.display_name IS NOT NULL
