@@ -199,12 +199,22 @@ struct MacPhotoBrowser: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        // whose photos these are: their face beside the title, as on the iPhone
-        if case .person(let person) = source, viewing == nil {
+        // whose photos these are: their face and name in a pill of its own
+        // beside the back button, like a search's pills
+        if case .person(let person) = source, viewing == nil, selection.isEmpty {
+            ToolbarSpacer(.fixed, placement: .navigation)
             ToolbarItem(placement: .navigation) {
-                FaceCircle(library: library, person: person)
-                    .frame(width: 26, height: 26)
-                    .accessibilityHidden(true)
+                HStack(spacing: 7) {
+                    FaceCircle(library: library, person: person)
+                        .frame(width: 26, height: 26)
+                    Text(person.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                .padding(.trailing, 8)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(person.displayName)
+                .accessibilityAddTraits(.isHeader)
             }
         }
         if viewing != nil {
@@ -318,7 +328,11 @@ struct MacPhotoBrowser: View {
     private var libraryHeader: Bool { source == .library && viewing == nil && selection.isEmpty }
 
     /// The window title gives way to the Library's header or a search's pills.
-    private var ownTitle: Bool { viewing == nil && selection.isEmpty && (libraryHeader || header != nil) }
+    private var ownTitle: Bool {
+        guard viewing == nil, selection.isEmpty else { return false }
+        if case .person = source { return true }
+        return libraryHeader || header != nil
+    }
 
     /// As the iPhone's Library: a large white title and the days on screen,
     /// with a soft shadow, at the top left over the photos.
