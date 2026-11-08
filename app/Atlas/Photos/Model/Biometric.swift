@@ -22,13 +22,3 @@ enum Biometric {
         }
     }
 }
-
-/// Album titles that Google Takeout uses for hidden/deleted content.
-enum SpecialAlbum {
-    static func isLocked(_ title: String) -> Bool {
-        ["Locked Folder", "Gesperrter Ordner"].contains(title)
-    }
-    static func isTrash(_ title: String) -> Bool {
-        ["Trash", "Papierkorb", "Bin"].contains(title)
-    }
-}

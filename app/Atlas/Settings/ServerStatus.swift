@@ -124,10 +124,7 @@ final class Machine {
     /// Runs until the calling task is cancelled; reconnects on drops.
     func watch(_ api: API) async {
         struct History: Decodable { var history: [MetricSample] }
-        var components = URLComponents(url: api.url("system/live"), resolvingAgainstBaseURL: false)!
-        components.scheme = components.scheme == "https" ? "wss" : "ws"
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(api.config.token)", forHTTPHeaderField: "Authorization")
+        let request = api.webSocketRequest("system/live")
 
         while !Task.isCancelled {
             let socket = API.session.webSocketTask(with: request)

@@ -53,7 +53,7 @@ final class WidgetShelf {
         // every album with its cover, for the picker and an unfilled widget
         let albums = try? await client.albums()
         if let albums {
-            let visible = albums.filter { !SpecialAlbum.isLocked($0.title) && !SpecialAlbum.isTrash($0.title) }
+            let visible = albums.filter(\.isUserAlbum)
             for album in visible {
                 var info = WidgetData.AlbumInfo(id: album.id, title: album.title, count: album.count, cover: nil)
                 if let cover = album.cover {

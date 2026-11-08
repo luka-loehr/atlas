@@ -60,6 +60,20 @@ struct Album: Codable, Sendable, Identifiable, Hashable {
     let title: String
     let count: Int
     let cover: String?
+
+    /// Not one of Takeout's "Trash" and "Locked Folder" rows, which show as
+    /// utilities instead.
+    var isUserAlbum: Bool { !SpecialAlbum.isLocked(title) && !SpecialAlbum.isTrash(title) }
+}
+
+/// Album titles that Google Takeout uses for hidden/deleted content.
+enum SpecialAlbum {
+    static func isLocked(_ title: String) -> Bool {
+        ["Locked Folder", "Gesperrter Ordner"].contains(title)
+    }
+    static func isTrash(_ title: String) -> Bool {
+        ["Trash", "Papierkorb", "Bin"].contains(title)
+    }
 }
 
 /// Bearer-token auth for the Atlas server. The token lives in the keychain

@@ -138,7 +138,7 @@ struct InfoSheet: View {
             parts.append("\(w) × \(h)")
         }
         if let b = info?.sizeBytes {
-            parts.append(ByteCountFormatter.string(fromByteCount: b, countStyle: .file))
+            parts.append(b.fileSize)
         }
         if let d = info?.durationS ?? asset.durationS {
             parts.append(Duration.seconds(d).formatted(.time(pattern: .minuteSecond)))

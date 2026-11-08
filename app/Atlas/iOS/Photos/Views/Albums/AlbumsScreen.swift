@@ -120,10 +120,7 @@ struct AlbumsScreen: View {
 
     // MARK: - Albums
 
-    private var userAlbums: [Album] {
-        // Takeout's "Trash" and "Locked Folder" rows show as utilities instead
-        albums.filter { !SpecialAlbum.isLocked($0.title) && !SpecialAlbum.isTrash($0.title) }
-    }
+    private var userAlbums: [Album] { albums.filter(\.isUserAlbum) }
 
     @ViewBuilder
     private var albumsSection: some View {

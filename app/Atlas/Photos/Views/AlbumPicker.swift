@@ -42,14 +42,10 @@ struct AddToAlbumSheet: View {
     var added: (Album) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
-    @State private var albums: [Album] = AlbumsMemo.albums.filter(AddToAlbumSheet.isUserAlbum)
+    @State private var albums: [Album] = AlbumsMemo.albums.filter(\.isUserAlbum)
     @State private var naming = false
     @State private var busy = false
     @State private var failed = false
-
-    static func isUserAlbum(_ a: Album) -> Bool {
-        !SpecialAlbum.isLocked(a.title) && !SpecialAlbum.isTrash(a.title)
-    }
 
     var body: some View {
         NavigationStack {
@@ -97,7 +93,7 @@ struct AddToAlbumSheet: View {
             .task {
                 guard let fresh = try? await library.client.albums() else { return }
                 AlbumsMemo.albums = fresh
-                albums = fresh.filter(Self.isUserAlbum)
+                albums = fresh.filter(\.isUserAlbum)
             }
         }
         .presentationDetents([.medium, .large])

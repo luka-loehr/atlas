@@ -192,22 +192,8 @@ struct PhotosScreen: View {
               let to = library.assets[hi].takenAt else {
             return library.assets.isEmpty ? "" : "\(library.assets.count.formatted()) Items"
         }
-        if Calendar.current.isDate(from, inSameDayAs: to) { return Self.day.string(from: to) }
-        return Self.range.string(from: min(from, to), to: max(from, to))
+        return DayRange.text(from, to)
     }
-
-    private static let range: DateIntervalFormatter = {
-        let f = DateIntervalFormatter()
-        f.locale = Locale(identifier: "en_GB")
-        f.dateTemplate = "dMMMyyyy"
-        return f
-    }()
-    private static let day: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_GB")
-        f.setLocalizedDateFormatFromTemplate("dMMMMyyyy")
-        return f
-    }()
 
     /// The timeline as one grid, oldest first, opened at its newest (bottom)
     /// end — like Apple Photos, without day headers. A UICollectionView (see

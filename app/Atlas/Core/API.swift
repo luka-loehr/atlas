@@ -58,6 +58,13 @@ struct API: Sendable {
         return components.url!
     }
 
+    /// A WebSocket request for `path` (ws, or wss behind https), with the token.
+    func webSocketRequest(_ path: String) -> URLRequest {
+        var components = URLComponents(url: url(path), resolvingAgainstBaseURL: false)!
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        return request(components.url!)
+    }
+
     func request(_ url: URL, method: String = "GET") -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
