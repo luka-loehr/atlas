@@ -1,6 +1,15 @@
 import SwiftUI
 
 struct RootView: View {
+    /// Choosing Search opens its field. ATLAS_NOFOCUS=1 keeps it closed in a
+    /// simulator, to see the tab as it is without the keyboard.
+    private static var searchActivation: TabSearchActivation {
+        #if targetEnvironment(simulator)
+        if ProcessInfo.processInfo.environment["ATLAS_NOFOCUS"] != nil { return .automatic }
+        #endif
+        return .searchTabSelection
+    }
+
     @Environment(Session.self) private var session
     @State private var library = Library()
     @Environment(\.scenePhase) private var scenePhase
@@ -44,7 +53,7 @@ struct RootView: View {
                 }
                 .tabBarMinimizeBehavior(.onScrollDown)
                 // choosing Search opens its field, the system's way (as Photos)
-                .tabViewSearchActivation(.searchTabSelection)
+                .tabViewSearchActivation(Self.searchActivation)
                 .onChange(of: tab) { old, new in
                     if new == "search", old != "search" { searchFrom = old }
                 }

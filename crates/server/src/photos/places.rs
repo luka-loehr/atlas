@@ -12,7 +12,8 @@ use crate::{ApiError, ApiResult, App, AppState, media};
 /// Places as the lists show them ([`place_json`]): each with the `assets`
 /// taken there; the caller adds WHERE and GROUP BY p.id.
 pub const SUMMARY: &str = "SELECT p.id, p.name, p.admin1, p.cc, count(*),
-                                  (array_agg(assets.id ORDER BY assets.taken_at DESC NULLS LAST))[1]
+                                  (array_agg(assets.id ORDER BY assets.taken_at DESC NULLS LAST))[1],
+                                  p.lat, p.lon
                            FROM places p
                            JOIN edges e ON e.dst_type = 'place' AND e.dst_id = p.id::text
                                        AND e.rel = 'taken_at' AND e.src_type = 'asset'
@@ -44,6 +45,9 @@ pub fn place_json(r: &tokio_postgres::Row) -> Value {
         "country": r.get::<_, Option<String>>(3),
         "photos": r.get::<_, i64>(4),
         "cover": r.get::<_, Option<String>>(5),
+        // where the town is, for the map of where photos were taken
+        "lat": r.get::<_, Option<f64>>(6),
+        "lon": r.get::<_, Option<f64>>(7),
     })
 }
 

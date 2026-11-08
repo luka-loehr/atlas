@@ -46,12 +46,16 @@ struct ViewerVideo: View {
             Thumb(url: poster)
                 .aspectRatio(contentMode: .fit)
             if let player {
-                PlayerLayerView(player: player)
+                // pinch to zoom into the playing video, as into a photo;
+                // its own taps: one toggles the chrome, two zoom
+                PlayerLayerView(player: player, onSingleTap: onTap)
                     .ignoresSafeArea()
+            } else {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTap() }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { onTap() }
         // Apple-style compact control pill: [play/pause | thin progress | mute]
         // — sits above the filmstrip block, capped width so landscape stays sane
         .overlay(alignment: .bottom) {
@@ -226,21 +230,80 @@ struct ViewerVideo: View {
 /// Bare AVPlayerLayer host (aspect-fit, no controls).
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    var onSingleTap: () -> Void = {}
 
     final class V: UIView {
         override class var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     }
 
-    func makeUIView(context: Context) -> V {
-        let v = V()
+    /// The video in a scroll view that zooms like a photo's: pinch up to
+    /// 5 ×, a double tap zooms in or back. At 1 × its pan is off, so the
+    /// pager (sideways) and swipe-to-close (down) keep every drag.
+    func makeUIView(context: Context) -> UIScrollView {
+        let scroll = UIScrollView()
+        scroll.delegate = context.coordinator
+        scroll.minimumZoomScale = 1
+        scroll.maximumZoomScale = 5
+        scroll.bounces = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.backgroundColor = .clear
+        scroll.contentInsetAdjustmentBehavior = .never
+        let v = context.coordinator.video
         v.playerLayer.player = player
         v.playerLayer.videoGravity = .resizeAspect
-        return v
+        v.frame = scroll.bounds
+        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scroll.addSubview(v)
+        let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
+        double.numberOfTapsRequired = 2
+        scroll.addGestureRecognizer(double)
+        let single = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.singleTap))
+        single.require(toFail: double)
+        scroll.addGestureRecognizer(single)
+        scroll.panGestureRecognizer.isEnabled = false
+        context.coordinator.onSingleTap = onSingleTap
+        #if targetEnvironment(simulator)
+        // ATLAS_ZOOM=<scale> zooms in after 3 s (no pinch in a simulator)
+        if let z = ProcessInfo.processInfo.environment["ATLAS_ZOOM"].flatMap(Double.init) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak scroll] in scroll?.setZoomScale(z, animated: true) }
+        }
+        #endif
+        return scroll
     }
 
-    func updateUIView(_ v: V, context: Context) {
+    func updateUIView(_ scroll: UIScrollView, context: Context) {
+        let v = context.coordinator.video
         if v.playerLayer.player !== player { v.playerLayer.player = player }
+        context.coordinator.onSingleTap = onSingleTap
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        let video = V()
+        var onSingleTap: () -> Void = {}
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { video }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > 1.01
+        }
+
+        @objc func singleTap() { onSingleTap() }
+
+        @objc func doubleTap(_ g: UITapGestureRecognizer) {
+            guard let scroll = g.view as? UIScrollView else { return }
+            if scroll.zoomScale > 1 {
+                scroll.setZoomScale(1, animated: true)
+            } else {
+                let pt = g.location(in: video)
+                let size = scroll.bounds.size
+                scroll.zoom(to: CGRect(x: pt.x - size.width / 6, y: pt.y - size.height / 6,
+                                       width: size.width / 3, height: size.height / 3), animated: true)
+            }
+        }
     }
 }
 

@@ -104,6 +104,7 @@
 		C27618F0EFAB1C79DF4AA81A /* SelectionToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12986C8F368AFE2E5D4B7F3 /* SelectionToolbar.swift */; platformFilters = (ios, ); };
 		C36C93A68B159912AABA81A0 /* DriveMovePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */; platformFilters = (ios, ); };
 		C411DDB0DAFF27B07CEB36B2 /* DriveTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA499FFCE1D33558571A14FF /* DriveTable.swift */; platformFilters = (macos, ); };
+		C4FE5F831E86440FF865782F /* SearchHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD27DD7D2430161CFE05E865 /* SearchHome.swift */; platformFilters = (ios, ); };
 		D0EC6C6B39BD10F0300FFAB2 /* PeopleGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE424C9BBD9236FEA7E19FA /* PeopleGrid.swift */; platformFilters = (macos, ); };
 		D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		D36B152669348685926167B1 /* RollingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E36321770160B47B8ADCCD2 /* RollingText.swift */; };
@@ -245,6 +246,7 @@
 		B94988A0DF0CD149CEDC3CD8 /* MacPhotoBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhotoBrowser.swift; sourceTree = "<group>"; };
 		BA0B00FC420C2CE93AC9FF9E /* SyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatus.swift; sourceTree = "<group>"; };
 		BA499FFCE1D33558571A14FF /* DriveTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTable.swift; sourceTree = "<group>"; };
+		BD27DD7D2430161CFE05E865 /* SearchHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchHome.swift; sourceTree = "<group>"; };
 		C254F95A6D6C2FB56F955308 /* DriveTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTransfer.swift; sourceTree = "<group>"; };
 		C46DFF7D27408F7CD27FB8C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CA9D76CA0F7E58F9146EA22C /* DriveMovePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMovePicker.swift; sourceTree = "<group>"; };
@@ -345,6 +347,7 @@
 			children = (
 				17FC3123B4D2457872DB17B0 /* PersonsScreen.swift */,
 				D264E2B00B01F24BBCD49CCB /* PhotoPickerSheet.swift */,
+				BD27DD7D2430161CFE05E865 /* SearchHome.swift */,
 				53C25286BF8F8BFB09171786 /* SearchScreen.swift */,
 				D12986C8F368AFE2E5D4B7F3 /* SelectionToolbar.swift */,
 				F7678B5765BB60548D5B2A9C /* SettingsScreen.swift */,
@@ -803,6 +806,7 @@
 				D36B152669348685926167B1 /* RollingText.swift in Sources */,
 				D8B0F166225B237DFE0552FD /* RootView.swift in Sources */,
 				1C9AFDC710803EB66CBE26D8 /* SearchExample.swift in Sources */,
+				C4FE5F831E86440FF865782F /* SearchHome.swift in Sources */,
 				BFD472F06AC8278CC0A9B05A /* SearchScreen.swift in Sources */,
 				956595182AE767C0B23605C4 /* Selection.swift in Sources */,
 				C27618F0EFAB1C79DF4AA81A /* SelectionToolbar.swift in Sources */,
@@ -936,7 +940,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -951,7 +955,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.5.5;
+				MARKETING_VERSION = 0.5.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1043,7 +1047,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1064,7 +1068,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.5.5;
+				MARKETING_VERSION = 0.5.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -14,8 +14,10 @@ struct SearchScreen: View {
         NavigationStack {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
-                if query.trimmingCharacters(in: .whitespaces).count < 2 {
-                    hint
+                if query.isEmpty {
+                    SearchHome(library: library) { query = $0 }
+                } else if query.trimmingCharacters(in: .whitespaces).count < 2 {
+                    Color.clear
                 } else if result.items.isEmpty && result.persons.isEmpty {
                     if searching {
                         ProgressView()
@@ -37,6 +39,14 @@ struct SearchScreen: View {
                 }
             }
             .navigationTitle("Search")
+            // the people, right above the search field, until a letter is typed
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if query.isEmpty {
+                    SearchPeopleBar(library: library) { query = $0 }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
+            .animation(.smooth(duration: 0.25), value: query.isEmpty)
             .navigationDestination(for: Person.self) { p in
                 PersonDetailScreen(library: library, person: p)
             }
@@ -71,8 +81,4 @@ struct SearchScreen: View {
         searching = false
     }
 
-    private var hint: some View {
-        ContentUnavailableView("Search Photos", systemImage: "magnifyingglass",
-                               description: Text("People, places, things or a year"))
-    }
 }
