@@ -27,12 +27,14 @@ struct AlbumsScreen: View {
                 VStack(alignment: .leading, spacing: 0) {
                     albumsSection
                     peopleSection
+                    PlacesSection(library: library)
                     listSection("Media Types", [.favorites, .videos])
                     listSection("Utilities", [.archive, .locked, .trash])
                 }
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
+            .defaultScrollAnchor(SimulatorHooks.scrolledDown ? .bottom : .top)
             .background(Color(.systemBackground))
             .refreshable { await load(); await loadCounts() }
             .navigationTitle("Albums")
