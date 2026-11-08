@@ -9,6 +9,8 @@ struct PlacesSection: View {
     @Namespace private var zoom
     /// ATLAS_SCREEN=map opens a simulator on the full map.
     @State private var showMap = SimulatorHooks.screen == "map"
+    /// ATLAS_SCREEN=covers: every place's card in one grid, to review them.
+    @State private var showCovers = SimulatorHooks.screen == "covers"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -43,12 +45,35 @@ struct PlacesSection: View {
             }
         }
         .navigationDestination(isPresented: $showMap) { PlacesMapScreen(library: library, places: places) }
+        .navigationDestination(isPresented: $showCovers) { CoverReview(library: library) }
         .task { await Covers.shared.load(library.client) }
         .task {
             if let fresh = try? await library.client.places() {
                 places = fresh
                 PlacesMemo.places = fresh
             }
+        }
+    }
+}
+
+/// Every place's card in one grid, the smallest places first: for
+/// reviewing the covers in a simulator (ATLAS_SCREEN=covers).
+private struct CoverReview: View {
+    var library: Library
+    @State private var places: [PlaceSummary] = []
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], spacing: 8) {
+                ForEach(places.reversed()) { place in
+                    PlaceCard(library: library, place: place).scaleEffect(0.66).frame(width: 100, height: 126)
+                }
+            }
+            .padding(8)
+        }
+        .task {
+            await Covers.shared.load(library.client)
+            places = (try? await library.client.places()) ?? []
         }
     }
 }
@@ -243,14 +268,15 @@ struct PlaceCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            GroupCover(library: library, id: Covers.shared.places[String(place.id)], symbol: "mappin.and.ellipse")
+            GroupCover(library: library, id: Covers.shared.places[String(place.id)], symbol: "mappin.and.ellipse",
+                       coordinate: place.coordinate)
                 .frame(width: 148, height: 188)
             LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 1) {
                 Text(place.name ?? "Unknown")
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                Text("\(place.photos.formatted()) photos")
+                Text("\(place.photos.formatted()) \(place.photos == 1 ? "photo" : "photos")")
                     .font(.caption)
                     .opacity(0.8)
                     .monospacedDigit()
@@ -269,7 +295,7 @@ struct PlaceCard: View {
 
 // MARK: - Places from the server
 
-struct PlaceSummary: Decodable, Identifiable, Hashable, Sendable {
+struct PlaceSummary: Codable, Identifiable, Hashable, Sendable {
     let id: Int64
     let name: String?
     let region: String?
@@ -294,35 +320,70 @@ final class Covers {
     private(set) var places: [String: String] = [:]
     private(set) var countries: [String: String] = [:]
     private(set) var years: [String: String] = [:]
-    private(set) var loaded = false
     @ObservationIgnored private var asked = Date.distantPast
+
+    private struct Saved: Codable {
+        var places: [String: String]
+        var countries: [String: String]
+        var years: [String: String]
+    }
+
+    /// The covers as last fetched, on the phone: the cards show their
+    /// photos at once after a launch, before the server is asked again.
+    private static let file = URL.cachesDirectory.appending(path: "covers.json")
+
+    private init() {
+        if let data = try? Data(contentsOf: Self.file), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
+            places = saved.places
+            countries = saved.countries
+            years = saved.years
+        }
+    }
 
     func load(_ client: PhotoClient) async {
         guard Date().timeIntervalSince(asked) > 1800 else { return }
         asked = Date()
-        struct R: Decodable {
-            let places: [String: String]
-            let countries: [String: String]
-            let years: [String: String]
+        guard let r: Saved = try? await client.get("/covers") else { asked = .distantPast; return }
+        if r.places != places { places = r.places }
+        if r.countries != countries { countries = r.countries }
+        if r.years != years { years = r.years }
+        let data = try? JSONEncoder().encode(r)
+        Task.detached(priority: .utility) { try? data?.write(to: Self.file, options: .atomic) }
+        warm(client)
+    }
+
+    /// The year and country covers, decoded into memory ahead, as the
+    /// search tab shows them: it opens complete, like the grid. (Their
+    /// files are grid thumbnails, kept on the phone with the grid's.)
+    private func warm(_ client: PhotoClient) {
+        let ids = Array(years.values) + Array(countries.values)
+        Task(priority: .utility) {
+            for id in ids {
+                guard let url = client.thumbURL(id, 512) else { continue }
+                if MediaCache.shared.cached(url, maxPixel: 480) == nil {
+                    _ = await MediaCache.shared.load(url, maxPixel: 480)
+                }
+            }
         }
-        guard let r: R = try? await client.get("/covers") else { asked = .distantPast; return }
-        places = r.places
-        countries = r.countries
-        years = r.years
-        loaded = true
     }
 }
 
-/// A card's picture: the cover photo, or a quiet ground with a symbol when
-/// the group has no photo good enough.
+/// A card's picture: the cover photo; for a place or country without a
+/// good one, a map of where it is; else a quiet ground with a symbol.
 struct GroupCover: View {
     var library: Library
     let id: String?
     var symbol: String? = nil
+    /// Where the group is, for the map instead of a photo.
+    var coordinate: CLLocationCoordinate2D? = nil
+    /// How much of the map shows, in degrees (a town, a country).
+    var span: Double = 0.12
 
     var body: some View {
         if let id {
             Thumb(url: library.client.thumbURL(id, 512), maxPixel: 480)
+        } else if let coordinate {
+            MapCover(coordinate: coordinate, span: span)
         } else {
             ZStack {
                 LinearGradient(colors: [Color(white: 0.32), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -337,10 +398,64 @@ struct GroupCover: View {
     }
 }
 
-/// The places as last fetched, so the search tab opens complete.
+/// A still map of a spot with a glow on it, drawn once by MapKit's
+/// snapshotter and kept, so a row of cards does not run live maps.
+private struct MapCover: View {
+    let coordinate: CLLocationCoordinate2D
+    let span: Double
+    @Environment(\.colorScheme) private var scheme
+    @State private var image: UIImage?
+
+    private var key: String {
+        String(format: "%.4f,%.4f,%.3f,%d", coordinate.latitude, coordinate.longitude, span, scheme == .dark ? 1 : 0)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color(.secondarySystemBackground)
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                    HeatSpot(weight: 0.5)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .task(id: key) { image = await Self.snapshot(coordinate, span, geo.size, scheme, key) }
+        }
+    }
+
+    private static let cache = NSCache<NSString, UIImage>()
+
+    private static func snapshot(_ c: CLLocationCoordinate2D, _ span: Double, _ size: CGSize,
+                                 _ scheme: ColorScheme, _ key: String) async -> UIImage? {
+        if let hit = cache.object(forKey: key as NSString) { return hit }
+        guard size.width > 0, size.height > 0 else { return nil }
+        let options = MKMapSnapshotter.Options()
+        options.region = MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span))
+        options.size = size
+        options.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
+        options.traitCollection = UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
+        guard let shot = try? await MKMapSnapshotter(options: options).start() else { return nil }
+        cache.setObject(shot.image, forKey: key as NSString)
+        return shot.image
+    }
+}
+
+/// The places as last fetched, kept on the phone, so Albums and Search
+/// open complete, also right after a launch.
 @MainActor
 enum PlacesMemo {
-    static var places: [PlaceSummary] = []
+    private static let file = URL.cachesDirectory.appending(path: "places.json")
+
+    static var places: [PlaceSummary] = {
+        guard let data = try? Data(contentsOf: file) else { return [] }
+        return (try? JSONDecoder().decode([PlaceSummary].self, from: data)) ?? []
+    }() {
+        didSet {
+            let data = try? JSONEncoder().encode(places)
+            Task.detached(priority: .utility) { try? data?.write(to: file, options: .atomic) }
+        }
+    }
 }
 
 extension PhotoClient {

@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 
 /// The search tab before anything is typed: the years and the countries,
 /// each searching for itself. The people ride above the search
@@ -42,6 +43,8 @@ struct SearchHome: View {
         var photos: Int
         var places: Int
         var cover: String?
+        /// The middle of its places, weighted by their photos.
+        var center: CLLocationCoordinate2D?
         var id: String { code }
         /// The flag, from the two letters of the country code.
         var flag: String {
@@ -63,6 +66,14 @@ struct SearchHome: View {
             c.places += 1
             out[cc] = c
         }
+        for (cc, c) in out {
+            let located = places.filter { $0.country == cc && $0.coordinate != nil }
+            let w = Double(located.reduce(0) { $0 + $1.photos })
+            guard w > 0 else { continue }
+            out[cc]?.center = CLLocationCoordinate2D(
+                latitude: located.reduce(0) { $0 + $1.lat! * Double($1.photos) } / w,
+                longitude: located.reduce(0) { $0 + $1.lon! * Double($1.photos) } / w)
+        }
         return out.values.sorted { $0.photos > $1.photos }
     }
 
@@ -74,14 +85,10 @@ struct SearchHome: View {
                     ForEach(countries) { c in
                         Button { onSearch(c.name) } label: {
                             ZStack(alignment: .bottomLeading) {
-                                ZStack {
-                                    GroupCover(library: library, id: Covers.shared.countries[c.code])
-                                    // no photo good enough: the flag stands in
-                                    if Covers.shared.countries[c.code] == nil {
-                                        Text(c.flag).font(.system(size: 54)).opacity(0.9).offset(x: 50, y: -18)
-                                    }
-                                }
-                                .frame(width: 210, height: 128)
+                                // no photo good enough: a map of the country
+                                GroupCover(library: library, id: Covers.shared.countries[c.code],
+                                           coordinate: c.center, span: 5)
+                                    .frame(width: 210, height: 128)
                                 LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 6) {

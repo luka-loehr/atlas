@@ -15,7 +15,7 @@ struct SearchScreen: View {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
                 if query.isEmpty {
-                    SearchHome(library: library) { query = $0 }
+                    SearchHome(library: library) { submit($0) }
                 } else if query.trimmingCharacters(in: .whitespaces).count < 2 {
                     Color.clear
                 } else if result.items.isEmpty && result.persons.isEmpty {
@@ -42,7 +42,7 @@ struct SearchScreen: View {
             // the people, right above the search field, until a letter is typed
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if query.isEmpty {
-                    SearchPeopleBar(library: library) { query = $0 }
+                    SearchPeopleBar(library: library) { submit($0) }
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
@@ -59,6 +59,12 @@ struct SearchScreen: View {
             // ATLAS_QUERY=... opens a simulator with that search (with ATLAS_TAB=search)
             if let q = ProcessInfo.processInfo.environment["ATLAS_QUERY"], query.isEmpty { query = q }
             #endif
+            #if targetEnvironment(simulator)
+            // ATLAS_PICK=... chooses that card 5 s after launch, as a tap would
+            if let pick = ProcessInfo.processInfo.environment["ATLAS_PICK"] {
+                Task { try? await Task.sleep(for: .seconds(5)); submit(pick) }
+            }
+            #endif
             example = await SearchExample.make(client: library.client)
             await library.client.warmSearch()
         }
@@ -66,6 +72,13 @@ struct SearchScreen: View {
             if old.isEmpty, !q.isEmpty { Task { await library.client.warmSearch() } }
             Task { await run(q) }
         }
+    }
+
+    /// A card or a pill was chosen: searched for at once, as if typed and
+    /// sent with the keyboard's search key (the keyboard goes down).
+    private func submit(_ term: String) {
+        query = term
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func run(_ q: String) async {

@@ -80,6 +80,12 @@ struct RootView: View {
             BackupService.shared.foreground()
             await library.start()
             CacheWarmer.shared.start(library)
+            // the covers of the search tab and the places, ready before
+            // the tab is opened
+            Task {
+                await Covers.shared.load(library.client)
+                if let fresh = try? await library.client.places() { PlacesMemo.places = fresh }
+            }
             // back online (or on Wi-Fi again): everything carries on at once
             NetworkWatch.shared.start {
                 guard session.isConnected else { return }
