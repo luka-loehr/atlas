@@ -42,6 +42,12 @@ const SEMANTIC_LIMIT: usize = 300;
 const FILTERED_TEXT_Z: f32 = 2.1;
 /// ... and when none does, the closest few are shown.
 const FILTERED_TEXT_FALLBACK: usize = 24;
+/// Results are shown in time, not by score, so what is shown must all be
+/// good: a hit is kept when it reaches this share of the best hit's z (of its
+/// kind). Embedding scores have heavy tails: the chance threshold alone let
+/// every everyday query fill all 300 places, and in time order the weak
+/// ones (a beach without a dog for "dog on the beach") came first.
+const RELATIVE_Z: f32 = 0.65;
 const STRUCTURED_LIMIT: i64 = 2000;
 
 /// The atlas-ml client: query embeddings with a small LRU in front.
@@ -176,10 +182,10 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
             &format!(
                 "SELECT p.id, p.display_name, p.cover_face_id, count(DISTINCT f.asset_id) AS photos, p.kind
                  FROM persons p JOIN faces f ON f.person_id = p.id JOIN assets ON assets.id = f.asset_id
-                 WHERE p.merged_into IS NULL AND NOT p.hidden AND (p.display_name ILIKE $1 OR p.id = ANY($2)) AND {VISIBLE}
+                 WHERE p.merged_into IS NULL AND NOT p.hidden AND (p.display_name ~* $1 OR p.id = ANY($2)) AND {VISIBLE}
                  GROUP BY p.id ORDER BY photos DESC LIMIT 8"
             ),
-            &[&like, &parsed.people.iter().map(|p| p.0).collect::<Vec<i64>>()],
+            &[&format!(r"\m{}", regex_escape(&term.to_lowercase())), &parsed.people.iter().map(|p| p.0).collect::<Vec<i64>>()],
         )
         .await?;
     let place_rows = c
@@ -216,7 +222,7 @@ pub async fn search(State(app): State<AppState>, Query(query): Query<SearchQuery
     let (mut assets, semantic) = if parsed.has_filters() {
         filtered(&app, &c, &parsed, embedding, &mut scores).await?
     } else {
-        open_search(&app, &c, &term, &parsed, embedding).await?
+        open_search(&app, &c, &term, &parsed, embedding, &mut scores).await?
     };
     // relevance decides what is found; it is shown in time, newest first,
     // like the library itself
@@ -364,7 +370,9 @@ async fn filtered(
             }
         };
         let z = |id: &str| scores.get(id).copied().unwrap_or(f32::MIN);
-        let matching = items.iter().filter(|(i, _)| reads.contains(&i.id) || z(&i.id) >= FILTERED_TEXT_Z).count();
+        let best = items.iter().map(|(i, _)| z(&i.id)).fold(f32::MIN, f32::max);
+        let bar = FILTERED_TEXT_Z.max(best * RELATIVE_Z);
+        let matching = items.iter().filter(|(i, _)| reads.contains(&i.id) || z(&i.id) >= bar).count();
         items.sort_by(|a, b| {
             let (ra, rb) = (reads.contains(&a.0.id), reads.contains(&b.0.id));
             rb.cmp(&ra).then(z(&b.0.id).total_cmp(&z(&a.0.id)))
@@ -392,6 +400,7 @@ async fn open_search(
     term: &str,
     parsed: &query::Parsed,
     embedding: Embedding,
+    debug_scores: &mut Vec<f32>,
 ) -> ApiResult<(Columns, &'static str)> {
     let like = format!("%{}%", util::like_escape(term));
     let text_like = text_pattern(&parsed.text.clone().unwrap_or_else(|| term.to_string()));
@@ -401,16 +410,10 @@ async fn open_search(
         .query(
             &format!(
                 "WITH hits AS (
-                     SELECT f.asset_id AS id, 0 AS rank FROM faces f JOIN persons p ON p.id = f.person_id
-                     WHERE p.display_name ILIKE $1 AND NOT p.hidden AND p.merged_into IS NULL
-                   UNION ALL
-                     SELECT e.src_id, 1 FROM edges e JOIN places p ON e.dst_id = p.id::text
-                     WHERE e.rel = 'taken_at' AND e.dst_type = 'place' AND e.src_type = 'asset'
-                       AND (p.name ILIKE $1 OR p.admin1 ILIKE $1)
-                   UNION ALL
-                     SELECT aa.asset_id, 2 FROM album_assets aa JOIN albums a ON a.id = aa.album_id WHERE a.title ILIKE $1
-                   UNION ALL
-                     SELECT t.asset_id, 3 FROM asset_text t WHERE lower(t.text) ~ $2
+                     -- whole names, places and albums are filters (query.rs);
+                     -- a word that only begins one ('car' of Carla) is offered
+                     -- as a suggestion above the results, not as its photos
+                     SELECT t.asset_id AS id, 3 AS rank FROM asset_text t WHERE lower(t.text) ~ $2
                    UNION ALL
                      SELECT a.id, 4 FROM assets a
                      WHERE a.orig_name ILIKE $1 OR ($3::text IS NOT NULL AND to_char(a.taken_at, 'YYYY') = $3)
@@ -436,6 +439,7 @@ async fn open_search(
         let item = Item::from_row(row, app.cfg.tz);
         seen.insert(item.id.clone());
         assets.push(item);
+        debug_scores.push(99.0);
     }
 
     // a query that names a person, place, album or year outright is answered
@@ -451,9 +455,20 @@ async fn open_search(
             Ok(Ok(vector)) => {
                 let hits = app.ml.vectors.search(&app.pool, vector, SEMANTIC_LIMIT).await?;
                 let confident = confident(&hits);
+                // the best of each kind (stills and clips have their own scale)
+                let mut best: Vec<(f32, f32)> = Vec::new();
+                for h in &hits {
+                    match best.iter_mut().find(|(kind, _)| *kind == h.chance_tail) {
+                        Some((_, z)) => *z = z.max(h.z),
+                        None => best.push((h.chance_tail, h.z)),
+                    }
+                }
+                let bar = |h: &super::vectors::Hit| {
+                    best.iter().find(|(kind, _)| *kind == h.chance_tail).map_or(f32::MAX, |(_, z)| z * RELATIVE_Z)
+                };
                 let wanted: Vec<&String> = hits
                     .iter()
-                    .filter(|h| confident && h.z >= h.chance_tail && !seen.contains(&h.id))
+                    .filter(|h| confident && h.z >= h.chance_tail && h.z >= bar(h) && !seen.contains(&h.id))
                     .map(|h| &h.id)
                     .collect();
                 if !wanted.is_empty() {
@@ -463,9 +478,11 @@ async fn open_search(
                         .await?;
                     let mut by_id: HashMap<String, Item> =
                         found.iter().map(|r| Item::from_row(r, app.cfg.tz)).map(|i| (i.id.clone(), i)).collect();
+                    let z: HashMap<&String, f32> = hits.iter().map(|h| (&h.id, h.z)).collect();
                     for id in wanted {
                         if let Some(item) = by_id.remove(id) {
                             assets.push(item);
+                            debug_scores.push(z.get(id).copied().unwrap_or(0.0));
                         }
                     }
                 }
