@@ -123,6 +123,8 @@ struct PersonDetailScreen: View {
         }
         .navigationTitle(person.displayName)
         .inlineNavigationTitle()
+        // the photos show through the bar, the grid's shade keeps the title readable
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             // the title with a small face of who it is
             ToolbarItem(placement: .principal) {
