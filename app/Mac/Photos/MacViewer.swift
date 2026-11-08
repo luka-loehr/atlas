@@ -263,6 +263,11 @@ final class ZoomScrollView: NSScrollView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         contentView = CenteringClipView()
+        // the viewer's frame is the photo's room: no room of its own for
+        // the toolbar it floats under, so the photo is fitted and centred
+        // in exactly what the viewer covers
+        automaticallyAdjustsContentInsets = false
+        contentInsets = NSEdgeInsetsZero
         drawsBackground = false
         hasVerticalScroller = true
         hasHorizontalScroller = true

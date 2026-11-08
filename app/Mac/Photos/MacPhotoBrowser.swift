@@ -178,9 +178,11 @@ struct MacPhotoBrowser: View {
                 MacViewer(library: library, assets: shown, current: Binding(get: { viewing }, set: { self.viewing = $0 }),
                           onClose: closeViewer,
                           onFavorite: { actions(for: [viewing]).toggleFavorite?() })
-                    // the whole window, up to its top edge: the toolbar's
-                    // glass floats over the photo, as on the iPhone
-                    .ignoresSafeArea()
+                    // the window's full height, up to its top edge: the
+                    // toolbar's glass floats over the photo, as on the
+                    // iPhone. Not under the sidebar, which floats on the
+                    // left: the previous arrow would hide behind it
+                    .ignoresSafeArea(edges: [.top, .bottom])
                     .transition(.opacity)
             }
             if busy { BusyOverlay() }
