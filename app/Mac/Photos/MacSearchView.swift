@@ -13,30 +13,10 @@ struct MacSearchView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if let result {
-                    if !result.understood.isEmpty {
-                        QueryChips(parts: result.understood)
-                        Divider()
-                    }
-                    if !result.persons.isEmpty {
-                        ScrollView(.horizontal) {
-                            HStack(spacing: 16) {
-                                ForEach(result.persons) { person in
-                                    Button { window.open(person) } label: {
-                                        VStack(spacing: 4) {
-                                            FaceCircle(library: model.library, person: person).frame(width: 64, height: 64)
-                                            Text(person.displayName).font(.caption).lineLimit(1)
-                                        }
-                                        .frame(width: 80)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                        }
-                        .scrollIndicators(.hidden)
-                        Divider()
-                    }
+                    // how the search was read, as the iPhone shows it: glass
+                    // pills, people and pets with their faces, wrapping
+                    QueryChips(parts: result.understood, persons: result.persons, library: model.library,
+                               onPerson: { window.open($0) })
                     if !result.semantic {
                         Label("Searching by content is unavailable right now: names, places and albums only.",
                               systemImage: "exclamationmark.triangle")

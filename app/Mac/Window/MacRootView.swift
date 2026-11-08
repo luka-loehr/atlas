@@ -10,6 +10,7 @@ struct MacRootView: View {
     @SceneStorage("sidebar") private var savedSidebar: Data?
     @State private var newAlbum = false
     @State private var searchExample = SearchExample.placeholder
+    @FocusState private var searchFocused: Bool
     @State private var linkError: String?
 
     var body: some View {
@@ -59,13 +60,15 @@ struct MacRootView: View {
         }
         .searchable(text: $window.search, placement: .toolbar,
                     prompt: window.sidebar?.searchesFiles == true ? "Search Files" : searchExample)
+        .searchFocused($searchFocused)
         .task(id: session.config) { searchExample = await SearchExample.make(client: model.library.client) }
         .focusedSceneValue(\.windowActions, WindowActions(
             state: window,
             newAlbum: { newAlbum = true },
             upload: window.upload,
             newFolder: window.newFolder,
-            refresh: { Task { await model.refresh() } }))
+            refresh: { Task { await model.refresh() } },
+            find: { searchFocused = true }))
         .albumNameAlert("New Album", isPresented: $newAlbum) { title in
             guard !title.isEmpty else { return }
             Task {

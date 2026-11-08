@@ -8,6 +8,8 @@ struct QueryChips: View {
     /// face instead of an icon, and opens them.
     var persons: [Person] = []
     var library: Library?
+    /// Opens a person or pet; without it the chip is a navigation link.
+    var onPerson: ((Person) -> Void)? = nil
 
     var body: some View {
         if parts.count > 1 || parts.contains(where: { $0.kind != "text" }) {
@@ -28,7 +30,7 @@ struct QueryChips: View {
     @ViewBuilder
     private func chip(_ part: PhotoClient.QueryPart) -> some View {
         if let library, let who = persons.first(where: { $0.id == part.person }) {
-            NavigationLink(value: who) {
+            PersonChipLink(person: who, open: onPerson) {
                 HStack(spacing: 7) {
                     FaceCircle(library: library, person: who)
                         .frame(width: 30, height: 30)
@@ -109,5 +111,21 @@ struct HiddenPeopleSheet: View {
         #if os(macOS)
         .frame(minWidth: 360, minHeight: 420)
         #endif
+    }
+}
+
+/// A pill that opens a person: through `open` when given (the Mac window),
+/// else as a navigation link.
+private struct PersonChipLink<Label: View>: View {
+    let person: Person
+    let open: ((Person) -> Void)?
+    @ViewBuilder let label: () -> Label
+
+    var body: some View {
+        if let open {
+            Button { open(person) } label: { label() }
+        } else {
+            NavigationLink(value: person) { label() }
+        }
     }
 }

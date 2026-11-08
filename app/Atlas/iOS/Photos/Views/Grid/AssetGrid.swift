@@ -47,7 +47,7 @@ private final class AssetOrder {
     func resolve(_ assets: [Asset]) -> ([Asset], Int) {
         if let input, input == assets { return (ordered, revision) }
         input = assets
-        ordered = Self.ordered(assets)
+        ordered = assets.timelineOrdered()
         revision = Self.revision(assets)
         return (ordered, revision)
     }
@@ -58,17 +58,5 @@ private final class AssetOrder {
         h.combine(assets.count)
         for a in assets { h.combine(a.id); h.combine(a.favorite) }
         return h.finalize()
-    }
-
-    /// Oldest first; undated before everything, as in the timeline.
-    private static func ordered(_ assets: [Asset]) -> [Asset] {
-        assets.enumerated().sorted { a, b in
-            switch (a.element.takenAt, b.element.takenAt) {
-            case let (x?, y?) where x != y: x < y
-            case (nil, _?): true
-            case (_?, nil): false
-            default: a.offset < b.offset
-            }
-        }.map(\.element)
     }
 }

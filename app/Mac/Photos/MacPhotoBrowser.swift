@@ -125,7 +125,9 @@ struct MacPhotoBrowser: View {
                     }
                 } else {
                     MacPhotoGrid(assets: shown, revision: shownRevision, cellSize: GridZoom.sizes[window.zoom],
-                                 selection: $selection, startAtEnd: source == .library, reveal: reveal,
+                                 // every grid reads like the library: oldest at the top,
+                                 // opened at the newest end
+                                 selection: $selection, startAtEnd: true, reveal: reveal,
                                  onOpen: { open($0) },
                                  menu: { contextMenu($0) },
                                  onTopIndex: { i in
@@ -167,6 +169,14 @@ struct MacPhotoBrowser: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        // whose photos these are: their face beside the title, as on the iPhone
+        if case .person(let person) = source, viewing == nil {
+            ToolbarItem(placement: .navigation) {
+                FaceCircle(library: library, person: person)
+                    .frame(width: 26, height: 26)
+                    .accessibilityHidden(true)
+            }
+        }
         if viewing != nil {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.backward") { closeViewer() }
@@ -288,7 +298,7 @@ struct MacPhotoBrowser: View {
 
     private func load() async {
         if let given {
-            assets = given
+            assets = given.timelineOrdered()
             revision &+= 1
             loaded = true
             return
@@ -308,10 +318,11 @@ struct MacPhotoBrowser: View {
             case .person(let person): fresh = try await client.personAssets(person.id)
             case .search: fresh = []
             }
-            if fresh != assets {
-                assets = fresh
+            let ordered = fresh.timelineOrdered()
+            if ordered != assets {
+                assets = ordered
                 revision &+= 1
-                selection.formIntersection(Set(fresh.map(\.id)))
+                selection.formIntersection(Set(ordered.map(\.id)))
             }
         } catch {}
         loaded = true

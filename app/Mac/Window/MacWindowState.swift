@@ -112,6 +112,8 @@ struct WindowActions {
     var upload: (() -> Void)?
     var newFolder: (() -> Void)?
     var refresh: () -> Void
+    /// Edit › Find: into the toolbar's search field.
+    var find: () -> Void = {}
 }
 
 extension FocusedValues {

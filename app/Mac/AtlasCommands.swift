@@ -24,6 +24,12 @@ struct AtlasCommands: Commands {
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(window?.upload == nil)
         }
+        // Edit › Find: the search field, as Search does on the iPhone
+        CommandGroup(after: .textEditing) {
+            Button("Find") { window?.find() }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(window == nil || !model.session.isConnected)
+        }
         CommandGroup(replacing: .importExport) {
             Button(photos.map { $0.count == 1 ? "Export Original…" : "Export \($0.count.formatted()) Originals…" } ?? "Export Originals…") {
                 photos?.export?()

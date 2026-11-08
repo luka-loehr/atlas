@@ -52,6 +52,7 @@
 		4E34BB3326631D75081F2FE9 /* AtlasMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2363D683E2288F19E1124A51 /* AtlasMacApp.swift */; platformFilters = (macos, ); };
 		57116F3329D0BA5DA957D292 /* ConnectScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B246155FFF051E0A8C4DA911 /* ConnectScreen.swift */; platformFilters = (ios, ); };
 		5A7EF456EA5C6C75BD08F40A /* AssetGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = F646C38308085E1520FF4D0C /* AssetGrid.swift */; platformFilters = (ios, ); };
+		5ABDC119C4CD725C42E96CD7 /* AssetOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCA0E15530BD683D76A3B50 /* AssetOrder.swift */; };
 		5E21D44E09283739FFE6C30D /* LiveChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9328AC789B96004034ABEEA /* LiveChart.swift */; };
 		5E57388F9963D2BC508EFEB4 /* DriveMoveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E2484C9557983B13809B9C /* DriveMoveSheet.swift */; platformFilters = (macos, ); };
 		5E60F762C60F6A0CA366D8E8 /* CircleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD35A2042E918FFCD8B58A6 /* CircleButton.swift */; platformFilters = (ios, ); };
@@ -179,6 +180,7 @@
 		390CC0F5748C19C73377E491 /* MacPeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPeopleView.swift; sourceTree = "<group>"; };
 		3B053E2A052D48A419DFEB83 /* AtlasCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasCommands.swift; sourceTree = "<group>"; };
 		3D94CFC20F4C2ACF417D4E14 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
+		3DCA0E15530BD683D76A3B50 /* AssetOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetOrder.swift; sourceTree = "<group>"; };
 		413A56C9FFE04C7BBD65B964 /* Atlas.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Atlas.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		42382391BF98FCFBC6652A25 /* GridTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridTiles.swift; sourceTree = "<group>"; };
 		43DD1BC1C950C364DA8711C6 /* MacPhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhotoGrid.swift; sourceTree = "<group>"; };
@@ -564,6 +566,7 @@
 			isa = PBXGroup;
 			children = (
 				16FBC23EEED736F63F0D8977 /* AssetInfo.swift */,
+				3DCA0E15530BD683D76A3B50 /* AssetOrder.swift */,
 				B889991DE1B8C307BA3F6226 /* Biometric.swift */,
 				E6DFCE51C82D8ACBDDF63B5E /* DriveClient.swift */,
 				4D37F62453CBAD3DFE4B4C67 /* Library.swift */,
@@ -716,6 +719,7 @@
 				1DC3C73849F45BCB707630B6 /* AssetFilePromise.swift in Sources */,
 				5A7EF456EA5C6C75BD08F40A /* AssetGrid.swift in Sources */,
 				97A9E5F0542B3BED6F548DD2 /* AssetInfo.swift in Sources */,
+				5ABDC119C4CD725C42E96CD7 /* AssetOrder.swift in Sources */,
 				EA1FD7A429811C09898F23A9 /* AtlasApp.swift in Sources */,
 				3893BFB56D24023F68C73746 /* AtlasCommands.swift in Sources */,
 				4E34BB3326631D75081F2FE9 /* AtlasMacApp.swift in Sources */,
