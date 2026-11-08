@@ -11,6 +11,10 @@ struct AtlasCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        // Atlas › Check for Updates…, under About Atlas
+        CommandGroup(after: .appInfo) {
+            CheckForUpdatesButton()
+        }
         // Atlas › Settings…: the server page holds the connection and storage
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") {

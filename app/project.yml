@@ -9,8 +9,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.5.26"
-    CURRENT_PROJECT_VERSION: "38"
+    MARKETING_VERSION: "0.5.27"
+    CURRENT_PROJECT_VERSION: "39"
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -26,6 +26,11 @@ packages:
     # 1.12 and later ship Metal shaders, which need Xcode's optional Metal
     # toolchain; this is the newest version that builds without it.
     exactVersion: "1.11.2"
+  # The Mac app updates itself from the GitHub releases (see
+  # scripts/release-mac.sh): an appcast and EdDSA-signed, notarized builds.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 
 targets:
   # One app target for iPhone, iPad and Mac. On the Mac it is a native
@@ -53,6 +58,8 @@ targets:
         destinationFilters: [iOS]
     dependencies:
       - package: SwiftTerm
+      - package: Sparkle
+        destinationFilters: [macOS]
       - target: AtlasWidget
         destinationFilters: [iOS]
     entitlements:
@@ -110,6 +117,8 @@ targets:
         # hardened runtime, as Apple requires for Mac apps.
         INFOPLIST_FILE[sdk=macosx*]: Mac/Info.plist
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: Mac/Atlas.entitlements
+        # a Mac app keeps its frameworks (Sparkle) in Contents/Frameworks
+        LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]: "$(inherited) @executable_path/../Frameworks"
         ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
         ENABLE_APP_SANDBOX[sdk=macosx*]: YES
         COMBINE_HIDPI_IMAGES[sdk=macosx*]: YES

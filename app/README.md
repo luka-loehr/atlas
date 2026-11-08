@@ -51,6 +51,16 @@ both; `atlas connect` on the Mac prints an `atlas://connect?…` link that fills
 them in. The address lives in the app's preferences, the token in the
 keychain.
 
+## Updates
+
+The Mac app updates itself with [Sparkle](https://sparkle-project.org): once a
+day it reads `appcast.xml` from the latest GitHub release, downloads a newer
+version in the background and installs it when the app quits (Atlas › Check
+for Updates… does it at once). Development builds never update themselves.
+Every update is notarized by Apple and signed with the release key, whose
+public half is `SUPublicEDKey` in `Mac/Info.plist`;
+[`scripts/release-mac.sh`](../scripts/release-mac.sh) builds and publishes one.
+
 ## Layout
 
 `Atlas/` compiles for both platforms, `Atlas/iOS/` for iPhone and iPad only,

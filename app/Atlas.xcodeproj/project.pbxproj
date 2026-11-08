@@ -85,6 +85,7 @@
 		A1536074D55D236A9DE4D56D /* PhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51347611FF441B9BA833289A /* PhotosScreen.swift */; platformFilters = (ios, ); };
 		A2C7073788CF620F2B6C6E19 /* Thumb.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF8B301C402F482F178FB754 /* Thumb.swift */; };
 		A4EAFF11033EC581BED443B1 /* MacSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5405CB97203B0FB5E62FC000 /* MacSearchView.swift */; platformFilters = (macos, ); };
+		A53FD826E6A4D1B244696FDB /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E7F3F07B08C94843E50EF9 /* Updater.swift */; platformFilters = (macos, ); };
 		A875DD7D05C7CE69D0D7F973 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76871E3F07CC864F93E10B7 /* WidgetData.swift */; platformFilters = (ios, ); };
 		A8DA5F346E6AE7F19A97395A /* Collections.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD5E9FDC02055957662190D2 /* Collections.swift */; };
 		AAFB964E17832FE8B8F82814 /* DriveFolderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7720668F8A47F3058C0E8191 /* DriveFolderScreen.swift */; platformFilters = (ios, ); };
@@ -106,6 +107,7 @@
 		C411DDB0DAFF27B07CEB36B2 /* DriveTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA499FFCE1D33558571A14FF /* DriveTable.swift */; platformFilters = (macos, ); };
 		C4FE5F831E86440FF865782F /* SearchHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD27DD7D2430161CFE05E865 /* SearchHome.swift */; platformFilters = (ios, ); };
 		D0EC6C6B39BD10F0300FFAB2 /* PeopleGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE424C9BBD9236FEA7E19FA /* PeopleGrid.swift */; platformFilters = (macos, ); };
+		D0FE94C1165FCCCE4B5B880B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 4909CB183807F1D5FABC33B4 /* Sparkle */; };
 		D2374157FE8DCA7398E78A52 /* AlbumWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C44E003C7015229212F844 /* AlbumWidgetIntent.swift */; };
 		D36B152669348685926167B1 /* RollingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E36321770160B47B8ADCCD2 /* RollingText.swift */; };
 		D7345699CBC7C0C2AD68DBA9 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D30ABEFCAFF47D2CAB9130 /* MacRootView.swift */; platformFilters = (macos, ); };
@@ -202,6 +204,7 @@
 		536ECEC16062D6354BC9B4DF /* Machine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Machine.swift; sourceTree = "<group>"; };
 		53C25286BF8F8BFB09171786 /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
 		5405CB97203B0FB5E62FC000 /* MacSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSearchView.swift; sourceTree = "<group>"; };
+		54E7F3F07B08C94843E50EF9 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 		57DCD414C30D14BACDA77E4C /* MediaFetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaFetch.swift; sourceTree = "<group>"; };
 		5B154AE6158E42E13D7C2129 /* AtlasWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtlasWidget.entitlements; sourceTree = "<group>"; };
 		5B4C46A56CF0AE11FC5693F5 /* PhotoGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGridView.swift; sourceTree = "<group>"; };
@@ -282,6 +285,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0AAF8EEA58074547751EEC43 /* SwiftTerm in Frameworks */,
+				D0FE94C1165FCCCE4B5B880B /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,6 +324,7 @@
 			isa = PBXGroup;
 			children = (
 				07A3751A674451EDAC49585F /* MacHelpers.swift */,
+				54E7F3F07B08C94843E50EF9 /* Updater.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -660,6 +665,7 @@
 			name = Atlas;
 			packageProductDependencies = (
 				445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */,
+				4909CB183807F1D5FABC33B4 /* Sparkle */,
 			);
 			productName = Atlas;
 			productReference = 413A56C9FFE04C7BBD65B964 /* Atlas.app */;
@@ -694,6 +700,7 @@
 			mainGroup = 70A20106B8807AFCC4851B2C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				12C6D9475B6BB45A531AAA85 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				A073139498CB5D5F963406BB /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -829,6 +836,7 @@
 				A2C7073788CF620F2B6C6E19 /* Thumb.swift in Sources */,
 				4947046CB18DF93A6874DECE /* ThumbFill.swift in Sources */,
 				7349349CB51C60EF9013502D /* TimeScrubber.swift in Sources */,
+				A53FD826E6A4D1B244696FDB /* Updater.swift in Sources */,
 				31B752A51AC10556F35A3DCB /* VideoCache+File.swift in Sources */,
 				BD4B6D15B16103087A7BDB58 /* VideoCache.swift in Sources */,
 				3E1D484E9DBD0413A3E18195 /* ViewerPage.swift in Sources */,
@@ -880,6 +888,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.atlas.ios;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -944,7 +953,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -959,7 +968,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.5.26;
+				MARKETING_VERSION = 0.5.27;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1004,6 +1013,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.lukaloehr.atlas.ios;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -1051,7 +1061,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1072,7 +1082,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.5.26;
+				MARKETING_VERSION = 0.5.27;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1117,6 +1127,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		12C6D9475B6BB45A531AAA85 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 		A073139498CB5D5F963406BB /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
@@ -1132,6 +1150,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A073139498CB5D5F963406BB /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
+		};
+		4909CB183807F1D5FABC33B4 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 12C6D9475B6BB45A531AAA85 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

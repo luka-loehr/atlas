@@ -330,7 +330,7 @@ final class Covers {
 
     /// The covers as last fetched, on the phone: the cards show their
     /// photos at once after a launch, before the server is asked again.
-    private static let file = URL.cachesDirectory.appending(path: "covers.json")
+    nonisolated private static let file = URL.cachesDirectory.appending(path: "covers.json")
 
     private init() {
         if let data = try? Data(contentsOf: Self.file), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
@@ -445,7 +445,7 @@ private struct MapCover: View {
 /// open complete, also right after a launch.
 @MainActor
 enum PlacesMemo {
-    private static let file = URL.cachesDirectory.appending(path: "places.json")
+    nonisolated private static let file = URL.cachesDirectory.appending(path: "places.json")
 
     static var places: [PlaceSummary] = {
         guard let data = try? Data(contentsOf: file) else { return [] }

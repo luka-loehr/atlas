@@ -74,6 +74,8 @@ final class RollingTextView: PlatformView {
         isUserInteractionEnabled = false
         backgroundColor = .clear
         layer.masksToBounds = false
+        // light and dark mode: the layers' colors follow
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: RollingTextView, _) in view.recolor() }
         #endif
     }
 
@@ -226,10 +228,6 @@ final class RollingTextView: PlatformView {
         super.didMoveToWindow()
         scale = window?.screen.scale ?? 3
         for l in slots { l.contentsScale = scale }
-    }
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        recolor()
     }
     #endif
 }

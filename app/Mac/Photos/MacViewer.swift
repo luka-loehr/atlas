@@ -434,7 +434,7 @@ private struct MacVideoPage: View {
 
     var body: some View {
         ZStack {
-            if let player {
+            if player != nil {
                 VideoSurfaceView(surface: surface)
                     // a click shows or hides the controls; only space and the
                     // bar's button play and pause

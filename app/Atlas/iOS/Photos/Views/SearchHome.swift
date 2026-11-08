@@ -66,7 +66,7 @@ struct SearchHome: View {
             c.places += 1
             out[cc] = c
         }
-        for (cc, c) in out {
+        for cc in out.keys {
             let located = places.filter { $0.country == cc && $0.coordinate != nil }
             let w = Double(located.reduce(0) { $0 + $1.photos })
             guard w > 0 else { continue }

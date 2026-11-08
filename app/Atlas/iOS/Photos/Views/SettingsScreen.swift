@@ -160,7 +160,8 @@ struct SettingsScreen: View {
             Text(title).foregroundStyle(.primary)
             Spacer()
             Text(value)
-                .font(.system(size: 15, weight: .medium))
+                // 15 pt by default, and it follows the reader's text size
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
