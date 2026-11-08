@@ -11,13 +11,10 @@ struct DriveScreen: View {
     var library: Library
     /// The search tab opened from Dateien: the root becomes a file search.
     var searchMode = false
-    /// The tab bar's search field (in search mode).
-    var query = ""
 
     var body: some View {
         NavigationStack {
-            DriveFolderScreen(client: DriveClient(host: library.host), isRoot: true, searchMode: searchMode,
-                              searchText: query)
+            DriveFolderScreen(client: DriveClient(host: library.host), isRoot: true, searchMode: searchMode)
                 .navigationDestination(for: DriveFolder.self) { f in
                     DriveFolderScreen(client: DriveClient(host: library.host),
                                       folder: f.id, title: f.name)
@@ -53,8 +50,6 @@ struct DriveFolderScreen: View {
     var title: String = "Files"
     var isRoot: Bool = false
     var searchMode: Bool = false
-    /// What the tab bar's search field holds (in search mode).
-    var searchText = ""
 
     @State private var listing = DriveListing()
     @State private var loaded = false
@@ -74,11 +69,16 @@ struct DriveFolderScreen: View {
     @State private var uploadTotal = 0
     @State private var changeFailed = false
 
+    @State private var searchText = ""
     @State private var results: DriveListing?
 
     var body: some View {
         Group {
-            content
+            if searchMode {
+                content.searchable(text: $searchText, prompt: "Search Files")
+            } else {
+                content
+            }
         }
         .navigationTitle(searchMode ? "Search" : title)
         .navigationBarTitleDisplayMode(isRoot ? .large : .inline)

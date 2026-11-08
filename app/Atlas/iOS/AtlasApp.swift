@@ -96,10 +96,6 @@ struct RootView: View {
     /// The tab the search button was pressed from: Dateien searches files,
     /// every other tab searches photos.
     @State private var searchFrom = "photos"
-    /// The search field: on the tab bar (iOS 26 shows it at the bottom, above
-    /// the keyboard), focused as soon as Search opens.
-    @State private var searchText = ""
-    @FocusState private var searchFocused: Bool
     @State private var linkError: String?
     /// A connect link waiting for the owner's yes.
     @State private var connectLink: Session.ConnectLink?
@@ -128,22 +124,15 @@ struct RootView: View {
                     }
                     Tab(value: "search", role: .search) {
                         if searchFrom == "drive" {
-                            DriveScreen(library: library, searchMode: true, query: searchText)
+                            DriveScreen(library: library, searchMode: true)
                         } else {
-                            SearchScreen(library: library, query: $searchText)
+                            SearchScreen(library: library)
                         }
                     }
                 }
                 .tabBarMinimizeBehavior(.onScrollDown)
-                .searchable(text: $searchText,
-                            prompt: searchFrom == "drive" ? "Search Files" : "Alex and Sam, beach, Spain 2024…")
-                .searchFocused($searchFocused)
                 .onChange(of: tab) { old, new in
-                    if new == "search", old != "search" {
-                        if searchFrom != old, searchFrom == "drive" || old == "drive" { searchText = "" }
-                        searchFrom = old
-                        searchFocused = true
-                    }
+                    if new == "search", old != "search" { searchFrom = old }
                 }
             } else {
                 ConnectScreen()

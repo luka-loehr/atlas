@@ -2,11 +2,12 @@ import SwiftUI
 
 struct SearchScreen: View {
     var library: Library
-    @Binding var query: String
+    @State private var query = ""
     @State private var result = PhotoClient.SearchResult()
     @State private var searching = false
     /// Bumped with every new result, so the grid reloads (and goes to the top).
     @State private var revision = 0
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -38,13 +39,14 @@ struct SearchScreen: View {
                 PersonDetailScreen(library: library, person: p)
             }
         }
+        .searchable(text: $query, prompt: "Alex and Sam, beach, Spain 2024…")
+        // opening Search means typing: the field is focused right away and
+        // sits above the keyboard
+        .searchFocused($fieldFocused)
+        .onAppear { fieldFocused = true }
         // the model unloads after ten idle minutes: load it while the
         // query is being typed, not after it was sent
-        .task {
-            await library.client.warmSearch()
-            // back on Search with words still in the field
-            if result.items.isEmpty { await run(query) }
-        }
+        .task { await library.client.warmSearch() }
         .onChange(of: query) { old, q in
             if old.isEmpty, !q.isEmpty { Task { await library.client.warmSearch() } }
             Task { await run(q) }
