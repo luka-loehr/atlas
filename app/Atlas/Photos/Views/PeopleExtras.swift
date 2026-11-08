@@ -11,54 +11,47 @@ struct QueryChips: View {
 
     var body: some View {
         if parts.count > 1 || parts.contains(where: { $0.kind != "text" }) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 6) {
-                    ForEach(parts) { part in
-                        if let library, let who = persons.first(where: { $0.id == part.person }) {
-                            NavigationLink(value: who) {
-                                HStack(spacing: 6) {
-                                    FaceCircle(library: library, person: who)
-                                        .frame(width: 24, height: 24)
-                                    Text(part.label)
-                                }
-                                .font(.footnote.weight(.medium))
-                                .padding(.leading, 3)
-                                .padding(.trailing, 10)
-                                .padding(.vertical, 3)
-                                .background(tint(part).opacity(0.15), in: Capsule())
-                                .foregroundStyle(tint(part))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(part.kind): \(part.label)")
-                        } else {
-                            Label(part.label, systemImage: part.symbol)
-                                .font(.footnote.weight(.medium))
-                                .labelStyle(.titleAndIcon)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(tint(part).opacity(0.15), in: Capsule())
-                                .foregroundStyle(tint(part))
-                                .accessibilityLabel("\(part.kind): \(part.label)")
-                        }
-                    }
+            // Liquid Glass pills, as many lines as they need
+            GlassEffectContainer(spacing: 6) {
+                FlowLayout(spacing: 6) {
+                    ForEach(parts) { part in chip(part) }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Searched for")
         }
     }
 
-    private func tint(_ part: PhotoClient.QueryPart) -> Color {
-        switch part.kind {
-        case "person": .blue
-        case "pet": .orange
-        case "place": .green
-        case "date": .purple
-        case "album", "media": .pink
-        default: .secondary
+    @ViewBuilder
+    private func chip(_ part: PhotoClient.QueryPart) -> some View {
+        if let library, let who = persons.first(where: { $0.id == part.person }) {
+            NavigationLink(value: who) {
+                HStack(spacing: 7) {
+                    FaceCircle(library: library, person: who)
+                        .frame(width: 30, height: 30)
+                    Text(part.label)
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.leading, 5)
+                .padding(.trailing, 14)
+                .frame(minHeight: 40)
+                .glassEffect(.regular.interactive(), in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(part.kind): \(part.label)")
+        } else {
+            Label(part.label, systemImage: part.symbol)
+                .font(.subheadline.weight(.semibold))
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 40)
+                .glassEffect(.regular, in: .capsule)
+                .accessibilityLabel("\(part.kind): \(part.label)")
         }
     }
 }

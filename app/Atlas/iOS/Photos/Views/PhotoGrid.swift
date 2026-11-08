@@ -562,12 +562,16 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         }
         guard let config else { return }
         viewerAssetID = asset.id
+        // the viewer closes itself, whoever presented it (the grid, or the
+        // search controller over it)
+        let shown = WeakBox()
         let viewer = ViewerScreen(library: config.library, assets: assets, start: asset,
-                                  onClose: { [weak presenter] in presenter?.dismiss(animated: true) },
+                                  onClose: { shown.controller?.dismiss(animated: true) },
                                   onPage: { [weak self] in self?.viewerAssetID = $0.id })
             // the viewer's chrome is monochrome, like Photos; the rest of the app is system blue
             .tint(.primary)
         let host = UIHostingController(rootView: viewer)
+        shown.controller = host
         host.modalPresentationStyle = .fullScreen
         host.modalPresentationCapturesStatusBarAppearance = true
         // swipe-down-to-close only for a clearly downward drag: a sideways
@@ -949,4 +953,10 @@ struct AssetGrid: View {
                   onViewerClosed: onViewerClosed)
             .ignoresSafeArea(edges: underBar ? .all : .bottom)
     }
+}
+
+
+/// A weak reference a closure can capture before the object exists.
+private final class WeakBox {
+    weak var controller: UIViewController?
 }

@@ -24,13 +24,14 @@ struct SearchScreen: View {
                     // the library's own grid: pinch through 1/3/5/9 columns,
                     // the same tiles and prefetching, a tap opens exactly the
                     // photo under the finger, newest first
-                    VStack(spacing: 0) {
-                        QueryChips(parts: result.understood, persons: result.persons, library: library)
-                        AssetGrid(library: library, assets: result.items, selection: nil,
-                                  onRefresh: { await run(query) })
-                            .id(revision)
-                            .ignoresSafeArea(edges: .bottom)
-                    }
+                    // the photos run under the status bar and the pills of
+                    // how the search was read, which float over them
+                    AssetGrid(library: library, assets: result.items, selection: nil,
+                              onRefresh: { await run(query) })
+                        .id(revision)
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            QueryChips(parts: result.understood, persons: result.persons, library: library)
+                        }
                 }
             }
             .navigationTitle("Search")
@@ -41,7 +42,9 @@ struct SearchScreen: View {
         .searchable(text: $query, prompt: "Alex and Sam, beach, Spain 2024…")
         // the model unloads after ten idle minutes: load it while the
         // query is being typed, not after it was sent
-        .task { await library.client.warmSearch() }
+        .task {
+            await library.client.warmSearch()
+        }
         .onChange(of: query) { old, q in
             if old.isEmpty, !q.isEmpty { Task { await library.client.warmSearch() } }
             Task { await run(q) }
