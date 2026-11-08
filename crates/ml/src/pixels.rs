@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use atlas_core::process;
+use atlas_core::{process, video};
 
 use anyhow::{Context, Result, bail, ensure};
 use fast_image_resize as fr;
@@ -38,10 +38,6 @@ pub fn png(img: &RgbImage) -> Result<Vec<u8>> {
     )?;
     Ok(out)
 }
-
-/// HDR to SDR, as for the server's video posters (jobs/video.rs there).
-const TONE_MAP: &str = "zscale=t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,\
-                        tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=pc,format=rgb24";
 
 /// What sampling a clip needs to know: when each of its frames is shown,
 /// its average frame rate, and whether it is HDR.
@@ -91,7 +87,7 @@ pub fn probe(path: &Path) -> Result<Clip> {
     times.iter_mut().for_each(|t| *t = (*t - start).max(0.0));
     times.sort_by(f64::total_cmp);
     let fps = rate(&stream["avg_frame_rate"]).or_else(|| rate(&stream["r_frame_rate"])).context("no frame rate")?;
-    let hdr = matches!(stream["color_transfer"].as_str(), Some("arib-std-b67" | "smpte2084"));
+    let hdr = stream["color_transfer"].as_str().is_some_and(video::is_hdr);
     Ok(Clip { times, fps, hdr })
 }
 
@@ -224,7 +220,7 @@ fn frame_at(path: &Path, seek: f64, hdr: bool) -> Result<Option<RgbImage>> {
     // the stream `probe` read, also when a clip has two
     ffmpeg.args(["-map", "0:v:0", "-frames:v", "1"]);
     if hdr {
-        ffmpeg.args(["-vf", TONE_MAP]);
+        ffmpeg.args(["-vf", video::TONE_MAP]);
     }
     // a seek deep into a long multi-GB clip, beside the other readers, can
     // take minutes; the job's own limit (EMBED_LIMIT) still bounds the whole
@@ -233,11 +229,4 @@ fn frame_at(path: &Path, seek: f64, hdr: bool) -> Result<Option<RgbImage>> {
         return Ok(None);
     }
     Ok(Some(image::load_from_memory(&out.stdout)?.into_rgb8()))
-}
-
-pub fn normalize(v: &mut [f32]) {
-    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 {
-        v.iter_mut().for_each(|x| *x /= norm);
-    }
 }

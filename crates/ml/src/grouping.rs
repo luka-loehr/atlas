@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use atlas_core::vector::dot;
 use pgvector::Vector;
 
 use crate::Worker;
@@ -296,19 +297,6 @@ fn cohesion(items: &[Item], group: &[usize]) -> f32 {
     group.iter().map(|&i| dot(&items[i].vector, &mean)).sum::<f32>() / group.len() as f32
 }
 
-/// A dot product LLVM can vectorize: eight independent sums.
-pub fn dot(a: &[f32], b: &[f32]) -> f32 {
-    let mut acc = [0f32; 8];
-    let (ca, cb) = (a.chunks_exact(8), b.chunks_exact(8));
-    let tail: f32 = ca.remainder().iter().zip(cb.remainder()).map(|(x, y)| x * y).sum();
-    for (x, y) in ca.zip(cb) {
-        for k in 0..8 {
-            acc[k] += x[k] * y[k];
-        }
-    }
-    acc.iter().sum::<f32>() + tail
-}
-
 /// `f` over `items` on every core, results in order.
 fn parallel_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
@@ -350,13 +338,5 @@ mod tests {
         let mut g = groups[0].clone();
         g.sort();
         assert_eq!(g, vec![0, 1, 2]);
-    }
-
-    #[test]
-    fn dot_matches_the_plain_sum() {
-        let a: Vec<f32> = (0..19).map(|i| i as f32 * 0.1).collect();
-        let b: Vec<f32> = (0..19).map(|i| 1.0 - i as f32 * 0.05).collect();
-        let plain: f32 = a.iter().zip(&b).map(|(x, y)| x * y).sum();
-        assert!((dot(&a, &b) - plain).abs() < 1e-4);
     }
 }

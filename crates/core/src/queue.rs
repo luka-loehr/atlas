@@ -34,7 +34,6 @@ pub const MAX_DEFERS: i32 = 60;
 pub const THUMB: &str = "thumb";
 pub const META: &str = "meta";
 pub const GEOCODE: &str = "geocode";
-pub const EVENT_SCAN: &str = "event_scan";
 pub const DRIVE_TEXT: &str = "drive_text";
 pub const PREVIEW: &str = "preview";
 /// Model stages, run by atlas-ml.

@@ -19,6 +19,7 @@
 use std::path::Path;
 
 use anyhow::{Result, ensure};
+use atlas_core::vector::normalize;
 use fast_image_resize::FilterType;
 use image::RgbImage;
 use ort::value::Tensor;
@@ -110,7 +111,7 @@ impl AnimalEngine {
             let (_, values) = outputs[0].try_extract_tensor::<f32>()?;
             let mut look = values.to_vec();
             ensure!(look.len() == 512, "unexpected pet embedding: {} values", look.len());
-            pixels::normalize(&mut look);
+            normalize(&mut look);
             animal.look = Some(look);
         }
         Ok(kept)

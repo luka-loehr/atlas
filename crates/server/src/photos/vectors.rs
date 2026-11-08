@@ -29,6 +29,8 @@ use deadpool_postgres::Pool;
 use tokio::sync::RwLock;
 
 pub use atlas_core::EMBED_DIM as DIM;
+pub use atlas_core::vector::normalize;
+use atlas_core::vector::dot;
 
 /// Below this many vectors a kind is scored on the scale of the whole
 /// library: its own median and spread would be noise.
@@ -104,34 +106,24 @@ impl VectorIndex {
         let index = self.clone();
         Ok(tokio::task::spawn_blocking(move || {
             let matrix = index.matrix.blocking_read();
-            let scores: Vec<f32> = matrix
-                .data
-                .chunks_exact(DIM)
-                .zip(&matrix.video)
-                .map(|(row, &video)| dot(row, if video { &query.clip } else { &query.still }))
-                .collect();
-            let limit = limit.min(scores.len());
+            let scored = matrix.score(&query);
+            let limit = limit.min(scored.scores.len());
             if limit == 0 {
                 return Vec::new();
             }
-            let all = Scale::of(scores.clone());
-            let scale = |video: bool| {
-                let kind = Scale::of(scores.iter().zip(&matrix.video).filter(|(_, v)| **v == video).map(|(s, _)| *s).collect());
-                if kind.n >= MIN_KIND { kind } else { all }
-            };
-            let (stills, clips) = (scale(false), scale(true));
-            let kind_of = |row: usize| if matrix.video[row] { &clips } else { &stills };
-            let mut scored: Vec<(usize, f32)> = scores.iter().enumerate().map(|(row, &s)| (row, kind_of(row).z(s))).collect();
-            scored.select_nth_unstable_by(limit - 1, |a, b| b.1.total_cmp(&a.1));
-            scored.truncate(limit);
-            scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-            scored
+            let kind_of = |row: usize| scored.kind(matrix.video[row]);
+            let mut ranked: Vec<(usize, f32)> =
+                scored.scores.iter().enumerate().map(|(row, &s)| (row, kind_of(row).z(s))).collect();
+            ranked.select_nth_unstable_by(limit - 1, |a, b| b.1.total_cmp(&a.1));
+            ranked.truncate(limit);
+            ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            ranked
                 .into_iter()
                 .map(|(row, z)| {
                     let kind = kind_of(row);
                     Hit {
                         id: matrix.ids[row].clone(),
-                        similarity: scores[row],
+                        similarity: scored.scores[row],
                         z,
                         chance_best: chance(kind.n, 0.5),
                         chance_tail: chance(kind.n, 2.0),
@@ -155,23 +147,11 @@ impl VectorIndex {
         let index = self.clone();
         Ok(tokio::task::spawn_blocking(move || {
             let matrix = index.matrix.blocking_read();
-            let scores: Vec<f32> = matrix
-                .data
-                .chunks_exact(DIM)
-                .zip(&matrix.video)
-                .map(|(row, &video)| dot(row, if video { &query.clip } else { &query.still }))
-                .collect();
-            let all = Scale::of(scores.clone());
-            let scale = |video: bool| {
-                let kind = Scale::of(scores.iter().zip(&matrix.video).filter(|(_, v)| **v == video).map(|(s, _)| *s).collect());
-                if kind.n >= MIN_KIND { kind } else { all }
-            };
-            let (stills, clips) = (scale(false), scale(true));
+            let scored = matrix.score(&query);
             ids.into_iter()
                 .filter_map(|id| {
                     let row = *matrix.rows.get(&id)?;
-                    let kind = if matrix.video[row] { &clips } else { &stills };
-                    Some((id, kind.z(scores[row])))
+                    Some((id, scored.kind(matrix.video[row]).z(scored.scores[row])))
                 })
                 .collect()
         })
@@ -180,6 +160,38 @@ impl VectorIndex {
 
     pub async fn len(&self) -> usize {
         self.matrix.read().await.ids.len()
+    }
+}
+
+impl Matrix {
+    /// Every row against the question of its kind, and each kind's scale.
+    fn score(&self, query: &Questions) -> Scored {
+        let scores: Vec<f32> = self
+            .data
+            .chunks_exact(DIM)
+            .zip(&self.video)
+            .map(|(row, &video)| dot(row, if video { &query.clip } else { &query.still }))
+            .collect();
+        let all = Scale::of(scores.clone());
+        let scale = |video: bool| {
+            let kind = Scale::of(scores.iter().zip(&self.video).filter(|(_, v)| **v == video).map(|(s, _)| *s).collect());
+            if kind.n >= MIN_KIND { kind } else { all }
+        };
+        let (stills, clips) = (scale(false), scale(true));
+        Scored { scores, stills, clips }
+    }
+}
+
+/// One query's similarity per row, and the scale of each kind.
+struct Scored {
+    scores: Vec<f32>,
+    stills: Scale,
+    clips: Scale,
+}
+
+impl Scored {
+    fn kind(&self, video: bool) -> &Scale {
+        if video { &self.clips } else { &self.stills }
     }
 }
 
@@ -270,36 +282,9 @@ async fn load_newer(pool: &Pool, matrix: &mut Matrix) -> Result<()> {
     Ok(())
 }
 
-pub fn normalize(v: &mut [f32]) {
-    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 {
-        v.iter_mut().for_each(|x| *x /= norm);
-    }
-}
-
-/// Eight independent accumulators let the compiler vectorize the sum; a
-/// single running total would force strict left-to-right float addition.
-fn dot(a: &[f32], b: &[f32]) -> f32 {
-    let mut acc = [0f32; 8];
-    for (x, y) in a.chunks_exact(8).zip(b.chunks_exact(8)) {
-        for i in 0..8 {
-            acc[i] += x[i] * y[i];
-        }
-    }
-    acc.iter().sum()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn dot_matches_the_plain_sum() {
-        let a: Vec<f32> = (0..DIM).map(|i| (i as f32 * 0.37).sin()).collect();
-        let b: Vec<f32> = (0..DIM).map(|i| (i as f32 * 0.11).cos()).collect();
-        let plain: f32 = a.iter().zip(&b).map(|(x, y)| x * y).sum();
-        assert!((dot(&a, &b) - plain).abs() < 1e-2);
-    }
 
     #[test]
     fn the_scale_ignores_a_cluster_of_matches() {
@@ -319,12 +304,5 @@ mod tests {
         assert!((chance(19_700, 2.0) - 3.72).abs() < 0.03, "{}", chance(19_700, 2.0));
         assert!(chance(19_700, 0.5) > chance(800, 0.5));
         assert_eq!(chance(1, 2.0), 0.0);
-    }
-
-    #[test]
-    fn normalize_makes_unit_vectors() {
-        let mut v = vec![3.0, 4.0];
-        normalize(&mut v);
-        assert!((v[0] - 0.6).abs() < 1e-6 && (v[1] - 0.8).abs() < 1e-6);
     }
 }

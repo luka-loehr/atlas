@@ -19,6 +19,7 @@
 use std::path::Path;
 
 use anyhow::{Result, ensure};
+use atlas_core::vector::normalize;
 use fast_image_resize::FilterType;
 use image::RgbImage;
 use ort::value::Tensor;
@@ -171,10 +172,10 @@ impl FaceEngine {
         let mut b = values[dim..].to_vec();
         let norm = |v: &[f32]| v.iter().map(|x| x * x).sum::<f32>().sqrt();
         let clarity = (norm(&a) + norm(&b)) / 2.0;
-        pixels::normalize(&mut a);
-        pixels::normalize(&mut b);
+        normalize(&mut a);
+        normalize(&mut b);
         let mut embedding: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x + y).collect();
-        pixels::normalize(&mut embedding);
+        normalize(&mut embedding);
         Ok((embedding, clarity))
     }
 }

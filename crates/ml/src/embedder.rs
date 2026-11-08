@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
 use atlas_core::EMBED_DIM as DIM;
+use atlas_core::vector::normalize;
 use base64::Engine;
 use fast_image_resize::FilterType;
 use image::RgbImage;
@@ -226,7 +227,7 @@ impl Embedder {
             .filter_map(|x| x.as_f64().map(|f| f as f32))
             .collect();
         ensure!(vec.len() == DIM, "expected {DIM} dimensions, got {}", vec.len());
-        pixels::normalize(&mut vec);
+        normalize(&mut vec);
         Ok(vec)
     }
 
