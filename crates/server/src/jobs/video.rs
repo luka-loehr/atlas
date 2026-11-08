@@ -126,6 +126,21 @@ pub fn poster(path: &Path, hdr: bool) -> Result<Vec<u8>> {
     anyhow::bail!("ffmpeg produced no frame")
 }
 
+/// One ffmpeg run that writes `tmp` (appended as its output). Ok(Ok) when it
+/// wrote something, Ok(Err) with ffmpeg's last line of complaint when it did
+/// not, Err when it could not run or ran out of time; `tmp` is left behind
+/// only when written.
+pub fn ffmpeg_into(ffmpeg: &mut Command, tmp: &Path, limit: Duration) -> std::io::Result<Result<(), String>> {
+    let output = process::output(ffmpeg.arg(tmp), limit).inspect_err(|_| {
+        let _ = std::fs::remove_file(tmp);
+    })?;
+    if output.status.success() && std::fs::metadata(tmp).is_ok_and(|m| m.len() > 0) {
+        return Ok(Ok(()));
+    }
+    let _ = std::fs::remove_file(tmp);
+    Ok(Err(String::from_utf8_lossy(&output.stderr).lines().last().unwrap_or("").to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::iso6709;
