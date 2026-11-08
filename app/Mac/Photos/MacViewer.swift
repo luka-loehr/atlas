@@ -386,6 +386,17 @@ private struct MacVideoPage: View {
         ZStack {
             if let player {
                 PlayerView(player: player)
+                    // a click on the video plays or pauses it
+                    .overlay {
+                        Color.clear.contentShape(Rectangle())
+                            .onTapGesture { player.timeControlStatus == .paused ? player.play() : player.pause() }
+                    }
+                    .overlay(alignment: .bottom) {
+                        VideoBar(player: player)
+                            .frame(maxWidth: 560)
+                            .padding(.horizontal, 60)
+                            .padding(.bottom, 22)
+                    }
             }
             if !ready {
                 InstantPoster(library: library, asset: asset)
@@ -421,9 +432,8 @@ private struct PlayerView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
-        view.controlsStyle = .floating
-        view.showsFullScreenToggleButton = true
-        view.allowsPictureInPicturePlayback = true
+        // the viewer draws its own slim bar (`VideoBar`), as on the iPhone
+        view.controlsStyle = .none
         view.videoGravity = .resizeAspect
         view.player = player
         return view
@@ -436,5 +446,109 @@ private struct PlayerView: NSViewRepresentable {
     static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
         view.player?.pause()
         view.player = nil
+    }
+}
+
+/// The video's controls as on the iPhone: one slim glass pill at the
+/// bottom with play and pause, the progress (click or drag to scrub), the
+/// time and mute.
+private struct VideoBar: View {
+    let player: AVPlayer
+    @State private var playing = true
+    @State private var current: Double = 0
+    @State private var duration: Double = 0
+    @State private var muted = false
+    @State private var scrubbing: Double?
+    @State private var observer: Any?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button {
+                playing ? player.pause() : player.play()
+            } label: {
+                Image(systemName: playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 22, height: 28)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help(playing ? "Pause" : "Play")
+            Text(Self.time(scrubbing ?? current))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            progress
+            Text(Self.time(duration))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Button {
+                muted.toggle()
+                player.isMuted = muted
+            } label: {
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 24, height: 28)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help(muted ? "Unmute" : "Mute")
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .glassEffect(.regular, in: .capsule)
+        .onAppear(perform: observe)
+        .onDisappear {
+            if let observer { player.removeTimeObserver(observer) }
+            observer = nil
+        }
+    }
+
+    /// The thin track: drag or click anywhere on it to scrub.
+    private var progress: some View {
+        GeometryReader { geo in
+            let shown = scrubbing ?? current
+            let fraction = duration > 0 ? min(max(shown / duration, 0), 1) : 0
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.18))
+                Capsule().fill(.primary.opacity(0.85)).frame(width: geo.size.width * fraction)
+            }
+            .frame(height: 4)
+            .frame(maxHeight: .infinity)
+            .contentShape(.rect)
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { g in
+                    guard duration > 0 else { return }
+                    let t = min(max(g.location.x / geo.size.width, 0), 1) * duration
+                    scrubbing = t
+                    player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+                }
+                .onEnded { _ in
+                    if let t = scrubbing { current = t }
+                    scrubbing = nil
+                })
+        }
+        .frame(height: 28)
+        .accessibilityElement()
+        .accessibilityLabel("Progress")
+        .accessibilityValue("\(Self.time(current)) of \(Self.time(duration))")
+    }
+
+    /// Four times a second: the time, the length and whether it plays.
+    private func observe() {
+        guard observer == nil else { return }
+        muted = player.isMuted
+        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 4), queue: .main) { t in
+            MainActor.assumeIsolated {
+                if scrubbing == nil { current = t.seconds.isFinite ? t.seconds : 0 }
+                if let d = player.currentItem?.duration.seconds, d.isFinite, d != duration { duration = d }
+                let now = player.timeControlStatus != .paused
+                if now != playing { playing = now }
+            }
+        }
+    }
+
+    private static func time(_ s: Double) -> String {
+        let t = Int(max(s, 0).rounded(.down))
+        return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
+                         : String(format: "%d:%02d", t / 60, t % 60)
     }
 }
