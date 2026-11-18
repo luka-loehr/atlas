@@ -55,7 +55,7 @@ impl Config {
         if serving && token.len() < 16 {
             bail!(
                 "ATLAS_TOKEN is not set (or shorter than 16 characters). Every API route needs it; \
-                 generate one with `openssl rand -hex 32` and put it in /etc/atlas/server.env"
+                 generate one with `openssl rand -hex 32` and put it in /etc/atlas/atlas.env"
             );
         }
         let home = home();
