@@ -228,6 +228,7 @@ echo
 echo "    verify:"
 echo "      systemctl is-active caddy cloudflared"
 echo "      curl -sf localhost:2019/config/ >/dev/null && echo 'caddy admin ok'"
-echo "      dig +short '*.$CF_ZONE' | grep cfargotunnel && echo 'wildcard ok'"
+echo "      # any name under the zone; a proxied record answers with Cloudflare addresses"
+echo "      dig +short 'probe.$CF_ZONE' | grep -q . && echo 'wildcard ok'"
 echo "      # end-to-end once a dev container + route exist:"
 echo "      #   atlas dev --public   ->   https://<name>.$CF_ZONE"
