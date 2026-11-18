@@ -59,7 +59,7 @@ space, the check mails at 85 % instead. Retention refuses to drop more
 than 48 snapshots in one run (a config or clock mistake, not ageing). Weekly
 and monthly tiers exist but are redundant while daily has no limit. All of
 these are environment variables in `backup.sh` (`KEEP_*`, `MIN_FREE_PCT`,
-`MIN_AGE_DAYS`, `KEEP_MIN`, `MAX_PRUNE`).
+`MIN_AGE_DAYS`, `KEEP_MIN`, `MAX_SPACE_PRUNE`, `MAX_PRUNE`).
 
 ## Safety checks
 
@@ -78,7 +78,7 @@ A failed run mails the owner. A missing USB disk fails the unit as a dependency,
 which `OnFailure=` does not see; the hourly check mails it instead.
 
 **Mass-change brake.** If one run deletes or overwrites more than 1000
-existing files (outside `bulk/github/`, whose clones churn by design), it takes
+existing files (`MASS_CHANGE_LIMIT`; outside `bulk/github/`, whose clones churn by design), it takes
 no snapshot and writes `/var/lib/atlas-bulk-backup/hold`. Every later run fails
 until someone has looked:
 
@@ -111,7 +111,7 @@ Postgres dumps are under `…/backups/atlas-postgres/`; restore them as in
 [`../pg-backup/README.md`](../pg-backup/README.md).
 
 On another machine the disk needs the key: `/etc/atlas/credentials/bulk-backup.key`
-on atlas, with a copy in 1Password (`atlas-bulk-backup-luks-key`, a document).
+on atlas — keep a copy of it off the box, e.g. in a password manager.
 
 ## Install
 
@@ -121,7 +121,7 @@ One-time, for a new disk (erases it):
 lsblk -o NAME,SIZE,MODEL,TRAN,LABEL              # find the USB disk, e.g. sdb1
 K=/etc/atlas/credentials/bulk-backup.key
 sudo install -d -m 0700 /etc/atlas/credentials
-sudo sh -c "umask 077; head -c 64 /dev/urandom > $K"   # and store a copy in 1Password
+sudo sh -c "umask 077; head -c 64 /dev/urandom > $K"   # and store a copy off the box
 sudo cryptsetup luksFormat -q --type luks2 --label atlas-bulk-backup-luks --key-file $K /dev/sdX1
 sudo cryptsetup open --key-file $K /dev/sdX1 atlas-bulk-backup
 sudo mkfs.btrfs -f -L atlas-bulk-backup /dev/mapper/atlas-bulk-backup

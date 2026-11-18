@@ -44,7 +44,8 @@ sudo cat /var/lib/atlas-agentbrain-backup/status.json      # memories, versions,
 That's it. With [`../bulk-backup`](../bulk-backup/README.md) installed, the
 sync runs right before every bulk backup; without it, on its own hourly timer.
 With [`../alerts`](../alerts/README.md) installed, a failed or stale sync
-mails you.
+mails you. `install.sh` looks at what is installed when it runs, so re-run it
+after adding either of the two later.
 
 ## What you get
 

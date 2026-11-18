@@ -16,6 +16,11 @@ apps plot how much it draws while it is up.
 systemctl status atlas-wol atlas-rapl-readable   # `active (exited)` is correct for a oneshot
 ```
 
+`install.sh` copies the units into `/etc/systemd/system`, puts a root-owned
+copy of `atlas-rtcwake` in `/usr/local/sbin` (re-run it after changing that
+script), and removes the earlier hand-installed `wol.service` /
+`rapl-readable.service` if present.
+
 ## Daily schedule: on at 10:00, off at 22:00
 
 The RTC has one alarm register, so `atlas-rtcwake` arms only the next 10:00. It
@@ -27,8 +32,9 @@ arms nothing. Check it with `journalctl -t atlas-rtcwake -n 3` or
 
 The power-off timer is not persistent: a box booted after 21:55 stays up until
 the next evening. To keep atlas up tonight, run `sudo shutdown -c` after 21:55.
-Change the times in `atlas-rtcwake` (`WAKE_AT`) and `atlas-poweroff.timer`,
-then re-run `./install.sh`. Both stay outside the 22:00–08:00 quiet hours.
+Change the times in `atlas-rtcwake` (`WAKE_AT`), `atlas-poweroff.timer`
+(`OnCalendar`, five minutes ahead) and `atlas-poweroff.service` (the
+`shutdown -h 22:00` line), then re-run `./install.sh`. Both stay outside the 22:00–08:00 quiet hours.
 
 This board wakes from soft-off on the RTC alarm; the 2026-08 three-slot
 schedule used the same register.
@@ -47,8 +53,10 @@ someone physically in front of it.
 shutdown that is about to happen, which is precisely when it matters.
 
 The interface name `enp4s0` is baked into the unit. Check yours with
-`ip -br link` and edit the unit if it differs; `install.sh` refuses to install
-a unit naming an interface this box does not have.
+`ip -br link`; if it differs, edit `atlas-wol.service` and run
+`ATLAS_WOL_NIC=<name> ./install.sh`. `install.sh` does not rewrite the unit — it
+only checks that the interface in `ATLAS_WOL_NIC` (default `enp4s0`) exists and
+refuses to install anything when it does not.
 
 ## RAPL
 
@@ -62,5 +70,6 @@ Intel-only. On a machine without RAPL the unit still succeeds and `cpu_w`
 stays `null`, which the API and the apps already treat as "not measurable".
 
 The system-power figure the apps show is a calibrated estimate
-(`(cpu_w + gpu_w + baseline) / psu_efficiency`, tuned via `ATLAS_POWER_*` in
-`/etc/atlas/atlas.env`) — only a wall-plug meter is exact.
+(`(cpu_w + gpu_w + baseline) / psu_efficiency`, tuned via
+`ATLAS_POWER_BASELINE_W` and `ATLAS_PSU_EFFICIENCY` in `/etc/atlas/atlas.env`,
+defaults 35 W and 0.88) — only a wall-plug meter is exact.

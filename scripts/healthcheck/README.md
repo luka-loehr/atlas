@@ -9,8 +9,7 @@ the sleep-when-idle box awake.
 
 | Check | How |
 |---|---|
-| `build-api` | `cargo check --locked` in `~/atlas/api` |
-| `build-cli` | `cargo check --locked` in `~/atlas/cli` |
+| `build` | `cargo check --locked --workspace` in the checkout (`~/atlas`, override with `ATLAS_REPO`) |
 | `server-http` | `GET 127.0.0.1:8787/health` → 200 (the one route that needs no token) |
 | `ml-http` | `GET 127.0.0.1:8786/health` → 200 (atlas-ml, loopback only) |
 | `docker-stack` | `atlas-postgres` running+healthy |
@@ -18,30 +17,38 @@ the sleep-when-idle box awake.
 
 Service checks retry (default 12 × 10 s under systemd, 3 × 10 s interactive —
 override with `ATLAS_HEALTH_RETRIES` / `ATLAS_HEALTH_RETRY_SLEEP`) because
-containers need a moment after boot/resume. Build checks run once.
+containers need a moment after boot/resume. The build check runs once.
 
-Check ids are written verbatim into `~/atlas-health/status.json` and
+Check ids are written verbatim into `status.json` and
 `history.log`; nothing reads them back, so they are a label, not an interface.
 
 ## Where to see results
 
-- `~/atlas-health/status.json` — machine-readable result of the last run
+The systemd units write to `/var/lib/atlas/health` (they set
+`ATLAS_HEALTH_DIR`); a direct run of `healthcheck.sh` defaults to
+`~/atlas-health`. In that directory:
+
+- `status.json` — machine-readable result of the last run
   (overall `ok`, per-check `ok`/`seconds`/`detail` incl. compiler errors)
-- `~/atlas-health/last-run.log` — full log of the last run
-- `~/atlas-health/history.log` — one line per run, e.g. `2026-07-25T16:00:00Z OK`
-  or `… FAIL: build-cli`
+- `last-run.log` — full log of the last run
+- `history.log` — one line per run, e.g. `2026-07-25T16:00:00Z OK`
+  or `… FAIL: build`
 - `systemctl status atlas-healthcheck` — the boot/on-demand unit shows
   failed when the last check was red
 
 ## Install / run
 
 ```sh
+sudo install -d -o "$USER" /var/lib/atlas /var/lib/atlas/health   # once: the units' result directory
 ~/atlas/scripts/healthcheck/install.sh        # install + enable both units
 sudo systemctl start atlas-healthcheck        # run now via systemd
 ~/atlas/scripts/healthcheck/healthcheck.sh    # or run directly
 ```
 
 Exit code 0 = all green, 1 = at least one check failed.
+
+The units run as the installing user and neither they nor `install.sh` create
+`/var/lib/atlas/health`, hence the first line.
 
 The units run the script straight out of the checkout, so re-run `install.sh`
 after a pull that renames or moves it.

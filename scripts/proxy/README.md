@@ -80,7 +80,7 @@ Because DNS is a **wildcard**, no per-project DNS record is ever created:
 
 ```sh
 # 0. install the binaries (see setup.sh header for the apt commands)
-#    caddy + cloudflared
+#    caddy + cloudflared; setup.sh itself also needs curl and jq
 
 # 1. create the token file (0600 in a 0700 dir)
 install -d -m700 ~/atlas-secrets
@@ -99,7 +99,8 @@ cd ~/atlas/scripts/proxy
 # 3. verify
 systemctl is-active caddy cloudflared
 curl -sf localhost:2019/config/ >/dev/null && echo 'caddy admin ok'
-dig +short '*.your-domain.com' | grep cfargotunnel && echo 'wildcard ok'
+dig +short probe.your-domain.com | grep -q . && echo 'wildcard ok'   # any name under the zone; a proxied
+                                                                    # record answers with Cloudflare IPs, not the CNAME
 ```
 
 To re-arm the units after editing `caddy.json` or a `.service` file (without

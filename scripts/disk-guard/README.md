@@ -13,11 +13,27 @@ noticed a nine-point climb. This is the thing that notices.
 ```bash
 atlas-disk-guard --status        # where we are now, no alerts
 atlas-disk-guard --require-free  # exit 1 if below the floor — the pre-build gate
-atlas-disk-guard --json          # machine-readable, also written to ~/atlas-health/disk.json
+atlas-disk-guard --json          # machine-readable, also written to disk.json in the state directory
 sudo systemctl start atlas-disk-guard.service   # a full check, alerts included
 ```
 
-Runs every five minutes via `atlas-disk-guard.timer`.
+Runs every five minutes via `atlas-disk-guard.timer`, the first time three
+minutes after boot.
+
+## Install
+
+```bash
+sudo install -d -o "$USER" /var/lib/atlas /var/lib/atlas/health   # once: the unit's state directory
+./install.sh
+```
+
+`install.sh` renders `atlas-disk-guard.service`/`.timer` into
+`/etc/systemd/system` (via `../lib/install-unit.sh`), links
+`/usr/local/bin/atlas-disk-guard` to `disk-guard.sh` in the checkout, and
+enables and starts the timer. The unit runs as the installing user with
+`DISK_GUARD_STATE_DIR=/var/lib/atlas/health`; neither it nor `install.sh`
+creates that directory, hence the first line. Run by hand, the script keeps its
+state in `~/atlas-health` instead.
 
 ```bash
 systemctl list-timers atlas-disk-guard.timer
@@ -31,11 +47,11 @@ journalctl -p err -b | grep disk-guard          # just the alerts
 arithmetic behind it, so anyone changing it redoes the arithmetic rather than
 picking a rounder number.
 
-- A cold full `cargo test --workspace` on the dairo workspace costs roughly
+- A cold full `cargo test --workspace` on a large workspace costs roughly
   20–35 G of `target/`. The largest tree observed was 35 G (inflated by a
   double-profile build); typical trees sit at 6–16 G.
-- Several build trees can be live on this box at once, and the self-hosted
-  GitHub Actions runner at `~/actions-runner-dairo` adds a further one.
+- Several build trees can be live on this box at once, and a self-hosted
+  CI runner adds a further one.
 - 80 G therefore covers **two concurrent cold workspace builds** with room left,
   rather than one.
 - At the measured peak burn of 1.8 G/min, 80 G is ~44 minutes of pure runaway —
@@ -52,7 +68,7 @@ picking a rounder number.
 | Level | Condition |
 |---|---|
 | `warn` | ≥ 85% used |
-| `critical` | ≥ 90% used, **or** free below the 80 G floor |
+| `critical` | ≥ 90% used, **or** free below the 80 G floor while still under the warn threshold |
 | `emergency` | ≥ 95% used |
 | `warn` (trend) | green now, but the burn rate reaches the floor within 60 min for **two consecutive** intervals |
 | recovery | back to ok after any alert |
@@ -119,12 +135,12 @@ this box is a 16 G tmpfs and filling it would have consumed RAM, not disk.
 | `DISK_GUARD_PROJECT_MIN` | `60` | trend trigger: minutes-to-floor that count as imminent |
 | `DISK_GUARD_RENOTIFY_SEC` | `21600` | how long an unchanged level stays quiet |
 | `DISK_GUARD_MOUNT` | `/` | filesystem to watch |
-| `DISK_GUARD_STATE_DIR` | `~/atlas-health` | burn-rate state and `disk.json` |
+| `DISK_GUARD_STATE_DIR` | `~/atlas-health` (the unit sets `/var/lib/atlas/health`) | burn-rate state and `disk.json` |
 | `DISK_GUARD_NOTE` | — | text prepended to every report; used by the self-test so a provoked alert is distinguishable from a real one |
 
 ## What this does not cover
 
-Reducing the *consumption* is `cargo-dev-profile.sh` (shared build settings,
-`line-tables-only`). Getting the backups onto a **second physical disk** is
-still the real fix — this guard buys warning time, it does not remove the
-single-disk risk.
+Reducing the *consumption* is [`../cargo-dev-profile.sh`](../cargo-dev-profile.sh)
+(`line-tables-only` debug info for dev/test builds). Getting the backups onto a
+**second physical disk** is [`../bulk-backup/`](../bulk-backup/) — this guard
+buys warning time, it does not remove the single-disk risk.

@@ -12,10 +12,9 @@ out on the default branch.
 
 ## Access: a read-only GitHub App
 
-The sync authenticates as the GitHub App **atlas-backup-luka-loehr**
+The sync authenticates as a GitHub App you create for it
 (permissions: Contents read, Metadata read; nothing else), installed with "All
-repositories" on `luka-loehr`, `dairo-app`, `school-ui`, `lgka-app` and
-`kiste-run`. A JWT signed with the app's private key gets a one-hour
+repositories" on your account and each of its orgs. A JWT signed with the app's private key gets a one-hour
 installation token per account; the token reaches git only through a credential
 helper and the environment, never argv or a remote URL. Nothing on atlas that
 the sync uses can push, delete a repo or change an org.
@@ -23,7 +22,7 @@ the sync uses can push, delete a repo or change an org.
 - private key: `/etc/atlas/credentials/github-sync-app.pem` (root, 0600),
   passed to the unit with `LoadCredential=`
 - `/etc/atlas/github-sync.env`: `GITHUB_APP_ID=…` and
-  `GITHUB_SYNC_OWNERS="luka-loehr dairo-app school-ui lgka-app kiste-run"`
+  `GITHUB_SYNC_OWNERS="your-account your-org another-org"` (both required)`
 
 The app is public only so it can be installed on the orgs. The sync looks up
 the installation of each account in `GITHUB_SYNC_OWNERS` by name, so an
@@ -41,7 +40,7 @@ the hourly bulk backup first runs the sync, waits for it, then mirrors
 `/srv/bulk` (and with it `github/`) onto the USB disk and snapshots it:
 
 ```
-/srv/bulk/github/<owner>/<repo>                                     IronWolf, latest
+/srv/bulk/github/<owner>/<repo>                                     bulk disk, latest
 /srv/bulk-backup/current/bulk/github/<owner>/<repo>                 USB disk, latest
 /srv/bulk-backup/snapshots/<stamp>Z/bulk/github/<owner>/<repo>      USB disk, read-only versions
 ```
@@ -77,10 +76,20 @@ sudo cat /var/lib/atlas-github-sync/status.json              # repos, failures, 
 
 # a repo as it was before an incident:
 sudo ls /srv/bulk-backup/snapshots/
-sudo git clone /srv/bulk-backup/snapshots/<stamp>Z/bulk/github/luka-loehr/atlas /tmp/atlas-before
+sudo git clone /srv/bulk-backup/snapshots/<stamp>Z/bulk/github/<owner>/<repo> /tmp/repo-before
 ```
 
 ## Install
+
+`install.sh` refuses to run until these are in place:
+
+- the app's private key at `/etc/atlas/credentials/github-sync-app.pem` and
+  `/etc/atlas/github-sync.env` with `GITHUB_APP_ID` (see [Access](#access-a-read-only-github-app));
+- `/srv/bulk` mounted;
+- [`../bulk-backup`](../bulk-backup/README.md) installed — it runs the sync
+  and provides the shared lock.
+
+The sync itself needs `git`, `curl`, `jq` and `openssl` on the box.
 
 ```bash
 ./install.sh     # re-run after changing sync.sh

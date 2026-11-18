@@ -7,8 +7,8 @@ in [docs/SETUP.md](../docs/SETUP.md).
 Two shapes in here, and the difference is the naming convention:
 
 - **A directory per component that systemd runs.** It contains the executable,
-  its `atlas-*.service`/`.timer` units, an `install.sh` that renders them (via [`lib/install-unit.sh`](lib/install-unit.sh)) into
-  `/etc/systemd/system` and enables them, and a `README.md`. Unit names carry
+  its `atlas-*.service`/`.timer` units, an `install.sh` that installs them into
+  `/etc/systemd/system` (units that name the installing user or its home are rendered via [`lib/install-unit.sh`](lib/install-unit.sh)) and enables them, and a `README.md`. Unit names carry
   the `atlas-` prefix because systemd is a global namespace; files inside the
   directory don't, because the directory already names them.
 - **A loose `*.sh` at the top level** for one-shots you run by hand — no unit,
@@ -20,14 +20,14 @@ same names (see the comment in `proxy/install.sh`).
 
 Most units run the scripts straight out of `~/atlas`, so re-run the relevant
 `install.sh` after a pull that moves or renames one. Units that run as root or
-handle credentials (`bulk-backup`, `github-sync`, `agentbrain-backup`, `alerts`, `power-button`)
+handle credentials (`bulk-backup`, `github-sync`, `agentbrain-backup`, `alerts`, `power-button`, `power`'s `atlas-rtcwake`)
 run a root-owned copy in `/usr/local` instead: re-run their `install.sh` after
 any change to their scripts.
 
 | Path | What it is |
 |---|---|
-| [`atlas/`](atlas/) | The Atlas services themselves: `atlas-server` and `atlas-ml` units, the env template, `install.sh` (what `atlas deploy` runs) and `models.sh` (llama.cpp + model files) |
-| [`healthcheck/`](healthcheck/) | One-shot box health check (workspace build, atlas-server :8787, atlas-ml :8786, database container, Postgres) — on boot, on resume, on demand; result in `~/atlas-health/status.json` |
+| [`atlas/`](atlas/) | The Atlas services themselves: `atlas-postgres`, `atlas-server` and `atlas-ml` units, the env template, `install.sh` (what `atlas deploy` runs) and `models.sh` (llama.cpp + model files) |
+| [`healthcheck/`](healthcheck/) | One-shot box health check (workspace build, atlas-server :8787, atlas-ml :8786, database container, Postgres) — on boot, on resume, on demand; result in `/var/lib/atlas/health/status.json` (`~/atlas-health/` when run by hand) |
 | [`firewall/`](firewall/) | nftables table confining atlas-server :8787 to loopback + tailnet, and the unit that loads it before the network comes up |
 | [`disk-guard/`](disk-guard/) | Five-minute check that root is not filling up — 85/90/95 % thresholds, a burn-rate trend trigger, an 80 G floor below which builds refuse to start, alerts to the journal |
 | [`pg-backup/`](pg-backup/) | Nightly `pg_dump` of the atlas database to `/srv/backups/atlas-postgres` with retention, plus a restore drill that verifies row counts |
@@ -35,29 +35,33 @@ any change to their scripts.
 | [`github-sync/`](github-sync/) | Every repo of the account and its orgs, cloned to `/srv/bulk/github` through a read-only GitHub App, run by the bulk backup right before it snapshots |
 | [`agentbrain-backup/`](agentbrain-backup/) | Sync your agentbrain memories to the server: the full archive, hourly, with a download-only backup key, verified and versioned (run by the bulk backup right before it snapshots, or on its own timer) |
 | [`alerts/`](alerts/) | Mail to the owner through an HTTP mail API: `OnFailure=` of the backup jobs, an hourly staleness/disk/SMART check, a weekly report, smartd warnings |
-| [`power/`](power/) | Two host oneshots: keep Wake-on-LAN armed on the NIC, and make the Intel RAPL energy counters readable so atlas-server can report CPU power |
+| [`power/`](power/) | Host power units: keep Wake-on-LAN armed on the NIC, make the Intel RAPL energy counters readable so atlas-server can report CPU power, and the daily schedule (RTC wake at 10:00, power-off at 22:00) |
 | [`power-button/`](power-button/) | Clean shutdown on three fast presses of the physical power button — logind is told to ignore the key and a small root daemon owns the gesture, because the firmware wins any long-press race |
 | [`proxy/`](proxy/) | Host side of `atlas dev --public`: persistent Caddy + named Cloudflare Tunnel units behind the stable `*.your-domain.com` dev subdomains, with the one-time Cloudflare bootstrap (`setup.sh`) |
+| [`lib/`](lib/) | `install-unit.sh`, the helper the `install.sh` scripts source to fill the installing user and home into a unit |
 | `takeout-transfer.sh` | Mac-side: watches `~/Downloads` and moves finished Google Takeout zip parts to the server |
 | `cargo-dev-profile.sh` | Mac/server one-shot: sets `debug = "line-tables-only"` for dev/test builds machine-wide, refusing to land while any build is live |
+| `release-mac.sh` | Mac-side: archives the Mac app, signs it with a Developer ID, notarizes and staples it, and uploads the zip plus a Sparkle `appcast.xml` to the GitHub release of a tag |
 
 ## Units at a glance
 
 | Unit | Schedule | Installed by |
 |---|---|---|
-| `atlas-server.service`, `atlas-ml.service` | boot | [`atlas/install.sh`](atlas/install.sh) |
+| `atlas-postgres.service`, `atlas-server.service`, `atlas-ml.service` | boot | [`atlas/install.sh`](atlas/install.sh) |
 | `atlas-healthcheck.service` | boot | [`healthcheck/install.sh`](healthcheck/install.sh) |
 | `atlas-healthcheck-resume.service` | resume from suspend | ″ |
 | `atlas-firewall.service` | boot, before the network | [`firewall/install.sh`](firewall/install.sh) |
-| `atlas-disk-guard.timer` | every 5 min | [`disk-guard/install.sh`](disk-guard/install.sh) |
+| `atlas-disk-guard.timer` | every 5 min, first run 3 min after boot | [`disk-guard/install.sh`](disk-guard/install.sh) |
 | `atlas-pg-backup.timer` | nightly 03:30 ± 10 min, `Persistent` | [`pg-backup/install.sh`](pg-backup/install.sh) |
 | `atlas-bulk-backup.timer` | hourly ± 5 min, `Persistent` | [`bulk-backup/install.sh`](bulk-backup/install.sh) |
 | `atlas-bulk-backup-scrub.timer` | monthly, the 1st 11:00 ± 2 h, `Persistent` | ″ |
 | `atlas-github-sync.service` | with every `atlas-bulk-backup` run (`WantedBy=`/`Before=`) | [`github-sync/install.sh`](github-sync/install.sh) |
-| `atlas-agentbrain-backup.service` | with every `atlas-bulk-backup` run (`WantedBy=`/`Before=`), or hourly on `atlas-agentbrain-backup.timer` without it | [`agentbrain-backup/install.sh`](agentbrain-backup/install.sh) |
-| `atlas-backup-check.timer` | hourly at :30, and 20 min after boot | [`alerts/install.sh`](alerts/install.sh) |
+| `atlas-agentbrain-backup.service` | with every `atlas-bulk-backup` run (`WantedBy=`/`Before=`), or hourly ± 5 min (`Persistent`) on `atlas-agentbrain-backup.timer` without it | [`agentbrain-backup/install.sh`](agentbrain-backup/install.sh) |
+| `atlas-backup-check.timer` | hourly at :30 ± 5 min, and 20 min after boot | [`alerts/install.sh`](alerts/install.sh) |
 | `atlas-backup-report.timer` | Mondays 09:00, `Persistent` | ″ |
 | `atlas-wol.service`, `atlas-rapl-readable.service` | boot | [`power/install.sh`](power/install.sh) |
+| `atlas-rtcwake.service` | boot and every shutdown (arms the RTC alarm for the next 10:00) | ″ |
+| `atlas-poweroff.timer` | daily 21:55 (schedules the 22:00 power-off), not `Persistent` | ″ |
 | `atlas-power-button.service` | boot | [`power-button/install.sh`](power-button/install.sh) |
 | `caddy.service`, `cloudflared.service` | boot (steady-state dev-proxy infra) | [`proxy/install.sh`](proxy/install.sh) |
 
@@ -66,12 +70,14 @@ powered off whenever it is not needed, and a plain calendar schedule silently
 drops every run that falls into a powered-off window. `atlas-disk-guard.timer`
 and `atlas-backup-check.timer` are the exceptions on purpose — a catch-up run
 of a "how are things right now" check is worthless; the backup check runs
-20 min after boot instead.
+20 min after boot instead. `atlas-poweroff.timer` is the third: a box booted
+after 21:55 must not power off the moment it comes up.
 
 ## cargo-dev-profile.sh
 
-Writes `[profile.dev]`/`[profile.test]` `debug = "line-tables-only"` into
-`~/.cargo/config.toml`, so every Rust tree on the box — including ones
+Appends `[profile.dev]`/`[profile.test]` `debug = "line-tables-only"` to
+`~/.cargo/config.toml` (`$CARGO_HOME/config.toml` if set; an existing file is
+backed up next to it first), so every Rust tree on the box — including ones
 checked out later — drops the type and variable DWARF while keeping
 file/line backtraces. It goes in the cargo config rather than a manifest
 because a manifest change would surface as an unrelated diff in every
@@ -102,6 +108,32 @@ not a one-line edit:
 It exits non-zero with `HOLD` if any `cargo`/`rustc` process is running, so it
 is safe to retry from a timer or a heartbeat until a window opens. `--force`
 overrides the guard. Re-running after a successful apply is a no-op.
+
+## release-mac.sh
+
+Publishes the Mac app of a release for its Sparkle updates. Run on a Mac with
+the tag of an existing GitHub release:
+
+```bash
+DEVELOPMENT_TEAM=<your Apple team ID> ./release-mac.sh v0.6.0
+```
+
+It regenerates the Xcode project (`xcodegen`), archives the `Atlas` scheme,
+exports it signed with the team's Developer ID, has Apple notarize it, staples
+the ticket, zips the app as `Atlas-<version>.zip`, generates `appcast.xml`
+with Sparkle's `generate_appcast`, and uploads both to the release with
+`gh release upload --clobber`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEVELOPMENT_TEAM` | — (required) | Apple team ID used for the archive and the Developer ID export |
+| `NOTARY_PROFILE` | `atlas-notary` | keychain profile for `notarytool` |
+
+Needed once per Mac: a "Developer ID Application" certificate of the team in
+the keychain, notarization credentials
+(`xcrun notarytool store-credentials atlas-notary`), the Sparkle EdDSA private
+key in the keychain (its public half is `SUPublicEDKey` in
+`app/Mac/Info.plist`), `xcodegen`, and `gh` logged in.
 
 ## takeout-transfer.sh
 

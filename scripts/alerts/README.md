@@ -17,10 +17,21 @@ the alert address only.
 |---|---|
 | `alert.sh` → `/usr/local/sbin/atlas-alert` | sends one mail, at most once per problem key every 24 h, retries 3×; `--resolve` sends "resolved" for a key that was alerted; `--unit` mails a failed unit with its last 40 log lines |
 | `atlas-alert@.service` | `OnFailure=atlas-alert@%n.service` target for atlas-bulk-backup, atlas-github-sync, atlas-agentbrain-backup, atlas-pg-backup and the monthly scrub |
-| `check.sh` → `/usr/local/sbin/atlas-backup-check` | hourly (`atlas-backup-check.timer`, :30 and 20 min after boot): timers enabled, units not failed, bulk backup not held and ≤ 3 h old, github sync ≤ 3 h old with no failed repos, agentbrain archive ≤ 3 h old and none held by the shrink brake, newest Postgres dump ≤ 36 h old (only counted once atlas has been up long enough), USB disk mounted, writable, < 85 % full, no btrfs device errors, a finished scrub in the last 45 days, SMART health of every disk, alert key not expiring within 30 days |
+| `check.sh` → `/usr/local/sbin/atlas-backup-check` | hourly (`atlas-backup-check.timer`, :30 and 20 min after boot): timers enabled, units not failed, bulk backup not held and ≤ 3 h old, github sync ≤ 3 h old with no failed repos, agentbrain archive ≤ 3 h old and none held by the shrink brake, newest Postgres dump ≤ 36 h old (only counted once atlas has been up long enough), `/srv/bulk` mounted, USB disk mounted, writable, < 85 % full, no btrfs device errors, a finished scrub in the last 45 days, SMART health of every disk, alert key not expiring within 30 days |
 | `atlas-backup-report.{service,timer}` | Monday 09:00 (`Persistent`): the same check plus a summary mail, sent even when all is fine — if it stops arriving, alerting itself is broken |
 | `smartd-alert.sh` → `/etc/smartmontools/run.d/20atlas-alert` | smartd warnings (atlas has no local mail, so `-m root` went nowhere) |
 | `install.sh` | installs all of the above |
+
+`install.sh` needs `jq`, `curl` and `smartctl` on the box and refuses to run
+until the key file exists (see [The key](#the-key)), so the order is: write
+`/etc/atlas/alerts.env`, store the key and its expiry date, then
+
+```bash
+./install.sh
+```
+
+Re-run it after any change to the scripts: the units run root-owned copies in
+`/usr/local/sbin`, not the checkout.
 
 ```bash
 echo test | sudo atlas-alert test 'test alert'      # one test mail
@@ -32,7 +43,7 @@ ls /var/lib/atlas-alerts/                           # problems alerted and not y
 ## The key
 
 Root-only at `/etc/atlas/credentials/lmail-alerts`, expiry date in
-`lmail-alerts.expires` (the check warns 30 days ahead). It expires 2027-10-08.
+`lmail-alerts.expires` (the check warns 30 days ahead).
 To renew, issue a new key with your mail service, then from the Mac:
 
 ```bash

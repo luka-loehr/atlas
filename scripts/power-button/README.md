@@ -36,7 +36,8 @@ changing the script.
 
 It requires logind to ignore the key, which
 `/etc/systemd/logind.conf.d/10-power-button.conf` does (`install.sh` writes it
-if missing):
+if missing; a freshly written file applies after
+`sudo systemctl restart systemd-logind` or a reboot):
 
     [Login]
     HandlePowerKey=ignore
