@@ -106,7 +106,9 @@ elif ((pct >= CRIT_PCT)); then
 elif ((pct >= WARN_PCT)); then
     level=warn reason="${pct}% used — ${avail_gib} G free"
 fi
-if ((avail_gib < FLOOR_GIB)) && [[ $level == ok ]]; then
+# The floor outranks a mere warning: 85-89% used with less than the floor free
+# is critical, not warn.
+if ((avail_gib < FLOOR_GIB)) && [[ $level == ok || $level == warn ]]; then
     level=critical reason="${avail_gib} G free is below the ${FLOOR_GIB} G build floor"
 fi
 # Trend: green now, but arriving at the floor soon. Requires TWO consecutive
