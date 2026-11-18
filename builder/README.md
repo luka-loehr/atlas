@@ -4,12 +4,13 @@ One Dockerfile, three targets — the images that
 [`atlas build` and `atlas dev`](../crates/cli/) run on the server. The CLI builds
 them lazily: on first use it runs
 `ssh <host> "cd ~/atlas && git pull --quiet --ff-only && docker build
-[--target <target>] -t <tag> builder/<context>"`, then reuses the image.
+--target <target> -t <tag> builder/universal"`, then reuses the image.
 Manual rebuild is the same `docker build` on the server.
 
 ## Images
 
-There are two keys, and `universal` is the default. It carries every
+There are two keys, and `universal` is the usual choice (`image` is required
+in the config — there is no implicit default). It carries every
 toolchain these repos build with, so a project that mixes two languages — a
 pnpm workspace next to a Rust worker — has an image that covers it. Reach
 for `mobile` only when the build actually needs Flutter or Android.
@@ -17,8 +18,8 @@ for `mobile` only when the build actually needs Flutter or Android.
 | Key | Image tag | Target | Contents |
 |---|---|---|---|
 | `universal` | `atlas-universal-builder` | `build` | Node 22 + npm/pnpm/yarn (corepack) + Bun, Rust stable + `aarch64-unknown-linux-gnu` + cargo-lambda/Zig, Go, Python 3 + uv, JDK, and the usual native build deps (clang, cmake, ninja, protobuf, openssl/sqlite headers) |
-| `universal` (dev) | `atlas-universal-dev` | `dev` | the above **+ cloudflared**, used automatically by `atlas dev` |
-| `mobile` | `atlas-universal-mobile` | `mobile` | the above **+ Flutter SDK + Android SDK** (licenses pre-accepted) |
+| `universal` (dev) | `atlas-universal-dev` | `dev` | the above **+ cloudflared**, used automatically by `atlas dev` and `atlas start` |
+| `mobile` | `atlas-universal-mobile` | `mobile` | the `build` contents **+ Flutter SDK + Android SDK** (licenses pre-accepted); no cloudflared |
 
 All three are targets of [`universal/Dockerfile`](universal/Dockerfile) and
 share their layers, so holding all of them costs roughly what holding the
@@ -26,10 +27,10 @@ largest one does.
 
 `mobile` is a separate target rather than part of `build` because the
 Flutter and Android SDKs are ~10 G, while everything else fits in a few.
-atlas has one 950 G volume that was 75% full when this was written, with
-[disk-guard](../scripts/disk-guard/) warning at 85% — so the languages
-every repo uses stay cheap, and the mobile stack is only materialized when
-a project actually asks for it.
+On a server with a single data volume, and
+[disk-guard](../scripts/disk-guard/) warning at 85% used, that matters — so
+the languages every repo uses stay cheap, and the mobile stack is only
+materialized when a project actually asks for it.
 
 > The `dev` image carries `cloudflared`, but the public dev path does not
 > use it: public dev URLs ride a persistent, host-level Cloudflare Tunnel
@@ -74,14 +75,14 @@ every machine, every `cargo install`, and every Rust release. Container names
 carry it too — `atlas-dev-<name>-<hash8>-<slug>` and
 `atlas-start-<name>-<hash8>-<slug>`.
 
-**The bug this prevents.** `dairo-frontend` and `dairo-backend` both ship an
-`rt-harness` config with `name = "rt-harness"`. Keyed by name alone, both
-would resolve to `~/atlas-builds/rt-harness`, and the two repos would silently
+**The bug this prevents.** Say a frontend repo and a backend repo both ship a
+`test-harness` config with `name = "test-harness"`. Keyed by name alone, both
+would resolve to `~/atlas-builds/test-harness`, and the two repos would silently
 clobber each other's build tree, state, and containers — a frontend
-`atlas run` could find and list the backend's `attack-money` binary. With the
-hash, the two land in `rt-harness-<hashA>` and `rt-harness-<hashB>`; they
+`atlas run` could find and run a binary the backend built. With the
+hash, the two land in `test-harness-<hashA>` and `test-harness-<hashB>`; they
 never meet. Nothing is de-collided by editing the config — the two
-`rt-harness` files stay byte-identical; the URL hash does the separating.
+`test-harness` files stay byte-identical; the URL hash does the separating.
 
 **What is deliberately *not* namespaced:** the per-image cache
 (`.cache-<image>`, shared across every project on purpose); the tailnet dev
@@ -91,8 +92,7 @@ the public subdomain label (name-based by product requirement). Two *different*
 repos that share a `name` and both run tailnet `dev` at once would still
 collide on that front port and public host; nothing detects that
 automatically — `atlas ls` prints every project's name and hash side by side,
-which is where a duplicate shows up. In practice the only same-name pair
-(`rt-harness`) never runs `dev`.
+which is where a duplicate shows up.
 
 **Warm-tree adoption.** The first time a project syncs, if an unhashed
 `~/atlas-builds/<name>` tree exists and the hashed dir does not yet, the
@@ -129,7 +129,7 @@ Two flags shape *what* gets built:
   never disturbs a running `atlas start`. Mutually exclusive with `--branch`.
 - `--path <subdir>` scopes the config lookup to a subdirectory, so one repo can
   hold several targets — an app config at the root and, say, a standalone
-  crate's config under `security/tests/rt-harness/` — each built without
+  crate's config under `tools/test-harness/` — each built without
   cd-ing or swapping files. Each target needs its own `atlas.toml` with a
   distinct `name`. Composes with `--local`. (`--target T` selects a named
   `[target.T]` section instead, from a config that declares sections; it is
@@ -155,8 +155,8 @@ target is an error that names the branches which do have one:
 ```
 $ atlas start -b feature/does-not-exist
 no target for 'feature/does-not-exist' on atlas
-  built:      main
-  build with: atlas build -b feature/does-not-exist
+  built: main
+  build with:  atlas build -b feature/does-not-exist
 ```
 
 If the recorded commit differs from the branch's current remote tip, `start`
@@ -189,8 +189,8 @@ atlas run  [-b B] -- CMD       run CMD against the ALREADY-built tree (no sync, 
   (`atlas test -- -- --nocapture` → `cargo test -- --nocapture`).
 - **`run`** does **not** sync — it runs against what `atlas build` last left, so
   the produced binary is still there. Give the command as a path so it is
-  unambiguous which binary runs: `atlas run --path security/tests/rt-harness --local
-  -- ./target/release/attack-money --secret-file /tmp/s`. Running against a tree
+  unambiguous which binary runs: `atlas run --path tools/test-harness --local
+  -- ./target/release/harness --help`. Running against a tree
   that was never built is an error that names the build to run first. Note that
   `build`, `test` and `run` share one tree per source (the `--local` scratch dir,
   or a branch worktree) — they are **not** isolated from each other. `test`
@@ -243,8 +243,9 @@ them. `<dns-branch>` is the branch flattened for DNS: lowercased, every run
 of non-`[a-z0-9]` characters collapsed to a single `-`, leading/trailing `-`
 trimmed (`feature/x` → `feature-x`, `release/2.0` → `release-2-0`). The exact
 `__` slug keys the build tree, containers, and state, so builds never
-collide even when two branches flatten to the same host label; the CLI warns
-when that happens.
+collide even when two branches flatten to the same host label — but their
+public hosts (and Caddy routes) are then the same one, and nothing detects
+that, so run only one of them with `--public` at a time.
 
 How it works, and why it needs no per-request Cloudflare call:
 
@@ -288,7 +289,8 @@ and fall back to an unhashed `~/atlas-secrets/<name>.env` if the hashed one is
 absent, so a secret stored under the plain name keeps working until the next
 push writes the hashed path.
 
-`atlas build` and `atlas dev` pass the file to the container with `--env-file`,
+`atlas build`, `test`, `exec`, `run`, `dev` and `start` pass the file to the
+container with `--env-file`,
 so the values arrive as environment variables rather than as a file on disk.
 The upload is streamed over ssh stdin, so the contents never appear in a
 command line (argv is world-readable in `/proc`) and never land in an
@@ -323,11 +325,11 @@ values, `#` comments, and optional `[target.NAME]` sections.
 | `build` | for `atlas build` | build command run inside the container |
 | `test` | no (default: detected) | test command for `atlas test`; when absent, `cargo test` for a Rust crate, else the JS package manager's `test` script |
 | `dev` | for `atlas dev` | dev-server command |
-| `install` | no (default: from the lockfile) | dependency install run before `dev`/`start`; override when the lockfile is not the whole story |
+| `install` | no (default: from the lockfile) | dependency install run before the `dev` command (`atlas start` installs nothing); override when the lockfile is not the whole story |
 | `start` | no (default: from the lockfile) | command that runs the **built** artifact, for `atlas start` |
 | `repo` | no (default: the checkout's `origin`) | git URL the server clones; `git@host:owner/repo.git` is normalized to https so the server's stored credentials apply |
-| `port` | no (default `3000`) | port the server listens on; what `tailscale serve` and Caddy forward to |
-| `artifacts` | for `atlas build` | space-separated paths (relative to the project root) the build must produce; verified after the build and recorded in the target's state |
+| `port` | no (default `3000`) | port the server listens on; what `tailscale serve` and Caddy forward to. `22`, `2019`, `5432`, `8080` and `8785`–`8787` belong to the box's own services and are rejected |
+| `artifacts` | for `atlas build` | space-separated paths (relative to `dir`) the build must produce; verified after the build and recorded in the target's state |
 | `health` | no (default `/`) | the URL path `atlas health` probes (e.g. `/api/health`); must start with `/` and carry no whitespace or shell metacharacters |
 
 Any unknown key is ignored, and an `image` outside `universal` / `mobile` is a
@@ -366,7 +368,7 @@ name      = "my-app"
 image     = "universal"
 dir       = "web"
 build     = "pnpm build"
-artifacts = "web/dist"
+artifacts = "dist"
 dev       = "pnpm dev --host 0.0.0.0 --port 3000"
 start     = "pnpm start"
 port      = 3000
@@ -380,9 +382,9 @@ Seven read-mostly commands make a fleet legible without SSHing in by hand:
 | command | what it does |
 |---|---|
 | `atlas ls` | fleet overview — every project under `~/atlas-builds`: name, hash, built branches, what is running, resolved URL, disk use |
-| `atlas logs [-b B] [-f] [--dev\|--start]` | `docker logs` of this project's dev or start container (auto-picks the running one; flags disambiguate) |
+| `atlas logs [-b B] [-f] [--dev\|--start]` | `docker logs` of this project's dev or start container (auto-picks the running one; flags disambiguate); the last 200 lines, or a live follow with `-f` |
 | `atlas health [-b B] [--local]` | HTTP-probe the resolved dev/start URL (or `127.0.0.1:<port>` with `--local`) at the config's `health` path; non-zero exit if unhealthy |
-| `atlas open [-b B]` | open the resolved dev/start URL in the local browser |
+| `atlas open [-b B]` | open the resolved dev/start URL in the local browser (runs macOS `open`) |
 | `atlas doctor` | preflight checklist — reachability, ssh, docker, disk (85% guard), builder + mobile images, tailscale, the tunnel + Caddy admin + `cloudflare.env` presence + wildcard DNS, passwordless sudo — each `PASS`/`WARN`/`FAIL`; non-zero exit on any `FAIL` |
 | `atlas info` | this project's identity — name, canonical repo URL, hash, remote dir, image, port + health, resolved public and tailnet dev URLs, built branches, and whether secrets are pushed (hashed or unhashed path) |
 | `atlas watch [--path D] [--target T]` | local: watch the working tree (same excludes as `--local`) and re-run `build --local` on change, debounced 800 ms, coalescing save storms |

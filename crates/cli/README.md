@@ -1,6 +1,6 @@
 # atlas CLI
 
-`atlas` is a single-binary Rust CLI (std only, zero dependencies) that controls
+`atlas` is a single-binary Rust CLI (std plus `serde_json`) that controls
 the atlas homelab server from a workstation. It wraps SSH for everyday access,
 manages power via Wake-on-LAN, offloads project builds and dev servers to the
 server's Docker engine, publishes dev servers on the tailnet or on stable
@@ -15,7 +15,7 @@ command (`atlas nvidia-smi`).
 
 For the full story — how builds sync, how the images are structured, the config
 schema in depth, repo-hash namespacing, and the dev-networking design — see the
-[builder README](../builder/README.md).
+[builder README](../../builder/README.md).
 
 ## Command surface
 
@@ -79,9 +79,9 @@ shell features, invoke a shell: `atlas exec -- sh -c 'a && b'`.
 | command | what it does |
 |---|---|
 | `atlas ls` | fleet: every project on atlas — branches, running, URL, disk |
-| `atlas logs [-b B] [-f] [--dev\|--start]` | `docker logs` of this project's dev/start container |
-| `atlas health [-b B] [--local]` | HTTP-probe the dev/start URL at `health`; non-zero exit if unhealthy |
-| `atlas open [-b B]` | open the dev/start URL in the local browser |
+| `atlas logs [-b B] [-f] [--dev\|--start]` | `docker logs` of this project's dev/start container (last 200 lines; `-f` follows) |
+| `atlas health [-b B] [--local]` | HTTP-probe the dev/start URL (with `--local`: `127.0.0.1:<port>` on the server) at `health`; non-zero exit if unhealthy |
+| `atlas open [-b B]` | open the dev/start URL in the local browser (runs macOS `open`) |
 | `atlas info` | this project: name, repo, hash, remote dir, image, URL, secrets |
 
 ### Config
@@ -110,16 +110,17 @@ name      = "my-app"         # required — project id + container prefix (A-Za-
 image     = "universal"      # required — builder key: universal | mobile
 dir       = "web"            # subdir (relative to this file) the build/dev runs in
 build     = "pnpm build"     # build command (required for `atlas build`)
-artifacts = "web/dist"       # whitespace-separated paths the build must produce
+artifacts = "dist"           # whitespace-separated paths, relative to `dir`, the build must produce (required for `atlas build`)
+test      = "pnpm test"      # test command for `atlas test` (default: detect)
 dev       = "pnpm dev --host 0.0.0.0 --port 3000"  # dev-server command
 start     = "pnpm start"     # run the BUILT artifact, for `atlas start` (default: detect)
-install   = "pnpm install"   # dep install before dev/start (default: detect from lockfile)
+install   = "pnpm install"   # dep install before dev (default: detect from lockfile)
 repo      = "https://..."    # git URL to clone (default: this checkout's origin)
 port      = 3000             # port the server binds (default 3000; not 22, 2019, 5432, 8080, 8785-8787)
 health    = "/api/health"    # path `atlas health` probes (default /)
 ```
 
-See the [builder README](../builder/README.md#configuration--atlastoml) for the
+See the [builder README](../../builder/README.md#configuration--atlastoml) for the
 full schema table, `[target.NAME]` semantics, and lockfile-based install/start
 detection.
 
@@ -128,11 +129,11 @@ detection.
 Each project's remote directory and container names are keyed by `name` **and**
 a short deterministic hash of the origin git URL —
 `~/atlas-builds/<name>-<hash8>/`. Two different repos that happen to share a
-`name` (e.g. the `rt-harness` config that ships in both `dairo-frontend` and
-`dairo-backend`) cannot clobber each other's build tree, state, or
+`name` (e.g. a `test-harness` config that ships in both a frontend and a
+backend repo) cannot clobber each other's build tree, state, or
 containers. The hash is stable across machines, installs and Rust releases; the
 tailnet dev port and the public subdomain label stay name-based on purpose (URL
-stability). See [the builder README](../builder/README.md#repo-hash-namespacing--why-a-name-is-not-enough).
+stability). See [the builder README](../../builder/README.md#repo-hash-namespacing--why-a-name-is-not-enough).
 
 ## Dev networking — one-liner
 
@@ -147,8 +148,8 @@ runtime; it only upserts a Caddy route. If the tunnel or Caddy is down it prints
 
 ## Build & install
 
-Requires a Rust toolchain with edition-2024 support and a Unix OS (the CLI uses
-`exec()`; it does not build on Windows).
+Requires Rust 1.88 or newer (edition 2024, let chains) and a Unix OS (the CLI
+uses `exec()`; it does not build on Windows).
 
 ```bash
 cargo install --path crates/cli    # from the repo root — installs `atlas` into ~/.cargo/bin
@@ -156,7 +157,11 @@ cargo install --path crates/cli    # from the repo root — installs `atlas` int
 
 Client-side you need `ssh` (a host alias matching `ATLAS_SSH_HOST` with
 non-interactive key auth), and `git` for reading a project's `origin` remote.
-Machine-level setup is covered in [docs/SETUP.md](../docs/SETUP.md).
+`--local` builds (and `atlas watch`) also need `rsync`, `atlas health` needs
+`curl`, and `atlas share setup` / `share destroy` need Node.js (`npx`, for
+Cloudflare's wrangler) and must run inside a checkout of this repository (or
+with `ATLAS_SHARE_DIR` pointing at its `share/` directory).
+Machine-level setup is covered in [docs/SETUP.md](../../docs/SETUP.md).
 
 ## Configuration (environment)
 
@@ -169,11 +174,11 @@ profiles and the repo.
 |---|---|---|
 | `ATLAS_SSH_HOST` | `atlas` | ssh host (alias from `~/.ssh/config`) |
 | `ATLAS_LAN_ADDR` | `192.168.1.100:22` | LAN ssh route, `host:port` (empty = skip) |
-| `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip) |
+| `ATLAS_TAILNET_ADDR` | `atlas.your-tailnet.ts.net:22` | tailnet ssh route, `host:port` (empty = skip); its host is also where `atlas dev` / `atlas start` publish — while it is still the placeholder, tailnet dev refuses to start |
 | `ATLAS_WOL_MAC` | `aa:bb:cc:dd:ee:ff` | server NIC MAC for Wake-on-LAN (placeholder — `boot` warns until set) |
 | `ATLAS_WOL_BROADCAST` | `192.168.1.255:9` | broadcast `addr:port` for the magic packet |
 | `ATLAS_SERVER_URL` | tailnet host + `:8787` | atlas-server `host:port`, printed after `atlas deploy` and put into the `atlas connect` link |
-| `ATLAS_DEV_DOMAIN` | *(empty)* | your Cloudflare-managed domain for `atlas dev --public` URLs (`<name>.<domain>`); empty = tailnet dev only. Bring-up: [`scripts/proxy/`](../scripts/proxy/) |
+| `ATLAS_DEV_DOMAIN` | *(empty)* | your Cloudflare-managed domain for `atlas dev --public` URLs (`<name>.<domain>`); empty = tailnet dev only. Bring-up: [`scripts/proxy/`](../../scripts/proxy/) |
 
 The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 (`ControlPath ~/.ssh/cm/%r@%h:%p`, `ControlPersist`); it never sets conflicting
@@ -182,15 +187,18 @@ The CLI relies on SSH `ControlMaster` multiplexing from `~/.ssh/config`
 ## Server prerequisites
 
 - a systemd Linux with sshd on port 22 and Wake-on-LAN enabled — see
-  [docs/SETUP.md](../docs/SETUP.md)
+  [docs/SETUP.md](../../docs/SETUP.md)
 - this repository cloned at `~/atlas` with a reachable git remote
   (`build`/`dev` build images from it; `deploy` resets it to `origin/main`)
 - Docker Engine, with the SSH user in the `docker` group
 - `git`, and credentials for any private repo you build (the server clones over
   https, so `~/.git-credentials` or a credential helper)
-- passwordless sudo for `poweroff`, `reboot`, `systemctl`, `install`, `tee`
-  and `chown`, plus `tailscale serve` for `atlas dev`
+- passwordless sudo: `poweroff` and `reboot` (power commands), `chown`
+  (`build`/`test`/`exec`/`run`), `tailscale serve` (`atlas dev` / `atlas start`),
+  `sed` (`atlas connect`, `atlas share`), `systemctl` and `tee` (`atlas deploy`,
+  `atlas share setup`/`destroy`), and for `atlas deploy` also `install`, `test`,
+  `rm`, `mkdir` and `mv`; `atlas doctor` checks `sudo -n true`
 - for `atlas dev --public`: the dev-subdomain proxy infra (host Caddy + a named
   Cloudflare Tunnel + a `*.your-domain.com` wildcard DNS record), installed once
-  by [`scripts/proxy/`](../scripts/proxy/) and verified by `atlas doctor`
+  by [`scripts/proxy/`](../../scripts/proxy/) and verified by `atlas doctor`
 - a Rust toolchain sourced from `~/.cargo/env` (only needed for `atlas deploy`)
