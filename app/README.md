@@ -145,12 +145,13 @@ Built to the macOS Human Interface Guidelines:
     pinned and the tiles are made from them.
   - *Disk* (`MediaStore`): 512 thumbnails other screens ask for (and on the
     Mac all of them, pinned). Everything else (2048 previews,
-    originals, video bytes, face crops, drive thumbnails) shares a fixed
-    15 GB budget in Caches. Eviction ranks by idle time × kind (faces age
+    originals, video bytes, face crops, drive thumbnails) shares one
+    budget in Caches: a tenth of the device's free space (2 to 100 GB on
+    the iPhone, 5 to 100 GB on the Mac), or a size chosen in Settings. Eviction ranks by idle time × kind (faces age
     slowest, originals fastest), keeps photos of the last two months
     longest, never touches what is playing or was on screen in the last
     minute, and shrinks below the budget when the device runs short of
-    space. Nothing to configure; Settings shows what Atlas stores, by kind.
+    space. Settings shows what Atlas stores, by kind.
   - *Downloads* (`MediaFetch`): one queue, visible > near > background,
     one shared job per file, cancelled when nobody wants it any more.
     Background work never uses cellular and waits while the user scrolls

@@ -37,7 +37,9 @@ atlas boot        # wake the server (Wake-on-LAN)
 # Server: database, models, configuration
 cd ~/atlas/db && cp .env.example .env && docker compose up -d
 ~/atlas/scripts/atlas/models.sh
+sudo install -d /etc/atlas
 sudo install -m600 ~/atlas/scripts/atlas/atlas.env.example /etc/atlas/atlas.env
+sudoedit /etc/atlas/atlas.env            # ATLAS_TOKEN, POSTGRES_PASSWORD
 
 # Mac again
 atlas deploy      # build + install atlas-server and atlas-ml
@@ -50,7 +52,7 @@ atlas connect     # the link that connects the app
 
 - [Overview](docs/OVERVIEW.md): repository layout, architecture, security
 - [Setup](docs/SETUP.md): from-scratch machine setup (Ubuntu, Tailscale, Wake-on-LAN, GPU, models, the app)
-- Components: [server](crates/server/README.md) · [ml](crates/ml/README.md) · [cli](crates/cli/README.md) · [app](app/README.md) · [db](db/README.md) · [builder](builder/README.md) · [scripts](scripts/README.md)
+- Components: [server](crates/server/README.md) · [ml](crates/ml/README.md) · [cli](crates/cli/README.md) · [app](app/README.md) · [share](share/README.md) · [db](db/README.md) · [builder](builder/README.md) · [scripts](scripts/README.md)
 
 ---
 

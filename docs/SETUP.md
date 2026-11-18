@@ -17,7 +17,7 @@ IP), `aa:bb:cc:dd:ee:ff` (server NIC MAC), `atlas` (server username, home
 | Component | Required for | Notes |
 |---|---|---|
 | x86 server | everything | Any always-available box; idle power is irrelevant because the platform is designed to sleep (Wake-on-LAN). Ethernet strongly recommended — WoL over Wi-Fi is unreliable to nonexistent. |
-| NVIDIA GPU in the server | fast semantic search and indexing (the embedding model) | Everything else — Postgres, the server, thumbnails, faces — runs fine without one, and the embedding model falls back to the CPU (`ATLAS_EMBED_GPU_LAYERS=0`), just slowly. 6 GB VRAM is enough. With a GPU, large videos also get their streaming renditions through NVENC. |
+| NVIDIA GPU in the server | atlas-ml: semantic search and indexing (the embedding model), faces, animals, text | The embedding model runs on the GPU only, and `atlas deploy` builds atlas-ml against CUDA (section 2). It reserves 5 GB of the card; the vision models use what is left and fall back to the CPU when there is no room. A card with 8 GB does. Large videos also get their streaming renditions through NVENC. |
 | Mac | the `atlas` CLI, building the iOS app | The CLI is Unix-only; any Linux workstation works for the CLI, but the iOS app needs Xcode. |
 | iPhone | the Atlas app (photos, albums, files, settings) | iOS 26.1 or later; a free or paid Apple Developer team for device signing. |
 
@@ -168,7 +168,7 @@ Enable **MagicDNS** in the Tailscale admin console so
 `atlas.your-tailnet.ts.net` resolves everywhere.
 
 Recommended `~/.ssh/config` on the Mac — everything in this repo (CLI,
-rsync scripts, light-show tooling) uses the host alias `atlas`:
+rsync scripts) uses the host alias `atlas`:
 
 ```
 Host atlas
@@ -286,7 +286,8 @@ tag **and** digest. Nightly dumps with retention and a restore drill:
 
 ## 6. The Atlas services
 
-Two units, one installer:
+Two services, one installer (which also installs `atlas-postgres.service`,
+the unit that brings the database of section 5 up at boot):
 
 - **atlas-server** — the API on :8787 (photos, drive, system) and the ingest
   workers: thumbnails, metadata, reverse geocoding, drive text, video
@@ -377,8 +378,8 @@ atlas-server import drive  ~/takeout/drive/*.zip
 Photos are deduplicated by content (the id of an asset is the SHA-256 of its
 bytes, the same id a phone upload gets), sidecar JSON supplies dates, places
 and albums, and everything else — thumbnails, metadata, embeddings, faces —
-is queued for the workers. Progress is in the app under Einstellungen →
-server → Verarbeitung, or in `atlas deploy logs`.
+is queued for the workers. Progress is in the app under Settings →
+Server → Processing, or in `atlas deploy logs`.
 
 `atlas-server backfill <thumbs|dates|previews|drive-text|embeddings|faces>`
 puts a stage back in the queue for assets that lack its result.
@@ -389,7 +390,7 @@ puts a stage back in the queue for assets that lack its result.
 cd ~/atlas/app
 xcodegen generate
 xcodebuild -project Atlas.xcodeproj -scheme Atlas \
-  -destination 'platform=iOS,name=<your iPhone>' \
+  -destination 'platform=iOS,name=<your iPhone>' -derivedDataPath build \
   -allowProvisioningUpdates DEVELOPMENT_TEAM=<your team id> build
 xcrun devicectl device install app --device <udid> \
   build/Build/Products/Debug-iphoneos/Atlas.app
