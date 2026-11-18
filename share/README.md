@@ -20,6 +20,8 @@ The interfaces (admin API, R2 layout, cookie, expiry rules) are in
 src/index.ts      routing, the daily cron
 src/admin.ts      admin API for atlas-server (bearer SHARE_TOKEN)
 src/public.ts     share page, password gate, files (Range, ETag)
+src/manifest.ts   the manifest: validation, limits (MAX_DAYS), R2 keys
+src/range.ts      single-range `Range` parsing
 src/html.ts       the pages: gallery (mosaic, viewer), gate, being created, notices
 src/layout.ts     the justified-rows mosaic (embedded in the page as is)
 src/zip.ts        streaming ZIP writer for "Download all"
@@ -60,11 +62,15 @@ From the Mac, with Node.js installed:
 atlas share setup
 ```
 
-It logs in to Cloudflare in the browser, creates the bucket and the
-lifecycle rule, generates both secrets, deploys the Worker and writes
-`ATLAS_SHARE_URL` and `ATLAS_SHARE_TOKEN` into `/etc/atlas/atlas.env` on the
-server. After a restart of atlas-server, `GET /v1/server` reports
-`"sharing": true`.
+It logs in to Cloudflare in the browser, asks where links should live (a
+domain on the account, as `atlas-share.<domain>`, or `workers.dev`), creates
+the bucket and the lifecycle rule, deploys the Worker, generates both
+secrets, writes `ATLAS_SHARE_URL` and `ATLAS_SHARE_TOKEN` into
+`/etc/atlas/atlas.env` on the server and restarts atlas-server. `GET
+/v1/server` then reports `"sharing": true`. Without questions:
+`atlas share setup --domain example.com`, `--workers-dev`, or
+`--url https://…` for an address you route yourself. It is safe to run
+again; `atlas share destroy` removes everything it made.
 
 ### By hand
 
@@ -116,7 +122,7 @@ Set `ATLAS_SHARE_URL` to it; links use whatever host atlas-server calls.
 
 ```bash
 npm test                 # unit tests and the routes against an in-memory bucket
-npx tsc --noEmit
+npm run typecheck        # tsc --noEmit
 npx wrangler dev --local --var SHARE_TOKEN:dev --var SESSION_SECRET:dev
 ```
 

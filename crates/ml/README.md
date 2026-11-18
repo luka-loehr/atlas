@@ -22,7 +22,7 @@ atlas-ml analyze FILE... # what the vision stage sees in files, nothing stored
 
 | Route | |
 |---|---|
-| `GET /health` | which models are loaded |
+| `GET /health` | which models are loaded and what the queue holds |
 | `POST /embed {"text": "…"}` | a search as two vectors: `still` (the question for photos) and `clip` (for videos) |
 | `POST /warm` | load the embedding model ahead of a search |
 
@@ -71,7 +71,7 @@ Only atlas-server talks to it. Logs: `journalctl -u atlas-ml -f`.
   someone named, and only when they clearly resemble their clear faces. Every
   five minutes the faces nobody was recognized in are grouped into new people
   along mutual nearest neighbours, and a group must hold together. A face
-  taken away from someone (`POST /faces/unassign`) never goes back to them.
+  taken away from someone (`POST /v1/faces/unassign`) never goes back to them.
 - **No silent fallback.** If a model is missing or fails, the job fails
   visibly and search reports `semantic: unavailable`.
 
@@ -82,12 +82,15 @@ From `/etc/atlas/atlas.env`, documented in [`config.rs`](src/config.rs).
 | Variable | Default | |
 |---|---|---|
 | `ATLAS_MODELS_DIR` | `~/models` | `wemm-embedding/{model,mmproj}.gguf`, `buffalo_l/det_10g.onnx`, `adaface/ir101.onnx`, `rfdetr/large.onnx`, `pet/model.onnx`, `ocr6/{det,rec}.onnx` + `dict.txt` |
-| `ATLAS_VISION_JOBS` | `6` | assets the vision stage prepares side by side |
+| `ATLAS_EMBED_MODEL`, `ATLAS_EMBED_MMPROJ` | `$ATLAS_MODELS_DIR/wemm-embedding/{model,mmproj}.gguf` | the embedding model and its vision projector, when kept elsewhere |
+| `ATLAS_FACE_DETECTOR`, `ATLAS_FACE_RECOGNIZER` | `$ATLAS_MODELS_DIR/buffalo_l/det_10g.onnx`, `…/adaface/ir101.onnx` | the face models, when kept elsewhere |
+| `ATLAS_PHOTOS_DIR` | `~/photos` | the library root atlas-server uses (`thumbs/`, `faces/`) |
+| `ATLAS_VISION_JOBS` | `6` | assets the vision stage prepares side by side (1 to 12) |
 | `ATLAS_VISION_VRAM_MB` | card − 5 GB | GPU memory the vision models may use |
 | `ATLAS_LLAMA_SERVER` | `/usr/local/lib/atlas/llama-server` | built by `models.sh`, with Atlas' video-frames patch |
 | `ATLAS_EMBED_DEVICE` | `CUDA0` | the GPU the embedding model runs on (`llama-server --list-devices`) |
 | `ATLAS_ML_IDLE_S` | `600` | seconds until the embedding model is unloaded |
-| `ATLAS_EMBED_SLOTS` | `6` | requests the embedding server runs side by side; the queue uses all but two |
+| `ATLAS_EMBED_SLOTS` | `6` | requests the embedding server runs side by side (3 to 8); the queue uses all but two |
 | `ATLAS_ML_BIND` | `127.0.0.1:8786` | |
 | `ATLAS_LLAMA_PORT` | `8785` | loopback port of the llama.cpp server |
 

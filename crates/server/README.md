@@ -25,12 +25,12 @@ Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
 |---|---|
 | Library | `GET /server` · `/work` (what atlas is busy with) · `/stats` · `/heatmap` |
 | Timeline | `GET /timeline` (month index: key, count, validator) · `GET /timeline/{YYYY-MM\|undated}` (one month, columnar) |
-| Assets | `PUT /assets` (streaming upload) · `POST /assets/exists` · `GET /assets/{id}` · `/assets/{id}/thumb/{512\|2048}` · `/assets/{id}/original` · `/assets/{id}/video` · `POST /assets/{favorite,archive,lock,trash,restore,delete}` |
-| Collections | `GET /library/{favorites,videos,archive,locked,trash}` · `POST /library/trash/empty` · `/albums…` · `/people…` · `/faces/{id}/crop` · `/places…` |
+| Assets | `PUT /assets` (streaming upload) · `POST /assets/exists` · `GET /assets/{id}` · `/assets/{id}/thumb/{512\|2048}` · `/assets/{id}/tile` · `/assets/{id}/original` · `/assets/{id}/video` · `POST /assets/{favorite,archive,lock,trash,restore,delete}` |
+| Collections | `GET /library/{favorites,videos,archive,locked,trash}` · `POST /library/trash/empty` · `/albums…` · `/people…` · `/faces/{id}/crop` · `/places…` · `/covers` |
 | Search | `GET /search?q=` (people, places, albums, then meaning) · `POST /search/warm` |
-| Drive | `GET /drive/folders/{id\|root}` · `PUT /drive/files` · `/drive/blobs/{hash}/{name}` · `/drive/{recent,search,move,trash,restore,delete}` |
+| Drive | `GET /drive/folders/{id\|root}` · `PUT /drive/files` · `/drive/files/{id}/thumb` · `/drive/blobs/{hash}/{name}` · `/drive/{recent,search,move,trash,restore,delete}` |
 | Shares | `GET/POST /shares` · `GET/DELETE /shares/{id}` (links through [atlas-share](../../share/), 7 days at most; the link preview is drawn in [`share/og.rs`](src/share/og.rs)) |
-| System | `GET /system` · `WS /system/live` · `/system/{services,containers,network,activity}` · `WS /system/terminal` · `POST /system/power/{shutdown\|restart}` |
+| System | `GET /system` · `WS /system/live` · `/system/{services,drives,containers,network,activity}` · `WS /system/terminal` · `POST /system/power/{shutdown\|restart}` |
 
 The full list with one line each sits at the top of
 [`photos/mod.rs`](src/photos/mod.rs), [`drive/mod.rs`](src/drive/mod.rs),
@@ -65,7 +65,7 @@ The full list with one line each sits at the top of
   check-up ([`jobs/heal.rs`](src/jobs/heal.rs)) queues missing work, drops
   jobs whose photo is gone and retries failed jobs later. What fails for
   good is parked as `stuck` with its reason (listed under
-  `GET /v1/system`) and starts over when its input is fixed.
+  `GET /v1/system/services`) and starts over when its input is fixed.
 - **Imaging** ([`imaging.rs`](src/imaging.rs)). JPEG, PNG, WebP and HEIC are
   decoded in process, resized with SIMD, and written as WebP with the source's
   color profile kept, so wide-gamut photos stay wide-gamut.
@@ -89,6 +89,8 @@ documented where it is read, in [`config.rs`](src/config.rs).
 | `ATLAS_VIDEO_PREVIEWS` | on | `0` skips video renditions |
 | `ATLAS_MAX_UPLOAD_GB` | `64` | largest accepted upload |
 | `ATLAS_ML_URL` | `http://127.0.0.1:8786` | where query embeddings come from |
+| `ATLAS_POWER_BASELINE_W`, `ATLAS_PSU_EFFICIENCY` | `35`, `0.88` | calibrate the whole-system power estimate |
+| `ATLAS_REPO_DIR` | `~/atlas` | checkout whose commits feed the activity heatmap |
 | `ATLAS_SHARE_URL`, `ATLAS_SHARE_TOKEN` | unset | the atlas-share Worker; `atlas share setup` writes both |
 
 External tools the workers call: `ffmpeg`/`ffprobe` (video), `pdftoppm` and

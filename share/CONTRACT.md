@@ -34,6 +34,7 @@ prefix delete and the lifecycle rule can expire by prefix:
 | `s/<id>/t/<asset>` | thumbnail: WebP, long side 512 |
 | `s/<id>/v/<asset>` | view: photos WebP, long side 2048; videos H.264 MP4 (≤1080p, faststart) |
 | `s/<id>/o/<asset>` | the untouched original; only when `allow_download` |
+| `s/<id>/progress.json` | how far the upload is (`PUT …/progress` below), while the share is being created; deleted when the manifest is written |
 | `s/<id>/og.jpg` | the link preview chat apps show: JPEG, 1200×630, the first photo with the title on a panel of glass; a password share's has no photo. Written after the files, before the manifest |
 
 `<asset>` is the atlas asset id (SHA-256 of the original, 64 hex).
@@ -47,6 +48,8 @@ answers `500` (never open); errors are `{"error":"…"}`.
 | route | does |
 |---|---|
 | `GET /api/health` | `{"ok":true,"version":"…","max_days":7}` |
+| `GET /api/shares` | `{"ids":[…]}`: every share id with something stored, for atlas to reconcile against |
+| `PUT /api/shares/<id>/progress` | body `{"title":"…","count":n,"done_bytes":n,"total_bytes":n,"eta_s":n\|null,"expires_at":…}` (`expires_at` as for the manifest, else `400`): what the "being created" page shows → `{"ok":true}` |
 | `PUT /api/shares/<id>/files/<t\|v\|o>/<asset>` | stores the raw body (≤ 95 MB) with its `Content-Type` → `{"ok":true}` |
 | `HEAD /api/shares/<id>/files/<t\|v\|o>/<asset>` | `200` + `Content-Length` when stored, else `404` (resume) |
 | `POST /api/shares/<id>/files/<kind>/<asset>?uploads` | starts a multipart upload (`Content-Type` header = the file's) → `{"upload_id":"…"}` |
@@ -55,6 +58,7 @@ answers `500` (never open); errors are `{"error":"…"}`.
 | `PUT /api/shares/<id>/og` | stores the link preview (`Content-Type: image/jpeg`, else `415`; ≤ 2 MB, else `413`) → `{"ok":true}` |
 | `PUT /api/shares/<id>` | writes the manifest (input below) → `{"url":"https://…/s/<id>"}` |
 | `DELETE /api/shares/<id>` | deletes every object under `s/<id>/` → `{"deleted":n}` |
+| `DELETE /api/everything` | empties the bucket (`atlas share destroy`), up to 20,000 objects a call → `{"deleted":n,"more":bool}`; call again while `more` |
 
 atlas-server sends files up to 16 MiB as one `PUT`, larger ones as 16 MiB parts, so the progress the app shows moves part by part.
 Every file `PUT` (whole or part) must carry a `Content-Length` (R2 needs the
@@ -114,6 +118,7 @@ the manifest of an existing share again keeps its `created_at`, and
 | route | does |
 |---|---|
 | `GET /s/<id>` | the gallery; the password gate first when the share has one; `404` page when unknown, `410` page when expired |
+| `GET /s/<id>/status` | JSON the "being created" page polls: `{"ready":true}` once the manifest is there; before that `{"ready":false}` with `count`, `done`, `total`, `eta_s` and `paused` (no progress report for a minute) when atlas has reported progress; `404`/`410` `{"gone":true}` when unknown or expired |
 | `POST /s/<id>/unlock` | form field `password`; right → sets the cookie, `303` to `/s/<id>`; wrong → the gate again with an error (`403`); more than 10 tries a minute from one address, or 60 from anywhere, on one share → `429` with `Retry-After: 60` before the password is checked |
 | `GET /s/<id>/zip` | every original as one ZIP named after the title (`Lake Weekend.zip`, RFC 5987); same checks as files (`404` unless live and unlocked), then `403` without `allow_download`; `HEAD` too. Streamed from R2 one object at a time: STORE, data descriptors (flag bit 3), UTF-8 names (bit 11), CRC-32 computed on the way, ZIP64 records only where a size, offset or count needs them, names de-duplicated ignoring case (`IMG_1.HEIC`, `IMG_1 (2).HEIC`), MS-DOS times from `taken`. Only originals present in the bucket are included; their sizes come from a listing, so `Content-Length` is exact. `Cache-Control: private, no-store`, no `Range` |
 | `GET /s/<id>/og.jpg` | the link preview, for anyone with the link (a password share's shows no photo); `404` unless the share is live and its manifest has `og`; `HEAD` too; `public, max-age=3600`. Every page of a live share (gallery and password gate) points `og:image` at `og.jpg?v=<og>` with its size and `twitter:card` `summary_large_image`; a share without `og` (older atlas) uses its first thumbnail when it has no password, else no image |
@@ -128,8 +133,9 @@ the manifest of an existing share again keeps its `created_at`, and
   `Cross-Origin-Opener-Policy: same-origin`.
 - A password share on a Worker without `SESSION_SECRET` is a `500`, never
   open.
-- A daily cron deletes every share whose `expires_at` has passed, and every
-  `s/<id>/` prefix without a manifest whose files are older than `MAX_DAYS`
+- A daily cron deletes every share whose `expires_at` has passed (a
+  manifest's, or the progress report's of a share still being created), and
+  every `s/<id>/` prefix without either whose files are older than `MAX_DAYS`
   + 1 days (an upload that never finished).
 
 ## atlas-server API (for the app)
@@ -157,9 +163,10 @@ A share as the API returns it:
 
 `state` is `uploading`, `ready` or `failed` (`error` says why). `live` is
 true once the manifest has been written, i.e. the link opens; before that
-the Worker answers `202` "Almost ready" (it finds files under the prefix but
-no manifest) and the page refreshes itself, so the link can be handed out at
-once. `password` is the link's password (or null), kept for the link's
+the Worker answers `202` with a "still being created" page (it finds a
+progress report or files under the prefix but no manifest) that polls
+`/s/<id>/status` and shows the gallery once it is ready, so the link can be
+handed out at once. `password` is the link's password (or null), kept for the link's
 lifetime so the owner's app can show it again.
 
 **One link per album.** `POST` with an album that already has a live link
@@ -178,4 +185,5 @@ Uploading runs on atlas alone; the app only asks and polls.
 | `GET /v1/shares/{id}` | one share (the app polls it while `uploading`) |
 | `DELETE /v1/shares/{id}` | stops sharing: removes the files from R2 and the share → `{"deleted":true}` |
 
-Only visible assets can be shared (not archived, locked or trashed).
+Only visible assets can be shared (not archived, locked or trashed), at most
+5,000 per link (else `400`).
