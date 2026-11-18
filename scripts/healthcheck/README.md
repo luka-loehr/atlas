@@ -39,7 +39,6 @@ The systemd units write to `/var/lib/atlas/health` (they set
 ## Install / run
 
 ```sh
-sudo install -d -o "$USER" /var/lib/atlas /var/lib/atlas/health   # once: the units' result directory
 ~/atlas/scripts/healthcheck/install.sh        # install + enable both units
 sudo systemctl start atlas-healthcheck        # run now via systemd
 ~/atlas/scripts/healthcheck/healthcheck.sh    # or run directly
@@ -47,8 +46,8 @@ sudo systemctl start atlas-healthcheck        # run now via systemd
 
 Exit code 0 = all green, 1 = at least one check failed.
 
-The units run as the installing user and neither they nor `install.sh` create
-`/var/lib/atlas/health`, hence the first line.
+The units run as the installing user; `install.sh` creates their result
+directory `/var/lib/atlas/health` owned by that user.
 
 The units run the script straight out of the checkout, so re-run `install.sh`
 after a pull that renames or moves it.

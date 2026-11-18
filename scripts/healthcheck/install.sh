@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 . ../lib/install-unit.sh
+# The units run as the installing user and write their results here.
+sudo install -d -o "$(id -un)" -g "$(id -gn)" /var/lib/atlas /var/lib/atlas/health
 install_unit atlas-healthcheck.service atlas-healthcheck-resume.service
 sudo systemctl daemon-reload
 sudo systemctl enable atlas-healthcheck.service atlas-healthcheck-resume.service

@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 . ../lib/install-unit.sh
+# The unit runs as the installing user and keeps its state here.
+sudo install -d -o "$(id -un)" -g "$(id -gn)" /var/lib/atlas /var/lib/atlas/health
 install_unit atlas-disk-guard.service atlas-disk-guard.timer
 sudo ln -sfn "$PWD/disk-guard.sh" /usr/local/bin/atlas-disk-guard
 sudo systemctl daemon-reload

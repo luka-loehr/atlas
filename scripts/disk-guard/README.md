@@ -23,7 +23,6 @@ minutes after boot.
 ## Install
 
 ```bash
-sudo install -d -o "$USER" /var/lib/atlas /var/lib/atlas/health   # once: the unit's state directory
 ./install.sh
 ```
 
@@ -31,9 +30,9 @@ sudo install -d -o "$USER" /var/lib/atlas /var/lib/atlas/health   # once: the un
 `/etc/systemd/system` (via `../lib/install-unit.sh`), links
 `/usr/local/bin/atlas-disk-guard` to `disk-guard.sh` in the checkout, and
 enables and starts the timer. The unit runs as the installing user with
-`DISK_GUARD_STATE_DIR=/var/lib/atlas/health`; neither it nor `install.sh`
-creates that directory, hence the first line. Run by hand, the script keeps its
-state in `~/atlas-health` instead.
+`DISK_GUARD_STATE_DIR=/var/lib/atlas/health`; `install.sh` creates that
+directory owned by that user. Run by hand, the script keeps its state in
+`~/atlas-health` instead.
 
 ```bash
 systemctl list-timers atlas-disk-guard.timer
