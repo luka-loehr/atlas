@@ -4,7 +4,7 @@
 # A remote build reuses its worktree: `git clean` runs without -x, so
 # node_modules survives between runs precisely so the next one is warm. Then
 # `npm ci` deletes it and reinstalls all of it anyway — measured at 7s of a 17s
-# dairo-frontend build, re-adding 1053 packages that were already correct.
+# frontend build, re-adding 1053 packages that were already correct.
 #
 # The fix is not a loose `npm install`: that mutates the lockfile and makes the
 # remote build stop matching CI. Instead keep the strict, lockfile-pinned

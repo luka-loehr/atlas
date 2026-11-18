@@ -9,9 +9,9 @@
 # Why ~/.cargo/config.toml and not the repo: a manifest change would surface
 # as an unrelated diff in every checkout of the repo. Config profiles override
 # manifest profiles and apply to every tree at once, including ones checked
-# out later. Nothing in dairo sets [profile.dev]/[profile.test], so this
-# collides with nothing; the [profile.release] blocks in dairo-cli and
-# dairo-api are untouched.
+# out later. Nothing in the projects built here sets [profile.dev]/[profile.test], so this
+# collides with nothing; their [profile.release] blocks
+# are untouched.
 #
 # Why this needs a quiet window (the whole reason it is a script and not a
 # one-line edit): profile settings are part of cargo's fingerprint, so the
@@ -19,9 +19,9 @@
 #
 # And the part that is easy to get wrong — cargo has no garbage collector. It
 # does not replace the old artifacts, it builds new ones *alongside* them under
-# new fingerprint hashes. dairo-backend's target/ already carries four distinct
+# new fingerprint hashes. One backend's target/ here already carries four distinct
 # libserde builds for exactly this reason. So this change makes target/ grow
-# before it ever shrinks: you pay old + new at once, ~50 G of dairo target/
+# before it ever shrinks: you pay old + new at once, ~50 G of target/
 # becoming meaningfully more, and only get the saving back once the stale
 # generation is cleared. Clear stale target/ dirs first, then land.
 #
