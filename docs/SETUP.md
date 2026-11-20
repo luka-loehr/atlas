@@ -23,7 +23,7 @@ IP), `aa:bb:cc:dd:ee:ff` (server NIC MAC), `atlas` (server username, home
 
 ## 2. Server preparation (Ubuntu Server)
 
-Install a current Ubuntu Server (22.04 LTS or newer; everything is systemd +
+Install Ubuntu Server 26.04 LTS or newer (everything is systemd +
 netplan). During install, create the service user (examples here use `atlas`)
 and enable OpenSSH.
 
@@ -38,6 +38,9 @@ ssh atlas@192.168.1.100 true && echo ok
 ```
 
 ### Static DHCP lease
+
+Skip this and Wake-on-LAN if you plan to leave the server on and use its
+Tailscale address.
 
 Give the server a fixed LAN IP via a static DHCP lease (router config, keyed
 on the NIC MAC). The CLI probes `ATLAS_LAN_ADDR` and sends the WoL packet to
@@ -105,7 +108,7 @@ sudo apt-get install -y cuda-toolkit   # from NVIDIA's apt repo; provides nvcc
 
 ```bash
 sudo apt-get install -y build-essential cmake pkg-config \
-     ffmpeg poppler-utils libheif-dev libheif-plugin-libde265
+     ffmpeg poppler-utils libheif-dev libheif-plugin-libde265 nftables
 ```
 
 `ffmpeg` makes video posters and streaming renditions, `poppler-utils` reads
@@ -120,7 +123,7 @@ photos an iPhone takes. The server needs libheif 1.21 or later, which Ubuntu shi
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # the repo — several defaults assume this exact path
-git clone https://github.com/your-fork/atlas.git ~/atlas
+git clone https://github.com/luka-loehr/atlas.git ~/atlas
 ```
 
 The clone at `~/atlas` matters: `atlas deploy` resets it to `origin/main` and
@@ -222,6 +225,9 @@ sudo nft -a list table inet atlas-fw     # per-rule counters show what got dropp
 
 ## 4. Mac: the `atlas` CLI
 
+Skip to the database if you plan to install on the server directly and
+enter the server address and token in the app yourself.
+
 ```bash
 cd ~/atlas          # your clone, on the Mac
 # Rust toolchain, if you don't have one: https://rustup.rs (or `brew install rustup`)
@@ -270,8 +276,9 @@ drive, the graph that links them, and every vector.
 
 ```bash
 cd ~/atlas/db
-cp .env.example .env && $EDITOR .env      # POSTGRES_PASSWORD
-docker compose up -d
+(umask 077; cp -n .env.example .env)
+${EDITOR:-nano} .env                      # replace change-me; use openssl rand -hex 32
+docker compose up -d --wait postgres
 docker compose ps                         # atlas-postgres ... healthy
 ```
 
@@ -328,10 +335,13 @@ and unloaded after ten idle minutes (`ATLAS_ML_IDLE_S`), which returns its
 
 ### 6.2 Configuration
 
+On a fresh install, copy the template. If the file already exists, edit it
+in place instead of replacing its settings.
+
 ```bash
 sudo install -d /etc/atlas
 sudo install -m600 ~/atlas/scripts/atlas/atlas.env.example /etc/atlas/atlas.env
-sudoedit /etc/atlas/atlas.env             # ATLAS_TOKEN, POSTGRES_PASSWORD, paths
+sudoedit /etc/atlas/atlas.env             # new ATLAS_TOKEN; same POSTGRES_PASSWORD as db/.env
 ```
 
 Every variable is documented where it is read:
@@ -358,12 +368,14 @@ atlas deploy                # reset ~/atlas to origin/main, build, install, rest
 atlas deploy logs           # journalctl -f of both units
 ```
 
-or on the server itself: `~/atlas/scripts/atlas/install.sh`. Then:
+Or on the server itself, run `~/atlas/scripts/atlas/install.sh` as the
+user who cloned the repo. It installs the models too. Then, from a second
+device on your tailnet:
 
 ```bash
-curl http://atlas.your-tailnet.ts.net:8787/health          # ok
-curl -H "Authorization: Bearer $ATLAS_TOKEN" \
-     http://atlas.your-tailnet.ts.net:8787/v1/server        # {"name":"atlas",...}
+curl -fsS http://atlas.your-tailnet.ts.net:8787/health      # ok
+curl -fsS -H "Authorization: Bearer $ATLAS_TOKEN" \
+     http://atlas.your-tailnet.ts.net:8787/v1/system        # server status JSON
 ```
 
 ### 6.4 Bringing a library in
@@ -397,14 +409,15 @@ xcrun devicectl device install app --device <udid> \
 ```
 
 `project.yml` carries the author's bundle id prefix — set your own first. The
-iPhone must be on the tailnet. Connect the app in one step:
+iPhone must be on the tailnet. Enter the server address and your Atlas token
+on the app's first screen. If you installed the CLI, you can get a link instead:
 
 ```bash
 atlas connect               # prints an atlas://connect?... link
 ```
 
-Open the link on the iPhone (or type the address and token on the app's
-first screen). Details: [app/README.md](../app/README.md).
+Open the link on the iPhone. The link contains the token, so keep it private.
+For the Mac app and more build details, see [app/README.md](../app/README.md).
 
 ## 7b. Share links (optional)
 

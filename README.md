@@ -25,26 +25,13 @@
 
 ---
 
-## Quick start
+## First setup
 
-```bash
-# Mac: install the CLI, then configure your machine values (see docs/SETUP.md)
-cargo install --path crates/cli
-mkdir -p ~/.config/atlas && $EDITOR ~/.config/atlas/env
+1. **Prepare your server.** Start with an x86 Ubuntu 26.04+ machine and an NVIDIA GPU with at least 8 GB of memory. Follow the [server prerequisites](docs/SETUP.md#2-server-preparation-ubuntu-server) and [private network setup](docs/SETUP.md#3-tailscale--the-network-layer), including the firewall. You can skip Wake-on-LAN for an always-on server.
+2. **Install Atlas on the server.** Follow [the database setup](docs/SETUP.md#5-database) and [server configuration](docs/SETUP.md#62-configuration), then run `~/atlas/scripts/atlas/install.sh` as the server user. The installer sets up the models, builds Atlas and starts the services. Check `/health` from a second device on your private network before opening the app.
+3. **Open the app.** Follow the [Xcode build guide](app/README.md#build) for Mac, iPhone or iPad. Enter your server's Tailscale address (for example, `http://atlas.your-tailnet.ts.net:8787`) and the Atlas token you created. Try uploading a few photos before bringing in your full library.
 
-atlas boot        # wake the server (Wake-on-LAN)
-
-# Server: database, models, configuration
-cd ~/atlas/db && cp .env.example .env && docker compose up -d
-~/atlas/scripts/atlas/models.sh
-sudo install -d /etc/atlas
-sudo install -m600 ~/atlas/scripts/atlas/atlas.env.example /etc/atlas/atlas.env
-sudoedit /etc/atlas/atlas.env            # ATLAS_TOKEN, POSTGRES_PASSWORD
-
-# Mac again
-atlas deploy      # build + install atlas-server and atlas-ml
-atlas connect     # the link that connects the app
-```
+The Mac command-line tool is optional for first setup. Add it later for remote deployment, connection links and Wake-on-LAN. See the [full setup guide](docs/SETUP.md).
 
 ---
 
