@@ -49,6 +49,28 @@ pub fn founder(width_px: f32, clarity: f32, score: f32) -> bool {
     width_px >= MIN_WIDTH_GROUP && clarity >= MIN_CLARITY_GROUP && score >= MIN_SCORE_GROUP
 }
 
+/// The known faces a face is compared with, as a condition on
+/// `faces f JOIN persons p ON p.id = f.person_id`: every face of the current
+/// recognizer that belongs to a person nobody merged away and is clear
+/// enough to be named at all. The vision stage and the grouping pass both
+/// decide from exactly these faces.
+pub fn known_faces_sql() -> String {
+    format!(
+        "f.model = '{MODEL}' AND f.kind = 'person' AND f.person_id IS NOT NULL
+         AND p.merged_into IS NULL AND p.kind = 'person'
+         AND coalesce(f.clarity, 99) >= {MIN_CLARITY_ASSIGN}"
+    )
+}
+
+/// Of those, the ones a face that is no [`founder`] is compared with: the
+/// clear faces of people someone named.
+pub fn named_clear_sql() -> String {
+    format!(
+        "coalesce(p.display_name IS NOT NULL AND f.width_px >= {MIN_WIDTH_GROUP}
+                  AND f.clarity >= {MIN_CLARITY_GROUP} AND f.quality >= {MIN_SCORE_GROUP}, false)"
+    )
+}
+
 /// The person whose known faces this face resembles clearly most.
 /// The person a face belongs to, if certain; a face that is not a
 /// [`founder`] is only matched against people someone named.
@@ -61,22 +83,15 @@ pub async fn assign_face(
 ) -> Result<Option<i64>> {
     let rows = tx
         .query(
-            "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
-             JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL AND p.kind = 'person'
-             WHERE f.model = $2 AND f.kind = 'person' AND f.person_id IS NOT NULL
-               AND coalesce(f.clarity, 99) >= $3
-               AND ($4 OR (p.display_name IS NOT NULL
-                           AND f.width_px >= $5 AND f.clarity >= $6 AND f.quality >= $7))
-             ORDER BY f.embedding <=> $1 LIMIT 40",
-            &[
-                &Vector::from(embedding.to_vec()),
-                &MODEL,
-                &MIN_CLARITY_ASSIGN,
-                &founder,
-                &MIN_WIDTH_GROUP,
-                &MIN_CLARITY_GROUP,
-                &MIN_SCORE_GROUP,
-            ],
+            &format!(
+                "SELECT f.person_id, 1 - (f.embedding <=> $1) FROM faces f
+                 JOIN persons p ON p.id = f.person_id
+                 WHERE {} AND ($2 OR {})
+                 ORDER BY f.embedding <=> $1 LIMIT 40",
+                known_faces_sql(),
+                named_clear_sql()
+            ),
+            &[&Vector::from(embedding.to_vec()), &founder],
         )
         .await?;
     let neighbors: Vec<(i64, f32)> = rows

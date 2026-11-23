@@ -44,7 +44,7 @@ mod tracks;
 pub use assign::{
     ASSIGN_ANIMAL, ASSIGN_FACE, ASSIGN_MARGIN, ASSIGN_POOR_FACE, ASSIGN_SMALL_FACE,
     MIN_CLARITY_ASSIGN, MIN_CLARITY_GROUP, MIN_SCORE_GROUP, MIN_WIDTH_GROUP, SMALL_FACE, decide,
-    refresh_people,
+    known_faces_sql, named_clear_sql, refresh_people,
 };
 use engines::{Engines, LoadArgs, analyze};
 use frames::frames;

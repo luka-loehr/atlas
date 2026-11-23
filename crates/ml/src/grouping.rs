@@ -4,9 +4,14 @@
 //! (vision::decide). Everything else waits here, unassigned. Every few
 //! minutes, when new faces arrived:
 //!
-//!   1. each waiting face is compared with every known face (at most 300 per
-//!      person, the person's spread of looks) and assigned the same way: by
-//!      now there may be more to compare with than when it was found
+//!   1. each waiting face is compared with every known face, the very faces
+//!      the vision stage compares with (vision::known_faces_sql), and
+//!      assigned the same way: by now there may be more to compare with than
+//!      when it was found. All of them, not a sample: a sample of each
+//!      person's largest, surest faces was all recent photos (higher
+//!      resolution, wider faces), and a childhood face, which reaches its
+//!      person only through their faces of the years in between, found none
+//!      of those and was gathered into a second, unnamed person
 //!   2. the faces still waiting are linked to each other where they are
 //!      mutually among each other's ten closest and similar enough to be one
 //!      person; every linked group of at least three becomes a new
@@ -30,7 +35,6 @@ use crate::vision::{
 };
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
-const EXEMPLARS_PER_PERSON: i64 = 300;
 const NEIGHBORS: usize = 10;
 /// Two waiting faces this similar may be one person ...
 const LINK_FACE: f32 = 0.45;
@@ -120,25 +124,29 @@ async fn group_kind(worker: &Worker, kind: &str) -> Result<(usize, usize)> {
         String::new()
     };
     let mut c = worker.pool.get().await?;
-    // a spread of each person's looks: the most confident detections
-    let known_rows = c
-        .query(
+    // every known face: for people the vision stage's own candidates
+    let known_rows = if face {
+        c.query(
             &format!(
-                "SELECT person_id, v, named FROM (
-                     SELECT f.person_id, f.{column} AS v,
-                            p.display_name IS NOT NULL
-                              AND coalesce(f.width_px, 0) >= {MIN_WIDTH_GROUP} AND coalesce(f.clarity, 99) >= {MIN_CLARITY_GROUP}
-                              AND coalesce(f.quality, 0) >= {MIN_SCORE_GROUP} AS named,
-                            row_number() OVER (PARTITION BY f.person_id ORDER BY f.quality * f.width_px DESC NULLS LAST) AS n
-                     FROM faces f JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
-                     -- a face never joins a pet (a dog once named from a 'face'),
-                     -- a dog never a cat
-                     WHERE f.kind = $1 AND p.kind = $1 AND f.{column} IS NOT NULL {model_filter}
-                 ) x WHERE n <= $2"
+                "SELECT f.person_id, f.embedding, {} FROM faces f
+                 JOIN persons p ON p.id = f.person_id
+                 WHERE {} AND f.embedding IS NOT NULL",
+                vision::named_clear_sql(),
+                vision::known_faces_sql()
             ),
-            &[&kind, &EXEMPLARS_PER_PERSON],
+            &[],
         )
-        .await?;
+        .await?
+    } else {
+        c.query(
+            "SELECT f.person_id, f.look, false FROM faces f
+             JOIN persons p ON p.id = f.person_id AND p.merged_into IS NULL
+             -- a dog never joins a cat
+             WHERE f.kind = $1 AND p.kind = $1 AND f.look IS NOT NULL",
+            &[&kind],
+        )
+        .await?
+    };
     let known: Vec<(i64, Vec<f32>)> = known_rows
         .iter()
         .map(|r| (r.get(0), r.get::<_, Vector>(1).to_vec()))
