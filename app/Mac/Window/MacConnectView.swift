@@ -1,12 +1,15 @@
 import AppKit
 import SwiftUI
 
-/// First-launch onboarding on macOS: welcomes new users, offers a built-in
-/// setup guide with a one-click AI agent prompt, and connects via an
-/// `atlas://connect` link or manual entry.
+/// First-launch onboarding on macOS: a quiet, Apple-native visual story with
+/// procedural vector server scenes, one-click AI agent setup docs, and fast
+/// `atlas://connect` pairing.
 struct MacConnectView: View {
     @Environment(Session.self) private var session
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var step: Step = .welcome
+    @State private var page = 0
+    @State private var userInteracted = false
     @State private var showSetupGuide = false
     @State private var address = ""
     @State private var token = ""
@@ -31,80 +34,141 @@ struct MacConnectView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(step == .welcome ? "Welcome to Atlas" : "Connect to Atlas")
+        .background(Color(nsColor: .windowBackgroundColor))
+        .navigationTitle(step == .welcome ? "Atlas" : "Connect to Atlas")
         .sheet(isPresented: $showSetupGuide) {
             MacSetupGuideSheet()
+        }
+        .task {
+            guard !reduceMotion else { return }
+            while !Task.isCancelled && !userInteracted {
+                try? await Task.sleep(for: .seconds(5.5))
+                guard !Task.isCancelled && !userInteracted && step == .welcome && !showSetupGuide else { continue }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    page = (page + 1) % OnboardingContent.slides.count
+                }
+            }
         }
     }
 
     private var welcomeView: some View {
-        VStack(spacing: 28) {
-            VStack(spacing: 12) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 88, height: 88)
-                    .accessibilityHidden(true)
-                Text("Welcome to Atlas")
-                    .font(.largeTitle.bold())
-                Text("Your personal photo library, drive, and home server — completely private.")
+        let slide = OnboardingContent.slides[page]
+        return VStack(spacing: 24) {
+            HStack(spacing: 8) {
+                AtlasDiamondMark(size: 18, tint: OnboardingContent.oceanBlue)
+                Text("Atlas")
+                    .font(.headline.weight(.semibold))
+                    .tracking(-0.3)
+            }
+
+            // Bespoke animated vector stage with subtle left/right navigation
+            ZStack {
+                OnboardingStageView(scene: slide.id)
+                    .id(slide.id)
+                    .transition(.opacity)
+                    .frame(width: 360, height: 220)
+
+                HStack {
+                    Button {
+                        userInteracted = true
+                        withAnimation(.snappy(duration: 0.28)) {
+                            page = (page - 1 + OnboardingContent.slides.count) % OnboardingContent.slides.count
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .glassEffect(.regular.interactive(), in: .circle)
+
+                    Spacer()
+
+                    Button {
+                        userInteracted = true
+                        withAnimation(.snappy(duration: 0.28)) {
+                            page = (page + 1) % OnboardingContent.slides.count
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .frame(maxWidth: 420)
+            }
+
+            VStack(spacing: 8) {
+                Text(slide.title)
+                    .font(.title.weight(.semibold))
+                    .tracking(-0.5)
+                    .multilineTextAlignment(.center)
+                Text(slide.detail)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
             }
+            .id("copy-\(slide.id)")
+            .transition(.opacity)
 
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(OnboardingContent.features) { feature in
-                    HStack(alignment: .top, spacing: 14) {
-                        Image(systemName: feature.icon)
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(feature.tint)
-                            .frame(width: 32, height: 32)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(feature.title)
-                                .font(.headline)
-                            Text(feature.detail)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+            // Minimal pill page dots
+            HStack(spacing: 7) {
+                ForEach(OnboardingContent.slides) { item in
+                    let active = page == item.id
+                    Button {
+                        userInteracted = true
+                        withAnimation(.snappy(duration: 0.28)) {
+                            page = item.id
                         }
+                    } label: {
+                        Capsule()
+                            .fill(active ? OnboardingContent.oceanBlue : Color.secondary.opacity(0.35))
+                            .frame(width: active ? 20 : 6, height: 6)
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 10) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { step = .connect }
                 } label: {
-                    Text("Connect to My Server")
+                    Text("Connect to Server")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(OnboardingContent.oceanBlue)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
 
                 Button {
                     showSetupGuide = true
                 } label: {
-                    Text("Don’t Have a Server Yet? Set Up Atlas…")
+                    Text("Don’t have a server yet? Set up Atlas…")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
             }
+            .frame(maxWidth: 320)
+            .padding(.top, 4)
         }
     }
 
     private var connectView: some View {
         VStack(spacing: 20) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 72, height: 72)
-                .accessibilityHidden(true)
+            ServerLinkGraphic(connecting: connecting, hasError: error != nil)
+                .frame(maxWidth: 260)
 
             VStack(spacing: 6) {
                 Text("Connect to Your Server")
-                    .font(.title.bold())
+                    .font(.title2.weight(.semibold))
+                    .tracking(-0.3)
                 Text("Paste the link from “atlas connect”, or enter your server address and token.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -113,7 +177,7 @@ struct MacConnectView: View {
             Button {
                 pasteConnectLink()
             } label: {
-                Label("Paste “atlas connect” Link", systemImage: "link.badge.plus")
+                Label("Paste “atlas connect” Link", systemImage: "link")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -160,6 +224,7 @@ struct MacConnectView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(OnboardingContent.oceanBlue)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
                 .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -212,7 +277,7 @@ private struct MacSetupGuideSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Set Up Atlas")
-                        .font(.title2.bold())
+                        .font(.title2.weight(.semibold))
                     Text("Get your home server running in minutes.")
                         .foregroundStyle(.secondary)
                 }
@@ -223,9 +288,9 @@ private struct MacSetupGuideSheet: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Let Your AI Agent Set It Up", systemImage: "sparkles")
+                    Label("Let your agent set it up", systemImage: "terminal")
                         .font(.headline)
-                    Text("Copy one prompt and paste it into Claude Code, Codex, or Cursor. The Atlas docs serve llms.txt and clean Markdown so your agent can guide or automate the entire install.")
+                    Text("Paste one prompt into Claude Code, Codex, or Cursor. The docs serve llms.txt and clean Markdown so your agent can guide or automate the entire install.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     HStack {
@@ -239,14 +304,15 @@ private struct MacSetupGuideSheet: View {
                             }
                         } label: {
                             Label(copied ? "Prompt Copied" : "Copy Agent Prompt",
-                                  systemImage: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                                  systemImage: copied ? "checkmark" : "doc.on.doc")
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(OnboardingContent.oceanBlue)
 
                         Button {
                             NSWorkspace.shared.open(OnboardingContent.docsURL)
                         } label: {
-                            Label("Open Full Docs", systemImage: "arrow.up.right.square")
+                            Label("Open Docs", systemImage: "arrow.up.right")
                         }
                     }
                 }
@@ -257,10 +323,10 @@ private struct MacSetupGuideSheet: View {
                 ForEach(OnboardingContent.setupSteps) { step in
                     HStack(alignment: .top, spacing: 12) {
                         Text("\(step.id)")
-                            .font(.caption.bold().monospacedDigit())
-                            .foregroundStyle(.white)
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
                             .frame(width: 22, height: 22)
-                            .background(Color.accentColor, in: Circle())
+                            .background(Color.secondary.opacity(0.16), in: Circle())
                         VStack(alignment: .leading, spacing: 2) {
                             Text(step.title)
                                 .font(.headline)

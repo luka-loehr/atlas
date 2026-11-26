@@ -1,96 +1,125 @@
 import SwiftUI
 import UIKit
 
-/// First-launch onboarding on iPhone and iPad: welcomes new users, helps them
-/// set up a server (or copy the AI agent setup prompt), and connects via an
-/// `atlas://connect` link or manual entry.
+/// First-launch onboarding on iPhone and iPad: a quiet, Apple-native visual story
+/// with procedural vector server scenes, one-tap AI agent setup docs, and fast
+/// `atlas://connect` pairing.
 struct ConnectScreen: View {
+    @State private var page = 0
+    @State private var userInteracted = false
     @State private var showConnect = false
     @State private var showSetupGuide = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 32) {
-                    VStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .fill(Color.accentColor.opacity(0.14))
-                                .frame(width: 84, height: 84)
-                                .glassEffect(.regular, in: .rect(cornerRadius: 24))
-                            Image(systemName: "photo.stack.fill")
-                                .font(.system(size: 36, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
-                        }
-                        .accessibilityHidden(true)
-
-                        VStack(spacing: 8) {
-                            Text("Welcome to Atlas")
-                                .font(.largeTitle.bold())
-                                .multilineTextAlignment(.center)
-                            Text("Your personal photo library, drive, and home server — completely private.")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(.top, 28)
-
-                    VStack(alignment: .leading, spacing: 22) {
-                        ForEach(OnboardingContent.features) { feature in
-                            HStack(alignment: .top, spacing: 16) {
-                                Image(systemName: feature.icon)
-                                    .font(.title2.weight(.semibold))
-                                    .foregroundStyle(feature.tint)
-                                    .frame(width: 36, height: 36)
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(feature.title)
-                                        .font(.headline)
-                                    Text(feature.detail)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 460, alignment: .leading)
-                    .padding(.horizontal, 4)
+            VStack(spacing: 0) {
+                // Quiet top brand bar
+                HStack(spacing: 8) {
+                    AtlasDiamondMark(size: 20, tint: OnboardingContent.oceanBlue)
+                    Text("Atlas")
+                        .font(.headline.weight(.semibold))
+                        .tracking(-0.3)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
-            }
-            .safeAreaInset(edge: .bottom) {
+                .padding(.top, 16)
+
+                Spacer(minLength: 8)
+
+                // Swipeable bespoke vector stage
+                TabView(selection: $page) {
+                    ForEach(OnboardingContent.slides) { slide in
+                        VStack(spacing: 24) {
+                            OnboardingStageView(scene: slide.id)
+                                .frame(height: 230)
+                                .frame(maxWidth: 420)
+
+                            VStack(spacing: 8) {
+                                Text(slide.title)
+                                    .font(.title.weight(.semibold))
+                                    .tracking(-0.5)
+                                    .multilineTextAlignment(.center)
+                                Text(slide.detail)
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: 340)
+                            .padding(.horizontal, 24)
+                        }
+                        .tag(slide.id)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(maxHeight: 380)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10).onChanged { _ in
+                        userInteracted = true
+                    }
+                )
+
+                // Minimal pill page indicator
+                HStack(spacing: 7) {
+                    ForEach(OnboardingContent.slides) { slide in
+                        let active = page == slide.id
+                        Button {
+                            userInteracted = true
+                            withAnimation(.snappy(duration: 0.3)) {
+                                page = slide.id
+                            }
+                        } label: {
+                            Capsule()
+                                .fill(active ? OnboardingContent.oceanBlue : Color(.tertiaryLabel))
+                                .frame(width: active ? 20 : 6, height: 6)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Slide \(slide.id + 1)")
+                    }
+                }
+                .padding(.top, 10)
+
+                Spacer(minLength: 16)
+
+                // Bottom native action stack
                 VStack(spacing: 10) {
                     Button {
                         showConnect = true
                     } label: {
-                        Text("Connect to My Server")
+                        Text("Connect to Server")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(OnboardingContent.oceanBlue)
                     .controlSize(.large)
 
                     Button {
                         showSetupGuide = true
                     } label: {
-                        Text("Don’t Have a Server Yet? Set Up Atlas")
+                        Text("Don’t have a server yet? Set up Atlas")
                             .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 8)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
                 }
-                .frame(maxWidth: 460)
+                .frame(maxWidth: 420)
                 .padding(.horizontal, 24)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-                .frame(maxWidth: .infinity)
-                .background(.bar)
+                .padding(.bottom, 20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .task {
+                guard !reduceMotion else { return }
+                while !Task.isCancelled && !userInteracted {
+                    try? await Task.sleep(for: .seconds(5.5))
+                    guard !Task.isCancelled && !userInteracted && !showConnect && !showSetupGuide else { continue }
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        page = (page + 1) % OnboardingContent.slides.count
+                    }
+                }
             }
             .navigationDestination(isPresented: $showConnect) {
                 ConnectFormView(showSetupGuide: $showSetupGuide)
@@ -116,6 +145,12 @@ private struct ConnectFormView: View {
     var body: some View {
         Form {
             Section {
+                ServerLinkGraphic(connecting: connecting, hasError: error != nil)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0))
+            }
+
+            Section {
                 Button {
                     pasteConnectLink()
                 } label: {
@@ -128,8 +163,8 @@ private struct ConnectFormView: View {
                                 .foregroundStyle(.secondary)
                         }
                     } icon: {
-                        Image(systemName: "link.badge.plus")
-                            .foregroundStyle(Color.accentColor)
+                        Image(systemName: "link")
+                            .foregroundStyle(OnboardingContent.oceanBlue)
                     }
                 }
                 .disabled(connecting)
@@ -174,6 +209,7 @@ private struct ConnectFormView: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
+                .tint(OnboardingContent.oceanBlue)
                 .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                           || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                           || connecting)
@@ -183,7 +219,8 @@ private struct ConnectFormView: View {
                 Button {
                     showSetupGuide = true
                 } label: {
-                    Label("Need to Set Up a Server?", systemImage: "book.pages")
+                    Label("Need to set up a server?", systemImage: "server.rack")
+                        .foregroundStyle(.primary)
                 }
             }
         }
@@ -228,9 +265,9 @@ private struct SetupGuideSheet: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        Label("Let Your AI Agent Set It Up", systemImage: "sparkles")
+                        Label("Let your agent set it up", systemImage: "terminal")
                             .font(.headline)
-                        Text("Copy one prompt and paste it into Claude Code, Codex, or Cursor. Our docs expose llms.txt and Markdown pages so your agent can configure your server, Tailscale, CLI, and app link.")
+                        Text("Paste one prompt into Claude Code, Codex, or Cursor. The docs serve llms.txt and Markdown so your agent can configure your server, Tailscale, CLI, and app link.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Button {
@@ -242,11 +279,12 @@ private struct SetupGuideSheet: View {
                             }
                         } label: {
                             Label(copied ? "Prompt Copied" : "Copy Agent Prompt",
-                                  systemImage: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                                  systemImage: copied ? "checkmark" : "doc.on.doc")
                                 .font(.subheadline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(OnboardingContent.oceanBlue)
                         .controlSize(.regular)
                     }
                     .padding(.vertical, 6)
@@ -256,10 +294,10 @@ private struct SetupGuideSheet: View {
                     ForEach(OnboardingContent.setupSteps) { step in
                         HStack(alignment: .top, spacing: 14) {
                             Text("\(step.id)")
-                                .font(.caption.bold().monospacedDigit())
-                                .foregroundStyle(.white)
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
                                 .frame(width: 24, height: 24)
-                                .background(Color.accentColor, in: Circle())
+                                .background(Color(.tertiarySystemFill), in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(step.title)
                                     .font(.subheadline.weight(.semibold))
@@ -274,10 +312,10 @@ private struct SetupGuideSheet: View {
 
                 Section {
                     Link(destination: OnboardingContent.docsURL) {
-                        Label("Open Full Documentation", systemImage: "arrow.up.right.square")
+                        Label("Open Documentation", systemImage: "arrow.up.right")
                     }
                     Link(destination: OnboardingContent.agentSetupURL) {
-                        Label("View Agent Setup Guide", systemImage: "terminal")
+                        Label("Agent Setup Guide", systemImage: "doc.text")
                     }
                 }
             }

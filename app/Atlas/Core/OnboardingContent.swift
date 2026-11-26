@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Shared copy, links, and prompts for the iOS and macOS onboarding flows.
+/// Shared copy, brand palette, and links for the iOS and macOS onboarding flows.
 enum OnboardingContent {
     static let docsURL = URL(string: "https://atlas.lukaloehr.com/docs")!
     static let agentSetupURL = URL(string: "https://atlas.lukaloehr.com/docs/agent-setup")!
@@ -22,35 +22,31 @@ enum OnboardingContent {
     Never print or log my ATLAS_TOKEN or POSTGRES_PASSWORD in chat output.
     """
 
-    struct Feature: Identifiable {
-        let id: String
-        let icon: String
-        let tint: Color
+    /// Atlas brand colors pulled directly from AppIcon.icon (ocean blue + glacier cyan).
+    static let oceanBlue = Color(red: 0.10, green: 0.48, blue: 0.84)
+    static let glacierCyan = Color(red: 0.30, green: 0.82, blue: 0.88)
+
+    struct StorySlide: Identifiable {
+        let id: Int
         let title: String
         let detail: String
     }
 
-    static let features: [Feature] = [
-        Feature(
-            id: "search",
-            icon: "sparkles",
-            tint: .indigo,
-            title: "Search by what you remember",
-            detail: "Find photos, videos, people, pets, and text using your own GPU."
+    static let slides: [StorySlide] = [
+        StorySlide(
+            id: 0,
+            title: "Your home server, your library.",
+            detail: "Photos, videos, and files stored on your own machine — never a cloud."
         ),
-        Feature(
-            id: "privacy",
-            icon: "lock.shield.fill",
-            tint: .green,
-            title: "Private over Tailscale",
-            detail: "Everything stays on your home server with zero open ports or cloud fees."
+        StorySlide(
+            id: 1,
+            title: "Search by what you remember.",
+            detail: "Faces, pets, places, and text indexed privately on your own GPU."
         ),
-        Feature(
-            id: "apple",
-            icon: "macbook.and.iphone",
-            tint: .blue,
-            title: "Built for your Apple devices",
-            detail: "Background photo backup, personal drive, and live server control."
+        StorySlide(
+            id: 2,
+            title: "Private over Tailscale.",
+            detail: "Direct encrypted link to your iPhone and Mac. Zero open ports."
         ),
     ]
 
@@ -64,7 +60,7 @@ enum OnboardingContent {
         SetupStep(
             id: 1,
             title: "Set up your Linux server",
-            detail: "Paste the agent prompt into Claude Code, Codex, or Cursor — or follow the step-by-step docs."
+            detail: "Paste the agent prompt into Claude Code, Codex, or Cursor — or follow the docs."
         ),
         SetupStep(
             id: 2,
