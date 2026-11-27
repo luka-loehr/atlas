@@ -62,10 +62,10 @@ pub async fn warm(State(app): State<AppState>) -> Json<Value> {
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
-    q: String,
+    pub q: String,
     /// add each result's score (`scores`): for tuning the thresholds
     #[serde(default)]
-    debug: bool,
+    pub debug: bool,
 }
 
 pub async fn search(

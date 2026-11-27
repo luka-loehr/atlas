@@ -11,6 +11,7 @@ pub mod import;
 pub mod jobs;
 pub mod media;
 pub mod photos;
+pub mod s3;
 pub mod share;
 pub mod storage;
 pub mod system;
@@ -67,8 +68,14 @@ pub fn build_router(app: AppState) -> Router {
             iam::require_v1_auth,
         ));
 
+    let authed_s3 = s3::routes().layer(middleware::from_fn_with_state(
+        app.clone(),
+        s3::handlers::require_s3_auth,
+    ));
+
     Router::new()
         .merge(authed_v1)
+        .merge(authed_s3)
         .route("/health", get(|| async { "ok" }))
         .layer(CompressionLayer::new().compress_when(json_only))
         .with_state(app)

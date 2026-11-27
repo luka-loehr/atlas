@@ -26,6 +26,7 @@
 pub mod albums;
 pub mod assets;
 pub mod covers;
+pub mod developer;
 pub mod library;
 pub mod people;
 pub mod places;
@@ -94,6 +95,9 @@ pub fn routes() -> Router<AppState> {
         .route("/places/{id}", get(places::assets))
         .route("/search", get(search::search))
         .route("/search/warm", post(search::warm))
+        .route("/media/search", get(developer::media_search))
+        .route("/media/similar/{id}", get(developer::similar_media))
+        .route("/media/assets/{id}", get(developer::get_media_item))
 }
 
 /// Wall-clock seconds at the place the photo was taken, encoded as if they

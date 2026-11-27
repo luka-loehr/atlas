@@ -5,6 +5,7 @@ use axum::Json;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
+#[derive(Debug)]
 pub enum ApiError {
     NotFound,
     BadRequest(&'static str),
