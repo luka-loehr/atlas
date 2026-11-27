@@ -36,6 +36,7 @@ mod trash;
 mod upload;
 
 pub use blobs::mime_for;
+pub use browse::fast_snippet;
 pub use trash::purge_expired;
 
 pub fn routes() -> Router<AppState> {

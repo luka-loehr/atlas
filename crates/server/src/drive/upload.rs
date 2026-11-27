@@ -118,6 +118,7 @@ async fn store_upload(
     .await?;
     drop(c);
     app.jobs_wake.notify_waiters();
+    crate::storage::bridge::sync_drive_file_to_objects(app, id).await?;
     if let Some(old) = orphan {
         collect_blobs(app, &[old]).await?;
     }

@@ -166,30 +166,9 @@ fn first_pdf_page(pdf: &std::path::Path) -> anyhow::Result<Vec<u8>> {
     Ok(out.stdout)
 }
 
-/// Remove blobs (and their previews) that no row references any more.
+/// Remove blobs (and their previews) that no row in `drive_files` OR `objects` references.
 pub(super) async fn collect_blobs(app: &App, hashes: &[String]) -> ApiResult<()> {
-    if hashes.is_empty() {
-        return Ok(());
-    }
-    let c = app.pool.get().await?;
-    let referenced: Vec<String> = c
-        .query(
-            "SELECT DISTINCT hash FROM drive_files WHERE hash = ANY($1)",
-            &[&hashes],
-        )
-        .await?
-        .iter()
-        .map(|r| r.get(0))
-        .collect();
-    for hash in hashes
-        .iter()
-        .filter(|h| !referenced.contains(h) && util::is_content_id(h))
-    {
-        let _ = tokio::fs::remove_file(blob_path(app, hash)).await;
-        let _ =
-            tokio::fs::remove_file(app.cfg.drive_thumbs_dir().join(format!("{hash}.webp"))).await;
-    }
-    Ok(())
+    crate::storage::objects::gc_unreferenced_blobs(app, hashes).await
 }
 
 #[cfg(test)]

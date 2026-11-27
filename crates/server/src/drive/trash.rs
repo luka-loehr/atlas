@@ -42,6 +42,8 @@ pub(super) async fn put(
             &[&b.ids],
         )
         .await?;
+    drop(c);
+    crate::storage::bridge::resync_drive_ids(&app, &b.ids).await?;
     Ok(Json(json!({ "updated": n })))
 }
 
@@ -56,6 +58,8 @@ pub(super) async fn restore(
             &[&b.ids],
         )
         .await?;
+    drop(c);
+    crate::storage::bridge::resync_drive_ids(&app, &b.ids).await?;
     Ok(Json(json!({ "updated": n })))
 }
 

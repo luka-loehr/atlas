@@ -19,8 +19,13 @@ pub struct Hashes {
 }
 
 /// Which of these content hashes the library already has, so a client only
-/// uploads what is new.
+/// uploads what is new. Bounded to 10,000 hashes per call.
 pub async fn exists(State(app): State<AppState>, Json(b): Json<Hashes>) -> ApiResult<Json<Value>> {
+    if b.hashes.len() > 10_000 {
+        return Err(crate::ApiError::BadRequest(
+            "at most 10000 hashes per request",
+        ));
+    }
     let c = app.pool.get().await?;
     let have: Vec<String> = c
         .query("SELECT id FROM assets WHERE id = ANY($1)", &[&b.hashes])
@@ -121,5 +126,17 @@ async fn store_upload(app: &App, headers: &HeaderMap, received: &Received) -> Ap
     )
     .await?;
     app.jobs_wake.notify_waiters();
+    drop(c);
+    if inserted > 0 {
+        crate::storage::bridge::sync_asset_to_media_bucket(
+            app,
+            id,
+            ext,
+            &name,
+            received.size as i64,
+            taken,
+        )
+        .await?;
+    }
     Ok(inserted > 0)
 }

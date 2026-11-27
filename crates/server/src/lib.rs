@@ -12,6 +12,7 @@ pub mod jobs;
 pub mod media;
 pub mod photos;
 pub mod share;
+pub mod storage;
 pub mod system;
 pub mod upload;
 pub mod util;
@@ -54,6 +55,7 @@ pub fn json_only(_: StatusCode, _: Version, headers: &HeaderMap, _: &Extensions)
 pub fn build_router(app: AppState) -> Router {
     let v1 = photos::routes()
         .merge(drive::routes())
+        .merge(storage::routes())
         .merge(system::routes())
         .merge(share::routes())
         .merge(iam::routes());

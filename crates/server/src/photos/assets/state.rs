@@ -61,6 +61,11 @@ pub async fn trash(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult
             &[&b.ids],
         )
         .await?;
+    c.execute(
+        "UPDATE objects SET trashed_at = now() WHERE bucket = 'media' AND asset_id = ANY($1)",
+        &[&b.ids],
+    )
+    .await?;
     hidden(&app, &b.ids).await;
     Ok(Json(json!({ "updated": n })))
 }
@@ -74,6 +79,11 @@ pub async fn restore(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResu
             &[&b.ids],
         )
         .await?;
+    c.execute(
+        "UPDATE objects SET trashed_at = NULL WHERE bucket = 'media' AND asset_id = ANY($1)",
+        &[&b.ids],
+    )
+    .await?;
     Ok(Json(json!({ "updated": n })))
 }
 

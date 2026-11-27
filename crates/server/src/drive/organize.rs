@@ -86,6 +86,22 @@ pub(super) async fn folder_rename(
             &[&id, &name],
         )
         .await?;
+    let affected: Vec<i64> = c
+        .query(
+            "WITH RECURSIVE tree AS (
+                 SELECT id FROM drive_folders WHERE id = $1
+               UNION ALL
+                 SELECT f.id FROM drive_folders f JOIN tree t ON f.parent_id = t.id
+             )
+             SELECT id FROM drive_files WHERE folder_id IN (SELECT id FROM tree)",
+            &[&id],
+        )
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    drop(c);
+    crate::storage::bridge::resync_drive_ids(&app, &affected).await?;
     Ok(Json(json!({ "updated": n })))
 }
 
@@ -132,6 +148,8 @@ pub(super) async fn file_rename(
             &[&id, &name, &mime_for(name)],
         )
         .await?;
+    drop(c);
+    crate::storage::bridge::sync_drive_file_to_objects(&app, id).await?;
     Ok(Json(json!({ "updated": n })))
 }
 
@@ -189,6 +207,26 @@ pub(super) async fn mv(State(app): State<AppState>, Json(b): Json<Move>) -> ApiR
             )
             .await?;
     }
+    let mut affected = b.files.clone();
+    if !b.folders.is_empty() {
+        let sub_files: Vec<i64> = c
+            .query(
+                "WITH RECURSIVE tree AS (
+                     SELECT id FROM drive_folders WHERE id = ANY($1)
+                   UNION ALL
+                     SELECT f.id FROM drive_folders f JOIN tree t ON f.parent_id = t.id
+                 )
+                 SELECT id FROM drive_files WHERE folder_id IN (SELECT id FROM tree)",
+                &[&b.folders],
+            )
+            .await?
+            .iter()
+            .map(|r| r.get(0))
+            .collect();
+        affected.extend(sub_files);
+    }
+    drop(c);
+    crate::storage::bridge::resync_drive_ids(&app, &affected).await?;
     Ok(Json(json!({ "moved": moved })))
 }
 

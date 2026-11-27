@@ -115,30 +115,47 @@ pub(super) struct SearchQuery {
     q: String,
 }
 
-/// Up to 60 characters either side of the first case-insensitive match.
-fn snippet(text: &str, term: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let fold = |c: &char| c.to_lowercase().next().unwrap_or(*c);
-    let lowered: Vec<char> = chars.iter().map(fold).collect();
-    let needle: Vec<char> = term.chars().map(|c| fold(&c)).collect();
-    if needle.is_empty() || needle.len() > lowered.len() {
+/// Fast, allocation-bounded UTF-8 context snippet (~60 chars each side of first case-insensitive match)
+/// without materializing `Vec<char>` over multi-megabyte PDF text columns.
+pub fn fast_snippet(text: &str, term: &str) -> String {
+    let term = term.trim();
+    if term.is_empty() || text.is_empty() {
         return String::new();
     }
-    let Some(at) = lowered
-        .windows(needle.len())
-        .position(|w| w == needle.as_slice())
-    else {
+    // Scan at most the first 256 KB of extracted text so huge PDFs stay sub-millisecond
+    let capped = if text.len() > 262_144 {
+        let mut end = 262_144;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        &text[..end]
+    } else {
+        text
+    };
+    let lower_haystack = capped.to_lowercase();
+    let lower_needle = term.to_lowercase();
+    let Some(byte_pos) = lower_haystack.find(&lower_needle) else {
         return String::new();
     };
-    let start = at.saturating_sub(60);
-    let end = (at + needle.len() + 60).min(chars.len());
-    let body: String = chars[start..end].iter().collect();
+    // Map character index in lowercased prefix to original `capped` chars safely
+    let char_before = lower_haystack[..byte_pos].chars().count();
+    let needle_chars = lower_needle.chars().count();
+    let start_char = char_before.saturating_sub(60);
+    let take_chars = (char_before - start_char) + needle_chars + 60;
+
+    let mut iter = capped.chars().skip(start_char);
+    let raw_slice: String = iter.by_ref().take(take_chars).collect();
+    let has_more = iter.next().is_some() || capped.len() < text.len();
     format!(
         "{}{}{}",
-        if start > 0 { "…" } else { "" },
-        body.split_whitespace().collect::<Vec<_>>().join(" "),
-        if end < chars.len() { "…" } else { "" },
+        if start_char > 0 { "…" } else { "" },
+        raw_slice.split_whitespace().collect::<Vec<_>>().join(" "),
+        if has_more { "…" } else { "" },
     )
+}
+
+fn snippet(text: &str, term: &str) -> String {
+    fast_snippet(text, term)
 }
 
 /// Folders and files by name first, then files whose extracted text matches,
