@@ -36,18 +36,9 @@ pub struct CachedKey {
 
 impl CachedKey {
     pub fn is_active_at(&self, now: DateTime<Utc>) -> bool {
-        if self.account_status != AccountStatus::Active {
-            return false;
-        }
-        if self.revoked_at.is_some() {
-            return false;
-        }
-        if let Some(exp) = self.expires_at
-            && now >= exp
-        {
-            return false;
-        }
-        true
+        self.account_status == AccountStatus::Active
+            && self.revoked_at.is_none()
+            && self.expires_at.is_none_or(|exp| now < exp)
     }
 
     pub fn matches_secret(&self, candidate: &str) -> bool {

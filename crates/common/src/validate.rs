@@ -23,14 +23,10 @@ pub fn is_valid_bucket_name(name: &str) -> bool {
     }
     // Reject bare IPv4-shaped names like 192.168.1.1
     let parts: Vec<&str> = name.split('.').collect();
-    if parts.len() == 4
+    !(parts.len() == 4
         && parts
             .iter()
-            .all(|p| !p.is_empty() && p.len() <= 3 && p.bytes().all(|b| b.is_ascii_digit()))
-    {
-        return false;
-    }
-    true
+            .all(|p| !p.is_empty() && p.len() <= 3 && p.bytes().all(|b| b.is_ascii_digit())))
 }
 
 /// Normalizes and validates an S3 object key:
