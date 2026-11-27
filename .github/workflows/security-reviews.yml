@@ -1,0 +1,28 @@
+name: Security reviews
+
+# Validates security-reviews/: finding schema, verify and re-verify chain,
+# INDEX/QUEUE/PASS consistency, runs, links, generated pages, authorization
+# boundaries, redaction scan and close_queue unit tests. Standard library
+# Python only, no network.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-reviews-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registers:
+    name: Validate security-review registers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 security-reviews/scripts/check_review_system.py
+      - run: python3 -m unittest security-reviews/scripts/test_close_queue.py

@@ -1,0 +1,26 @@
+{
+  "run_id": "20261127-001000-architecture-auth-ws-crypto-secrev",
+  "track": "architecture",
+  "scope": "auth-ws-crypto",
+  "targets": [
+    "static analysis of crates/server/src/{main.rs,auth.rs,config.rs,system/mod.rs,system/terminal.rs,system/host.rs,system/metrics/mod.rs}",
+    "static analysis of crates/common/src/{crypto.rs,s3.rs,validate.rs} and db/migrations/0017_buckets_s3_iam.sql",
+    "local unit tests: cargo test -p atlas-common"
+  ],
+  "agent": "secrev",
+  "model": "Gemini 4 Neon",
+  "session": "secrev@2026-11-27 (security-review session ca10409f)",
+  "tooling": "static code review, grep, cargo test -p atlas-common",
+  "status": "completed",
+  "started_at": "2026-11-27T00:15:00+00:00",
+  "ended_at": "2026-11-27T00:20:00+00:00",
+  "repo_state": "d068e6d",
+  "environment": "static analysis and local unit tests",
+  "authorization_ref": "security-reviews/AUTHORIZATION.md#authorized-active-targets",
+  "host_lock": "not_needed",
+  "test_data": "none",
+  "cleanup": "not_applicable",
+  "external_services": "none",
+  "register_status": "synced",
+  "redaction_status": "checked"
+}

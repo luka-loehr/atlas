@@ -1,0 +1,23 @@
+{
+  "repository": "luka-loehr/atlas",
+  "public": true,
+  "authorization_invariants": [
+    "owner's personal machines",
+    "other projects",
+    "freeze rule"
+  ],
+  "forbidden_patterns": [
+    {
+      "pattern": "/root/",
+      "label": "host root path"
+    },
+    {
+      "pattern": "(?:ATLAS_ADMIN_TOKEN|ATLAS_SEAL_KEY|ATLAS_SECRET|ATLAS_SHARE_SECRET|POSTGRES_PASSWORD|CLOUDFLARE_API_TOKEN)\\s*=\\s*[^\\s<\"'`#]{8,}",
+      "label": "/etc/atlas/atlas.env raw secret"
+    },
+    {
+      "pattern": "\\b[a-z0-9-]+\\.[a-z0-9-]+\\.ts\\.net\\b",
+      "label": "private tailnet hostname"
+    }
+  ]
+}

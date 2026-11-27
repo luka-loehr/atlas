@@ -1,0 +1,22 @@
+{
+  "run_id": "YYYYMMDD-HHMMSS-track-scope-agent",
+  "track": "architecture | threat-model | service-pentest | crypto-implementation | system-audit | quality-maintainability | operations | baseline | browser | reviewer-pack",
+  "scope": "<scope-slug>",
+  "targets": ["static analysis | 127.0.0.1 ephemeral server | local test Postgres | Share Worker unit tests"],
+  "agent": "<name or thread>",
+  "model": "<exact model id or unknown>",
+  "session": "<session id or description>",
+  "tooling": "<Claude Code, browser-rs MCP, curl, cf, gh, ssh>",
+  "status": "in_review",
+  "started_at": "YYYY-MM-DDTHH:MM:SS+02:00",
+  "ended_at": null,
+  "repo_state": "<commit>",
+  "environment": "<static analysis | local 127.0.0.1 ephemeral server | local test Postgres>",
+  "authorization_ref": "security-reviews/AUTHORIZATION.md#authorized-active-targets",
+  "host_lock": "not_needed | acquired_and_released | blocked",
+  "test_data": "none | <run marker and classes>",
+  "cleanup": "not_applicable | pending | checked | intentionally_retained | blocked",
+  "external_services": "none | github-read",
+  "register_status": "pending",
+  "redaction_status": "pending"
+}

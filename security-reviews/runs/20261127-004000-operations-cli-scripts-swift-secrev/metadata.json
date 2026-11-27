@@ -1,0 +1,28 @@
+{
+  "run_id": "20261127-004000-operations-cli-scripts-swift-secrev",
+  "track": "operations",
+  "scope": "cli-scripts-swift",
+  "targets": [
+    "static analysis of crates/cli/src/{ssh.rs,config.rs,secrets.rs,exec.rs,deploy.rs}",
+    "static analysis of scripts/{firewall/firewall.nft,disk-guard/disk-guard.sh,pg-backup/backup.sh,atlas/install.sh,atlas/atlas-server.service}",
+    "static analysis of app/Atlas/Core/{API.swift,Session.swift}",
+    "public-repo secret and IP hygiene scan across crates/, share/, scripts/, app/, docs/",
+    "local unit tests: cargo test -p atlas-cli"
+  ],
+  "agent": "secrev",
+  "model": "Gemini 4 Neon",
+  "session": "secrev@2026-11-27 (security-review session ca10409f)",
+  "tooling": "static code review, grep, cargo test -p atlas-cli",
+  "status": "completed",
+  "started_at": "2026-11-27T00:18:00+00:00",
+  "ended_at": "2026-11-27T00:20:00+00:00",
+  "repo_state": "d068e6d",
+  "environment": "static analysis and local unit tests",
+  "authorization_ref": "security-reviews/AUTHORIZATION.md#authorized-active-targets",
+  "host_lock": "not_needed",
+  "test_data": "none",
+  "cleanup": "not_applicable",
+  "external_services": "none",
+  "register_status": "synced",
+  "redaction_status": "checked"
+}

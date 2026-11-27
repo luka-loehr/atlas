@@ -1,0 +1,79 @@
+{
+  "passes": [
+    {
+      "id": "PASS-20261127-001",
+      "scope": "crypto-sealing",
+      "statement": "atlas-common secret sealing (crates/common/src/crypto.rs) derives AES-256-GCM keys via HKDF-SHA256 with domain salt/info, generates 96-bit SystemRandom nonces, binds AAD (access_key_id), rejects master secrets shorter than 16 bytes, and uses subtle::ConstantTimeEq (cargo test -p atlas-common: 9/9 passed at d068e6d).",
+      "origin_run": "runs/20261127-001000-architecture-auth-ws-crypto-secrev/",
+      "found_by": "secrev",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "verify_status": "confirmed",
+      "verify_by": "secrev",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "queue": "SECQ-20261127-001",
+      "verify_run": "runs/20261127-001000-architecture-auth-ws-crypto-secrev/"
+    },
+    {
+      "id": "PASS-20261127-002",
+      "scope": "system-host-command-safety",
+      "statement": "crates/server/src/system/host.rs validates Docker container names with safe_name() (rejecting leading '-', '/', and non-alphanumeric characters), restricts /v1/system/power/{action} to exact shutdown/restart -> sudo -n systemctl poweroff|reboot, and bounds all host commands with kill_on_drop(true) and an 8-second timeout at d068e6d.",
+      "origin_run": "runs/20261127-001000-architecture-auth-ws-crypto-secrev/",
+      "found_by": "secrev",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "verify_status": "confirmed",
+      "verify_by": "secrev",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "queue": "SECQ-20261127-001",
+      "verify_run": "runs/20261127-001000-architecture-auth-ws-crypto-secrev/"
+    },
+    {
+      "id": "PASS-20261127-003",
+      "scope": "upload-streaming-and-path-confinement",
+      "statement": "crates/server/src/upload.rs, util.rs, media.rs, and drive/blobs.rs stream uploads to disk under max_upload without buffering bodies in RAM, enforce 64-hex content IDs, allowlist media extensions (fallback bin), canonicalize and confine library paths (util::confine), force Content-Disposition: attachment for HTML/SVG/XML, and send X-Content-Type-Options: nosniff at d068e6d.",
+      "origin_run": "runs/20261127-002000-service-pentest-api-share-secrev/",
+      "found_by": "secrev",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "verify_status": "confirmed",
+      "verify_by": "secrev",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "queue": "SECQ-20261127-002",
+      "verify_run": "runs/20261127-002000-service-pentest-api-share-secrev/"
+    },
+    {
+      "id": "PASS-20261127-004",
+      "scope": "share-worker-crypto-and-xss",
+      "statement": "Cloudflare Share Worker (share/src/crypto.ts, html.ts, admin.ts, public.ts) uses WebCrypto PBKDF2-SHA256 (100,000 iterations, 16-byte CSPRNG salt), constant-time safeEqual, HMAC-SHA256 HttpOnly Secure SameSite=Lax session cookies, per-request 128-bit CSP nonces (default-src 'none'), HTML/scriptJson escaping, allow_download enforcement, and fail-closed SHARE_TOKEN admin auth at d068e6d.",
+      "origin_run": "runs/20261127-002000-service-pentest-api-share-secrev/",
+      "found_by": "secrev",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "verify_status": "confirmed",
+      "verify_by": "secrev",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "queue": "SECQ-20261127-002",
+      "verify_run": "runs/20261127-002000-service-pentest-api-share-secrev/"
+    },
+    {
+      "id": "PASS-20261127-005",
+      "scope": "firewall-and-repo-hygiene",
+      "statement": "scripts/firewall/firewall.nft confines TCP port 8787 strictly to lo and tailscale0 in an independent table inet atlas-fw (dropping LAN and Docker bridge traffic), and repository hygiene scan at d068e6d found zero real Atlas keys, zero real private tailnet hostnames, and zero personal emails (cargo test -p atlas-cli: 5/5 passed).",
+      "origin_run": "runs/20261127-004000-operations-cli-scripts-swift-secrev/",
+      "found_by": "secrev",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "verify_status": "confirmed",
+      "verify_by": "secrev",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "secrev@2026-11-27 (security-review session ca10409f)",
+      "queue": "SECQ-20261127-004",
+      "verify_run": "runs/20261127-004000-operations-cli-scripts-swift-secrev/"
+    }
+  ]
+}
