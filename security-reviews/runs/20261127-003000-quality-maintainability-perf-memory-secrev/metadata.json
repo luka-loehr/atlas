@@ -1,0 +1,25 @@
+{
+  "run_id": "20261127-003000-quality-maintainability-perf-memory-secrev",
+  "track": "quality-maintainability",
+  "scope": "perf-memory",
+  "targets": [
+    "static analysis of crates/server/src/{drive/browse.rs,jobs/drive_text.rs,system/host.rs,system/metrics/mod.rs,photos/timeline.rs,photos/search/ml.rs,jobs/worker.rs}",
+    "static analysis of crates/core/src/process.rs and crates/ml/src/main.rs"
+  ],
+  "agent": "secrev",
+  "model": "Gemini 4 Neon",
+  "session": "secrev@2026-11-27 (security-review session ca10409f)",
+  "tooling": "static code review, grep",
+  "status": "completed",
+  "started_at": "2026-11-27T00:17:00+00:00",
+  "ended_at": "2026-11-27T00:20:00+00:00",
+  "repo_state": "d068e6d",
+  "environment": "static analysis and local unit tests",
+  "authorization_ref": "security-reviews/AUTHORIZATION.md#authorized-active-targets",
+  "host_lock": "not_needed",
+  "test_data": "none",
+  "cleanup": "not_applicable",
+  "external_services": "none",
+  "register_status": "synced",
+  "redaction_status": "checked"
+}
