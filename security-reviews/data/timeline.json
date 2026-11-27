@@ -7,6 +7,10 @@
     {
       "at": "2026-11-27T00:20:00+00:00",
       "text": "Completed 4 baseline whole-codebase review runs at d068e6d (architecture/threat-model, service-pentest, quality-maintainability, operations/system-audit): 9 SEC findings, 4 AUD findings, and 5 PASS statements self-verified; 13 fix tasks queued in QUEUE.md."
+    },
+    {
+      "at": "2026-11-27T03:36:00+00:00",
+      "text": "Completed v0.6.0 delta review (S3, buckets, multipart, IAM, OpenAPI 3.1, revamped CLI), fixed all 14 findings (10 SEC + 4 AUD) across commits 7fa950e, 410e5de, 9caa842, and b62c0a7, confirmed 8 PASS statements, and drained QUEUE.md to 0 open tasks."
     }
   ]
 }

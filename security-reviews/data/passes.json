@@ -74,6 +74,51 @@
       "verify_session": "secrev@2026-11-27 (security-review session ca10409f)",
       "queue": "SECQ-20261127-004",
       "verify_run": "runs/20261127-004000-operations-cli-scripts-swift-secrev/"
+    },
+    {
+      "id": "PASS-20261127-006",
+      "scope": "iam-keys-sigv4-and-ratelimit",
+      "statement": "crates/server/src/iam/{mod,cache,handlers,ratelimit}.rs enforces constant-time master/Bearer secret comparisons, HKDF-SHA256 + AES-256-GCM AAD-bound secret sealing at rest, AWS SigV4 header & presigned URL verification (\u00b115m skew, <=7d TTL), instant cache & rate-limiter eviction on key revoke/delete, coarse + bucket-level RBAC, and sharded per-key token-bucket 429 rate limiting (verified in s3_iam_openapi_e2e at b62c0a7).",
+      "origin_run": "runs/20261127-033000-service-pentest-v060-s3-iam-cli-atlaslead/",
+      "found_by": "atlaslead",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "atlaslead@2026-11-27 (overnight v0.6.0 session)",
+      "verify_status": "confirmed",
+      "verify_by": "atlaslead",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "atlaslead@2026-11-27 (overnight v0.6.0 session)",
+      "queue": "SECQ-20261127-018",
+      "verify_run": "runs/20261127-033000-service-pentest-v060-s3-iam-cli-atlaslead/"
+    },
+    {
+      "id": "PASS-20261127-007",
+      "scope": "s3-buckets-sync-and-gc",
+      "statement": "crates/server/src/{storage,s3}/* enforces strict bucket & object key normalization (rejecting '..', backslashes, control chars), streams uploads to temp files under max_upload with SHA-256/MD5 verification, serves zero-copy HTTP Range 206 responses with nosniff and safe Content-Disposition, garbage-collects blobs only when unreferenced across both objects and drive_files, and losslessly bridges media<->assets and files<->drive (verified in s3_iam_openapi_e2e & queue_db at b62c0a7).",
+      "origin_run": "runs/20261127-033000-service-pentest-v060-s3-iam-cli-atlaslead/",
+      "found_by": "atlaslead",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "atlaslead@2026-11-27 (overnight v0.6.0 session)",
+      "verify_status": "confirmed",
+      "verify_by": "atlaslead",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "atlaslead@2026-11-27 (overnight v0.6.0 session)",
+      "queue": "SECQ-20261127-018",
+      "verify_run": "runs/20261127-033000-service-pentest-v060-s3-iam-cli-atlaslead/"
+    },
+    {
+      "id": "PASS-20261127-008",
+      "scope": "cli-credentials-tty-and-openapi",
+      "statement": "crates/cli/src/{credentials,sanitize,client,cmd}/* writes credentials.json atomically with 0700 dir and 0600 O_EXCL temp-file permissions, strips ANSI CSI/OSC/DCS, C0/C1, and BiDi override sequences on all server-controlled terminal output, rejects path traversal in safe_join_local, and crates/server/src/openapi.rs passes automated live route-parity contract tests against the axum router (25/25 CLI tests + openapi_spec_is_3_1_and_covers_all_v1_and_s3_routes passed at b62c0a7).",
+      "origin_run": "runs/20261127-033000-service-pentest-v060-s3-iam-cli-atlaslead/",
+      "found_by": "atlaslead",
+      "found_model": "Gemini 4 Neon",
+      "found_session": "atlaslead@2026-11-27 (overnight v0.6.0 session)",
+      "verify_status": "confirmed",
+      "verify_by": "atlaslead",
+      "verify_model": "Gemini 4 Neon",
+      "verify_session": "atlaslead@2026-11-27 (overnight v0.6.0 session)",
+      "queue": "SECQ-20261127-018",
+      "verify_run": "runs/20261127-033000-service-pentest-v060-s3-iam-cli-atlaslead/"
     }
   ]
 }
