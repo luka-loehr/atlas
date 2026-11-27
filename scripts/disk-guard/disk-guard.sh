@@ -19,12 +19,20 @@
 # touches ~/photos, ~/drive/blobs, Postgres or /srv/backups.
 
 set -uo pipefail
+umask 077
 
 MOUNT="${DISK_GUARD_MOUNT:-/}"
-# HOME may be unset in a CI step or a systemd unit without User=. Under `set -u`
-# that aborted the script with exit 1 — indistinguishable from a real refusal,
-# which is the one failure mode a called gate must not have.
-STATE_DIR="${DISK_GUARD_STATE_DIR:-${HOME:-/var/tmp}/atlas-health}"
+# HOME may be unset in a CI step or a systemd unit without User=. Prefer
+# /var/lib/atlas/health when writable, else per-UID runtime dir (never shared /var/tmp).
+if [[ -n "${DISK_GUARD_STATE_DIR:-}" ]]; then
+    STATE_DIR="$DISK_GUARD_STATE_DIR"
+elif [[ -n "${HOME:-}" ]]; then
+    STATE_DIR="$HOME/atlas-health"
+elif [[ -w /var/lib/atlas/health ]]; then
+    STATE_DIR="/var/lib/atlas/health"
+else
+    STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/atlas-health"
+fi
 STATE="$STATE_DIR/disk-guard.state"
 JSON="$STATE_DIR/disk.json"
 
@@ -78,8 +86,21 @@ now=$(date +%s)
 # --- burn rate since the previous sample ------------------------------------
 
 prev_ts=0 prev_used=0 prev_proj_hot=0 last_alert_ts=0 last_alert_level=ok
-# shellcheck disable=SC1090
-[[ -r "$STATE" ]] && source "$STATE"
+if [[ -r "$STATE" && ! -L "$STATE" ]]; then
+    while IFS='=' read -r k v; do
+        case "$k" in
+            prev_ts)         [[ "$v" =~ ^[0-9]+$ ]] && prev_ts="$v" ;;
+            prev_used)       [[ "$v" =~ ^[0-9]+$ ]] && prev_used="$v" ;;
+            prev_proj_hot)   [[ "$v" =~ ^[01]$ ]]   && prev_proj_hot="$v" ;;
+            last_alert_ts)   [[ "$v" =~ ^[0-9]+$ ]] && last_alert_ts="$v" ;;
+            last_alert_level)
+                case "$v" in
+                    ok|warn|critical|emergency) last_alert_level="$v" ;;
+                esac
+                ;;
+        esac
+    done < "$STATE"
+fi
 
 burn_gib_min="0.00" burn_bytes_min=0 proj_min=-1
 if ((prev_ts > 0 && now > prev_ts)); then
@@ -133,8 +154,10 @@ line="disk-guard: $level — $reason (burn ${burn_gib_min} G/min)"
 #     disturb the burn-rate window) ---------------------------------------
 
 write_json() {
-    mkdir -p "$STATE_DIR"
-    cat > "$JSON" <<EOF
+    mkdir -p -m 700 "$STATE_DIR"
+    local tmp
+    tmp=$(mktemp "$STATE_DIR/.disk.json.XXXXXX") || return 1
+    cat > "$tmp" <<EOF
 {
   "checked_at": "$(date -u -d "@$now" +%FT%TZ)",
   "mount": "$MOUNT",
@@ -149,6 +172,7 @@ write_json() {
   "reason": "$reason"
 }
 EOF
+    mv -f "$tmp" "$JSON"
 }
 
 case "$mode" in
@@ -203,14 +227,16 @@ if ((send)); then
     last_alert_ts=$now last_alert_level=$level
 fi
 
-mkdir -p "$STATE_DIR"
-cat > "$STATE" <<EOF
+mkdir -p -m 700 "$STATE_DIR"
+state_tmp=$(mktemp "$STATE_DIR/.disk-guard.state.XXXXXX")
+cat > "$state_tmp" <<EOF
 prev_ts=$now
 prev_used=$used
 prev_proj_hot=$proj_hot
 last_alert_ts=$last_alert_ts
 last_alert_level=$last_alert_level
 EOF
+mv -f "$state_tmp" "$STATE"
 
 # Exit non-zero at critical and above so `systemctl status` shows the unit red.
 case "$level" in emergency | critical) exit 1 ;; *) exit 0 ;; esac

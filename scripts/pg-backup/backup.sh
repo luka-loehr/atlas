@@ -8,6 +8,7 @@
 #
 # No host Postgres tools required — everything runs inside the container.
 set -euo pipefail
+umask 077
 
 BACKUP_DIR=${BACKUP_DIR:-/srv/backups/atlas-postgres}
 CONTAINER=${CONTAINER:-atlas-postgres}
@@ -20,7 +21,8 @@ stamp=$(date +%F)
 dump="$BACKUP_DIR/atlas_${stamp}.dump"
 globals="$BACKUP_DIR/globals_${stamp}.sql"
 
-mkdir -p "$BACKUP_DIR"
+mkdir -p -m 700 "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 
 # Dump to a .part file first so a failed run never leaves a truncated file
 # that looks like a valid backup. The hourly bulk backup, which copies

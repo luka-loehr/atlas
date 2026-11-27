@@ -112,8 +112,16 @@ final class Session {
         var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         if !text.contains("://") { text = "http://" + text }
-        guard var components = URLComponents(string: text), let host = components.host, !host.isEmpty else { return nil }
-        if components.port == nil, components.scheme == "http" { components.port = 8787 }
+        guard var components = URLComponents(string: text),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host, !host.isEmpty else { return nil }
+        components.scheme = scheme
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        if components.port == nil, scheme == "http" { components.port = 8787 }
         components.path = ""
         return components.url
     }

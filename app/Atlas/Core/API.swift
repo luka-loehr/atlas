@@ -53,16 +53,22 @@ struct API: Sendable {
     // MARK: URLs
 
     func url(_ path: String, query: [URLQueryItem] = []) -> URL {
-        var components = URLComponents(url: config.url.appending(path: "v1/" + path), resolvingAgainstBaseURL: false)!
+        let base = config.url.appending(path: "v1/" + path)
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return base
+        }
         if !query.isEmpty { components.queryItems = query }
-        return components.url!
+        return components.url ?? base
     }
 
     /// A WebSocket request for `path` (ws, or wss behind https), with the token.
     func webSocketRequest(_ path: String) -> URLRequest {
-        var components = URLComponents(url: url(path), resolvingAgainstBaseURL: false)!
+        let target = url(path)
+        guard var components = URLComponents(url: target, resolvingAgainstBaseURL: false) else {
+            return request(target)
+        }
         components.scheme = components.scheme == "https" ? "wss" : "ws"
-        return request(components.url!)
+        return request(components.url ?? target)
     }
 
     func request(_ url: URL, method: String = "GET") -> URLRequest {

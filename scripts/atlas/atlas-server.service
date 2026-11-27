@@ -15,6 +15,10 @@ User=SET-BY-INSTALLER
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 # ATLAS_TOKEN and the database password live here, not in the unit.
 EnvironmentFile=/etc/atlas/atlas.env
+UMask=0077
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
 ExecStart=/usr/local/bin/atlas-server
 Restart=always
 RestartSec=3

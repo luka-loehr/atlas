@@ -21,14 +21,15 @@ export function parseRange(header: string | null, size: number): ByteRange | "un
   if (startText === "") {
     // Suffix range: the last N bytes.
     const n = Number(endText);
-    if (n === 0 || size === 0) return "unsatisfiable";
+    if (!Number.isSafeInteger(n) || n === 0 || size === 0) return "unsatisfiable";
     const length = Math.min(n, size);
     return { offset: size - length, length };
   }
 
   const start = Number(startText);
-  if (start >= size) return "unsatisfiable";
+  if (!Number.isSafeInteger(start) || start >= size) return "unsatisfiable";
   let end = endText === "" ? size - 1 : Number(endText);
+  if (!Number.isSafeInteger(end)) end = size - 1;
   if (end < start) return null; // invalid syntax per RFC: ignore the header
   if (end > size - 1) end = size - 1;
   return { offset: start, length: end - start + 1 };

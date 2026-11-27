@@ -209,6 +209,10 @@ async function handleFile(request: Request, env: Env, url: URL, key: string): Pr
 }
 
 async function putManifest(request: Request, env: Env, url: URL, id: string): Promise<Response> {
+  const cl = request.headers.get("Content-Length");
+  if (cl !== null && /^\d+$/.test(cl) && Number(cl) > MAX_MANIFEST) {
+    return error(413, "manifest too large");
+  }
   const text = await request.text();
   if (text.length > MAX_MANIFEST) return error(413, "manifest too large");
   let body: unknown;

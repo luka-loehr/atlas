@@ -10,6 +10,7 @@ if ! sudo test -f /etc/atlas/atlas.env; then
   echo "missing /etc/atlas/atlas.env — copy scripts/atlas/atlas.env.example there and fill it in" >&2
   exit 1
 fi
+sudo chmod 600 /etc/atlas/atlas.env
 
 # the models and the llama.cpp server this version of atlas-ml expects
 scripts/atlas/models.sh
