@@ -85,7 +85,7 @@ pub(crate) fn sync_local(cfg: &BuildCfg, toplevel: &Path) {
          chmod 700 \"$HOME/{base}\"",
         cache = cfg.cache_dir(),
     );
-    if !run_inherit(Command::new("ssh").args([ssh_host(), &setup])) {
+    if !run_inherit(Command::new("ssh").args(["--", ssh_host(), &setup])) {
         eprintln!("{RED}preparation on atlas failed{RESET}");
         exit(1);
     }
@@ -96,6 +96,7 @@ pub(crate) fn sync_local(cfg: &BuildCfg, toplevel: &Path) {
         rsync.args(["--exclude", excluded]);
     }
     let ok = run_inherit(rsync.args([
+        "--",
         &format!("{}/", toplevel.display()),
         &format!("{}:{}/", ssh_host(), dest),
     ]));
@@ -135,7 +136,7 @@ pub(crate) fn sync_worktree(cfg: &BuildCfg, branch: &str, slug: &str) -> String 
         url = shq(url),
     );
     println!("{DIM}git fetch on atlas ({url}){RESET}");
-    if !run_inherit(Command::new("ssh").args([ssh_host(), &setup])) {
+    if !run_inherit(Command::new("ssh").args(["--", ssh_host(), &setup])) {
         eprintln!("{RED}git fetch on atlas failed{RESET}");
         eprintln!(
             "{DIM}  private repos need ~/.git-credentials on atlas (https, not git@…){RESET}"
@@ -187,7 +188,7 @@ pub(crate) fn sync_worktree(cfg: &BuildCfg, branch: &str, slug: &str) -> String 
            -exec chmod go= {{}} + 2>/dev/null || true",
         sha = shq(&commit),
     );
-    if !run_inherit(Command::new("ssh").args([ssh_host(), &update])) {
+    if !run_inherit(Command::new("ssh").args(["--", ssh_host(), &update])) {
         eprintln!("{RED}could not update the worktree for '{branch}'{RESET}");
         eprintln!(
             "{DIM}  escape hatch:  ssh {} 'rm -rf ~/{wt}'  and retry{RESET}",

@@ -66,6 +66,7 @@ fn dev_logs(cfg: &BuildCfg, slug: &str) -> ! {
     let err = Command::new("ssh")
         .args([
             "-t",
+            "--",
             ssh_host(),
             &format!("docker logs -f {}", dev_name(cfg, slug)),
         ])
@@ -132,7 +133,7 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
     // is picked from the lockfile rather than hardcoded to npm.
     let devcmd = format!("{} && {}", cfg.install_cmd(), cfg.dev);
     let run_dev = format!(
-        "{prologue}docker run -d --name {dev} --network host --restart unless-stopped $envf \
+        "{prologue}docker run -d --name {dev} --network host --restart unless-stopped \"$@\" \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
          -e ATLAS_DEV_ORIGINS={origins} \
          -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
@@ -140,12 +141,12 @@ fn dev_start(cfg: &BuildCfg, branch: &str, slug: &str, public: bool) {
          -w {wd} {tag} sh -c {cmd} >/dev/null",
         prologue = env_file_prologue(cfg),
         port = cfg.port,
-        origins = dev_origins,
+        origins = shq(&dev_origins),
         wt = cfg.wt_dir(slug),
         cache = cfg.cache_dir(),
         repo = cfg.repo_dir(),
-        wd = cfg.workdir(),
-        tag = spec.tag,
+        wd = shq(&cfg.workdir()),
+        tag = shq(&spec.tag),
         cmd = shq(&devcmd),
     );
     if !ssh_ok(&run_dev) {

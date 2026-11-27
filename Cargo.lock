@@ -136,8 +136,23 @@ dependencies = [
 name = "atlas-cli"
 version = "0.6.0"
 dependencies = [
+ "anyhow",
  "atlas-common",
+ "axum",
+ "base64 0.23.1",
+ "bytes",
+ "chrono",
+ "clap",
+ "futures-util",
+ "md-5",
+ "reqwest",
+ "roxmltree 0.21.1",
+ "serde",
  "serde_json",
+ "sha2",
+ "tokio",
+ "tokio-util",
+ "url",
 ]
 
 [[package]]
@@ -216,6 +231,7 @@ dependencies = [
  "kamadak-exif",
  "libc",
  "libheif-rs",
+ "md-5",
  "nvml-wrapper",
  "pgvector",
  "portable-pty",
@@ -223,6 +239,7 @@ dependencies = [
  "reqwest",
  "resvg",
  "reverse_geocoder",
+ "roxmltree 0.20.0",
  "serde",
  "serde_json",
  "sha2",

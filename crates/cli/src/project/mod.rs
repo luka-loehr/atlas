@@ -200,6 +200,7 @@ pub(crate) fn ensure_image(spec: &ImageSpec) {
     }
     println!("{DIM}image {tag} is missing — building it on atlas (one-time, a few minutes){RESET}");
     let ok = run_inherit(Command::new("ssh").args([
+        "--",
         ssh_host(),
         &format!(
             "cd ~/atlas && git pull --quiet --ff-only && {}",

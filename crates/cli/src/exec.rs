@@ -151,7 +151,7 @@ fn container_exec(
         String::new()
     };
     let remote = format!(
-        "{prologue}docker run --rm --network host $envf \
+        "{prologue}docker run --rm --network host \"$@\" \
          -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
          -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
          -e GRADLE_USER_HOME=/cache/gradle \
@@ -162,12 +162,12 @@ fn container_exec(
         prologue = env_file_prologue(cfg),
         src = src_dir,
         cache = cfg.cache_dir(),
-        wd = cfg.workdir(),
-        tag = spec.tag,
+        wd = shq(&cfg.workdir()),
+        tag = shq(&spec.tag),
         cmd = shq(command),
     );
     Command::new("ssh")
-        .args([ssh_host(), &remote])
+        .args(["--", ssh_host(), &remote])
         .status()
         .ok()
         .and_then(|s| s.code())

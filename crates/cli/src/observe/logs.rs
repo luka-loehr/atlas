@@ -45,13 +45,22 @@ pub(crate) fn logs(argv: &[String]) {
 
     if follow {
         let err = Command::new("ssh")
-            .args(["-t", ssh_host(), &format!("docker logs -f {container}")])
+            .args([
+                "-t",
+                "--",
+                ssh_host(),
+                &format!("docker logs -f {container}"),
+            ])
             .exec();
         eprintln!("ssh: {err}");
         exit(1);
     }
     Command::new("ssh")
-        .args([ssh_host(), &format!("docker logs --tail 200 {container}")])
+        .args([
+            "--",
+            ssh_host(),
+            &format!("docker logs --tail 200 {container}"),
+        ])
         .status()
         .ok();
 }

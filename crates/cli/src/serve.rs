@@ -119,7 +119,7 @@ fn start_run(cfg: &BuildCfg, branch: &str, slug: &str) {
     serve_off(cfg, slug, "start");
 
     let run = format!(
-        "{prologue}docker run -d --name {name} --network host --restart unless-stopped $envf \
+        "{prologue}docker run -d --name {name} --network host --restart unless-stopped \"$@\" \
          -e npm_config_cache=/cache/npm -e HOST=0.0.0.0 -e PORT={port} \
          -v \"$HOME/{wt}\":/build -v \"$HOME/{cache}\":/cache \
          -v \"$HOME/{repo}\":\"$HOME/{repo}\" \
@@ -129,8 +129,8 @@ fn start_run(cfg: &BuildCfg, branch: &str, slug: &str) {
         wt = cfg.wt_dir(slug),
         cache = cfg.cache_dir(),
         repo = cfg.repo_dir(),
-        wd = cfg.workdir(),
-        tag = spec.tag,
+        wd = crate::ssh::shq(&cfg.workdir()),
+        tag = crate::ssh::shq(&spec.tag),
         cmd = crate::ssh::shq(&cfg.start_cmd()),
     );
     if !ssh_ok(&run) {
@@ -170,6 +170,7 @@ fn start_logs(cfg: &BuildCfg, slug: &str) -> ! {
     let err = Command::new("ssh")
         .args([
             "-t",
+            "--",
             ssh_host(),
             &format!("docker logs -f {}", start_name(cfg, slug)),
         ])

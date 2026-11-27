@@ -6,14 +6,35 @@
 //!   ATLAS_TEST_DATABASE_URL=postgres://atlas:test@127.0.0.1:55432/atlas \
 //!     cargo test -p atlas-core --test queue_db -- --test-threads=1
 
+use std::ops::Deref;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use atlas_core::queue::{self, MAX_ATTEMPTS, MAX_HEALS};
 use deadpool_postgres::Pool;
+use tokio::sync::{Mutex, MutexGuard};
 
-async fn database() -> Option<Pool> {
+struct TestPool {
+    pool: Pool,
+    _guard: MutexGuard<'static, ()>,
+}
+
+impl Deref for TestPool {
+    type Target = Pool;
+    fn deref(&self) -> &Self::Target {
+        &self.pool
+    }
+}
+
+fn db_serial_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+async fn database() -> Option<TestPool> {
     let url = std::env::var("ATLAS_TEST_DATABASE_URL").ok()?;
-    // SAFETY: set before any thread of this test reads the environment
+    let guard = db_serial_lock().lock().await;
+    // SAFETY: set while holding the process-wide DB test mutex
     unsafe { std::env::set_var("ATLAS_DATABASE_URL", &url) };
     let pool = atlas_core::db::pool(4).unwrap();
     let c = pool.get().await.unwrap();
@@ -24,7 +45,10 @@ async fn database() -> Option<Pool> {
     .unwrap();
     drop(c);
     atlas_core::db::migrate(&pool).await.unwrap();
-    Some(pool)
+    Some(TestPool {
+        pool,
+        _guard: guard,
+    })
 }
 
 async fn status(c: &tokio_postgres::Client, id: i64) -> (String, i32, i32, Option<String>) {

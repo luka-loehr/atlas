@@ -1,5 +1,15 @@
-//! atlas — control the atlas homelab build server from the Mac.
+//! atlas — standalone Atlas API & S3 client plus homelab server control.
 //!
+//! API & S3 CLIENT (works on any Linux/Mac host without SSH):
+//!   atlas auth         login, status, whoami, logout (~/.config/atlas/credentials.json)
+//!   atlas buckets      ls, create, info, rm
+//!   atlas files | s3   ls, put, get, cp, sync, rm, stat, search, presign
+//!   atlas photos       search, similar, upload, get, people, albums, stats
+//!   atlas keys         ls, create, revoke, rm
+//!   atlas accounts     ls, create, info, rm
+//!   atlas openapi      fetch GET /openapi.json
+//!
+//! HOMELAB SERVER CONTROL (SSH / WoL / Docker):
 //!   atlas              interactive SSH session (execs `ssh atlas`)
 //!   atlas boot         Wake-on-LAN, waits until SSH is reachable
 //!   atlas shutdown     powers the box off, waits until it is down
@@ -15,7 +25,10 @@
 //!   atlas <cmd ...>    run any command on atlas (forwarded to ssh)
 
 mod build;
+mod client;
+mod cmd;
 mod config;
+mod credentials;
 mod deploy;
 mod dev;
 mod exec;
@@ -24,6 +37,7 @@ mod hash;
 mod machine;
 mod observe;
 mod project;
+mod sanitize;
 mod secrets;
 mod serve;
 mod share;
@@ -43,6 +57,17 @@ fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None => ssh::ssh(&[]),
+
+        // ── Standalone API & S3 client ───────────────────────────────────────
+        Some("auth") => cmd::auth::run(&args[1..]),
+        Some("buckets") => cmd::buckets::run(&args[1..]),
+        Some("files") | Some("s3") => cmd::files::run(&args[1..]),
+        Some("photos") => cmd::photos::run(&args[1..]),
+        Some("keys") => cmd::iam::run_keys(&args[1..]),
+        Some("accounts") => cmd::iam::run_accounts(&args[1..]),
+        Some("openapi") => cmd::openapi::run(&args[1..]),
+
+        // ── Homelab machine & build control ──────────────────────────────────
         Some("boot") | Some("up") | Some("wake") => machine::boot(),
         Some("shutdown") | Some("off") | Some("poweroff") => machine::shutdown(),
         Some("restart") | Some("reboot") => machine::restart(),
@@ -78,11 +103,18 @@ fn main() {
 
 fn help() {
     println!(
-        "atlas — the homelab build server\n\n\
-         USAGE\n  \
+        "atlas {} — Atlas API & S3 client + homelab build server\n\n\
+         API & S3 CLIENT {DIM}(run `<cmd> --help` for full options; env: ATLAS_URL, ATLAS_API_KEY, ATLAS_TOKEN){RESET}\n  \
+         atlas auth       login | status | whoami | logout\n  \
+         atlas buckets    ls | create <name> | info <name> | rm <name>\n  \
+         atlas files      ls | put | get | cp | sync | rm | stat | search | presign  {DIM}(alias: s3){RESET}\n  \
+         atlas photos     search | similar | upload | get | people | albums | stats\n  \
+         atlas keys       ls | create <name> | revoke <id> | rm <id>\n  \
+         atlas accounts   ls | create <name> | info <id> | rm <id>\n  \
+         atlas openapi    fetch GET /openapi.json [--out FILE]\n\n\
+         SSH & MACHINE\n  \
          atlas                SSH into atlas\n  \
-         atlas <cmd ...>      run a command on atlas (e.g. atlas nvidia-smi)\n\n\
-         MACHINE\n  \
+         atlas <cmd ...>      run a command on atlas (e.g. atlas nvidia-smi)\n  \
          atlas boot           wake via WoL, wait until reachable\n  \
          atlas shutdown       power off, wait until down\n  \
          atlas restart        reboot, wait until back\n  \
@@ -118,6 +150,7 @@ fn help() {
          atlas secrets push [file]  upload env file for this project (never in git, 0600 on atlas)\n  \
          atlas secrets list|rm      which projects have one  ·  drop this project's\n  \
          atlas migrate              convert a .atlas-build.toml config file to atlas.toml\n  \
-         atlas --version            print the version"
+         atlas --version            print the version",
+        env!("CARGO_PKG_VERSION")
     );
 }

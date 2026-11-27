@@ -196,7 +196,7 @@ pub(crate) fn build(argv: &[String]) {
         String::new()
     };
     let remote = format!(
-        "{prologue}docker run --rm $envf \
+        "{prologue}docker run --rm \"$@\" \
          -e CARGO_HOME=/cache/cargo -e npm_config_cache=/cache/npm \
          -e PUB_CACHE=/cache/pub -e XDG_CACHE_HOME=/cache/xdg \
          -e GRADLE_USER_HOME=/cache/gradle \
@@ -207,8 +207,8 @@ pub(crate) fn build(argv: &[String]) {
         prologue = env_file_prologue(&cfg),
         src = src_dir,
         cache = cfg.cache_dir(),
-        wd = cfg.workdir(),
-        tag = spec.tag,
+        wd = shq(&cfg.workdir()),
+        tag = shq(&spec.tag),
         cmd = shq(&buildcmd),
     );
 
@@ -227,7 +227,7 @@ pub(crate) fn build(argv: &[String]) {
 
     println!("{DIM}build on atlas ({}):{RESET} {buildcmd}", spec.tag);
     let t0 = Instant::now();
-    let ok = run_inherit(Command::new("ssh").args([ssh_host(), &remote]));
+    let ok = run_inherit(Command::new("ssh").args(["--", ssh_host(), &remote]));
     let secs = t0.elapsed().as_secs();
     if !ok {
         eprintln!("{RED}build failed{RESET} (after {secs}s)");

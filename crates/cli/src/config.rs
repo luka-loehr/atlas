@@ -99,8 +99,16 @@ impl Config {
         } else {
             format!("{tailnet_host}:8787")
         };
+        let raw_ssh_host = get("ATLAS_SSH_HOST", "atlas");
+        let ssh_host = match validate_ssh_host(&raw_ssh_host) {
+            Ok(h) => h,
+            Err(reason) => {
+                eprintln!("{RED}ATLAS_SSH_HOST invalid:{RESET} {raw_ssh_host} ({reason})");
+                exit(1);
+            }
+        };
         Config {
-            ssh_host: get("ATLAS_SSH_HOST", "atlas"),
+            ssh_host,
             wol_mac,
             wol_mac_is_default: mac_str == DEFAULT_WOL_MAC,
             wol_broadcast: get("ATLAS_WOL_BROADCAST", "192.168.1.255:9"),
@@ -140,7 +148,19 @@ fn env_file_vars() -> HashMap<String, String> {
     let Ok(home) = env::var("HOME") else {
         return vars;
     };
-    let Ok(text) = fs::read_to_string(Path::new(&home).join(".config/atlas/env")) else {
+    let path = Path::new(&home).join(".config/atlas/env");
+    #[cfg(unix)]
+    if let Ok(meta) = fs::metadata(&path) {
+        use std::os::unix::fs::PermissionsExt;
+        if (meta.permissions().mode() & 0o077) != 0 {
+            eprintln!(
+                "{DIM}warning: {} is group/world-accessible; run `chmod 600 {}`{RESET}",
+                path.display(),
+                path.display()
+            );
+        }
+    }
+    let Ok(text) = fs::read_to_string(&path) else {
         return vars;
     };
     for line in text.lines() {
@@ -244,5 +264,41 @@ pub(crate) fn migrate(argv: &[String]) {
         println!(
             "{GREEN}✓{RESET} wrote atlas.toml (could not remove .atlas-build.toml — delete it manually)"
         );
+    }
+}
+
+/// Validates an SSH host alias or `user@host` target, rejecting option-injection
+/// strings starting with `-`, empty strings, whitespace, or control characters.
+pub(crate) fn validate_ssh_host(raw: &str) -> Result<String, &'static str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("must not be empty");
+    }
+    if trimmed.starts_with('-') {
+        return Err("must not start with '-'");
+    }
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err("must not contain whitespace or control characters");
+    }
+    Ok(trimmed.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_option_injection_in_ssh_host() {
+        assert_eq!(validate_ssh_host("atlas").unwrap(), "atlas");
+        assert_eq!(
+            validate_ssh_host("luka@atlas.example.ts.net").unwrap(),
+            "luka@atlas.example.ts.net"
+        );
+        assert!(validate_ssh_host("").is_err());
+        assert!(validate_ssh_host("   ").is_err());
+        assert!(validate_ssh_host("-oProxyCommand=evil").is_err());
+        assert!(validate_ssh_host("--version").is_err());
+        assert!(validate_ssh_host("atlas -oFoo=bar").is_err());
+        assert!(validate_ssh_host("atlas\nnext").is_err());
     }
 }

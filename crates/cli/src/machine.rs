@@ -42,7 +42,7 @@ pub(crate) fn shutdown() {
     // ssh often reports 255 when poweroff drops the connection — ignore the
     // exit code and trust the port-22-down probe instead
     Command::new("ssh")
-        .args([ssh_host(), "sudo poweroff"])
+        .args(["--", ssh_host(), "sudo poweroff"])
         .output()
         .ok();
     print!("poweroff sent, waiting ");
@@ -61,7 +61,7 @@ pub(crate) fn restart() {
         exit(1);
     }
     Command::new("ssh")
-        .args([ssh_host(), "sudo reboot"])
+        .args(["--", ssh_host(), "sudo reboot"])
         .output()
         .ok();
     print!("reboot sent, waiting for shutdown ");

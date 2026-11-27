@@ -155,7 +155,7 @@ pub(super) fn setup(args: &[String]) {
     );
     // the token goes over stdin, never onto a command line
     let mut child = Command::new("ssh")
-        .args([ssh_host(), &script])
+        .args(["--", ssh_host(), &script])
         .stdin(Stdio::piped())
         .spawn()
         .unwrap_or_else(|_| fail("ssh failed"));

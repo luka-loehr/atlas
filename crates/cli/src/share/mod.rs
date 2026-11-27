@@ -60,7 +60,7 @@ fn step(name: &str) {
 
 fn ssh_ok_quiet(remote: &str) -> bool {
     Command::new("ssh")
-        .args([ssh_host(), remote])
+        .args(["--", ssh_host(), remote])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)

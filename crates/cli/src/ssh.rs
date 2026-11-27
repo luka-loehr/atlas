@@ -20,8 +20,7 @@ use crate::{DIM, RESET};
 /// Replace this process with ssh — a real interactive session, no wrapper.
 pub(crate) fn ssh(remote_cmd: &[String]) -> ! {
     let err = Command::new("ssh")
-        .arg("-t")
-        .arg(ssh_host())
+        .args(["-t", "--", ssh_host()])
         .args(remote_cmd)
         .exec();
     eprintln!("ssh could not be started: {err}");
@@ -87,7 +86,7 @@ pub(crate) fn run_inherit(cmd: &mut Command) -> bool {
 
 pub(crate) fn ssh_ok(remote: &str) -> bool {
     Command::new("ssh")
-        .args([ssh_host(), remote])
+        .args(["--", ssh_host(), remote])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -95,7 +94,7 @@ pub(crate) fn ssh_ok(remote: &str) -> bool {
 
 pub(crate) fn ssh_capture(remote: &str) -> String {
     Command::new("ssh")
-        .args([ssh_host(), remote])
+        .args(["--", ssh_host(), remote])
         .output()
         .ok()
         .filter(|o| o.status.success())

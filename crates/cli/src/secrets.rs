@@ -60,7 +60,7 @@ fn secrets_push(arg: Option<&str>) {
          && cat > \"$HOME/{target}\" && chmod 600 \"$HOME/{target}\""
     );
     let ok = Command::new("ssh")
-        .args([ssh_host(), &remote])
+        .args(["--", ssh_host(), &remote])
         .stdin(handle)
         .status()
         .map(|s| s.success())
@@ -103,13 +103,13 @@ fn secrets_rm() {
     println!("{GREEN}✓ secrets for {} removed{RESET}", cfg.name);
 }
 
-/// Shell prologue that sets $envf to a `--env-file` flag when this project has a
-/// secrets file. Prefers the hashed path; an un-hashed `<name>.env` in the store
-/// is read as a fallback until a `secrets push` writes the hashed file.
+/// Shell prologue that populates `"$@"` with `--env-file "$sec"` (without word-splitting)
+/// when this project has a secrets file. Prefers the hashed path; an un-hashed `<name>.env`
+/// in the store is read as a fallback until a `secrets push` writes the hashed file.
 pub(crate) fn env_file_prologue(cfg: &BuildCfg) -> String {
     format!(
         "sec=\"$HOME/{hashed}\"; [ -f \"$sec\" ] || sec=\"$HOME/{legacy}\"; \
-         envf=\"\"; [ -f \"$sec\" ] && envf=\"--env-file $sec\"; ",
+         set --; [ -f \"$sec\" ] && set -- --env-file \"$sec\"; ",
         hashed = cfg.secrets_file(),
         legacy = cfg.legacy_secrets_file(),
     )
