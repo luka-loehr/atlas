@@ -172,6 +172,62 @@ impl VectorIndex {
     pub async fn len(&self) -> usize {
         self.matrix.read().await.ids.len()
     }
+
+    pub async fn is_empty(&self) -> bool {
+        self.len().await == 0
+    }
+
+    /// Finds the `limit` assets whose embedding is closest to `asset_id` (excluding itself).
+    pub async fn similar(
+        self: &Arc<Self>,
+        pool: &Pool,
+        asset_id: &str,
+        limit: usize,
+    ) -> Result<Vec<Hit>> {
+        self.refresh(pool).await?;
+        let target_id = asset_id.to_string();
+        let index = self.clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            let matrix = index.matrix.blocking_read();
+            let Some(&target_row) = matrix.rows.get(&target_id) else {
+                return Vec::new();
+            };
+            let target_vec = matrix.data[target_row * DIM..(target_row + 1) * DIM].to_vec();
+            let q = Questions {
+                still: target_vec.clone(),
+                clip: target_vec,
+            };
+            let scored = matrix.score(&q);
+            let mut ranked: Vec<(usize, f32)> = scored
+                .scores
+                .iter()
+                .enumerate()
+                .filter(|(row, _)| *row != target_row)
+                .map(|(row, &s)| (row, scored.kind(matrix.video[row]).z(s)))
+                .collect();
+            let take = limit.min(ranked.len());
+            if take == 0 {
+                return Vec::new();
+            }
+            ranked.select_nth_unstable_by(take - 1, |a, b| b.1.total_cmp(&a.1));
+            ranked.truncate(take);
+            ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            ranked
+                .into_iter()
+                .map(|(row, z)| {
+                    let kind = scored.kind(matrix.video[row]);
+                    Hit {
+                        id: matrix.ids[row].clone(),
+                        similarity: scored.scores[row],
+                        z,
+                        chance_best: chance(kind.n, 0.5),
+                        chance_tail: chance(kind.n, 2.0),
+                    }
+                })
+                .collect()
+        })
+        .await?)
+    }
 }
 
 impl Matrix {

@@ -45,6 +45,11 @@ pub struct Config {
     /// `atlas share setup` writes them.
     pub share_url: Option<String>,
     pub share_token: Option<String>,
+    /// ATLAS_S3_REGION: AWS SigV4 region accepted/emitted for S3 endpoints (default us-east-1).
+    pub s3_region: String,
+    /// ATLAS_DEFAULT_KEY_RPS / ATLAS_DEFAULT_KEY_BURST: default per-key rate limit (defaults 200 rps, 400 burst).
+    pub default_key_rps: u32,
+    pub default_key_burst: u32,
 }
 
 impl Config {
@@ -93,6 +98,15 @@ impl Config {
                 .map(|u| u.trim().trim_end_matches('/').to_string())
                 .filter(|u| u.starts_with("https://") || u.starts_with("http://")),
             share_token: env("ATLAS_SHARE_TOKEN").filter(|t| t.len() >= 16),
+            s3_region: env("ATLAS_S3_REGION").unwrap_or_else(|| "us-east-1".into()),
+            default_key_rps: env("ATLAS_DEFAULT_KEY_RPS")
+                .and_then(|v| v.parse().ok())
+                .filter(|&v| v > 0)
+                .unwrap_or(200),
+            default_key_burst: env("ATLAS_DEFAULT_KEY_BURST")
+                .and_then(|v| v.parse().ok())
+                .filter(|&v| v > 0)
+                .unwrap_or(400),
         })
     }
 
@@ -117,6 +131,9 @@ impl Config {
     }
     pub fn blobs_dir(&self) -> PathBuf {
         self.drive_dir.join("blobs")
+    }
+    pub fn multipart_dir(&self) -> PathBuf {
+        self.drive_dir.join(".multipart")
     }
     pub fn drive_thumbs_dir(&self) -> PathBuf {
         self.drive_dir.join("thumbs")

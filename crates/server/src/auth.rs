@@ -1,24 +1,10 @@
-//! The whole auth policy: every /v1 route needs the bearer token, presented
-//! as `Authorization: Bearer <token>` or, for URLs handed to a media player
-//! that cannot set headers, as `?token=<token>`. /health is the one open
-//! route and returns no data.
+//! Legacy bearer-token check helpers retained for unit tests; live `/v1` and `/s3`
+//! routing now authenticates through [`crate::iam`].
 
-use axum::extract::{Request, State};
+use axum::extract::Request;
 use axum::http::header;
-use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
 
-use crate::{ApiError, AppState};
-
-pub async fn require_token(State(app): State<AppState>, req: Request, next: Next) -> Response {
-    if presents_token(&req, &app.cfg.token) {
-        next.run(req).await
-    } else {
-        ApiError::Unauthorized.into_response()
-    }
-}
-
-fn presents_token(req: &Request, expected: &str) -> bool {
+pub fn presents_token(req: &Request, expected: &str) -> bool {
     let from_header = req
         .headers()
         .get(header::AUTHORIZATION)

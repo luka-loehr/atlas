@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 description = "The Atlas backend: photo library, drive and machine status behind one HTTP API, plus the ingest workers"
 
+[lib]
+name = "atlas_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "atlas-server"
 path = "src/main.rs"
