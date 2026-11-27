@@ -131,19 +131,17 @@ pub fn allows_query_token(method: &Method, path: &str) -> bool {
     if !matches!(*method, Method::GET | Method::HEAD) {
         return false;
     }
-    if path.starts_with("/v1/system")
-        || path.starts_with("/v1/keys")
-        || path.starts_with("/v1/accounts")
-    {
+    let rel = path.strip_prefix("/v1").unwrap_or(path);
+    if rel.starts_with("/system") || rel.starts_with("/keys") || rel.starts_with("/accounts") {
         return false;
     }
-    path.contains("/thumb")
-        || path.contains("/tile")
-        || path.contains("/original")
-        || path.contains("/video")
-        || path.contains("/crop")
-        || path.starts_with("/v1/drive/blobs/")
-        || path.starts_with("/v1/buckets/")
+    rel.contains("/thumb")
+        || rel.contains("/tile")
+        || rel.contains("/original")
+        || rel.contains("/video")
+        || rel.contains("/crop")
+        || rel.starts_with("/drive/blobs/")
+        || rel.starts_with("/buckets/")
 }
 
 /// Rejects cross-origin browser WebSocket hijacking attempts (CSWSH):
@@ -369,16 +367,20 @@ pub fn enforce_v1_route_policy(
     if principal.is_master {
         return Ok(());
     }
-    if path.starts_with("/v1/system")
-        || path.starts_with("/v1/accounts")
-        || path.starts_with("/v1/keys")
-        || path.starts_with("/v1/share")
+    let rel = path.strip_prefix("/v1").unwrap_or(path);
+    if matches!(rel, "/auth/whoami" | "/server" | "/openapi.json") {
+        return Ok(());
+    }
+    if rel.starts_with("/system")
+        || rel.starts_with("/accounts")
+        || rel.starts_with("/keys")
+        || rel.starts_with("/share")
     {
         return principal.require_owner_or_admin();
     }
     // Bucket routes perform their own fine-grained bucket + scope checks in handlers,
     // but we still enforce base read/write/delete scope at the perimeter.
-    if path.starts_with("/v1/buckets") {
+    if rel.starts_with("/buckets") {
         let needed = match *method {
             Method::GET | Method::HEAD => "read",
             Method::DELETE => "delete",
@@ -386,7 +388,7 @@ pub fn enforce_v1_route_policy(
         };
         return principal.require_scope(needed);
     }
-    if path.starts_with("/v1/drive") {
+    if rel.starts_with("/drive") {
         let needed = match *method {
             Method::GET | Method::HEAD => "read",
             Method::DELETE => "delete",
@@ -394,9 +396,9 @@ pub fn enforce_v1_route_policy(
         };
         return principal.require_bucket("files", needed);
     }
-    if path.starts_with("/v1/search")
-        || path.starts_with("/v1/media/search")
-        || path.starts_with("/v1/media/similar")
+    if rel.starts_with("/search")
+        || rel.starts_with("/media/search")
+        || rel.starts_with("/media/similar")
     {
         return principal.require_scope("media:search");
     }

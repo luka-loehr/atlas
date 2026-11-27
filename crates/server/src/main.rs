@@ -39,6 +39,8 @@ enum Command {
         #[command(subcommand)]
         what: jobs::backfill::Kind,
     },
+    /// Emit the canonical OpenAPI 3.1 JSON document to stdout
+    Openapi,
 }
 
 #[derive(Subcommand)]
@@ -53,9 +55,17 @@ enum ImportKind {
 async fn main() -> Result<()> {
     atlas_core::init_logging();
     let cli = Cli::parse();
+    if matches!(cli.command, Some(Command::Openapi)) {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&atlas_server::openapi::spec())?
+        );
+        return Ok(());
+    }
     let pool = atlas_core::db::pool(24)?;
 
     match cli.command.unwrap_or(Command::Serve) {
+        Command::Openapi => unreachable!(),
         Command::Migrate => atlas_core::db::migrate(&pool).await,
         Command::Import { what } => {
             atlas_core::db::migrate(&pool).await?;

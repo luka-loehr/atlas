@@ -1,0 +1,2978 @@
+{
+  "components": {
+    "responses": {
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "Credentials valid, but missing required scope or bucket permission"
+      },
+      "RateLimited": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "Per-key or per-account token bucket exhausted (`Retry-After` header included)"
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "Missing, expired, revoked, or invalid credentials"
+      }
+    },
+    "schemas": {
+      "AccountInfo": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quota_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rate_limit_burst": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rate_limit_rps": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "service"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ApiError": {
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiKeyInfo": {
+        "properties": {
+          "access_key_id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "buckets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "rate_limit_burst": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rate_limit_rps": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "access_key_id",
+          "name",
+          "account_id",
+          "scopes",
+          "buckets",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "BucketInfo": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "media",
+              "files",
+              "general"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "object_count": {
+            "type": "integer"
+          },
+          "owner_account_id": {
+            "type": "string"
+          },
+          "public_read": {
+            "type": "boolean"
+          },
+          "quota_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "total_bytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "owner_account_id",
+          "object_count",
+          "total_bytes",
+          "public_read",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "CreateKeyResponse": {
+        "properties": {
+          "bearer_token": {
+            "type": "string"
+          },
+          "key": {
+            "$ref": "#/components/schemas/ApiKeyInfo"
+          },
+          "secret_access_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "secret_access_key",
+          "bearer_token"
+        ],
+        "type": "object"
+      },
+      "MediaSearchItem": {
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "camera": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_s": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "favorite": {
+            "type": "boolean"
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "photo",
+              "video"
+            ],
+            "type": "string"
+          },
+          "ocr_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "people": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "taken_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "urls": {
+            "type": "object"
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "bucket",
+          "key",
+          "media_type",
+          "favorite",
+          "people",
+          "urls"
+        ],
+        "type": "object"
+      },
+      "ObjectInfo": {
+        "properties": {
+          "asset_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "drive_file_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "etag": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucket",
+          "key",
+          "size",
+          "etag",
+          "sha256",
+          "content_type",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "AtlasApiKey": {
+        "description": "Scoped API key `ATLK...:atls_...`",
+        "in": "header",
+        "name": "X-Atlas-Key",
+        "type": "apiKey"
+      },
+      "AwsSigV4": {
+        "description": "AWS Signature Version 4 (`AWS4-HMAC-SHA256 Credential=ATLK...`)",
+        "in": "header",
+        "name": "Authorization",
+        "type": "apiKey"
+      },
+      "BearerAuth": {
+        "description": "Master `ATLAS_TOKEN` or scoped API key `ATLK...:atls_...`",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Self-hosted S3-compatible object storage, photo & video library, local GPU semantic/face/pet/OCR search, and homelab system API.",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "title": "Atlas Storage, Media & AI Search API",
+    "version": "0.6.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "Server is up (`ok`)"
+          }
+        },
+        "security": [],
+        "summary": "Unauthenticated liveness probe",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiSpec",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON document"
+          }
+        },
+        "security": [],
+        "summary": "Canonical OpenAPI 3.1 specification",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/s3": {
+      "get": {
+        "operationId": "s3ListBuckets",
+        "responses": {
+          "200": {
+            "description": "ListAllMyBucketsResult XML"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 ListBuckets (XML)",
+        "tags": [
+          "S3"
+        ]
+      }
+    },
+    "/s3/{bucket}": {
+      "delete": {
+        "operationId": "s3DeleteBucket",
+        "responses": {
+          "200": {
+            "description": "Bucket deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 DeleteBucket (204)",
+        "tags": [
+          "S3"
+        ]
+      },
+      "get": {
+        "operationId": "s3GetBucket",
+        "responses": {
+          "200": {
+            "description": "S3 XML response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 ListObjectsV2, ListObjects, GetBucketLocation, GetBucketVersioning, or ListMultipartUploads",
+        "tags": [
+          "S3"
+        ]
+      },
+      "head": {
+        "operationId": "s3HeadBucket",
+        "responses": {
+          "200": {
+            "description": "Bucket exists"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 HeadBucket",
+        "tags": [
+          "S3"
+        ]
+      },
+      "post": {
+        "operationId": "s3DeleteObjects",
+        "responses": {
+          "200": {
+            "description": "DeleteResult XML"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 batch DeleteObjects (`?delete`)",
+        "tags": [
+          "S3"
+        ]
+      },
+      "put": {
+        "operationId": "s3CreateBucket",
+        "responses": {
+          "200": {
+            "description": "Bucket created"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 CreateBucket",
+        "tags": [
+          "S3"
+        ]
+      }
+    },
+    "/s3/{bucket}/{key}": {
+      "delete": {
+        "operationId": "s3DeleteObject",
+        "responses": {
+          "200": {
+            "description": "204 No Content"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 DeleteObject or AbortMultipartUpload (`?uploadId=`)",
+        "tags": [
+          "S3"
+        ]
+      },
+      "get": {
+        "operationId": "s3GetObject",
+        "responses": {
+          "200": {
+            "description": "Object stream or ListPartsResult XML"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 GetObject (streaming Range 206) or ListParts (`?uploadId=`)",
+        "tags": [
+          "S3"
+        ]
+      },
+      "head": {
+        "operationId": "s3HeadObject",
+        "responses": {
+          "200": {
+            "description": "Object metadata headers"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 HeadObject",
+        "tags": [
+          "S3"
+        ]
+      },
+      "post": {
+        "operationId": "s3PostObject",
+        "responses": {
+          "200": {
+            "description": "Multipart XML result"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 CreateMultipartUpload (`?uploads`) or CompleteMultipartUpload (`?uploadId=`)",
+        "tags": [
+          "S3"
+        ]
+      },
+      "put": {
+        "operationId": "s3PutObject",
+        "responses": {
+          "200": {
+            "description": "ETag header or CopyObjectResult XML"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "S3 PutObject, CopyObject (`x-amz-copy-source`), or UploadPart (`?partNumber=&uploadId=`)",
+        "tags": [
+          "S3"
+        ]
+      }
+    },
+    "/v1/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "responses": {
+          "200": {
+            "description": "Account list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List all accounts",
+        "tags": [
+          "IAM"
+        ]
+      },
+      "post": {
+        "operationId": "createAccount",
+        "responses": {
+          "200": {
+            "description": "Created account"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Create a service, member, or admin account with optional quota & rate limits",
+        "tags": [
+          "IAM"
+        ]
+      }
+    },
+    "/v1/accounts/{id}": {
+      "delete": {
+        "operationId": "deleteAccount",
+        "responses": {
+          "200": {
+            "description": "Deletion count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Delete non-owner account and cascade its keys",
+        "tags": [
+          "IAM"
+        ]
+      },
+      "get": {
+        "operationId": "getAccount",
+        "responses": {
+          "200": {
+            "description": "Account details"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Get account by ID or name",
+        "tags": [
+          "IAM"
+        ]
+      },
+      "patch": {
+        "operationId": "updateAccount",
+        "responses": {
+          "200": {
+            "description": "Updated account"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Update account role, status, quota, or rate limits",
+        "tags": [
+          "IAM"
+        ]
+      }
+    },
+    "/v1/albums": {
+      "get": {
+        "operationId": "listAlbums",
+        "responses": {
+          "200": {
+            "description": "Album list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List albums with cover and count",
+        "tags": [
+          "Photos"
+        ]
+      },
+      "post": {
+        "operationId": "createAlbum",
+        "responses": {
+          "200": {
+            "description": "Album info"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Create an album",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/albums/{id}": {
+      "delete": {
+        "operationId": "deleteAlbum",
+        "responses": {
+          "200": {
+            "description": "Deleted count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Delete an album (keeps photos)",
+        "tags": [
+          "Photos"
+        ]
+      },
+      "get": {
+        "operationId": "getAlbumAssets",
+        "responses": {
+          "200": {
+            "description": "Album payload"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Get album metadata and columnar assets",
+        "tags": [
+          "Photos"
+        ]
+      },
+      "patch": {
+        "operationId": "renameAlbum",
+        "responses": {
+          "200": {
+            "description": "Updated album"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Rename an album",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/albums/{id}/assets": {
+      "delete": {
+        "operationId": "removeAlbumAssets",
+        "responses": {
+          "200": {
+            "description": "Removed count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Remove assets from an album",
+        "tags": [
+          "Photos"
+        ]
+      },
+      "post": {
+        "operationId": "addAlbumAssets",
+        "responses": {
+          "200": {
+            "description": "Added count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Add assets to an album",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets": {
+      "put": {
+        "operationId": "uploadAsset",
+        "responses": {
+          "200": {
+            "description": "Upload result"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Streaming content-addressed photo/video upload (synced into `media` bucket)",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/archive": {
+      "post": {
+        "operationId": "setAssetsArchived",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Archive or unarchive assets",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/delete": {
+      "post": {
+        "operationId": "deleteAssets",
+        "responses": {
+          "200": {
+            "description": "Deleted count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Permanently purge assets and derived files",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/exists": {
+      "post": {
+        "operationId": "checkAssetsExist",
+        "responses": {
+          "200": {
+            "description": "Existing hash subset"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Check which SHA-256 content hashes already exist (max 10,000)",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/favorite": {
+      "post": {
+        "operationId": "setAssetsFavorite",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Mark or unmark assets as favorites",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/lock": {
+      "post": {
+        "operationId": "setAssetsLocked",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Move assets into or out of the locked view",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/restore": {
+      "post": {
+        "operationId": "restoreAssets",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Restore assets from trash/archive/locked",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/trash": {
+      "post": {
+        "operationId": "trashAssets",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Move assets to 30-day trash",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/{id}": {
+      "get": {
+        "operationId": "getAssetInfo",
+        "responses": {
+          "200": {
+            "description": "Asset info"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Detailed EXIF, people, place, OCR text, and album info for one asset",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/{id}/original": {
+      "get": {
+        "operationId": "getAssetOriginal",
+        "responses": {
+          "200": {
+            "description": "Original media stream"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Exact original photo/video bytes (Range-capable)",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/{id}/thumb/{size}": {
+      "get": {
+        "operationId": "getAssetThumb",
+        "responses": {
+          "200": {
+            "description": "WebP image"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Immutable WebP thumbnail (`512` or `2048`)",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/{id}/tile": {
+      "get": {
+        "operationId": "getAssetTile",
+        "responses": {
+          "200": {
+            "description": "JPEG image"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Square JPEG grid tile",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/assets/{id}/video": {
+      "get": {
+        "operationId": "getAssetVideo",
+        "responses": {
+          "200": {
+            "description": "Video stream"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Streaming 1080p rendition when available, else original",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/auth/whoami": {
+      "get": {
+        "operationId": "authWhoami",
+        "responses": {
+          "200": {
+            "description": "Caller principal details"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Inspect active account, key, scopes, and bucket allowlist",
+        "tags": [
+          "IAM"
+        ]
+      }
+    },
+    "/v1/buckets": {
+      "get": {
+        "operationId": "listBuckets",
+        "responses": {
+          "200": {
+            "description": "Bucket list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List accessible buckets (`media`, `files`, and custom buckets) with totals",
+        "tags": [
+          "Buckets"
+        ]
+      },
+      "post": {
+        "operationId": "createBucket",
+        "responses": {
+          "200": {
+            "description": "Bucket info"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Create a new bucket with optional byte quota",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}": {
+      "delete": {
+        "operationId": "deleteBucket",
+        "responses": {
+          "200": {
+            "description": "Deleted status"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Delete an empty non-system bucket",
+        "tags": [
+          "Buckets"
+        ]
+      },
+      "get": {
+        "operationId": "getBucket",
+        "responses": {
+          "200": {
+            "description": "Bucket info"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Get bucket usage and metadata",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}/copy": {
+      "post": {
+        "operationId": "copyBucketObject",
+        "responses": {
+          "200": {
+            "description": "Copied object metadata"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Server-side zero-reupload copy within or across buckets",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}/delete": {
+      "post": {
+        "operationId": "batchDeleteBucketObjects",
+        "responses": {
+          "200": {
+            "description": "Deleted key list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Batch delete up to 1,000 keys in a bucket",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}/objects": {
+      "get": {
+        "operationId": "listBucketObjects",
+        "responses": {
+          "200": {
+            "description": "Paginated object listing"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List or full-text search objects in a bucket (prefix, delimiter, cursor, q)",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}/objects/{key}": {
+      "delete": {
+        "operationId": "deleteBucketObject",
+        "responses": {
+          "200": {
+            "description": "Deleted keys"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Delete a single object key",
+        "tags": [
+          "Buckets"
+        ]
+      },
+      "get": {
+        "operationId": "getBucketObject",
+        "responses": {
+          "200": {
+            "description": "Object byte stream"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Stream object bytes with HTTP Range (206) and ETag support",
+        "tags": [
+          "Buckets"
+        ]
+      },
+      "head": {
+        "operationId": "headBucketObject",
+        "responses": {
+          "200": {
+            "description": "Object headers"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Fetch object headers (ETag, Content-Length, x-amz-meta-*) without body",
+        "tags": [
+          "Buckets"
+        ]
+      },
+      "put": {
+        "operationId": "putBucketObject",
+        "responses": {
+          "200": {
+            "description": "Stored object metadata"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Stream upload an object (auto-ingests media in `media` and syncs drive in `files`)",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}/presign": {
+      "post": {
+        "operationId": "presignBucketObject",
+        "responses": {
+          "200": {
+            "description": "Signed URL and expiration"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Generate an AWS SigV4 presigned URL (GET, HEAD, PUT, DELETE)",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/buckets/{bucket}/stat/{key}": {
+      "get": {
+        "operationId": "statBucketObject",
+        "responses": {
+          "200": {
+            "description": "ObjectInfo JSON"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Fetch structured JSON metadata for an object",
+        "tags": [
+          "Buckets"
+        ]
+      }
+    },
+    "/v1/covers": {
+      "get": {
+        "operationId": "getCategoryCovers",
+        "responses": {
+          "200": {
+            "description": "Covers JSON"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Cover thumbnails for library categories",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/drive/blobs/{hash}/{name}": {
+      "get": {
+        "operationId": "getDriveBlob",
+        "responses": {
+          "200": {
+            "description": "File bytes"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Content-addressed Range-capable file download with safe Content-Disposition",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/delete": {
+      "post": {
+        "operationId": "deleteDriveFiles",
+        "responses": {
+          "200": {
+            "description": "Deleted count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Permanently delete specified Drive files",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/files": {
+      "put": {
+        "operationId": "uploadDriveFile",
+        "responses": {
+          "200": {
+            "description": "Uploaded file ID and hash"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Streaming Drive file upload (synced to `files` bucket)",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/files/{id}": {
+      "patch": {
+        "operationId": "renameDriveFile",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Rename Drive file and sync `files` bucket key",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/files/{id}/thumb": {
+      "get": {
+        "operationId": "getDriveFileThumb",
+        "responses": {
+          "200": {
+            "description": "WebP preview"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "512px WebP preview of image or PDF first page",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/folders": {
+      "post": {
+        "operationId": "createDriveFolder",
+        "responses": {
+          "200": {
+            "description": "Folder ID and name"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Create folder in Drive (`files` bucket)",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/folders/{id}": {
+      "delete": {
+        "operationId": "deleteDriveFolder",
+        "responses": {
+          "200": {
+            "description": "Deleted count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Permanently delete folder subtree",
+        "tags": [
+          "Drive"
+        ]
+      },
+      "get": {
+        "operationId": "listDriveFolder",
+        "responses": {
+          "200": {
+            "description": "Folder listing"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List breadcrumbs, subfolders, and files for `root` or folder ID",
+        "tags": [
+          "Drive"
+        ]
+      },
+      "patch": {
+        "operationId": "renameDriveFolder",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Rename folder and sync `files` bucket keys",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/move": {
+      "post": {
+        "operationId": "moveDriveItems",
+        "responses": {
+          "200": {
+            "description": "Moved count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Move files and folders (preventing cycles) and sync `files` bucket keys",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/recent": {
+      "get": {
+        "operationId": "getRecentDriveFiles",
+        "responses": {
+          "200": {
+            "description": "File list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "40 most recently modified files",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/restore": {
+      "post": {
+        "operationId": "restoreDriveFiles",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Restore trashed Drive files",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/search": {
+      "get": {
+        "operationId": "searchDrive",
+        "responses": {
+          "200": {
+            "description": "Matching files with context snippets"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Search Drive folders, filenames, and extracted PDF/Office text",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/trash": {
+      "get": {
+        "operationId": "listDriveTrash",
+        "responses": {
+          "200": {
+            "description": "Trashed files"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List trashed Drive files",
+        "tags": [
+          "Drive"
+        ]
+      },
+      "post": {
+        "operationId": "trashDriveFiles",
+        "responses": {
+          "200": {
+            "description": "Updated count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Move Drive files to trash",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/drive/trash/empty": {
+      "post": {
+        "operationId": "emptyDriveTrash",
+        "responses": {
+          "200": {
+            "description": "Deleted count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Permanently purge all trashed Drive files",
+        "tags": [
+          "Drive"
+        ]
+      }
+    },
+    "/v1/faces/hide": {
+      "post": {
+        "operationId": "hideFaces",
+        "responses": {
+          "200": {
+            "description": "Hidden count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Hide stranger face clusters",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/faces/unassign": {
+      "post": {
+        "operationId": "unassignFaces",
+        "responses": {
+          "200": {
+            "description": "Unassigned count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Detach misassigned faces and record person veto",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/faces/{id}/crop": {
+      "get": {
+        "operationId": "getFaceCrop",
+        "responses": {
+          "200": {
+            "description": "WebP image"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "WebP face/pet crop thumbnail",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/heatmap": {
+      "get": {
+        "operationId": "getPhotoHeatmap",
+        "responses": {
+          "200": {
+            "description": "Heatmap counts"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Photos taken per day over the past year",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/keys": {
+      "get": {
+        "operationId": "listKeys",
+        "responses": {
+          "200": {
+            "description": "API key list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List S3/API keys (never returns secrets)",
+        "tags": [
+          "IAM"
+        ]
+      },
+      "post": {
+        "operationId": "createKey",
+        "responses": {
+          "200": {
+            "description": "Created key and one-time secret"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Mint a new scoped S3/API keypair with optional bucket allowlist, RPS limit, and expiry",
+        "tags": [
+          "IAM"
+        ]
+      }
+    },
+    "/v1/keys/{id}": {
+      "delete": {
+        "operationId": "deleteKey",
+        "responses": {
+          "200": {
+            "description": "Deletion confirmation"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Permanently delete an API key",
+        "tags": [
+          "IAM"
+        ]
+      },
+      "get": {
+        "operationId": "getKey",
+        "responses": {
+          "200": {
+            "description": "Key metadata"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Inspect one key by ID or access_key_id",
+        "tags": [
+          "IAM"
+        ]
+      }
+    },
+    "/v1/keys/{id}/revoke": {
+      "post": {
+        "operationId": "revokeKey",
+        "responses": {
+          "200": {
+            "description": "Revoked key metadata"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Immediately revoke an S3/API key and evict it from the auth cache",
+        "tags": [
+          "IAM"
+        ]
+      }
+    },
+    "/v1/library/trash/empty": {
+      "post": {
+        "operationId": "emptyLibraryTrash",
+        "responses": {
+          "200": {
+            "description": "Deleted count"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Permanently purge all trashed photos/videos",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/library/{view}": {
+      "get": {
+        "operationId": "getLibraryView",
+        "responses": {
+          "200": {
+            "description": "Columnar assets"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Browse `favorites`, `videos`, `archive`, `locked`, or `trash`",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/media/assets/{id}": {
+      "get": {
+        "operationId": "getMediaAsset",
+        "responses": {
+          "200": {
+            "description": "MediaSearchItem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Fetch structured developer metadata and S3/thumbnail URLs for one media asset",
+        "tags": [
+          "MediaSearch"
+        ]
+      }
+    },
+    "/v1/media/search": {
+      "get": {
+        "operationId": "searchMedia",
+        "responses": {
+          "200": {
+            "description": "MediaSearchResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Hybrid GPU semantic embedding (`wemm2b`), face/person, pet, place, and OCR search returning structured JSON items",
+        "tags": [
+          "MediaSearch"
+        ]
+      }
+    },
+    "/v1/media/similar/{id}": {
+      "get": {
+        "operationId": "findSimilarMedia",
+        "responses": {
+          "200": {
+            "description": "MediaSearchResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Exact cosine visual similarity search against the in-memory 2048-d embedding matrix",
+        "tags": [
+          "MediaSearch"
+        ]
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiSpecV1",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON document"
+          }
+        },
+        "summary": "Authenticated alias for OpenAPI 3.1 specification",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/v1/people": {
+      "get": {
+        "operationId": "listPeople",
+        "responses": {
+          "200": {
+            "description": "People & pets list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List recognized people and pets",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/people/{id}": {
+      "get": {
+        "operationId": "getPersonAssets",
+        "responses": {
+          "200": {
+            "description": "Person assets"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Get person/pet details and assets",
+        "tags": [
+          "Photos"
+        ]
+      },
+      "patch": {
+        "operationId": "updatePerson",
+        "responses": {
+          "200": {
+            "description": "Updated person"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Name, hide/unhide, or set cover face for a person/pet",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/people/{id}/merge": {
+      "post": {
+        "operationId": "mergePerson",
+        "responses": {
+          "200": {
+            "description": "Merge result"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Merge another face cluster into this person",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/places": {
+      "get": {
+        "operationId": "listPlaces",
+        "responses": {
+          "200": {
+            "description": "Places list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List geocoded places with photo counts",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/places/{id}": {
+      "get": {
+        "operationId": "getPlaceAssets",
+        "responses": {
+          "200": {
+            "description": "Place assets"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Get assets taken at a place",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/search": {
+      "get": {
+        "operationId": "searchLibrary",
+        "responses": {
+          "200": {
+            "description": "Search payload"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Columnar hybrid search used by native iOS & macOS apps",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/search/warm": {
+      "post": {
+        "operationId": "warmSearchModel",
+        "responses": {
+          "200": {
+            "description": "Warm status"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Preload GPU embedding model and refresh vector matrix",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/server": {
+      "get": {
+        "operationId": "getServerInfo",
+        "responses": {
+          "200": {
+            "description": "Server metadata"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Server version and capability summary",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/shares": {
+      "get": {
+        "operationId": "listShares",
+        "responses": {
+          "200": {
+            "description": "Share list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "List active expiring share links",
+        "tags": [
+          "Shares"
+        ]
+      },
+      "post": {
+        "operationId": "createShare",
+        "responses": {
+          "200": {
+            "description": "Created share"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Create an expiring share link via atlas-share Worker",
+        "tags": [
+          "Shares"
+        ]
+      }
+    },
+    "/v1/shares/{id}": {
+      "delete": {
+        "operationId": "deleteShare",
+        "responses": {
+          "200": {
+            "description": "Deleted status"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Revoke share link and delete remote R2 objects",
+        "tags": [
+          "Shares"
+        ]
+      },
+      "get": {
+        "operationId": "getShare",
+        "responses": {
+          "200": {
+            "description": "Share details"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Get share upload progress and status",
+        "tags": [
+          "Shares"
+        ]
+      }
+    },
+    "/v1/stats": {
+      "get": {
+        "operationId": "getLibraryStats",
+        "responses": {
+          "200": {
+            "description": "Stats JSON"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Photo, video, and storage totals",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/system": {
+      "get": {
+        "operationId": "getSystemSnapshot",
+        "responses": {
+          "200": {
+            "description": "System snapshot"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "CPU, RAM, GPU, disk, network, and power snapshot",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/activity": {
+      "get": {
+        "operationId": "getSystemActivity",
+        "responses": {
+          "200": {
+            "description": "Activity history"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "154-day uptime, boot, and git commit heatmap",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/containers": {
+      "get": {
+        "operationId": "listSystemContainers",
+        "responses": {
+          "200": {
+            "description": "Container list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Docker containers running on host",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/containers/{name}": {
+      "get": {
+        "operationId": "getSystemContainer",
+        "responses": {
+          "200": {
+            "description": "Container details"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Inspect container state and recent logs",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/drives": {
+      "get": {
+        "operationId": "getSystemDrives",
+        "responses": {
+          "200": {
+            "description": "Drive list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Physical disks, mounts, and SMART health",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/live": {
+      "get": {
+        "operationId": "streamSystemLive",
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "WebSocket 2 Hz live telemetry stream (Origin-verified)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/network": {
+      "get": {
+        "operationId": "getSystemNetwork",
+        "responses": {
+          "200": {
+            "description": "Network status"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Tailscale node and peer status",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/power/{action}": {
+      "post": {
+        "operationId": "systemPowerAction",
+        "responses": {
+          "200": {
+            "description": "Action scheduled"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Shutdown or restart the server (`shutdown` | `restart`)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/services": {
+      "get": {
+        "operationId": "getSystemServices",
+        "responses": {
+          "200": {
+            "description": "Service health"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Systemd unit health, Postgres size, ML health, and queue counts",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/system/terminal": {
+      "get": {
+        "operationId": "openSystemTerminal",
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Owner/Admin PTY login shell over WebSocket (Origin-verified, header auth only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/timeline": {
+      "get": {
+        "operationId": "getTimelineIndex",
+        "responses": {
+          "200": {
+            "description": "Timeline index"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Monthly timeline index with counts and validators",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/timeline/{bucket}": {
+      "get": {
+        "operationId": "getTimelineMonth",
+        "responses": {
+          "200": {
+            "description": "Columnar assets"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Columnar asset list for a month (`YYYY-MM` or `undated`)",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/v1/work": {
+      "get": {
+        "operationId": "getIngestWork",
+        "responses": {
+          "200": {
+            "description": "Work summary"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Active and queued background ML/ingest job counts",
+        "tags": [
+          "Photos"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AtlasApiKey": []
+    },
+    {
+      "AwsSigV4": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "Local or Tailscale Atlas server",
+      "url": "http://127.0.0.1:8787"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Liveness and OpenAPI discovery",
+      "name": "Health"
+    },
+    {
+      "description": "Accounts, scoped S3/API keys, revocation, and per-key rate limits",
+      "name": "IAM"
+    },
+    {
+      "description": "Unified native JSON & streaming object storage API",
+      "name": "Buckets"
+    },
+    {
+      "description": "AWS S3 wire-compatible XML & streaming object storage protocol (SigV4 + Presigned URLs)",
+      "name": "S3"
+    },
+    {
+      "description": "Structured developer API for semantic embeddings, people, pets, places, OCR, and visual similarity",
+      "name": "MediaSearch"
+    },
+    {
+      "description": "Timeline, assets, albums, people, faces, and places",
+      "name": "Photos"
+    },
+    {
+      "description": "Folder-tree Finder/Files interface backed by the `files` bucket",
+      "name": "Drive"
+    },
+    {
+      "description": "Expiring album and photo share links",
+      "name": "Shares"
+    },
+    {
+      "description": "Host telemetry, GPU/SMART metrics, containers, PTY terminal, and power",
+      "name": "System"
+    }
+  ]
+}

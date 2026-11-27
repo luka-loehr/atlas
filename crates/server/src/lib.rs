@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 //! The Atlas backend library, exposing the application state, router builder,
 //! and subsystems for both the `atlas-server` binary and full integration tests.
 
@@ -10,6 +11,7 @@ pub mod imaging;
 pub mod import;
 pub mod jobs;
 pub mod media;
+pub mod openapi;
 pub mod photos;
 pub mod s3;
 pub mod share;
@@ -59,7 +61,8 @@ pub fn build_router(app: AppState) -> Router {
         .merge(storage::routes())
         .merge(system::routes())
         .merge(share::routes())
-        .merge(iam::routes());
+        .merge(iam::routes())
+        .route("/openapi.json", get(openapi::serve_openapi));
 
     let authed_v1 = Router::new()
         .nest("/v1", v1)
@@ -77,6 +80,7 @@ pub fn build_router(app: AppState) -> Router {
         .merge(authed_v1)
         .merge(authed_s3)
         .route("/health", get(|| async { "ok" }))
+        .route("/openapi.json", get(openapi::serve_openapi))
         .layer(CompressionLayer::new().compress_when(json_only))
         .with_state(app)
 }
