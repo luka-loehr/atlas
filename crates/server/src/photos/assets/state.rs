@@ -6,7 +6,17 @@ use axum::extract::State;
 use serde_json::{Value, json};
 
 use crate::photos::{Ids, IdsValue};
-use crate::{ApiResult, App, AppState, util};
+use crate::{ApiError, ApiResult, App, AppState, util};
+
+const MAX_BATCH_IDS: usize = 5_000;
+
+fn check_batch_len<T>(items: &[T]) -> ApiResult<()> {
+    if items.len() > MAX_BATCH_IDS {
+        Err(ApiError::BadRequest("at most 5000 items per batch request"))
+    } else {
+        Ok(())
+    }
+}
 
 pub async fn favorite(
     State(app): State<AppState>,
@@ -43,6 +53,7 @@ async fn hidden(app: &AppState, ids: &[String]) {
 
 /// `column` is one of three literals above, never client input.
 async fn set_flag(app: &App, column: &str, b: &IdsValue) -> ApiResult<Json<Value>> {
+    check_batch_len(&b.ids)?;
     let c = app.pool.get().await?;
     let n = c
         .execute(
@@ -54,6 +65,7 @@ async fn set_flag(app: &App, column: &str, b: &IdsValue) -> ApiResult<Json<Value
 }
 
 pub async fn trash(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
+    check_batch_len(&b.ids)?;
     let c = app.pool.get().await?;
     let n = c
         .execute(
@@ -72,6 +84,7 @@ pub async fn trash(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult
 
 /// Back into the timeline from wherever it was: trash, archive or locked.
 pub async fn restore(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
+    check_batch_len(&b.ids)?;
     let c = app.pool.get().await?;
     let n = c
         .execute(
@@ -88,6 +101,7 @@ pub async fn restore(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResu
 }
 
 pub async fn delete(State(app): State<AppState>, Json(b): Json<Ids>) -> ApiResult<Json<Value>> {
+    check_batch_len(&b.ids)?;
     Ok(Json(json!({ "deleted": purge(&app, &b.ids).await? })))
 }
 

@@ -146,6 +146,9 @@ pub async fn add_assets(
     Path(id): Path<i64>,
     Json(b): Json<Ids>,
 ) -> ApiResult<Json<Value>> {
+    if b.ids.len() > 5_000 {
+        return Err(ApiError::BadRequest("at most 5000 items per batch request"));
+    }
     let c = app.pool.get().await?;
     if c.query_opt("SELECT 1 FROM albums WHERE id = $1", &[&id])
         .await?
@@ -170,6 +173,9 @@ pub async fn remove_assets(
     Path(id): Path<i64>,
     Json(b): Json<Ids>,
 ) -> ApiResult<Json<Value>> {
+    if b.ids.len() > 5_000 {
+        return Err(ApiError::BadRequest("at most 5000 items per batch request"));
+    }
     let c = app.pool.get().await?;
     let n = c
         .execute(

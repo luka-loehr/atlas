@@ -503,11 +503,29 @@ pub fn presign_url(
     Ok(format!("{trimmed}{path}?{query}&X-Amz-Signature={sig}"))
 }
 
-/// Decodes an `aws-chunked` body (`<hex-size>[;chunk-signature=...]\r\n<bytes>\r\n...0...\r\n\r\n`).
-/// Used when SDKs upload with `x-amz-content-sha256: STREAMING-AWS4-HMAC-SHA256-PAYLOAD`.
+pub struct ChunkSigContext<'a> {
+    pub signing_key: &'a [u8; 32],
+    pub amz_date: &'a str,
+    pub scope_str: &'a str,
+    pub seed_signature: &'a str,
+}
+
+/// Decodes an `aws-chunked` body (`<hex-size>[;chunk-signature=...]\r\n<bytes>\r\n...0...\r\n\r\n`)
+/// using checked slice arithmetic (preventing `usize` overflow on crafted hex lengths).
 pub fn decode_aws_chunked_bytes(input: &[u8]) -> Result<Vec<u8>, SigV4Error> {
+    decode_aws_chunked_verified(input, None)
+}
+
+/// Decodes an `aws-chunked` body and optionally verifies chained `AWS4-HMAC-SHA256-PAYLOAD`
+/// chunk signatures when `sig_ctx` is provided.
+pub fn decode_aws_chunked_verified(
+    input: &[u8],
+    sig_ctx: Option<&ChunkSigContext<'_>>,
+) -> Result<Vec<u8>, SigV4Error> {
     let mut out = Vec::new();
-    let mut pos = 0;
+    let mut pos = 0usize;
+    let mut prev_sig = sig_ctx.map(|c| c.seed_signature.to_ascii_lowercase());
+
     while pos < input.len() {
         let rel_end = input[pos..]
             .windows(2)
@@ -515,21 +533,70 @@ pub fn decode_aws_chunked_bytes(input: &[u8]) -> Result<Vec<u8>, SigV4Error> {
             .ok_or(SigV4Error::ChunkFramingError)?;
         let header_line = std::str::from_utf8(&input[pos..pos + rel_end])
             .map_err(|_| SigV4Error::ChunkFramingError)?;
-        let size_hex = header_line.split(';').next().unwrap_or("").trim();
+        let mut parts = header_line.split(';');
+        let size_hex = parts.next().unwrap_or("").trim();
         let chunk_size =
             usize::from_str_radix(size_hex, 16).map_err(|_| SigV4Error::ChunkFramingError)?;
-        pos += rel_end + 2;
+        let mut claimed_sig: Option<&str> = None;
+        for ext in parts {
+            if let Some(s) = ext.trim().strip_prefix("chunk-signature=") {
+                claimed_sig = Some(s.trim());
+            }
+        }
+
+        pos = pos
+            .checked_add(rel_end)
+            .and_then(|n| n.checked_add(2))
+            .ok_or(SigV4Error::ChunkFramingError)?;
+        let chunk_end = pos
+            .checked_add(chunk_size)
+            .ok_or(SigV4Error::ChunkFramingError)?;
+        let frame_end = chunk_end
+            .checked_add(2)
+            .ok_or(SigV4Error::ChunkFramingError)?;
+
         if chunk_size == 0 {
+            if let (Some(ctx), Some(prev)) = (sig_ctx, prev_sig.as_deref()) {
+                let sig = claimed_sig.ok_or(SigV4Error::SignatureMismatch)?;
+                let sts = format!(
+                    "AWS4-HMAC-SHA256-PAYLOAD\n{}\n{}\n{}\n{}\n{}",
+                    ctx.amz_date, ctx.scope_str, prev, EMPTY_SHA256, EMPTY_SHA256
+                );
+                let expected = hex_encode(&hmac_sha256(ctx.signing_key, sts.as_bytes()));
+                if !ct_eq(expected.as_bytes(), sig.as_bytes()) {
+                    return Err(SigV4Error::SignatureMismatch);
+                }
+            }
             return Ok(out);
         }
-        if pos + chunk_size + 2 > input.len() {
+
+        if frame_end > input.len() {
             return Err(SigV4Error::ChunkFramingError);
         }
-        out.extend_from_slice(&input[pos..pos + chunk_size]);
-        if &input[pos + chunk_size..pos + chunk_size + 2] != b"\r\n" {
+        if &input[chunk_end..frame_end] != b"\r\n" {
             return Err(SigV4Error::ChunkFramingError);
         }
-        pos += chunk_size + 2;
+        let chunk_slice = &input[pos..chunk_end];
+
+        if let (Some(ctx), Some(prev)) = (sig_ctx, prev_sig.as_deref()) {
+            let sig = claimed_sig.ok_or(SigV4Error::SignatureMismatch)?;
+            let sts = format!(
+                "AWS4-HMAC-SHA256-PAYLOAD\n{}\n{}\n{}\n{}\n{}",
+                ctx.amz_date,
+                ctx.scope_str,
+                prev,
+                EMPTY_SHA256,
+                sha256_hex(chunk_slice)
+            );
+            let expected = hex_encode(&hmac_sha256(ctx.signing_key, sts.as_bytes()));
+            if !ct_eq(expected.as_bytes(), sig.as_bytes()) {
+                return Err(SigV4Error::SignatureMismatch);
+            }
+            prev_sig = Some(expected);
+        }
+
+        out.extend_from_slice(chunk_slice);
+        pos = frame_end;
     }
     Err(SigV4Error::ChunkFramingError)
 }
@@ -635,8 +702,14 @@ mod tests {
     }
 
     #[test]
-    fn decodes_aws_chunked_payload() {
+    fn decodes_aws_chunked_payload_and_rejects_overflow() {
         let framed = b"5;chunk-signature=aaaa\r\nhello\r\n6;chunk-signature=bbbb\r\n world\r\n0;chunk-signature=cccc\r\n\r\n";
         assert_eq!(decode_aws_chunked_bytes(framed).unwrap(), b"hello world");
+
+        let overflow = b"ffffffffffffffff\r\nabc\r\n";
+        assert_eq!(
+            decode_aws_chunked_bytes(overflow),
+            Err(SigV4Error::ChunkFramingError)
+        );
     }
 }

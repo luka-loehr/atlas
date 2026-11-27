@@ -79,7 +79,7 @@ impl Cache {
     }
 
     fn current(&self) -> Option<Arc<Timeline>> {
-        let built = self.built.read().unwrap();
+        let built = self.built.read().unwrap_or_else(|e| e.into_inner());
         built
             .as_ref()
             .filter(|t| t.generation == self.generation.load(Ordering::SeqCst))
@@ -110,7 +110,7 @@ impl Cache {
         .await??;
         tracing::debug!("timeline rebuilt in {:?}", started.elapsed());
         let timeline = Arc::new(timeline);
-        *self.built.write().unwrap() = Some(timeline.clone());
+        *self.built.write().unwrap_or_else(|e| e.into_inner()) = Some(timeline.clone());
         Ok(timeline)
     }
 }

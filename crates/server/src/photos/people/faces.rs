@@ -31,6 +31,11 @@ pub async fn unassign_faces(
     State(app): State<AppState>,
     Json(b): Json<Unassign>,
 ) -> ApiResult<Json<Value>> {
+    if b.faces.len() > 5_000 {
+        return Err(crate::ApiError::BadRequest(
+            "at most 5000 items per batch request",
+        ));
+    }
     let mut c = app.pool.get().await?;
     let tx = c.transaction().await?;
     let rows = tx
@@ -78,6 +83,11 @@ pub async fn hide_faces(
     State(app): State<AppState>,
     Json(b): Json<HideFaces>,
 ) -> ApiResult<Json<Value>> {
+    if b.faces.len() + b.assets.len() > 5_000 {
+        return Err(crate::ApiError::BadRequest(
+            "at most 5000 items per batch request",
+        ));
+    }
     let mut c = app.pool.get().await?;
     let tx = c.transaction().await?;
     let faces: Vec<(i64, Option<i64>, String)> = tx

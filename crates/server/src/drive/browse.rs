@@ -46,23 +46,31 @@ pub(super) async fn list(
         }
     };
 
-    let folders: Vec<Value> = c
-        .query(
-            "WITH RECURSIVE tree AS (
-                 SELECT id, id AS top FROM drive_folders WHERE parent_id IS NOT DISTINCT FROM $1
-               UNION ALL
-                 SELECT c.id, t.top FROM drive_folders c JOIN tree t ON c.parent_id = t.id
-             ), totals AS (
-                 SELECT t.top, count(fl.id) AS items, coalesce(sum(fl.size_bytes), 0)::bigint AS bytes
-                 FROM tree t LEFT JOIN drive_files fl ON fl.folder_id = t.id AND fl.trashed_at IS NULL
-                 GROUP BY t.top
-             )
-             SELECT d.id, d.name, totals.items, totals.bytes, d.created_at
-             FROM drive_folders d JOIN totals ON totals.top = d.id
-             ORDER BY lower(d.name)",
-            &[&folder],
-        )
-        .await?
+    let folder_params: &[&(dyn tokio_postgres::types::ToSql + Sync)] = &[&folder];
+    let files_sql = format!(
+        "SELECT {FILE_COLS} FROM drive_files df
+         WHERE df.folder_id IS NOT DISTINCT FROM $1 AND df.trashed_at IS NULL
+         ORDER BY lower(df.name)"
+    );
+    let folders_fut = c.query(
+        "WITH RECURSIVE tree AS (
+             SELECT id, id AS top FROM drive_folders WHERE parent_id IS NOT DISTINCT FROM $1
+           UNION ALL
+             SELECT c.id, t.top FROM drive_folders c JOIN tree t ON c.parent_id = t.id
+         ), totals AS (
+             SELECT t.top, count(fl.id) AS items, coalesce(sum(fl.size_bytes), 0)::bigint AS bytes
+             FROM tree t LEFT JOIN drive_files fl ON fl.folder_id = t.id AND fl.trashed_at IS NULL
+             GROUP BY t.top
+         )
+         SELECT d.id, d.name, totals.items, totals.bytes, d.created_at
+         FROM drive_folders d JOIN totals ON totals.top = d.id
+         ORDER BY lower(d.name)",
+        folder_params,
+    );
+    let files_fut = c.query(&files_sql, folder_params);
+    let (folder_rows, file_rows) = tokio::try_join!(folders_fut, files_fut)?;
+
+    let folders: Vec<Value> = folder_rows
         .iter()
         .map(|r| {
             json!({
@@ -72,20 +80,7 @@ pub(super) async fn list(
             })
         })
         .collect();
-
-    let files: Vec<Value> = c
-        .query(
-            &format!(
-                "SELECT {FILE_COLS} FROM drive_files df
-                 WHERE df.folder_id IS NOT DISTINCT FROM $1 AND df.trashed_at IS NULL
-                 ORDER BY lower(df.name)"
-            ),
-            &[&folder],
-        )
-        .await?
-        .iter()
-        .map(file_json)
-        .collect();
+    let files: Vec<Value> = file_rows.iter().map(file_json).collect();
 
     Ok(media::json_validated(
         &headers,
@@ -175,43 +170,35 @@ pub(super) async fn search(
         file["folder"] = json!(r.get::<_, Option<String>>(7));
         file
     };
-    let mut files: Vec<Value> = c
-        .query(
-            &format!(
-                "SELECT {FILE_COLS}, fo.name FROM drive_files df
-                 LEFT JOIN drive_folders fo ON fo.id = df.folder_id
-                 WHERE df.name ILIKE $1 AND df.trashed_at IS NULL
-                 ORDER BY lower(df.name) LIMIT 200"
-            ),
-            &[&like],
+    let name_sql = format!(
+        "SELECT {FILE_COLS}, fo.name FROM drive_files df
+         LEFT JOIN drive_folders fo ON fo.id = df.folder_id
+         WHERE df.name ILIKE $1 AND df.trashed_at IS NULL
+         ORDER BY lower(df.name) LIMIT 200"
+    );
+    let text_sql = format!(
+        "SELECT {FILE_COLS}, fo.name, df.text FROM drive_files df
+         LEFT JOIN drive_folders fo ON fo.id = df.folder_id
+         WHERE df.text ILIKE $1 AND df.name NOT ILIKE $1 AND df.trashed_at IS NULL
+         ORDER BY df.modified_at DESC NULLS LAST LIMIT 60"
+    );
+    let like_params: &[&(dyn tokio_postgres::types::ToSql + Sync)] = &[&like];
+    let (name_rows, text_rows, folder_rows) = tokio::try_join!(
+        c.query(&name_sql, like_params),
+        c.query(&text_sql, like_params),
+        c.query(
+            "SELECT id, name, parent_id FROM drive_folders WHERE name ILIKE $1 ORDER BY lower(name) LIMIT 60",
+            like_params,
         )
-        .await?
-        .iter()
-        .map(with_folder)
-        .collect();
-    for r in c
-        .query(
-            &format!(
-                "SELECT {FILE_COLS}, fo.name, df.text FROM drive_files df
-                 LEFT JOIN drive_folders fo ON fo.id = df.folder_id
-                 WHERE df.text ILIKE $1 AND df.name NOT ILIKE $1 AND df.trashed_at IS NULL
-                 ORDER BY df.modified_at DESC NULLS LAST LIMIT 60"
-            ),
-            &[&like],
-        )
-        .await?
-        .iter()
-    {
+    )?;
+
+    let mut files: Vec<Value> = name_rows.iter().map(with_folder).collect();
+    for r in &text_rows {
         let mut file = with_folder(r);
         file["snippet"] = json!(snippet(r.get::<_, &str>(8), term));
         files.push(file);
     }
-    let folders: Vec<Value> = c
-        .query(
-            "SELECT id, name, parent_id FROM drive_folders WHERE name ILIKE $1 ORDER BY lower(name) LIMIT 60",
-            &[&like],
-        )
-        .await?
+    let folders: Vec<Value> = folder_rows
         .iter()
         .map(|r| json!({ "id": r.get::<_, i64>(0), "name": r.get::<_, String>(1), "parent_id": r.get::<_, Option<i64>>(2) }))
         .collect();

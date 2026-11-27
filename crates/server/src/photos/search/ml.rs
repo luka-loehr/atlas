@@ -43,7 +43,13 @@ impl Ml {
     /// for clips.
     pub async fn embed_text(&self, text: &str) -> Result<Arc<Questions>> {
         let key = text.to_lowercase();
-        if let Some(hit) = self.cache.lock().unwrap().vectors.get(&key) {
+        if let Some(hit) = self
+            .cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .vectors
+            .get(&key)
+        {
             return Ok(hit.clone());
         }
         #[derive(Deserialize)]
@@ -69,7 +75,7 @@ impl Ml {
             still: embedding.still,
             clip: embedding.clip,
         });
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         if cache.vectors.insert(key.clone(), vec.clone()).is_none() {
             cache.order.push_back(key);
             if cache.order.len() > 512

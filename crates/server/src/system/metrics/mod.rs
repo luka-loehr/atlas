@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use axum::Json;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::http::HeaderMap;
 use axum::response::Response;
 use nvml_wrapper::Nvml;
 use nvml_wrapper::enum_wrappers::device::TemperatureSensor;
@@ -20,7 +21,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
-use crate::{AppState, Config};
+use crate::{ApiResult, AppState, Config, iam};
 
 mod readers;
 
@@ -92,7 +93,7 @@ impl Sampler {
     pub fn latest(&self) -> Sample {
         self.history
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .back()
             .copied()
             .unwrap_or_default()
@@ -174,7 +175,7 @@ fn sample_loop(
             gpu_w,
             system_w,
         };
-        let mut history = history.lock().unwrap();
+        let mut history = history.lock().unwrap_or_else(|e| e.into_inner());
         history.push_back(sample);
         while history.len() > HISTORY {
             history.pop_front();
@@ -226,8 +227,13 @@ pub async fn snapshot(State(app): State<AppState>) -> Json<Value> {
     }))
 }
 
-pub async fn live(State(app): State<AppState>, ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(move |socket| stream(socket, app))
+pub async fn live(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> ApiResult<Response> {
+    iam::verify_ws_origin(&headers)?;
+    Ok(ws.on_upgrade(move |socket| stream(socket, app)))
 }
 
 /// First frame: {"history":[...]}. Then one sample per second.
@@ -238,7 +244,7 @@ async fn stream(mut socket: WebSocket, app: AppState) {
         .metrics
         .history
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .iter()
         .copied()
         .collect();

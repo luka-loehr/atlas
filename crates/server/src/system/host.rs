@@ -32,17 +32,19 @@ const UNITS: &[(&str, &str)] = &[
 /// One screen's worth of "is Atlas healthy": the units, the database, the
 /// model worker, and what the job queue still has to do.
 pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
-    let mut units = Vec::new();
-    for (unit, role) in UNITS {
-        let show = output(
-            "systemctl",
-            &[
-                "show",
-                unit,
-                "--property=ActiveState,SubState,ActiveEnterTimestamp,MemoryCurrent,NRestarts",
-            ],
-        )
-        .await;
+    let props = "--property=ActiveState,SubState,ActiveEnterTimestamp,MemoryCurrent,NRestarts";
+    let args0 = ["show", UNITS[0].0, props];
+    let args1 = ["show", UNITS[1].0, props];
+    let (u0_show, u1_show, ml_health, vectors_len, c_res) = tokio::join!(
+        output("systemctl", &args0),
+        output("systemctl", &args1),
+        app.ml.health(),
+        app.ml.vectors.len(),
+        app.pool.get(),
+    );
+
+    let mut units = Vec::with_capacity(UNITS.len());
+    for ((unit, role), show) in UNITS.iter().zip([u0_show, u1_show]) {
         let property = |key: &str| {
             show.lines()
                 .find_map(|l| l.strip_prefix(key).and_then(|v| v.strip_prefix('=')))
@@ -60,32 +62,32 @@ pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
         }));
     }
 
-    let c = app.pool.get().await?;
-    let database: String = c.query_one("SHOW server_version", &[]).await?.get(0);
-    let size: i64 = c
-        .query_one("SELECT pg_database_size(current_database())", &[])
-        .await?
-        .get(0);
-    let mut queue: BTreeMap<String, BTreeMap<String, i64>> = BTreeMap::new();
-    for row in c
-        .query(
+    let c = c_res?;
+    let (ver_row, size_row, queue_rows, failed_rows) = tokio::try_join!(
+        c.query_one("SHOW server_version", &[]),
+        c.query_one("SELECT pg_database_size(current_database())", &[]),
+        c.query(
             "SELECT kind, status, count(*) FROM ingest_jobs GROUP BY kind, status",
             &[],
-        )
-        .await?
-    {
+        ),
+        c.query(
+            "SELECT kind, owner_id, error, updated_at, status FROM ingest_jobs
+             WHERE status IN ('failed', 'stuck') ORDER BY updated_at DESC LIMIT 20",
+            &[],
+        ),
+    )?;
+    drop(c);
+
+    let database: String = ver_row.get(0);
+    let size: i64 = size_row.get(0);
+    let mut queue: BTreeMap<String, BTreeMap<String, i64>> = BTreeMap::new();
+    for row in queue_rows {
         queue
             .entry(row.get(0))
             .or_default()
             .insert(row.get(1), row.get(2));
     }
-    let failed: Vec<Value> = c
-        .query(
-            "SELECT kind, owner_id, error, updated_at, status FROM ingest_jobs
-             WHERE status IN ('failed', 'stuck') ORDER BY updated_at DESC LIMIT 20",
-            &[],
-        )
-        .await?
+    let failed: Vec<Value> = failed_rows
         .iter()
         .map(|r| {
             json!({
@@ -95,13 +97,12 @@ pub async fn services(State(app): State<AppState>) -> ApiResult<Json<Value>> {
             })
         })
         .collect();
-    drop(c);
 
     Ok(Json(json!({
         "units": units,
         "database": { "version": database, "bytes": size },
-        "ml": app.ml.health().await,
-        "vectors": app.ml.vectors.len().await,
+        "ml": ml_health,
+        "vectors": vectors_len,
         "queue": queue,
         "failed": failed,
     })))

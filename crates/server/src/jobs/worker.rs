@@ -105,7 +105,12 @@ async fn heartbeat(app: AppState, running: Arc<Mutex<HashSet<i64>>>) {
                 }
                 last_reap = Some(Instant::now());
             }
-            let ids: Vec<i64> = running.lock().unwrap().iter().copied().collect();
+            let ids: Vec<i64> = running
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .copied()
+                .collect();
             let _ = queue::heartbeat(&c, &ids).await;
         }
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -153,11 +158,17 @@ async fn drain(
         match claimed {
             Ok(mut jobs) if !jobs.is_empty() => {
                 let job = jobs.remove(0);
-                running.lock().unwrap().insert(job.id);
+                running
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(job.id);
                 let (app, running) = (app.clone(), running.clone());
                 tokio::spawn(async move {
                     execute(&app, &job).await;
-                    running.lock().unwrap().remove(&job.id);
+                    running
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&job.id);
                     drop(slot);
                 });
             }

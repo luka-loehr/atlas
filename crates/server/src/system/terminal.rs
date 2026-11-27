@@ -1,5 +1,6 @@
 //! A real terminal over WebSocket: a login shell on a PTY, bytes bridged
-//! both ways.
+//! both ways. Hardened with `Origin` validation, secret environment scrubbing,
+//! and a strict concurrent PTY session cap.
 //!
 //!   client -> server  binary   keystrokes
 //!   client -> server  text     {"resize":{"cols":C,"rows":R}}
@@ -8,18 +9,37 @@
 use std::io::{Read, Write};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::http::HeaderMap;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde::Deserialize;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, SemaphorePermit, mpsc};
 
-pub async fn terminal(ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(|socket| async move {
-        if let Err(e) = session(socket).await {
+use crate::{ApiError, ApiResult, iam};
+
+const MAX_PTY_SESSIONS: usize = 4;
+static PTY_SLOTS: Semaphore = Semaphore::const_new(MAX_PTY_SESSIONS);
+
+const SCRUBBED_ENV_VARS: &[&str] = &[
+    "ATLAS_TOKEN",
+    "ATLAS_SHARE_TOKEN",
+    "POSTGRES_PASSWORD",
+    "ATLAS_DATABASE_URL",
+    "DATABASE_URL",
+];
+
+pub async fn terminal(headers: HeaderMap, ws: WebSocketUpgrade) -> ApiResult<Response> {
+    iam::verify_ws_origin(&headers)?;
+    let permit = PTY_SLOTS.try_acquire().map_err(|_| ApiError::RateLimited {
+        retry_after: 5,
+        limit: MAX_PTY_SESSIONS as u32,
+    })?;
+    Ok(ws.on_upgrade(move |socket| async move {
+        if let Err(e) = session(socket, permit).await {
             tracing::warn!("terminal session ended: {e:#}");
         }
-    })
+    }))
 }
 
 #[derive(Deserialize)]
@@ -33,7 +53,7 @@ struct Size {
     rows: u16,
 }
 
-async fn session(socket: WebSocket) -> anyhow::Result<()> {
+async fn session(socket: WebSocket, _permit: SemaphorePermit<'static>) -> anyhow::Result<()> {
     let pair = native_pty_system().openpty(PtySize {
         rows: 24,
         cols: 80,
@@ -43,6 +63,9 @@ async fn session(socket: WebSocket) -> anyhow::Result<()> {
     let mut command = CommandBuilder::new("bash");
     command.arg("-l");
     command.env("TERM", "xterm-256color");
+    for var in SCRUBBED_ENV_VARS {
+        command.env_remove(var);
+    }
     command.cwd(atlas_core::home());
     let mut child = pair.slave.spawn_command(command)?;
     drop(pair.slave);
@@ -50,8 +73,6 @@ async fn session(socket: WebSocket) -> anyhow::Result<()> {
     let mut reader = pair.master.try_clone_reader()?;
     let mut writer = pair.master.take_writer()?;
 
-    // PTY reads block, so they get their own thread; the channel closes when
-    // the shell exits
     let (output_tx, mut output) = mpsc::channel::<Vec<u8>>(64);
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];

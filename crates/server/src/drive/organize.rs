@@ -165,6 +165,9 @@ pub(super) struct Move {
 
 /// A folder cannot move into itself or anything below it.
 pub(super) async fn mv(State(app): State<AppState>, Json(b): Json<Move>) -> ApiResult<Json<Value>> {
+    if b.files.len() + b.folders.len() > 5_000 {
+        return Err(ApiError::BadRequest("at most 5000 items per batch request"));
+    }
     let c = app.pool.get().await?;
     if let Some(target) = b.to {
         if c.query_opt("SELECT 1 FROM drive_folders WHERE id = $1", &[&target])

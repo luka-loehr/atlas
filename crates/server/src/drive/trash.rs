@@ -35,6 +35,11 @@ pub(super) async fn put(
     State(app): State<AppState>,
     Json(b): Json<FileIds>,
 ) -> ApiResult<Json<Value>> {
+    if b.ids.len() > 5_000 {
+        return Err(crate::ApiError::BadRequest(
+            "at most 5000 items per batch request",
+        ));
+    }
     let c = app.pool.get().await?;
     let n = c
         .execute(
@@ -51,6 +56,11 @@ pub(super) async fn restore(
     State(app): State<AppState>,
     Json(b): Json<FileIds>,
 ) -> ApiResult<Json<Value>> {
+    if b.ids.len() > 5_000 {
+        return Err(crate::ApiError::BadRequest(
+            "at most 5000 items per batch request",
+        ));
+    }
     let c = app.pool.get().await?;
     let n = c
         .execute(
@@ -67,6 +77,11 @@ pub(super) async fn delete(
     State(app): State<AppState>,
     Json(b): Json<FileIds>,
 ) -> ApiResult<Json<Value>> {
+    if b.ids.len() > 5_000 {
+        return Err(crate::ApiError::BadRequest(
+            "at most 5000 items per batch request",
+        ));
+    }
     Ok(Json(json!({ "deleted": purge(&app, &b.ids).await? })))
 }
 

@@ -4,9 +4,12 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
+use tokio::sync::Semaphore;
 
 use super::blob_path;
 use crate::{ApiError, ApiResult, App, AppState, imaging, media, util};
+
+static THUMB_RENDER_SLOTS: Semaphore = Semaphore::const_new(3);
 
 /// Content type from the display name: the blob path itself has no extension.
 pub fn mime_for(name: &str) -> &'static str {
@@ -120,25 +123,31 @@ pub(super) async fn thumb(
     }
     let dest = app.cfg.drive_thumbs_dir().join(format!("{hash}.webp"));
     if !tokio::fs::try_exists(&dest).await.unwrap_or(false) {
-        let source = blob_path(&app, &hash);
-        let ext = util::lower_ext(&name);
-        let out = dest.clone();
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            let decoded = if ext == "pdf" {
-                imaging::decode_bytes(&first_pdf_page(&source)?)?
-            } else if util::IMAGE_EXTS.contains(&ext.as_str()) {
-                imaging::decode(&source)?
-            } else {
-                anyhow::bail!("no preview for .{ext}");
-            };
-            let small = imaging::fit(&decoded.rgb, imaging::GRID)?;
-            imaging::write_atomic(
-                &out,
-                &imaging::encode_webp(&small, 80.0, decoded.icc.as_deref()),
-            )
-        })
-        .await?
-        .map_err(|_| ApiError::NotFound)?;
+        let _permit = THUMB_RENDER_SLOTS
+            .acquire()
+            .await
+            .map_err(|_| ApiError::Unavailable("thumbnail queue closed"))?;
+        if !tokio::fs::try_exists(&dest).await.unwrap_or(false) {
+            let source = blob_path(&app, &hash);
+            let ext = util::lower_ext(&name);
+            let out = dest.clone();
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let decoded = if ext == "pdf" {
+                    imaging::decode_bytes(&first_pdf_page(&source)?)?
+                } else if util::IMAGE_EXTS.contains(&ext.as_str()) {
+                    imaging::decode(&source)?
+                } else {
+                    anyhow::bail!("no preview for .{ext}");
+                };
+                let small = imaging::fit(&decoded.rgb, imaging::GRID)?;
+                imaging::write_atomic(
+                    &out,
+                    &imaging::encode_webp(&small, 80.0, decoded.icc.as_deref()),
+                )
+            })
+            .await?
+            .map_err(|_| ApiError::NotFound)?;
+        }
     }
     Ok(media::immutable_file(dest, headers).await)
 }
@@ -155,6 +164,7 @@ fn first_pdf_page(pdf: &std::path::Path) -> anyhow::Result<Vec<u8>> {
                 "1",
                 "-scale-to",
                 "1024",
+                "--",
             ])
             .arg(pdf), // no output root: the page goes to stdout
         std::time::Duration::from_secs(60),
