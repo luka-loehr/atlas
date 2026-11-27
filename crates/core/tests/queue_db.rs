@@ -254,3 +254,30 @@ async fn tags_and_events_are_gone() {
         .unwrap();
     assert!(r.get::<_, bool>(0) && r.get::<_, bool>(1));
 }
+
+#[tokio::test]
+async fn migration_0017_seeds_owner_and_default_buckets() {
+    let Some(pool) = database().await else { return };
+    let c = pool.get().await.unwrap();
+    let owner_role: String = c
+        .query_one("SELECT role FROM accounts WHERE id = 'owner'", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(owner_role, "owner");
+
+    let buckets: Vec<(String, String)> = c
+        .query("SELECT name, kind FROM buckets ORDER BY name", &[])
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| (r.get(0), r.get(1)))
+        .collect();
+    assert_eq!(
+        buckets,
+        vec![
+            ("files".to_string(), "files".to_string()),
+            ("media".to_string(), "media".to_string()),
+        ]
+    );
+}

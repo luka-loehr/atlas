@@ -7,6 +7,7 @@ repository.workspace = true
 description = "What atlas-server and atlas-ml share: database setup, migrations and the job queue protocol"
 
 [dependencies]
+atlas-common = { path = "../common" }
 anyhow.workspace = true
 deadpool-postgres.workspace = true
 tokio.workspace = true
