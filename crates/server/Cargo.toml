@@ -11,6 +11,7 @@ name = "atlas-server"
 path = "src/main.rs"
 
 [dependencies]
+atlas-common = { path = "../common" }
 atlas-core = { path = "../core" }
 anyhow.workspace = true
 chrono.workspace = true

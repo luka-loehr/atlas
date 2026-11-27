@@ -134,16 +134,33 @@ dependencies = [
 
 [[package]]
 name = "atlas-cli"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
+ "atlas-common",
  "serde_json",
 ]
 
 [[package]]
-name = "atlas-core"
-version = "0.1.0"
+name = "atlas-common"
+version = "0.6.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
+ "chrono",
+ "md-5",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+]
+
+[[package]]
+name = "atlas-core"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "atlas-common",
  "deadpool-postgres",
  "futures-util",
  "image",
@@ -156,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-ml"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -179,9 +196,10 @@ dependencies = [
 
 [[package]]
 name = "atlas-server"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
+ "atlas-common",
  "atlas-core",
  "axum",
  "base64 0.23.1",

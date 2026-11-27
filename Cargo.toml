@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/server", "crates/ml", "crates/cli"]
+members = ["crates/common", "crates/core", "crates/server", "crates/ml", "crates/cli"]
 # `cargo build` on the Mac builds the server and the CLI; atlas-ml links
 # llama.cpp with CUDA and is built on the server (`cargo build -p atlas-ml`).
-default-members = ["crates/server", "crates/cli"]
+default-members = ["crates/common", "crates/server", "crates/cli"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.6.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/luka-loehr/atlas"

@@ -11,4 +11,5 @@ name = "atlas"
 path = "src/main.rs"
 
 [dependencies]
+atlas-common = { path = "../common" }
 serde_json.workspace = true
