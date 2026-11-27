@@ -39,8 +39,18 @@ pub struct MultipartPartInfo {
     pub created_at: DateTime<Utc>,
 }
 
-fn upload_dir(app: &App, upload_id: &str) -> PathBuf {
-    app.cfg.multipart_dir().join(upload_id)
+fn is_valid_upload_id(upload_id: &str) -> bool {
+    let Some(hex_part) = upload_id.strip_prefix("mpu_") else {
+        return false;
+    };
+    (16..=64).contains(&hex_part.len()) && hex_part.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn upload_dir(app: &App, upload_id: &str) -> ApiResult<PathBuf> {
+    if !is_valid_upload_id(upload_id) {
+        return Err(ApiError::NotFound);
+    }
+    Ok(app.cfg.multipart_dir().join(upload_id))
 }
 
 pub async fn create_multipart(
@@ -67,7 +77,7 @@ pub async fn create_multipart(
         .map(str::to_string)
         .unwrap_or_else(|| mime_for(&key).to_string());
 
-    tokio::fs::create_dir_all(upload_dir(app, &upload_id)).await?;
+    tokio::fs::create_dir_all(upload_dir(app, &upload_id)?).await?;
 
     let c = app.pool.get().await?;
     let row = c
@@ -111,6 +121,7 @@ pub async fn upload_part(
             "partNumber must be between 1 and 10000",
         ));
     }
+    let dir = upload_dir(app, upload_id)?;
     let key = normalize_object_key(raw_key).ok_or(ApiError::BadRequest("invalid object key"))?;
     principal.require_bucket(bucket, "write")?;
 
@@ -128,7 +139,6 @@ pub async fn upload_part(
     }
     drop(c);
 
-    let dir = upload_dir(app, upload_id);
     let streamed = stream_body_to_temp(body, headers, &dir, app.cfg.max_upload).await?;
     let final_part_path = dir.join(format!("part-{part_number:05}"));
     tokio::fs::rename(&streamed.path, &final_part_path).await?;
@@ -176,6 +186,7 @@ pub async fn complete_multipart(
     upload_id: &str,
     requested_parts: Option<&[(i32, String)]>,
 ) -> ApiResult<PutObjectResponse> {
+    let dir = upload_dir(app, upload_id)?;
     let key = normalize_object_key(raw_key).ok_or(ApiError::BadRequest("invalid object key"))?;
     principal.require_bucket(bucket, "write")?;
 
@@ -315,7 +326,7 @@ pub async fn complete_multipart(
     )
     .await?;
     drop(c);
-    let _ = tokio::fs::remove_dir_all(upload_dir(app, upload_id)).await;
+    let _ = tokio::fs::remove_dir_all(dir).await;
 
     Ok(placed)
 }
@@ -327,6 +338,7 @@ pub async fn abort_multipart(
     raw_key: &str,
     upload_id: &str,
 ) -> ApiResult<()> {
+    let dir = upload_dir(app, upload_id)?;
     let key = normalize_object_key(raw_key).ok_or(ApiError::NotFound)?;
     principal.require_bucket(bucket, "write")?;
     let c = app.pool.get().await?;
@@ -337,10 +349,10 @@ pub async fn abort_multipart(
         )
         .await?;
     drop(c);
-    let _ = tokio::fs::remove_dir_all(upload_dir(app, upload_id)).await;
     if n == 0 {
         return Err(ApiError::NotFound);
     }
+    let _ = tokio::fs::remove_dir_all(dir).await;
     Ok(())
 }
 
@@ -380,6 +392,9 @@ pub async fn list_parts(
     raw_key: &str,
     upload_id: &str,
 ) -> ApiResult<Vec<MultipartPartInfo>> {
+    if !is_valid_upload_id(upload_id) {
+        return Err(ApiError::NotFound);
+    }
     let key = normalize_object_key(raw_key).ok_or(ApiError::NotFound)?;
     principal.require_bucket(bucket, "read")?;
     let c = app.pool.get().await?;
@@ -412,4 +427,18 @@ pub async fn list_parts(
             created_at: r.get(4),
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_upload_ids_and_rejects_traversal() {
+        assert!(is_valid_upload_id("mpu_0123456789abcdef01234567"));
+        assert!(!is_valid_upload_id(".."));
+        assert!(!is_valid_upload_id("../blobs"));
+        assert!(!is_valid_upload_id("mpu_../blobs"));
+        assert!(!is_valid_upload_id("mpu_short"));
+    }
 }

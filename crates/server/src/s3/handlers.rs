@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use atlas_common::crypto::generate_prefixed_id;
+use atlas_common::crypto::{generate_prefixed_id, sha256_hex};
 use atlas_common::models::{BucketKind, CreateBucketRequest};
 use atlas_common::validate::{parse_query_pairs, percent_decode_utf8};
 use axum::body::{Body, to_bytes};
@@ -225,12 +225,27 @@ pub async fn get_bucket(
     }
 }
 
+fn verify_claimed_body_sha256(headers: &HeaderMap, body: &[u8]) -> Result<(), ApiError> {
+    if let Some(claimed) = headers
+        .get("x-amz-content-sha256")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase())
+        && claimed.len() == 64
+        && claimed.bytes().all(|b| b.is_ascii_hexdigit())
+        && sha256_hex(body) != claimed
+    {
+        return Err(ApiError::BadRequest("SHA-256 content digest mismatch"));
+    }
+    Ok(())
+}
+
 /// `POST /s3/{bucket}` -> `DeleteObjects` (`?delete`).
 pub async fn post_bucket(
     State(app): State<AppState>,
     Extension(p): Extension<Principal>,
     Path(bucket): Path<String>,
     uri: Uri,
+    headers: HeaderMap,
     body: Body,
 ) -> Response {
     let req_id = new_request_id();
@@ -249,6 +264,9 @@ pub async fn post_bucket(
         Ok(b) => b,
         Err(_) => return xml::api_error_to_s3(ApiError::TooLarge, uri.path(), &req_id, true),
     };
+    if let Err(e) = verify_claimed_body_sha256(&headers, &bytes) {
+        return xml::api_error_to_s3(e, uri.path(), &req_id, true);
+    }
     let text = match std::str::from_utf8(&bytes) {
         Ok(s) => s,
         Err(_) => {
@@ -456,6 +474,9 @@ pub async fn post_object(
             Ok(b) => b,
             Err(_) => return xml::api_error_to_s3(ApiError::TooLarge, uri.path(), &req_id, false),
         };
+        if let Err(e) = verify_claimed_body_sha256(&headers, &bytes) {
+            return xml::api_error_to_s3(e, uri.path(), &req_id, false);
+        }
         let text = match std::str::from_utf8(&bytes) {
             Ok(s) => s,
             Err(_) => {

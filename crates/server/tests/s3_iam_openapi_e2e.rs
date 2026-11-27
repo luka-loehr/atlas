@@ -842,4 +842,26 @@ async fn full_v060_iam_s3_buckets_multipart_presign_and_sync_suite() {
         .await
         .unwrap();
     assert_eq!(got_photo.as_ref(), png_1x1);
+
+    // 8. Regression guard: traversal uploadId (`../blobs`) on AbortMultipartUpload must 404 and leave blobs intact!
+    let abort_trav = h
+        .client
+        .delete(format!(
+            "{}/s3/projects/forms/Familienversicherung.pdf?uploadId=..%2Fblobs",
+            h.base_url
+        ))
+        .bearer_auth(&s3_key.bearer_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(abort_trav.status(), StatusCode::NOT_FOUND);
+    let still_intact = h
+        .client
+        .get(format!("{}{path}", h.base_url))
+        .bearer_auth(&s3_key.bearer_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(still_intact.status(), StatusCode::OK);
+    assert_eq!(still_intact.bytes().await.unwrap().as_ref(), payload);
 }
