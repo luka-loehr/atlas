@@ -11,6 +11,7 @@ atlas-server migrate            # apply schema migrations and exit
 atlas-server import photos takeout-*.zip    # Google Takeout, read in place
 atlas-server import drive takeout-*.zip
 atlas-server backfill thumbs|dates|previews|drive-text|embeddings|faces
+atlas-server openapi > openapi/openapi.json   # emit canonical OpenAPI 3.1 schema
 ```
 
 Installed and restarted by [`scripts/atlas/install.sh`](../../scripts/atlas/)
@@ -18,11 +19,20 @@ Installed and restarted by [`scripts/atlas/install.sh`](../../scripts/atlas/)
 
 ## API
 
-Everything is under `/v1` and takes `Authorization: Bearer $ATLAS_TOKEN`
-(media URLs also accept `?token=`). `/health` is open.
+Routes live under `/v1` (JSON + streaming) and `/s3` (AWS S3 XML wire protocol).
+Authentication accepts `Authorization: Bearer $ATLAS_TOKEN`, scoped API keys
+(`Authorization: Bearer ATLK…:atls_…` or `X-Atlas-Key`), AWS SigV4
+`Authorization: AWS4-HMAC-SHA256 …` headers, and AWS SigV4 presigned URLs
+(read-only media/blob playback URLs also accept `?token=`). `/health` and
+`/openapi.json` are open.
 
 | Area | Routes |
 |---|---|
+| OpenAPI | `GET /openapi.json` · `GET /v1/openapi.json` (canonical OpenAPI 3.1 specification) |
+| S3 Wire (`/s3`) | `GET /s3` (`ListBuckets`) · `PUT/DELETE/HEAD /s3/{bucket}` · `GET /s3/{bucket}` (`ListObjectsV2`, `ListObjects`, `?location`, `?versioning`, `?uploads`) · `POST /s3/{bucket}?delete` · `PUT/GET/HEAD/DELETE /s3/{bucket}/{*key}` (`PutObject`, `CopyObject`, Range `GetObject`, `UploadPart`, `ListParts`, `AbortMultipartUpload`) · `POST /s3/{bucket}/{*key}` (`?uploads`, `?uploadId=`) |
+| Buckets | `GET/POST /v1/buckets` · `GET/DELETE /v1/buckets/{bucket}` · `GET /v1/buckets/{bucket}/objects` · `PUT/GET/HEAD/DELETE /v1/buckets/{bucket}/objects/{*key}` · `GET /v1/buckets/{bucket}/stat/{*key}` · `POST /v1/buckets/{bucket}/{copy,delete,presign}` |
+| IAM & Keys | `GET /v1/auth/whoami` · `GET/POST /v1/accounts` · `GET/PATCH/DELETE /v1/accounts/{id}` · `GET/POST /v1/keys` · `GET/DELETE /v1/keys/{id}` · `POST /v1/keys/{id}/revoke` |
+| Developer Media | `GET /v1/media/search?q=` · `GET /v1/media/similar/{id}` · `GET /v1/media/assets/{id}` |
 | Library | `GET /server` · `/work` (what atlas is busy with) · `/stats` · `/heatmap` |
 | Timeline | `GET /timeline` (month index: key, count, validator) · `GET /timeline/{YYYY-MM\|undated}` (one month, columnar) |
 | Assets | `PUT /assets` (streaming upload) · `POST /assets/exists` · `GET /assets/{id}` · `/assets/{id}/thumb/{512\|2048}` · `/assets/{id}/tile` · `/assets/{id}/original` · `/assets/{id}/video` · `POST /assets/{favorite,archive,lock,trash,restore,delete}` |

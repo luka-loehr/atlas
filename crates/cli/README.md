@@ -1,7 +1,36 @@
 # atlas CLI
 
-`atlas` is a single-binary Rust CLI (std plus `serde_json`) that controls
-the atlas homelab server from a workstation. It wraps SSH for everyday access,
+`atlas` is a single-binary Rust CLI that acts both as a **standalone cross-platform
+Atlas API & S3 client** (working on any Linux or macOS machine without SSH) and as
+the **homelab build & server controller** over SSH/Wake-on-LAN.
+
+## Standalone API & S3 Client
+
+Authenticate once with `atlas auth login --url http://<atlas-host>:8787 --key-stdin`
+(saved atomically to `~/.config/atlas/credentials.json` with `0700`/`0600`
+permissions) or pass `ATLAS_URL` + `ATLAS_API_KEY` (`ATLK…:atls_…` or
+`ATLAS_ACCESS_KEY_ID` + `ATLAS_SECRET_ACCESS_KEY` or `ATLAS_TOKEN`).
+
+| command | what it does |
+|---|---|
+| `atlas auth login \| status \| whoami \| logout` | verify credentials against `/v1/server`, save `0600` `credentials.json`, inspect identity |
+| `atlas buckets ls \| create <name> \| info <name> \| rm <name>` | manage `media`, `files`, and custom buckets (quotas, object counts, sizes) |
+| `atlas files ls [bucket[/prefix]] [-r]` (alias `atlas s3`) | list buckets or objects with S3 prefix/delimiter folding |
+| `atlas files put <local> <bucket/key>` | streaming upload with SigV4 (automatic 16 MiB S3 Multipart Upload above `--multipart-mb`, default 64 MiB) |
+| `atlas files get <bucket/key> [out \| -] [--range A-B]` | atomic streaming download or Range slice to file or stdout |
+| `atlas files cp <src> <dst> [-r]` | local↔remote or zero-reupload server-side `CopyObject` |
+| `atlas files sync <src> <dst> [--delete] [--dry-run]` | incremental directory↔bucket sync verified by size and SHA-256 |
+| `atlas files rm <bucket/key> [-r]` · `stat` · `search` · `presign` | single/batch delete, metadata & SHA-256 inspection, full-text search, online/offline SigV4 presigned URLs |
+| `atlas photos search <q>` · `similar <id>` · `upload <paths...>` · `get <id>` · `people` · `albums` · `stats` | semantic & OCR photo search, SHA-256 deduplicated library upload, original/WebP thumbnail download |
+| `atlas keys ls \| create <name> \| revoke <id> \| rm <id>` | mint scoped API/S3 keys (`--scopes`, `--buckets`, `--rps`, `--expires-days`) and revoke instantly |
+| `atlas accounts ls \| create <name> \| info <id> \| rm <id>` | manage `service`, `member`, and `admin` accounts and storage quotas |
+| `atlas openapi [--out FILE]` | fetch the live OpenAPI 3.1 specification (`GET /openapi.json`) |
+
+---
+
+## Homelab Server & Build Control
+
+`atlas` also controls the atlas homelab server from a workstation. It wraps SSH for everyday access,
 manages power via Wake-on-LAN, offloads project builds and dev servers to the
 server's Docker engine, publishes dev servers on the tailnet or on stable
 `your-domain.com` subdomains, and installs the Atlas services
