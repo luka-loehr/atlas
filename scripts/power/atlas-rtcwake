@@ -4,8 +4,9 @@
 # atlas-rtcwake.service runs this at boot and again at shutdown.
 set -euo pipefail
 
-WAKE_AT=10:00   # local time (Europe/Berlin); the off side is atlas-poweroff.timer
-LEAD_MIN=5      # a slot this close is skipped: the poweroff would race it
+WAKE_WEEKDAY=06:30  # Mon–Fri local time (Europe/Berlin)
+WAKE_WEEKEND=08:00  # Sat–Sun local time (Europe/Berlin)
+LEAD_MIN=5          # a slot this close is skipped: a shutdown would race it
 RTC=/sys/class/rtc/rtc0/wakealarm
 LOCK=/run/atlas-rtcwake.lock
 
@@ -14,9 +15,22 @@ LOCK=/run/atlas-rtcwake.lock
 exec 9>"$LOCK"
 flock -w 30 9 || { logger -t atlas-rtcwake "could not acquire $LOCK after 30s"; exit 1; }
 
+wake_slot_for() {
+  local day=$1
+  local ymd dow wake_at
+  ymd=$(date -d "$day" +%F)
+  dow=$(date -d "$ymd" +%u) # 1=Mon .. 5=Fri, 6=Sat, 7=Sun
+  if (( dow >= 6 )); then
+    wake_at=$WAKE_WEEKEND
+  else
+    wake_at=$WAKE_WEEKDAY
+  fi
+  date -d "$ymd $wake_at" +%s
+}
+
 now=$(date +%s)
-target=$(date -d "today $WAKE_AT" +%s)
-(( target > now + LEAD_MIN * 60 )) || target=$(date -d "tomorrow $WAKE_AT" +%s)
+target=$(wake_slot_for "today")
+(( target > now + LEAD_MIN * 60 )) || target=$(wake_slot_for "tomorrow")
 
 # The kernel rejects a write while an alarm is pending, so clear first.
 echo 0 > "$RTC"

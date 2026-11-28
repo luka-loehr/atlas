@@ -1,15 +1,15 @@
 # power — stay wakeable, stay measurable
 
-Host units for a power-managed box. atlas runs on a daily schedule (up 10:00 to
-22:00), `atlas boot` has to be able to wake it at any other time, and the iOS
-apps plot how much it draws while it is up.
+Host units for a power-managed box. atlas auto-boots via RTC wake (06:30 on
+weekdays, 08:00 on weekends; no automatic shutdown), `atlas boot` can wake it
+at any other time, and the iOS apps plot how much it draws while it is up.
 
 | Unit | What it does |
 |---|---|
 | `atlas-wol.service` | `ethtool -s enp4s0 wol g` at boot **and** at shutdown — the NIC keeps MagicPacket wake armed, which is what `atlas boot` sends |
 | `atlas-rapl-readable.service` | `chmod a+r` on the Intel RAPL energy counters, which the kernel keeps root-only — without it `atlas-server` reports `cpu_w` (and with it `system_w`) as `null` |
-| `atlas-rtcwake.service` | arms the RTC alarm for the next 10:00 at boot **and** at shutdown (`/usr/local/sbin/atlas-rtcwake`) |
-| `atlas-poweroff.timer` | at 21:55 schedules `shutdown -h 22:00`; logged-in users get the warning |
+| `atlas-rtcwake.service` | arms the RTC alarm for the next 06:30 (Mon–Fri) or 08:00 (Sat–Sun) at boot **and** at shutdown (`/usr/local/sbin/atlas-rtcwake`) |
+| `atlas-poweroff.timer` | optional legacy nightly shutdown unit (disabled by default in `install.sh`) |
 
 ```bash
 ./install.sh
@@ -21,20 +21,19 @@ copy of `atlas-rtcwake` in `/usr/local/sbin` (re-run it after changing that
 script), and removes the earlier hand-installed `wol.service` /
 `rapl-readable.service` if present.
 
-## Daily schedule: on at 10:00, off at 22:00
+## Auto-boot schedule: 06:30 Mon–Fri, 08:00 Sat–Sun (no auto-shutdown)
 
-The RTC has one alarm register, so `atlas-rtcwake` arms only the next 10:00. It
-runs at boot and again in `ExecStop`, so every shutdown (the scheduled one, the
-power button, `atlas shutdown`) leaves the alarm set for the next morning. It
-verifies the register after writing, because a past-dated write succeeds and
-arms nothing. Check it with `journalctl -t atlas-rtcwake -n 3` or
+The RTC has one alarm register, so `atlas-rtcwake` arms only the next morning
+slot (`06:30` on Monday–Friday, `08:00` on Saturday–Sunday, local time). It
+runs at boot and again in `ExecStop`, so every manual shutdown (`power` button
+or `atlas shutdown`) leaves the alarm set for the next morning. It verifies the
+register after writing, because a past-dated write succeeds and arms nothing.
+Check it with `journalctl -t atlas-rtcwake -n 3` or
 `cat /sys/class/rtc/rtc0/wakealarm` (epoch seconds).
 
-The power-off timer is not persistent: a box booted after 21:55 stays up until
-the next evening. To keep atlas up tonight, run `sudo shutdown -c` after 21:55.
-Change the times in `atlas-rtcwake` (`WAKE_AT`), `atlas-poweroff.timer`
-(`OnCalendar`, five minutes ahead) and `atlas-poweroff.service` (the
-`shutdown -h 22:00` line), then re-run `./install.sh`. Both stay outside the 22:00–08:00 quiet hours.
+Automatic nightly shutdown (`atlas-poweroff.timer`) is disabled by default so
+the box stays online unless shut down manually. Change the wake times in
+`atlas-rtcwake` (`WAKE_WEEKDAY`, `WAKE_WEEKEND`) and re-run `./install.sh`.
 
 This board wakes from soft-off on the RTC alarm; the 2026-08 three-slot
 schedule used the same register.

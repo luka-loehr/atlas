@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install/refresh the host power units: Wake-on-LAN, readable RAPL, and the
-# daily schedule (RTC wake at 10:00, power-off at 22:00).
+# Install/refresh the host power units: Wake-on-LAN, readable RAPL, and
+# automatic RTC wake (06:30 Mon–Fri, 08:00 Sat–Sun; no automatic power-off).
 #
 # Both predate the atlas- unit naming and were installed by hand as
 # wol.service / rapl-readable.service. Those are disabled and removed here —
@@ -32,7 +32,9 @@ sudo install -o root -g root -m 0755 atlas-rtcwake /usr/local/sbin/atlas-rtcwake
 sudo cp atlas-wol.service atlas-rapl-readable.service atlas-rtcwake.service \
   atlas-poweroff.service atlas-poweroff.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now atlas-wol.service atlas-rapl-readable.service atlas-poweroff.timer
+sudo systemctl enable --now atlas-wol.service atlas-rapl-readable.service
+# Automatic nightly power-off is disabled; keep only manual shutdown + RTC wake.
+sudo systemctl disable --now atlas-poweroff.timer >/dev/null 2>&1 || true
 # enable + restart, not --now: on a re-run the unit is already active and
 # --now would not re-arm.
 sudo systemctl enable atlas-rtcwake.service
@@ -40,5 +42,5 @@ sudo systemctl restart atlas-rtcwake.service
 echo "Installed."
 echo "  wake mode:  sudo ethtool $NIC | grep Wake-on        # expect 'g'"
 echo "  rapl:       head -c 40 /sys/class/powercap/intel-rapl:0/energy_uj"
-echo "  wake:       journalctl -t atlas-rtcwake -n 1              # expect 'armed for <next 10:00>'"
-echo "  power-off:  systemctl list-timers atlas-poweroff.timer"
+echo "  wake:       journalctl -t atlas-rtcwake -n 1              # expect 'armed for <06:30 Mon-Fri / 08:00 Sat-Sun>'"
+echo "  power-off:  systemctl is-enabled atlas-poweroff.timer     # expect 'disabled'"
