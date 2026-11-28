@@ -197,3 +197,162 @@ async fn purge(app: &App, ids: &[String]) -> ApiResult<u64> {
     }
     Ok(deleted)
 }
+
+#[derive(serde::Deserialize)]
+pub struct RotateBody {
+    pub degrees: i32,
+}
+
+/// Rotate a photo upright (90, 180, or 270 degrees clockwise; -90 == 270),
+/// regenerate both thumbnails + thumbhash, clear stale tile/face crops, and
+/// re-queue GPU embedding and face recognition.
+pub async fn rotate(
+    State(app): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(b): Json<RotateBody>,
+) -> ApiResult<Json<Value>> {
+    if !util::is_content_id(&id) {
+        return Err(ApiError::NotFound);
+    }
+    let deg = b.degrees.rem_euclid(360);
+    if !matches!(deg, 90 | 180 | 270) {
+        return Err(ApiError::BadRequest("degrees must be 90, 180, 270, or -90"));
+    }
+
+    let c = app.pool.get().await?;
+    let row = c
+        .query_opt(
+            "SELECT orig_path, type, size_bytes FROM assets WHERE id = $1",
+            &[&id],
+        )
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let orig_rel: String = row.get(0);
+    let kind: String = row.get(1);
+    let old_size: Option<i64> = row.get(2);
+    if kind != "photo" {
+        return Err(ApiError::BadRequest("only photos can be rotated"));
+    }
+    let orig_path = util::confine(&app.cfg.photos_dir, std::path::Path::new(&orig_rel))
+        .await
+        .ok_or(ApiError::NotFound)?;
+    drop(c);
+
+    let grid = app.cfg.thumb_path(&id, crate::imaging::GRID);
+    let screen = app.cfg.thumb_path(&id, crate::imaging::SCREEN);
+    let path_for_block = orig_path.clone();
+
+    let (thumbs, new_size) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let mut decoded = crate::imaging::decode(&path_for_block)?;
+        decoded.rgb = match deg {
+            90 => image::imageops::rotate90(&decoded.rgb),
+            180 => image::imageops::rotate180(&decoded.rgb),
+            270 => image::imageops::rotate270(&decoded.rgb),
+            _ => unreachable!(),
+        };
+        let thumbs = crate::imaging::write_thumbs(&decoded, &grid, &screen)?;
+
+        let ext = path_for_block
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let mut updated_bytes: Option<i64> = None;
+        if matches!(ext.as_str(), "jpg" | "jpeg") {
+            use image::ImageEncoder;
+            let mut out = Vec::new();
+            let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 95);
+            if let Some(icc) = decoded.icc.clone() {
+                let _ = enc.set_icc_profile(icc);
+            }
+            enc.write_image(
+                decoded.rgb.as_raw(),
+                decoded.rgb.width(),
+                decoded.rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )?;
+            crate::imaging::write_atomic(&path_for_block, &out)?;
+            updated_bytes = Some(out.len() as i64);
+        } else if ext == "png" {
+            use image::ImageEncoder;
+            let mut out = Vec::new();
+            let enc = image::codecs::png::PngEncoder::new(&mut out);
+            enc.write_image(
+                decoded.rgb.as_raw(),
+                decoded.rgb.width(),
+                decoded.rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )?;
+            crate::imaging::write_atomic(&path_for_block, &out)?;
+            updated_bytes = Some(out.len() as i64);
+        } else if ext == "webp" {
+            let out = crate::imaging::encode_webp(&decoded.rgb, 92.0, decoded.icc.as_deref());
+            crate::imaging::write_atomic(&path_for_block, &out)?;
+            updated_bytes = Some(out.len() as i64);
+        }
+        Ok((thumbs, updated_bytes))
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::anyhow!("rotate join: {e}")))?
+    .map_err(ApiError::Internal)?;
+
+    let _ = tokio::fs::remove_file(app.cfg.tile_path(&id)).await;
+
+    let c = app.pool.get().await?;
+    let stale_faces: Vec<i64> = c
+        .query("DELETE FROM faces WHERE asset_id = $1 RETURNING id", &[&id])
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    let final_size = new_size.or(old_size);
+    c.execute(
+        "UPDATE assets
+            SET width = $2, height = $3, size_bytes = $4, thumbhash = $5, thumb_v = $6
+          WHERE id = $1",
+        &[
+            &id,
+            &(thumbs.width as i32),
+            &(thumbs.height as i32),
+            &final_size,
+            &thumbs.thumbhash,
+            &crate::jobs::thumb::THUMB_V,
+        ],
+    )
+    .await?;
+    if let Some(sz) = final_size {
+        let _ = c
+            .execute(
+                "UPDATE objects SET size_bytes = $2, updated_at = now() WHERE bucket = 'media' AND asset_id = $1",
+                &[&id, &sz],
+            )
+            .await;
+    }
+    let _ = atlas_core::queue::requeue(
+        &c,
+        atlas_core::queue::EMBED,
+        "asset",
+        &id,
+        atlas_core::queue::PRIORITY_INTERACTIVE,
+    )
+    .await;
+    let _ = atlas_core::queue::requeue(
+        &c,
+        atlas_core::queue::FACES,
+        "asset",
+        &id,
+        atlas_core::queue::PRIORITY_INTERACTIVE,
+    )
+    .await;
+    drop(c);
+
+    for fid in stale_faces {
+        let _ = tokio::fs::remove_file(app.cfg.faces_dir().join(format!("{fid}.webp"))).await;
+    }
+
+    Ok(Json(json!({
+        "id": id,
+        "width": thumbs.width,
+        "height": thumbs.height,
+    })))
+}

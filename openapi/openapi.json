@@ -1206,6 +1206,29 @@
         ]
       }
     },
+    "/v1/assets/{id}/rotate": {
+      "post": {
+        "operationId": "rotateAsset",
+        "responses": {
+          "200": {
+            "description": "Rotated dimensions"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Rotate a photo by 90, 180, or 270 degrees clockwise and regenerate thumbnails",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
     "/v1/assets/{id}/thumb/{size}": {
       "get": {
         "operationId": "getAssetThumb",
@@ -2592,6 +2615,27 @@
           }
         },
         "summary": "Get share upload progress and status",
+        "tags": [
+          "Shares"
+        ]
+      },
+      "patch": {
+        "operationId": "updateShare",
+        "responses": {
+          "200": {
+            "description": "Updated share"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Update share preview settings (`show_cover`, `cover`) and refresh OpenGraph card",
         "tags": [
           "Shares"
         ]

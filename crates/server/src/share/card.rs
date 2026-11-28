@@ -9,31 +9,32 @@ use serde_json::Value;
 use super::og;
 use crate::{App, imaging};
 
-/// The link preview (og.rs): the first item's large thumbnail (a video's
-/// poster frame) with the title over it. A password share's shows no photo.
+/// The link preview (og.rs): the cover item's large thumbnail (or first item's
+/// thumbnail / video poster frame) with the title over it. A password share
+/// hides the photo unless `hide_cover` is false (`show_cover = true`).
 pub(super) async fn preview(
     app: &App,
     title: &str,
     items: &[Value],
-    locked: bool,
+    cover_id: Option<&str>,
+    hide_cover: bool,
 ) -> Result<Vec<u8>> {
-    let first = items
-        .first()
-        .and_then(|i| i["id"].as_str())
+    let chosen = cover_id
+        .or_else(|| items.first().and_then(|i| i["id"].as_str()))
         .context("no items")?;
-    let photo = app.cfg.thumb_path(first, imaging::SCREEN);
+    let photo = app.cfg.thumb_path(chosen, imaging::SCREEN);
     let title = if title.trim().is_empty() {
         "Shared photos".to_string()
     } else {
         title.to_string()
     };
-    let meta = if locked {
+    let meta = if hide_cover {
         vec!["Password protected".to_string()]
     } else {
         preview_meta(items)
     };
     tokio::task::spawn_blocking(move || {
-        let photo = if locked {
+        let photo = if hide_cover {
             None
         } else {
             Some(imaging::decode(&photo)?)

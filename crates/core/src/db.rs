@@ -32,6 +32,10 @@ const MIGRATIONS: &[(i32, &str)] = &[
         17,
         include_str!("../../../db/migrations/0017_buckets_s3_iam.sql"),
     ),
+    (
+        18,
+        include_str!("../../../db/migrations/0018_share_cover_preview.sql"),
+    ),
 ];
 
 /// Connection settings, in order of precedence:

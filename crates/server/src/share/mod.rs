@@ -42,24 +42,29 @@ const MAX_ITEMS: usize = 5000;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/shares", get(list).post(create))
-        .route("/shares/{id}", get(one).delete(stop))
+        .route("/shares/{id}", get(one).patch(update).delete(stop))
 }
 
 const SHARE_COLS: &str = "id, title, album_id, asset_ids, allow_download, has_password, state, \
-                          done_bytes, total_bytes, error, created_at, expires_at, password, live";
+                          done_bytes, total_bytes, error, created_at, expires_at, password, live, \
+                          show_cover, cover_asset_id";
 
 fn share_json(app: &App, r: &tokio_postgres::Row) -> Value {
     let id: String = r.get(0);
     let assets: Vec<String> = r.get(3);
+    let has_password: bool = r.get(5);
+    let show_cover: bool = r.get(14);
+    let cover_asset: Option<String> = r.get(15);
     json!({
         "id": id,
         "title": r.get::<_, String>(1),
         "url": format!("{}/s/{id}", app.cfg.share_url.as_deref().unwrap_or("")),
         "album_id": r.get::<_, Option<i64>>(2),
         "count": assets.len(),
-        "cover": assets.first(),
+        "cover": cover_asset.or_else(|| assets.first().cloned()),
         "allow_download": r.get::<_, bool>(4),
-        "has_password": r.get::<_, bool>(5),
+        "has_password": has_password,
+        "show_cover": !has_password || show_cover,
         "state": r.get::<_, String>(6),
         "done_bytes": r.get::<_, i64>(7),
         "total_bytes": r.get::<_, i64>(8),
@@ -114,6 +119,18 @@ struct NewShare {
     allow_download: bool,
     #[serde(default)]
     password: Option<String>,
+    #[serde(default)]
+    show_cover: bool,
+    #[serde(default)]
+    cover: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateShare {
+    #[serde(default)]
+    show_cover: Option<bool>,
+    #[serde(default)]
+    cover: Option<String>,
 }
 
 async fn create(State(app): State<AppState>, Json(b): Json<NewShare>) -> ApiResult<Json<Value>> {
@@ -186,15 +203,96 @@ async fn create(State(app): State<AppState>, Json(b): Json<NewShare>) -> ApiResu
         return Err(ApiError::BadRequest("at most 5000 items per link"));
     }
 
+    let cover_asset = match b.cover.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(cid) => {
+            if c.query_opt(
+                &format!("SELECT 1 FROM assets WHERE id = $1 AND {VISIBLE}"),
+                &[&cid],
+            )
+            .await?
+            .is_none()
+            {
+                return Err(ApiError::BadRequest("cover asset not found"));
+            }
+            Some(cid.to_string())
+        }
+        None => None,
+    };
+
     let id = new_id()?;
+    let show_cover = if password.is_some() {
+        b.show_cover
+    } else {
+        true
+    };
     let row = c
         .query_one(
             &format!(
-                "INSERT INTO shares (id, title, album_id, asset_ids, allow_download, password, has_password, expires_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, now() + make_interval(days => $8))
+                "INSERT INTO shares (id, title, album_id, asset_ids, allow_download, password, has_password, show_cover, cover_asset_id, expires_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(days => $10))
                  RETURNING {SHARE_COLS}"
             ),
-            &[&id, &title, &b.album, &assets, &b.allow_download, &password, &password.is_some(), &(days as i32)],
+            &[
+                &id,
+                &title,
+                &b.album,
+                &assets,
+                &b.allow_download,
+                &password,
+                &password.is_some(),
+                &show_cover,
+                &cover_asset,
+                &(days as i32),
+            ],
+        )
+        .await?;
+    spawn_upload(app.clone(), id);
+    Ok(Json(share_json(&app, &row)))
+}
+
+async fn update(
+    State(app): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(b): Json<UpdateShare>,
+) -> ApiResult<Json<Value>> {
+    if !app.cfg.sharing() {
+        return Err(ApiError::Unavailable("sharing is not set up"));
+    }
+    let c = app.pool.get().await?;
+    let existing = c
+        .query_opt(
+            "SELECT show_cover, cover_asset_id FROM shares WHERE id = $1 AND expires_at > now()",
+            &[&id],
+        )
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let next_show_cover = b.show_cover.unwrap_or_else(|| existing.get(0));
+    let next_cover: Option<String> = match &b.cover {
+        Some(raw) if raw.trim().is_empty() => None,
+        Some(raw) => {
+            let cid = raw.trim();
+            if c.query_opt(
+                &format!("SELECT 1 FROM assets WHERE id = $1 AND {VISIBLE}"),
+                &[&cid],
+            )
+            .await?
+            .is_none()
+            {
+                return Err(ApiError::BadRequest("cover asset not found"));
+            }
+            Some(cid.to_string())
+        }
+        None => existing.get(1),
+    };
+    let row = c
+        .query_one(
+            &format!(
+                "UPDATE shares
+                    SET show_cover = $2, cover_asset_id = $3, state = 'uploading', error = NULL
+                  WHERE id = $1
+                  RETURNING {SHARE_COLS}"
+            ),
+            &[&id, &next_show_cover, &next_cover],
         )
         .await?;
     spawn_upload(app.clone(), id);

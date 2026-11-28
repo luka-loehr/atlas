@@ -8,6 +8,6 @@ mod upload;
 pub use info::info;
 pub use media::{original, thumb, tile, video};
 pub use state::{
-    TRASH_DAYS, archive, delete, empty_trash, favorite, lock, purge_expired, restore, trash,
+    TRASH_DAYS, archive, delete, empty_trash, favorite, lock, purge_expired, restore, rotate, trash,
 };
 pub use upload::{exists, upload};

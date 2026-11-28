@@ -117,27 +117,21 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     let c = app.pool.get().await?;
     let share = c
         .query_opt(
-            "SELECT title, asset_ids, allow_download, password, extract(epoch FROM expires_at)::bigint, live
+            "SELECT title, asset_ids, allow_download, password, extract(epoch FROM expires_at)::bigint, live,
+                    show_cover, cover_asset_id
              FROM shares WHERE id = $1",
             &[&id],
         )
         .await?
         .context("share is gone")?;
-    let (title, ids, allow_download, password, expires, live): (
-        String,
-        Vec<String>,
-        bool,
-        Option<String>,
-        i64,
-        bool,
-    ) = (
-        share.get(0),
-        share.get(1),
-        share.get(2),
-        share.get(3),
-        share.get(4),
-        share.get(5),
-    );
+    let title: String = share.get(0);
+    let ids: Vec<String> = share.get(1);
+    let allow_download: bool = share.get(2);
+    let password: Option<String> = share.get(3);
+    let expires: i64 = share.get(4);
+    let live: bool = share.get(5);
+    let show_cover: bool = share.get(6);
+    let cover_asset_id: Option<String> = share.get(7);
     // a new link says "being created" from its first second, not "not found";
     // a live one keeps showing its current contents while it is updated
     let announce = |done: i64, total: i64, eta: Option<i64>| {
@@ -263,9 +257,16 @@ async fn upload(app: &AppState, id: &str) -> Result<()> {
     if !still_wanted(app, id).await? {
         return Ok(());
     }
-    let card = card::preview(app, &title, &manifest_items, password.is_some())
-        .await
-        .context("preview")?;
+    let hide_cover = password.is_some() && !show_cover;
+    let card = card::preview(
+        app,
+        &title,
+        &manifest_items,
+        cover_asset_id.as_deref(),
+        hide_cover,
+    )
+    .await
+    .context("preview")?;
     let stored = with_retries(|| remote.preview(id, &card))
         .await
         .context("preview")?;

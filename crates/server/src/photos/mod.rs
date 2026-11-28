@@ -67,6 +67,7 @@ pub fn routes() -> Router<AppState> {
         .route("/assets/restore", post(assets::restore))
         .route("/assets/delete", post(assets::delete))
         .route("/assets/{id}", get(assets::info))
+        .route("/assets/{id}/rotate", post(assets::rotate))
         .route("/assets/{id}/thumb/{size}", get(assets::thumb))
         .route("/assets/{id}/tile", get(assets::tile))
         .route("/assets/{id}/original", get(assets::original))

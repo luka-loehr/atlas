@@ -61,6 +61,7 @@ pub const REGISTERED_OPERATIONS: &[(&str, &[&str])] = &[
     ("/v1/assets/restore", &["post"]),
     ("/v1/assets/delete", &["post"]),
     ("/v1/assets/{id}", &["get"]),
+    ("/v1/assets/{id}/rotate", &["post"]),
     ("/v1/assets/{id}/thumb/{size}", &["get"]),
     ("/v1/assets/{id}/tile", &["get"]),
     ("/v1/assets/{id}/original", &["get"]),
@@ -97,7 +98,7 @@ pub const REGISTERED_OPERATIONS: &[(&str, &[&str])] = &[
     ("/v1/drive/delete", &["post"]),
     // Link Sharing
     ("/v1/shares", &["get", "post"]),
-    ("/v1/shares/{id}", &["get", "delete"]),
+    ("/v1/shares/{id}", &["get", "patch", "delete"]),
     // System & Machine Telemetry (Owner/Admin only)
     ("/v1/system", &["get"]),
     ("/v1/system/live", &["get"]),
@@ -281,6 +282,7 @@ pub fn spec() -> Value {
             "/v1/assets/restore": { "post": op("Photos", "restoreAssets", "Restore assets from trash/archive/locked", "Updated count") },
             "/v1/assets/delete": { "post": op("Photos", "deleteAssets", "Permanently purge assets and derived files", "Deleted count") },
             "/v1/assets/{id}": { "get": op("Photos", "getAssetInfo", "Detailed EXIF, people, place, OCR text, and album info for one asset", "Asset info") },
+            "/v1/assets/{id}/rotate": { "post": op("Photos", "rotateAsset", "Rotate a photo by 90, 180, or 270 degrees clockwise and regenerate thumbnails", "Rotated dimensions") },
             "/v1/assets/{id}/thumb/{size}": { "get": op("Photos", "getAssetThumb", "Immutable WebP thumbnail (`512` or `2048`)", "WebP image") },
             "/v1/assets/{id}/tile": { "get": op("Photos", "getAssetTile", "Square JPEG grid tile", "JPEG image") },
             "/v1/assets/{id}/original": { "get": op("Photos", "getAssetOriginal", "Exact original photo/video bytes (Range-capable)", "Original media stream") },
@@ -342,6 +344,7 @@ pub fn spec() -> Value {
             },
             "/v1/shares/{id}": {
                 "get": op("Shares", "getShare", "Get share upload progress and status", "Share details"),
+                "patch": op("Shares", "updateShare", "Update share preview settings (`show_cover`, `cover`) and refresh OpenGraph card", "Updated share"),
                 "delete": op("Shares", "deleteShare", "Revoke share link and delete remote R2 objects", "Deleted status")
             },
             // System
