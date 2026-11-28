@@ -19,6 +19,7 @@ struct Share: Codable, Sendable, Identifiable, Hashable {
     let albumID: Int?
     let allowDownload: Bool
     let hasPassword: Bool
+    var showCover: Bool? = nil
     let error: String?
     /// The link's password, kept on atlas while the link lives.
     var password: String? = nil
@@ -39,6 +40,7 @@ struct Share: Codable, Sendable, Identifiable, Hashable {
         case albumID = "album_id"
         case allowDownload = "allow_download"
         case hasPassword = "has_password"
+        case showCover = "show_cover"
     }
 }
 
@@ -74,13 +76,19 @@ extension PhotoClient {
         let days: Int
         let allow_download: Bool
         let password: String?
+        let show_cover: Bool
+    }
+
+    private struct UpdateShare: Encodable {
+        let show_cover: Bool?
     }
 
     /// Photos by id or a whole album; the server answers at once with the
     /// share `uploading` and keeps going on its own. An album that has a
     /// link already gets that one back.
     func createShare(title: String, ids: [String]? = nil, album: Int? = nil, days: Int = 7,
-                     allowDownload: Bool = false, password: String? = nil) async throws -> Share {
+                     allowDownload: Bool = false, password: String? = nil,
+                     showCover: Bool = false) async throws -> Share {
         guard let url = url("/shares") else { throw URLError(.badURL) }
         var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"
@@ -88,11 +96,27 @@ extension PhotoClient {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         AtlasAuth.apply(to: &req)
         req.httpBody = try JSONEncoder().encode(NewShare(title: title, ids: ids, album: album, days: days,
-                                                         allow_download: allowDownload, password: password))
+                                                         allow_download: allowDownload, password: password, show_cover: showCover))
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         if http.statusCode == 503 { throw ShareError.notSetUp }
         guard (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        return try Self.decoder.decode(Share.self, from: data)
+    }
+
+    /// Toggles whether a password-protected share shows its cover photo in link previews.
+    func setShareCoverPreview(_ id: String, showCover: Bool) async throws -> Share {
+        guard let url = url("/shares/\(id)") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AtlasAuth.apply(to: &req)
+        req.httpBody = try JSONEncoder().encode(UpdateShare(show_cover: showCover))
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
         return try Self.decoder.decode(Share.self, from: data)
     }
 

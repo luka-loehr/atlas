@@ -29,6 +29,7 @@ struct ShareLinkSheet: View {
     @State private var originals = false
     @State private var protect = false
     @State private var password = ""
+    @State private var showCover = false
     @State private var share: Share?
     @State private var creating = false
     @State private var failed = false
@@ -96,6 +97,7 @@ struct ShareLinkSheet: View {
             if protect {
                 TextField("Password", text: $password)
                     .plainTextEntry()
+                Toggle("Show Cover in Preview", isOn: $showCover)
             }
         }
         Section {
@@ -118,6 +120,12 @@ struct ShareLinkSheet: View {
             if let password = s.password {
                 LabeledContent("Password", value: password)
                     .textSelection(.enabled)
+            }
+            if s.hasPassword {
+                Toggle("Show Cover in Preview", isOn: Binding(
+                    get: { s.showCover ?? false },
+                    set: { toggleCover(s, showCover: $0) }
+                ))
             }
             LabeledContent("Expires", value: s.expiresAt.formatted(date: .abbreviated, time: .shortened))
         }
@@ -194,6 +202,18 @@ struct ShareLinkSheet: View {
         }
     }
 
+    private func toggleCover(_ s: Share, showCover next: Bool) {
+        Task {
+            do {
+                let updated = try await library.client.setShareCoverPreview(s.id, showCover: next)
+                withAnimation { share = updated }
+                Haptics.success()
+            } catch {
+                failed = true
+            }
+        }
+    }
+
     /// One tap: the link stops working and its files leave Cloudflare.
     private func stop(_ s: Share) {
         stopping = true
@@ -228,7 +248,7 @@ struct ShareLinkSheet: View {
             do {
                 let s = try await library.client.createShare(
                     title: cleanTitle, ids: item.album == nil ? item.ids : nil, album: item.album,
-                    days: days, allowDownload: originals, password: protect ? password : nil)
+                    days: days, allowDownload: originals, password: protect ? password : nil, showCover: protect ? showCover : true)
                 copied = false
                 withAnimation { share = s }
                 created()
@@ -248,7 +268,7 @@ struct ShareLinkSheet: View {
                      url: URL(string: "https://atlas-share.example.workers.dev/s/4fQ2xV7bLk9TzR1mWc3NaE")!,
                      createdAt: .now, expiresAt: .now.addingTimeInterval(7 * 86400), state: state,
                      doneBytes: 41_200_000, totalBytes: 98_700_000, count: 39, cover: nil, albumID: nil,
-                     allowDownload: false, hasPassword: false,
+                     allowDownload: false, hasPassword: false, showCover: true,
                      error: state == .failed ? "atlas-share did not answer." : nil)
     }
     #endif
